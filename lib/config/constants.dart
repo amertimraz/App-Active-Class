@@ -1,0 +1,118 @@
+﻿// lib/config/constants.dart
+const String APP_NAME = 'Active Class';
+const String APP_VERSION = '1.0.0';
+
+// Colors
+const String PRIMARY_COLOR = '0xFF1976D2';
+const String ACCENT_COLOR = '0xFFFFC107';
+const String BACKGROUND_COLOR = '0xFFF5F5F5';
+const String SURFACE_COLOR = '0xFFFFFFFF';
+const String TEXT_PRIMARY = '0xFF212121';
+const String TEXT_SECONDARY = '0xFF757575';
+const String ERROR_COLOR = '0xFFD32F2F';
+const String SUCCESS_COLOR = '0xFF388E3C';
+
+// Font Sizes
+const double FONT_SIZE_SMALL = 12.0;
+const double FONT_SIZE_NORMAL = 14.0;
+const double FONT_SIZE_MEDIUM = 16.0;
+const double FONT_SIZE_LARGE = 18.0;
+const double FONT_SIZE_XLARGE = 20.0;
+const double FONT_SIZE_TITLE = 24.0;
+
+// Padding & Margins
+const double PADDING_SMALL = 12.0;
+const double PADDING_NORMAL = 20.0;
+const double PADDING_LARGE = 28.0;
+
+// Spacing
+const double SPACING_SMALL = 6.0;
+const double SPACING_NORMAL = 12.0;
+const double SPACING_MEDIUM = 16.0;
+const double SPACING_LARGE = 20.0;
+const double SPACING_XLARGE = 28.0;
+
+// Border Radius
+const double BORDER_RADIUS_SMALL = 8.0;
+const double BORDER_RADIUS_NORMAL = 12.0;
+const double BORDER_RADIUS_LARGE = 16.0;
+
+// Database
+const String DATABASE_NAME = 'active_class.db';
+const int DATABASE_VERSION = 7;
+
+// Table Names
+const String TABLE_GROUPS = 'groups';
+const String TABLE_STUDENTS = 'students';
+const String TABLE_ATTENDANCE = 'attendance';
+const String TABLE_PAYMENTS = 'payments';
+const String TABLE_REPORT_LOGS = 'report_logs';
+
+// Column Names - Groups
+const String COL_GROUP_ID = 'id';
+const String COL_GROUP_NAME = 'name';
+const String COL_GROUP_CODE = 'code'; // optional unique code
+const String COL_GROUP_PRICE = 'price'; // optional fee per group
+const String COL_GROUP_COLOR = 'color'; // avatar color (int)
+const String COL_GROUP_ICON = 'icon'; // icon name
+const String COL_GROUP_SCHEDULE = 'schedule'; // optional text/json schedule
+const String COL_GROUP_CREATED_AT = 'created_at';
+
+// Column Names - Students
+const String COL_STUDENT_ID = 'id';
+const String COL_STUDENT_NAME = 'name';
+const String COL_STUDENT_CODE = 'code';
+const String COL_STUDENT_GROUP_ID = 'group_id';
+const String COL_STUDENT_PRICE = 'price';
+const String COL_STUDENT_QR_PATH = 'qr_path';
+const String COL_STUDENT_SIBLING_ID = 'sibling_id';
+const String COL_STUDENT_SIBLINGS_TOTAL = 'siblings_total';
+const String COL_STUDENT_CREATED_AT = 'created_at';
+const String COL_STUDENT_ATTENDANCE_START = 'attendance_start';
+const String COL_STUDENT_GUARDIAN_PHONE = 'guardian_phone';
+const String COL_STUDENT_BIRTH_DATE = 'birth_date';
+
+// Column Names - Attendance
+const String COL_ATTENDANCE_ID = 'id';
+const String COL_ATTENDANCE_STUDENT_ID = 'student_id';
+const String COL_ATTENDANCE_DATE = 'date';
+const String COL_ATTENDANCE_STATUS = 'status';
+const String COL_ATTENDANCE_NOTES = 'notes';
+const String COL_ATTENDANCE_CREATED_AT = 'created_at';
+
+// Column Names - Payments
+const String COL_PAYMENT_ID = 'id';
+const String COL_PAYMENT_STUDENT_ID = 'student_id';
+const String COL_PAYMENT_DATE = 'date';
+const String COL_PAYMENT_AMOUNT = 'amount';
+const String COL_PAYMENT_NOTE = 'note';
+const String COL_PAYMENT_CREATED_AT = 'created_at';
+
+// Column Names - Report Logs
+const String COL_REPORT_ID = 'id';
+const String COL_REPORT_STUDENT_ID = 'student_id';
+const String COL_REPORT_MONTH_START = 'month_start';
+const String COL_REPORT_SENT_AT = 'sent_at';
+
+// Attendance Status
+const String ATTENDANCE_PRESENT = 'حاضر';
+const String ATTENDANCE_ABSENT = 'غائب';
+
+// Route Names
+const String ROUTE_SPLASH = '/splash';
+const String ROUTE_HOME = '/';
+const String ROUTE_GROUPS = '/groups';
+const String ROUTE_STUDENTS = '/students';
+const String ROUTE_ATTENDANCE = '/attendance';
+const String ROUTE_PAYMENTS = '/payments';
+const String ROUTE_QR_SCANNER_ATTENDANCE = '/qr_scanner_attendance';
+const String ROUTE_QR_SCANNER_PAYMENT = '/qr_scanner_payment';
+const String ROUTE_REPORTS = '/reports';
+const String ROUTE_SETTINGS = '/settings';
+const String ROUTE_NOTIFICATION_SETTINGS = '/notification_settings';
+const String ROUTE_STUDENT_DETAILS = '/student_details';
+const String ROUTE_GROUP_DETAILS = '/group_details';
+const String ROUTE_ADD_STUDENT = '/add_student';
+const String ROUTE_QR_GALLERY = '/qr_gallery';
+const String ROUTE_PAYMENTS_REPORT = '/payments_report';
+const String ROUTE_CODE39_SCANNER_PAYMENT = '/code39_scanner_payment';

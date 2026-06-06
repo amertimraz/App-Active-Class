@@ -1,0 +1,83 @@
+name: active_class
+description: "تطبيق إدارة الفصول الدراسية - Active Class Application"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Database
+  sqflite: ^2.3.0
+  path_provider: ^2.1.0
+  path: ^1.9.0
+
+  # QR Code
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.1.3
+  google_mlkit_text_recognition: ^0.14.0
+
+  # PDF & Printing
+  pdf: ^3.10.0
+  printing: ^5.11.0
+
+  # URL Launcher for WhatsApp
+  url_launcher: ^6.3.0
+
+  # State Management & Navigation
+  get: ^4.6.0
+
+  # Date & Localization
+  intl: ^0.20.2
+
+  # Local storage
+  shared_preferences: ^2.3.2
+
+  # HTTP (for future use)
+  dio: ^5.3.0
+
+  # Media saving (Android gallery/Downloads)
+  permission_handler: ^12.0.1
+  media_store_plus: ^0.1.3
+  image_picker: ^1.0.7
+
+  # Backup & Share
+  share_plus: ^10.0.0
+
+  # Background tasks
+  workmanager: ^0.9.0+3
+  flutter_local_notifications: ^17.2.3
+  timezone: ^0.9.4
+
+  # UI
+  flutter_spinkit: ^5.2.0
+  fl_chart: ^0.68.0
+  flutter_animate: ^4.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/
+    - assets/fonts/
+
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
