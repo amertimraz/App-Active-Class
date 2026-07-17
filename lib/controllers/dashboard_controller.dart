@@ -3,32 +3,50 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:active_class/services/database_service.dart';
-import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
-import 'package:active_class/models/attendance_model.dart';
-import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/config/theme.dart';
+import 'package:active_class/config/constants.dart';
+
+enum ActivityType { attendance, payment }
 
 class DashboardController extends GetxController {
-  final DatabaseService _dbService = DatabaseService();
+  final DatabaseService _db = DatabaseService();
 
-  // Statistics
-  final RxInt totalGroups = 0.obs;
-  final RxInt totalStudents = 0.obs;
-  final RxDouble totalPayments = 0.0.obs;
-  final RxInt todayAttendance = 0.obs;
-  final RxInt todayAbsent = 0.obs;
-  final RxDouble attendanceRate = 0.0.obs;
-  final RxMap<String, int> studentsPerGroup = <String, int>{}.obs;
-  final RxInt lateStudents = 0.obs; // عدد المتأخرين
-  final RxInt paidStudents = 0.obs; // عدد من دفعوا
-  final RxList<RecentActivity> recentActivities = <RecentActivity>[].obs; // آخر العمليات
+  // ── إحصائيات عامة ────────────────────────────────────────────────────────
+  final RxInt    totalGroups    = 0.obs;
+  final RxInt    totalStudents  = 0.obs;
+  final RxInt    exemptStudents = 0.obs;
 
-  // Today's date
-  final Rx<DateTime> todayDate = DateTime.now().obs;
+  // ── إحصائيات الشهر الحالي ────────────────────────────────────────────────
+  final RxDouble monthExpected       = 0.0.obs;
+  final RxDouble monthPaid           = 0.0.obs;
+  final RxDouble monthRemaining      = 0.0.obs;
+  final RxDouble monthPaymentRate    = 0.0.obs;
+  final RxInt    paidStudentsCount   = 0.obs;
+  final RxInt    unpaidStudentsCount = 0.obs;
 
-  // Loading state
+  // ── إحصائيات اليوم ───────────────────────────────────────────────────────
+  final RxInt    todayPresent        = 0.obs;
+  final RxInt    todayAbsent         = 0.obs;
+  final RxInt    todayExpected       = 0.obs;
+  final RxDouble todayAttendanceRate = 0.0.obs;
+
+  // ── حالة ─────────────────────────────────────────────────────────────────
   final RxBool isLoading = false.obs;
+  final Rx<DateTime> lastUpdated = DateTime.now().obs;
+
+  // ── النشاط الأخير ─────────────────────────────────────────────────────────
+  final RxList<RecentActivity> recentActivities = <RecentActivity>[].obs;
+
+  // ── قائمة غير المدفوعين (للشيت) ─────────────────────────────────────────
+  RxList<Student> get unpaidList => _unpaidList;
+  final RxList<Student> _unpaidList = <Student>[].obs;
+
+  // ── للتوافق مع الكود القديم ───────────────────────────────────────────────
+  RxInt    get totalPaymentsInt => paidStudentsCount;
+  RxInt    get todayAttendance  => todayPresent;
+  RxDouble get attendanceRate   => todayAttendanceRate;
+  RxInt    get paidStudents     => paidStudentsCount;
 
   @override
   void onInit() {
@@ -40,198 +58,190 @@ class DashboardController extends GetxController {
     isLoading(true);
     try {
       await Future.wait([
-        _loadTotalGroups(),
-        _loadTotalStudents(),
-        _loadTotalPayments(),
-        _loadTodayAttendance(),
-        _loadStudentsPerGroup(),
-        _loadLateStudents(),
-        _loadPaidStudents(),
+        _loadGeneralStats(),
+        _loadMonthStats(),
+        _loadTodayStats(),
         _loadRecentActivities(),
       ]);
-      _calculateAttendanceRate();
-    } catch (e) {
-      print('Error loading dashboard data: $e');
+      lastUpdated.value = DateTime.now();
+    } catch (_) {
+      // لا نكشف الخطأ للمستخدم — الـ UI يبقى يعمل بقيم 0
     } finally {
       isLoading(false);
     }
   }
 
-  Future<void> _loadTotalGroups() async {
-    final groups = await _dbService.getAllGroups();
-    totalGroups.value = groups.length;
-  }
+  @override
+  void refresh() => loadDashboardData();
 
-  Future<void> _loadTotalStudents() async {
-    final students = await _dbService.getAllStudents();
+  // ── تحميل الإحصائيات العامة ──────────────────────────────────────────────
+  Future<void> _loadGeneralStats() async {
+    final groups   = await _db.getAllGroups();
+    final students = await _db.getAllStudents();
+
+    totalGroups.value   = groups.length;
     totalStudents.value = students.length;
+    exemptStudents.value =
+        students.where((s) => s.isFullyExempt).length;
   }
 
-  Future<void> _loadTotalPayments() async {
-    final payments = await _dbService.getAllPayments();
-    final total = payments.fold<double>(0.0, (sum, payment) => sum + (payment.amount as double));
-    totalPayments.value = total;
+  // ── تحميل إحصائيات الشهر ────────────────────────────────────────────────
+  Future<void> _loadMonthStats() async {
+    final now        = DateTime.now();
+    final monthStart = DateTime(now.year, now.month, 1);
+    final monthEnd   = DateTime(now.year, now.month + 1, 1)
+        .subtract(const Duration(seconds: 1));
+
+    final students = await _db.getAllStudents();
+    final payments = await _db.getAllPayments();
+
+    final activeStudents = students.where((s) => !s.isFullyExempt).toList();
+
+    // المدفوعات هذا الشهر فقط
+    final monthPayments = payments.where((p) =>
+        !p.date.isBefore(monthStart) && !p.date.isAfter(monthEnd)).toList();
+
+    final paidIds = monthPayments.map((p) => p.studentId).toSet();
+
+    double expected = 0;
+    double paid     = 0;
+    for (final s in activeStudents) {
+      if (s.isFullyExempt) continue; // معفى كلياً — لا يُحسب
+      expected += s.price;
+    }
+    for (final p in monthPayments) {
+      paid += p.amount;
+    }
+
+    monthExpected.value    = expected;
+    monthPaid.value        = paid;
+    monthRemaining.value   = (expected - paid).clamp(0, double.infinity);
+    monthPaymentRate.value = expected > 0 ? (paid / expected).clamp(0, 1) : 0;
+
+    paidStudentsCount.value   = paidIds.length;
+    unpaidStudentsCount.value =
+        activeStudents.where((s) => !paidIds.contains(s.id)).length;
+
+    _unpaidList.assignAll(
+        activeStudents.where((s) => !paidIds.contains(s.id)).toList());
   }
 
-  Future<void> _loadTodayAttendance() async {
-    final now = DateTime.now();
+  // ── تحميل إحصائيات اليوم ────────────────────────────────────────────────
+  Future<void> _loadTodayStats() async {
+    final now        = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
-    final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    final todayEnd   = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
-    final allAttendance = await _dbService.getAllAttendance();
-    
-    final todayRecords = allAttendance.where((att) {
-      return !att.date.isBefore(todayStart) && !att.date.isAfter(todayEnd);
-    }).toList();
+    final allAtt = await _db.getAllAttendance();
+    final todayRecords = allAtt
+        .where((a) =>
+            !a.date.isBefore(todayStart) && !a.date.isAfter(todayEnd))
+        .toList();
 
-    todayAttendance.value = todayRecords.where((att) => att.status == 'حاضر').length;
-    todayAbsent.value = todayRecords.where((att) => att.status == 'غائب').length;
+    final present = todayRecords
+        .where((a) => a.status == ATTENDANCE_PRESENT)
+        .length;
+    final absent  = todayRecords
+        .where((a) => a.status != ATTENDANCE_PRESENT)
+        .length;
+    final total   = present + absent;
+
+    todayPresent.value        = present;
+    todayAbsent.value         = absent;
+    todayExpected.value       = total;
+    todayAttendanceRate.value = total > 0 ? present / total : 0;
   }
 
-  void _calculateAttendanceRate() {
-    final total = todayAttendance.value + todayAbsent.value;
-    if (total > 0) {
-      attendanceRate.value = (todayAttendance.value / total) * 100;
-    } else {
-      attendanceRate.value = 0.0;
-    }
-  }
-
-  Future<void> _loadStudentsPerGroup() async {
-    final data = await getStudentsPerGroup();
-    studentsPerGroup.value = data;
-  }
-
-  Future<Map<String, int>> getStudentsPerGroup() async {
-    final groups = await _dbService.getAllGroups();
-    final Map<String, int> result = {};
-    
-    for (final group in groups) {
-      final count = await _dbService.getGroupStudentCount(group.id!);
-      result[group.name] = count;
-    }
-    
-    return result;
-  }
-
-  Future<double> getPaymentsThisMonth() async {
-    final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1);
-    final monthEnd = DateTime(now.year, now.month + 1, 1).subtract(const Duration(days: 1));
-
-    final allPayments = await _dbService.getAllPayments();
-    
-    final thisMonthPayments = allPayments.where((payment) {
-      return !payment.date.isBefore(monthStart) && !payment.date.isAfter(monthEnd);
-    }).toList();
-
-    return thisMonthPayments.fold<double>(0.0, (sum, payment) => sum + (payment.amount as double));
-  }
-
-  void refresh() {
-    loadDashboardData();
-  }
-
-  Future<void> _loadLateStudents() async {
-    // حساب عدد الطلاب المتأخرين في الدفع
-    final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1);
-    
-    final allStudents = await _dbService.getAllStudents();
-    lateStudents.value = allStudents.length;
-  }
-
-  Future<void> _loadPaidStudents() async {
-    // حساب عدد الطلاب الذين دفعوا هذا الشهر
-    final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1);
-    final monthEnd = DateTime(now.year, now.month + 1, 1).subtract(const Duration(days: 1));
-
-    final allPayments = await _dbService.getAllPayments();
-    final thisMonthPayments = allPayments.where((payment) {
-      return !payment.date.isBefore(monthStart) && !payment.date.isAfter(monthEnd);
-    }).toList();
-
-    // حساب عدد الطلاب الفريدين الذين دفعوا
-    final paidStudentIds = thisMonthPayments.map((p) => p.studentId).toSet();
-    paidStudents.value = paidStudentIds.length;
-  }
-
+  // ── تحميل النشاط الأخير ─────────────────────────────────────────────────
   Future<void> _loadRecentActivities() async {
-    // تحميل آخر 10 عمليات
     final activities = <RecentActivity>[];
-    
-    // آخر الحضور
-    final allAttendance = await _dbService.getAllAttendance();
-    final recentAttendance = allAttendance.take(5).toList();
-    for (final att in recentAttendance) {
-      final student = await _dbService.getStudent(att.studentId);
-      if (student != null) {
-        activities.add(RecentActivity(
-          type: 'attendance',
-          title: student.name,
-          subtitle: att.status == 'حاضر' ? 'حضر اليوم' : 'غاب اليوم',
-          time: _formatTime(att.date),
-          icon: att.status == 'حاضر' ? Icons.check_circle : Icons.cancel,
-          color: att.status == 'حاضر' ? AppTheme.successColor : AppTheme.errorColor,
-        ));
-      }
-    }
 
-    // آخر المدفوعات
-    final allPayments = await _dbService.getAllPayments();
-    final recentPayments = allPayments.take(5).toList();
-    for (final payment in recentPayments) {
-      final student = await _dbService.getStudent(payment.studentId);
+    // آخر 5 دفعات
+    final payments = await _db.getAllPayments();
+    final sortedPayments = payments.toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    for (final p in sortedPayments.take(5)) {
+      final student = await _db.getStudent(p.studentId);
       if (student != null) {
         activities.add(RecentActivity(
-          type: 'payment',
+          type: ActivityType.payment,
           title: student.name,
-          subtitle: 'دفع ${payment.amount.toStringAsFixed(0)} ر.س',
-          time: _formatTime(payment.date),
-          icon: Icons.payments,
+          subtitle: 'دفع ${p.amount.toStringAsFixed(0)}',
+          date: p.date,
+          icon: Icons.payments_rounded,
           color: AppTheme.primaryColor,
+          amount: p.amount,
         ));
       }
     }
 
-    // ترتيب حسب الوقت
-    activities.sort((a, b) => b.time.compareTo(a.time));
-    recentActivities.value = activities.take(10).toList();
+    // آخر 5 سجلات حضور
+    final attendance = await _db.getAllAttendance();
+    final sortedAtt = attendance.toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    for (final a in sortedAtt.take(5)) {
+      final student = await _db.getStudent(a.studentId);
+      if (student != null) {
+        activities.add(RecentActivity(
+          type: ActivityType.attendance,
+          title: student.name,
+          subtitle: a.status == ATTENDANCE_PRESENT ? 'حضر' : 'غاب',
+          date: a.date,
+          icon: a.status == ATTENDANCE_PRESENT
+              ? Icons.check_circle_rounded
+              : Icons.cancel_rounded,
+          color: a.status == ATTENDANCE_PRESENT
+              ? AppTheme.successColor
+              : AppTheme.errorColor,
+        ));
+      }
+    }
+
+    // ترتيب حسب التاريخ الفعلي
+    activities.sort((a, b) => b.date.compareTo(a.date));
+    recentActivities.assignAll(activities.take(10));
   }
 
-  String _formatTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inMinutes < 1) {
-      return 'الآن';
-    } else if (difference.inMinutes < 60) {
-      return 'منذ ${difference.inMinutes} دقيقة';
-    } else if (difference.inHours < 24) {
-      return 'منذ ${difference.inHours} ساعة';
-    } else if (difference.inDays < 7) {
-      return 'منذ ${difference.inDays} يوم';
-    } else {
-      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+  // ── للتوافق مع الكود القديم ───────────────────────────────────────────────
+  Future<Map<String, int>> getStudentsPerGroup() async {
+    final groups = await _db.getAllGroups();
+    final Map<String, int> result = {};
+    for (final g in groups) {
+      result[g.name] = await _db.getGroupStudentCount(g.id!);
     }
+    return result;
   }
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  RecentActivity model
+// ══════════════════════════════════════════════════════════════════
 class RecentActivity {
-  final String type; // 'attendance' or 'payment'
-  final String title;
-  final String subtitle;
-  final String time;
-  final IconData icon;
-  final Color color;
+  final ActivityType type;
+  final String    title;
+  final String    subtitle;
+  final DateTime  date;
+  final IconData  icon;
+  final Color     color;
+  final double?   amount;
 
   RecentActivity({
     required this.type,
     required this.title,
     required this.subtitle,
-    required this.time,
+    required this.date,
     required this.icon,
     required this.color,
+    this.amount,
   });
+
+  /// وقت نسبي مقروء
+  String get timeLabel {
+    final diff = DateTime.now().difference(date);
+    if (diff.inMinutes < 1)  return 'الآن';
+    if (diff.inMinutes < 60) return 'منذ ${diff.inMinutes} د';
+    if (diff.inHours   < 24) return 'منذ ${diff.inHours} س';
+    if (diff.inDays    < 7)  return 'منذ ${diff.inDays} يوم';
+    return '${date.day}/${date.month}/${date.year}';
+  }
 }

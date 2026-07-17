@@ -18,11 +18,10 @@ class Attendance {
   });
 
   Map<String, dynamic> toMap() {
-    final d = DateTime(date.year, date.month, date.day);
     return {
       'id': id,
       'student_id': studentId,
-      'date': d.toIso8601String(),
+      'date': date.toIso8601String(),
       'status': status,
       'notes': notes,
       'created_at': createdAt?.toIso8601String(),

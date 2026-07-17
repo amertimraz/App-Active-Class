@@ -105,15 +105,19 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
           paidByStudent.update(p.studentId, (v) => v + p.amount, ifAbsent: () => p.amount);
         }
 
+        // Separate exempt vs non-exempt students
+        final List<Student> exemptStudents = consideredStudents.where((s) => s.isExempt).toList();
+        final List<Student> nonExemptStudents = consideredStudents.where((s) => !s.isExempt).toList();
+
         double totalDueAll = 0;
         double totalPaidAll = 0;
-        int totalStudents = consideredStudents.length;
+        int totalStudents = nonExemptStudents.length;
         int fullyPaidCountAll = 0;
 
         final List<Student> unpaidStudents = [];
 
-        for (final s in consideredStudents) {
-          final due = s.price;
+        for (final s in nonExemptStudents) {
+          final due = s.effectivePrice; // يراعي الإعفاء الجزئي
           final paid = paidByStudent[s.id ?? -1] ?? 0.0;
           totalDueAll += due;
           totalPaidAll += paid;
@@ -179,6 +183,15 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                 ),
               ),
 
+              // ── Exempt students card ──────────────────────────
+              if (exemptStudents.isNotEmpty) ...[
+                const SizedBox(height: SPACING_NORMAL),
+                _ExemptStudentsCard(
+                  students: exemptStudents,
+                  groupById: groupById,
+                ),
+              ],
+
               const SizedBox(height: SPACING_NORMAL),
 
               Card(
@@ -201,14 +214,16 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                         double groupPaid = 0;
                         int groupFullyPaid = 0;
                         for (final s in groupStudents) {
-                          final due = s.price;
+                          if (s.isFullyExempt) continue; // لا يُحسب في المطلوب
+                          final due = s.effectivePrice;
                           final paid = paidByStudent[s.id ?? -1] ?? 0.0;
                           groupDue += due;
                           groupPaid += paid;
                           if (paid >= due && due > 0) groupFullyPaid++;
                         }
                         final groupUnpaid = groupStudents.where((s) {
-                          final due = s.price;
+                          if (s.isFullyExempt) return false;
+                          final due = s.effectivePrice;
                           final paid = paidByStudent[s.id ?? -1] ?? 0.0;
                           return due > 0 && paid < due;
                         }).toList();
@@ -290,7 +305,6 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
 
       final total = payments.fold<double>(0.0, (sum, p) => sum + p.amount);
       final dateLabel = DateFormat('d MMMM yyyy', 'ar').format(_selectedDay);
-      final timeFmt = DateFormat('HH:mm');
 
       return SingleChildScrollView(
         padding: const EdgeInsets.all(PADDING_NORMAL),
@@ -363,7 +377,7 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                           return ListTile(
                             leading: const Icon(Icons.payment),
                             title: Text(student?.name ?? 'طالب غير معروف'),
-                            subtitle: Text('${group?.name ?? 'غير محدد'} • ${timeFmt.format(p.date)}'),
+                            subtitle: Text('${group?.name ?? 'غير محدد'} • ${FormatHelper.formatPaymentDate(p.date)}'),
                             trailing: Text(FormatHelper.formatCurrency(p.amount)),
                           );
                         },
@@ -705,3 +719,161 @@ class _WhatsButton extends StatelessWidget {
     );
   }
 }
+
+// ══════════════════════════════════════════════════════════════════
+//  _ExemptStudentsCard — بطاقة الطلاب المعفيين في التقرير
+// ══════════════════════════════════════════════════════════════════
+class _ExemptStudentsCard extends StatefulWidget {
+  const _ExemptStudentsCard({
+    required this.students,
+    required this.groupById,
+  });
+  final List<Student> students;
+  final Map<int, Group> groupById;
+
+  @override
+  State<_ExemptStudentsCard> createState() => _ExemptStudentsCardState();
+}
+
+class _ExemptStudentsCardState extends State<_ExemptStudentsCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    const exemptColor = Color(0xFF2E7D32);
+    final fullCount = widget.students.where((s) => s.isFullyExempt).length;
+    final partialCount = widget.students.length - fullCount;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: exemptColor.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        children: [
+          // Header
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Container(
+              color: exemptColor.withValues(alpha: 0.07),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: exemptColor.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.volunteer_activism_rounded,
+                        color: exemptColor, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'الطلاب المعفيون  (${widget.students.length})',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: exemptColor,
+                          ),
+                        ),
+                        Text(
+                          '${fullCount > 0 ? "$fullCount إعفاء كامل" : ""}${fullCount > 0 && partialCount > 0 ? " • " : ""}${partialCount > 0 ? "$partialCount إعفاء جزئي" : ""}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: exemptColor.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    color: exemptColor,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Expanded list
+          if (_expanded) ...[
+            const Divider(height: 1, color: Color(0x332E7D32)),
+            ...widget.students.map((s) {
+              final group = widget.groupById[s.groupId];
+              final groupColor = group?.color != null ? Color(group!.color!) : Colors.grey;
+              return ListTile(
+                dense: true,
+                leading: CircleAvatar(
+                  backgroundColor: exemptColor.withValues(alpha: 0.1),
+                  radius: 18,
+                  child: Text(
+                    s.name.trim().isNotEmpty ? s.name.trim()[0] : '?',
+                    style: const TextStyle(
+                      color: exemptColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                subtitle: Row(
+                  children: [
+                    if (group != null) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: groupColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          group.name,
+                          style: TextStyle(color: groupColor, fontSize: 10, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    if (s.exemptReason != null && s.exemptReason!.isNotEmpty)
+                      Text(
+                        s.exemptReason!,
+                        style: TextStyle(fontSize: 11, color: scheme.onSurface.withValues(alpha: 0.5)),
+                      ),
+                  ],
+                ),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: s.isFullyExempt
+                        ? exemptColor.withValues(alpha: 0.12)
+                        : Colors.orange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: s.isFullyExempt
+                          ? exemptColor.withValues(alpha: 0.4)
+                          : Colors.orange.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Text(
+                    s.isFullyExempt ? 'كامل' : '${s.exemptPercent.toInt()}%',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: s.isFullyExempt ? exemptColor : Colors.orange,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
+}
+

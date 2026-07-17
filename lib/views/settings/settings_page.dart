@@ -1,404 +1,977 @@
-// lib/views/settings/settings_page.dart
 import 'dart:io';
+import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart';
+
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/theme_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/widgets/custom_dialogs.dart';
 import 'package:active_class/utils/helpers.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/backup_service.dart';
+import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/models/student_model.dart';
-
-import 'package:intl/intl.dart';
-import 'dart:ui' as ui;
-import 'dart:async';
+import 'package:active_class/views/license/trial_banner.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
-  // Helper method to build section titles with consistent styling
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleLarge,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final ThemeController themeController = Get.find();
-    final SettingsController settingsController = Get.find();
+    final SettingsController settings = Get.find();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('الإعدادات'),
-        centerTitle: true,
-        elevation: 0,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(PADDING_NORMAL),
+      backgroundColor:
+          isDark ? const Color(0xFF0B1020) : const Color(0xFFF7F8FF),
+      body: Stack(
         children: [
-            // Appearance Section
-            Text(
-              'المظهر',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: SPACING_NORMAL),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.dark_mode),
-                title: const Text('الوضع الليلي'),
-                trailing: Obx(
-                  () => Switch(
-                    value: themeController.isDarkMode.value,
-                    onChanged: (value) {
-                      themeController.setTheme(value);
-                    },
-                  ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: isDark
+                      ? const [Color(0xFF08101F), Color(0xFF121A2D)]
+                      : const [Color(0xFFFDFDFF), Color(0xFFEEF4FF)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                 ),
               ),
             ),
-            const SizedBox(height: SPACING_LARGE),
-
-            // Notifications Section
-            Text(
-              'الإشعارات',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: SPACING_NORMAL),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.notifications),
-                title: const Text('إعدادات الإشعارات'),
-                subtitle: const Text('تخصيص إشعارات التذكير'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () => Get.toNamed(ROUTE_NOTIFICATION_SETTINGS),
-              ),
-            ),
-            const SizedBox(height: SPACING_LARGE),
-
-            // Currency Section
-            Text(
-              'العملة',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: SPACING_NORMAL),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: PADDING_NORMAL, vertical: PADDING_NORMAL),
-                child: Row(
-                  children: [
-                    const Icon(Icons.attach_money),
-                    const SizedBox(width: SPACING_NORMAL),
-                    Expanded(
-                      child: Obx(() {
-                        final items = SettingsController.supported;
-                        return DropdownButtonFormField<String>(
-                          initialValue: settingsController.currencyCode.value,
-                          decoration: const InputDecoration(labelText: 'اختر العملة'),
-                          items: items
-                              .map(
-                                (c) => DropdownMenuItem(
-                                  value: c.code,
-                                  child: Text('${c.nameAr} (${c.symbol})'),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (code) {
-                            if (code != null) settingsController.setCurrency(code);
-                            ToastHelper.success('تم تعيين العملة إلى: ${settingsController.currentCurrency.nameAr}', title: 'تم التغيير');
-                          },
-                        );
-                      }),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: SPACING_LARGE),
-
-            // Time format Section
-            _buildSectionTitle(context, 'التوقيت'),
-            const SizedBox(height: SPACING_NORMAL),
-            Card(
-              child: Obx(() => ListTile(
-                leading: const Icon(Icons.access_time),
-                title: const Text('نظام الساعة'),
-                subtitle: Text(settingsController.use24hFormat.value ? '24 ساعة' : '12 ساعة'),
-                trailing: Switch(
-                  value: settingsController.use24hFormat.value,
-                  onChanged: (v) async {
-                    await settingsController.setUse24hFormat(v);
-                  },
-                ),
-              )),
-            ),
-            const SizedBox(height: SPACING_LARGE),
-
-            // Country dial Section
-                        _buildSectionTitle(context, 'رمز الدولة للواتساب'),
-            const SizedBox(height: SPACING_NORMAL),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: PADDING_NORMAL, vertical: PADDING_NORMAL),
-                child: Row(
-                  children: [
-                    const Icon(Icons.flag),
-                    const SizedBox(width: SPACING_NORMAL),
-                    Expanded(
-                      child: Obx(() {
-                        final items = SettingsController.arabCountryDials;
-                        return DropdownButtonFormField<String>(
-                          initialValue: settingsController.countryDial.value,
-                          decoration: const InputDecoration(labelText: 'اختر الدولة'),
-                          items: items
-                              .map(
-                                (c) => DropdownMenuItem(
-                                  value: c.dial,
-                                  child: Text('${c.nameAr} (+${c.dial})'),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (dial) async {
-                            if (dial != null) await settingsController.setCountryDial(dial);
-                            ToastHelper.success('تم تعيين رمز الدولة: +${settingsController.countryDial.value}', title: 'تم التغيير');
-                          },
-                        );
-                      }),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: SPACING_LARGE),
-
-            // Teacher Info Section
-                        _buildSectionTitle(context, 'معلومات المعلم'),
-            const SizedBox(height: SPACING_NORMAL),
-            Obx(() {
-              final fullName = settingsController.teacherFullName.value.trim();
-              final avatarPath = settingsController.teacherAvatarPath.value.trim();
-              String initial() {
-                if (fullName.isNotEmpty) return fullName.characters.first.toUpperCase();
-                return 'م';
-              }
-              ImageProvider? avatarImage;
-              if (avatarPath.isNotEmpty) {
-                final f = File(avatarPath);
-                if (f.existsSync()) {
-                  avatarImage = FileImage(f);
-                }
-              }
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(PADDING_NORMAL),
-                  child: Column(
+          ),
+          SafeArea(
+            child: Column(
+              children: [
+                _buildAppBar(context, isDark),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                     children: [
-                      Row(
+
+                      // ── 0. حالة الترخيص ──────────────────────────
+                      const LicenseStatusTile(),
+                      const SizedBox(height: 14),
+
+                      // ── 1. بيانات المعلم ─────────────────────────
+                      _buildTeacherSection(context, isDark, settings),
+                      const SizedBox(height: 14),
+
+                      // ── 2. المظهر والتوقيت ───────────────────────
+                      _buildSection(
+                        context, isDark,
+                        title: 'المظهر والتوقيت',
+                        icon: Icons.palette_rounded,
+                        color: const Color(0xFF8B5CF6),
                         children: [
-                          GestureDetector(
-                            onTap: () async {
-                              final picker = ImagePicker();
-                              final x = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800, imageQuality: 85);
-                              if (x != null) {
-                                settingsController.setTeacherAvatarPath(x.path);
-                                await settingsController.saveTeacherInfo();
-                              }
-                            },
-                            child: CircleAvatar(
-                              radius: 32,
-                              backgroundImage: avatarImage,
-                              backgroundColor: AppTheme.primaryColor,
-                              child: avatarImage == null
-                                  ? Text(
-                                      initial(),
-                                      style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                                    )
-                                  : null,
-                            ),
+                          _buildSwitchTile(
+                            context, isDark,
+                            icon: Icons.dark_mode_rounded,
+                            iconColor: const Color(0xFF8B5CF6),
+                            title: 'الوضع الليلي',
+                            subtitle: 'تغيير مظهر التطبيق',
+                            rxValue: themeController.isDarkMode,
+                            onChanged: themeController.setTheme,
                           ),
-                          const SizedBox(width: SPACING_NORMAL),
-                          Expanded(
-                            child: Column(
-                              children: [
-                                TextFormField(
-                                  initialValue: settingsController.teacherFullName.value,
-                                  decoration: const InputDecoration(labelText: 'الاسم الكامل'),
-                                  onChanged: settingsController.setTeacherFullName,
-                                  textDirection: ui.TextDirection.rtl,
-                                ),
-                                const SizedBox(height: SPACING_SMALL),
-                                TextFormField(
-                                  initialValue: settingsController.teacherSpecialization.value,
-                                  decoration: const InputDecoration(labelText: 'التخصص'),
-                                  onChanged: settingsController.setTeacherSpecialization,
-                                  textDirection: ui.TextDirection.rtl,
-                                ),
-                              ],
-                            ),
+                          _buildDivider(isDark),
+                          Obx(() => _buildSwitchTile(
+                            context, isDark,
+                            icon: Icons.access_time_rounded,
+                            iconColor: const Color(0xFF06B6D4),
+                            title: 'نظام الساعة 24',
+                            subtitle: settings.use24hFormat.value
+                                ? 'يعرض 14:30'
+                                : 'يعرض 2:30 م',
+                            rxValue: settings.use24hFormat,
+                            onChanged: (v) async =>
+                                await settings.setUse24hFormat(v),
+                          )),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // ── 3. العملة ورمز الدولة ────────────────────
+                      _buildSection(
+                        context, isDark,
+                        title: 'العملة ورمز الدولة',
+                        icon: Icons.language_rounded,
+                        color: const Color(0xFF10B981),
+                        children: [
+                          Obx(() {
+                            final items = SettingsController.supported;
+                            return _buildDropdownTile(
+                              context, isDark,
+                              icon: Icons.attach_money_rounded,
+                              iconColor: const Color(0xFF10B981),
+                              title: 'العملة',
+                              value: settings.currencyCode.value,
+                              items: items.map((c) => DropdownMenuItem(
+                                value: c.code,
+                                child: Text('${c.nameAr} (${c.symbol})'),
+                              )).toList(),
+                              onChanged: (code) {
+                                if (code != null) {
+                                  settings.setCurrency(code);
+                                  ToastHelper.success(
+                                    'تم تعيين العملة إلى: ${settings.currentCurrency.nameAr}',
+                                    title: 'تم التغيير',
+                                  );
+                                }
+                              },
+                            );
+                          }),
+                          _buildDivider(isDark),
+                          Obx(() {
+                            final items = SettingsController.arabCountryDials;
+                            return _buildDropdownTile(
+                              context, isDark,
+                              icon: Icons.flag_rounded,
+                              iconColor: const Color(0xFFF59E0B),
+                              title: 'رمز دولة الواتساب',
+                              value: settings.countryDial.value,
+                              items: items.map((c) => DropdownMenuItem(
+                                value: c.dial,
+                                child: Text('${c.nameAr} (+${c.dial})'),
+                              )).toList(),
+                              onChanged: (dial) async {
+                                if (dial != null) {
+                                  await settings.setCountryDial(dial);
+                                  ToastHelper.success(
+                                    'تم تعيين رمز الدولة: +${settings.countryDial.value}',
+                                    title: 'تم التغيير',
+                                  );
+                                }
+                              },
+                            );
+                          }),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // ── 4. الإشعارات ─────────────────────────────
+                      _buildSection(
+                        context, isDark,
+                        title: 'الإشعارات',
+                        icon: Icons.notifications_rounded,
+                        color: const Color(0xFFEF4444),
+                        children: [
+                          _buildNavTile(
+                            context, isDark,
+                            icon: Icons.tune_rounded,
+                            iconColor: const Color(0xFFEF4444),
+                            title: 'مركز الإشعارات',
+                            subtitle: 'إشعارات الميلاد والحصص والدفعات',
+                            onTap: () => Get.toNamed(ROUTE_NOTIFICATION_SETTINGS),
                           ),
                         ],
                       ),
-                      const SizedBox(height: SPACING_NORMAL),
-                      TextFormField(
-                        initialValue: settingsController.teacherPhone.value,
-                        decoration: const InputDecoration(labelText: 'رقم الهاتف'),
-                        keyboardType: TextInputType.phone,
-                        onChanged: settingsController.setTeacherPhone,
-                        textDirection: ui.TextDirection.rtl,
+                      const SizedBox(height: 14),
+
+                      // ── 5. الواتساب ──────────────────────────────
+                      _buildSection(
+                        context, isDark,
+                        title: 'الواتساب',
+                        icon: Icons.chat_rounded,
+                        color: const Color(0xFF25D366),
+                        children: [
+                          _buildNavTile(
+                            context, isDark,
+                            icon: Icons.send_rounded,
+                            iconColor: const Color(0xFF25D366),
+                            title: 'إرسال تقارير الشهر',
+                            subtitle: 'يفتح محادثة واتساب لكل ولي أمر بتقرير مفصل',
+                            onTap: () =>
+                                _startWhatsappBatchSend(context, settings),
+                          ),
+                          _buildDivider(isDark),
+                          // ── إظهار زر الواتساب في المجموعات ──────────
+                          Obx(() => _buildSwitchTile(
+                            context, isDark,
+                            icon: Icons.smart_button_rounded,
+                            iconColor: const Color(0xFF25D366),
+                            title: 'زر الواتساب في المجموعات',
+                            subtitle: settings.whatsappEnabled.value
+                                ? (settings.isWhatsappDayReached
+                                    ? 'ظاهر الآن — يبدأ يوم ${settings.whatsappSendDay.value} من الشهر'
+                                    : 'سيظهر يوم ${settings.whatsappSendDay.value} من الشهر')
+                                : 'الزر مخفي في صفحات المجموعات',
+                            rxValue: settings.whatsappEnabled,
+                            onChanged: (v) async =>
+                                await settings.setWhatsappEnabled(v),
+                          )),
+                          // ── يوم ظهور الزر ──────────────────────────
+                          Obx(() {
+                            if (!settings.whatsappEnabled.value) {
+                              return const SizedBox.shrink();
+                            }
+                            return Column(children: [
+                              _buildDivider(isDark),
+                              _buildDropdownTile<int>(
+                                context, isDark,
+                                icon: Icons.event_rounded,
+                                iconColor: const Color(0xFFF59E0B),
+                                title: 'يوم ظهور الزر',
+                                value: settings.whatsappSendDay.value,
+                                items: List.generate(28, (i) => i + 1)
+                                    .map((d) => DropdownMenuItem(
+                                          value: d,
+                                          child: Text('يوم $d من الشهر'),
+                                        ))
+                                    .toList(),
+                                onChanged: (d) async {
+                                  if (d != null) {
+                                    await settings.setWhatsappSendDay(d);
+                                    ToastHelper.success(
+                                      'سيظهر زر الواتساب يوم $d من كل شهر',
+                                      title: 'تم التغيير',
+                                    );
+                                  }
+                                },
+                              ),
+                            ]);
+                          }),
+                        ],
                       ),
-                      const SizedBox(height: SPACING_SMALL),
-                      TextFormField(
-                        initialValue: settingsController.teacherEmail.value,
-                        decoration: const InputDecoration(labelText: 'البريد الإلكتروني (اختياري)'),
-                        keyboardType: TextInputType.emailAddress,
-                        onChanged: settingsController.setTeacherEmail,
-                        textDirection: ui.TextDirection.rtl,
+                      const SizedBox(height: 14),
+
+                      // ── 6. النسخ الاحتياطي ───────────────────────
+                      _buildSection(
+                        context, isDark,
+                        title: 'النسخ الاحتياطي',
+                        icon: Icons.storage_rounded,
+                        color: const Color(0xFF4F46E5),
+                        children: [
+                          // ── حفظ تلقائي ─────────────────────────────
+                          Obx(() {
+                            final svc = AutoBackupService();
+                            return _buildSwitchTile(
+                              context, isDark,
+                              icon: Icons.cloud_sync_rounded,
+                              iconColor: const Color(0xFF4F46E5),
+                              title: 'الحفظ التلقائي',
+                              subtitle: svc.enabled.value
+                                  ? svc.lastBackupTime.value != null
+                                      ? svc.lastBackupLabel
+                                      : 'يحفظ تلقائياً بعد كل تغيير'
+                                  : 'يحفظ نسخة بعد كل تغيير',
+                              rxValue: svc.enabled,
+                              onChanged: (v) => svc.setEnabled(v),
+                            );
+                          }),
+                          _buildDivider(isDark),
+                          _buildNavTile(
+                            context, isDark,
+                            icon: Icons.backup_rounded,
+                            iconColor: const Color(0xFF4F46E5),
+                            title: 'إنشاء نسخة احتياطية',
+                            subtitle: 'نسخ كامل لقاعدة البيانات مع خيار المشاركة',
+                            onTap: () => _handleEnhancedBackup(context),
+                          ),
+                          _buildDivider(isDark),
+                          _buildNavTile(
+                            context, isDark,
+                            icon: Icons.restore_rounded,
+                            iconColor: const Color(0xFF06B6D4),
+                            title: 'استعادة نسخة احتياطية',
+                            subtitle: 'استعادة البيانات من نسخة محفوظة',
+                            onTap: () => _handleRestoreBackup(context),
+                          ),
+                          _buildDivider(isDark),
+                          _buildNavTile(
+                            context, isDark,
+                            icon: Icons.folder_open_rounded,
+                            iconColor: const Color(0xFFF59E0B),
+                            title: 'إدارة النسخ الاحتياطية',
+                            subtitle: 'عرض وحذف النسخ القديمة',
+                            onTap: () => _handleManageBackups(context),
+                          ),
+                          _buildDivider(isDark),
+                          _buildNavTile(
+                            context, isDark,
+                            icon: Icons.delete_forever_rounded,
+                            iconColor: const Color(0xFFEF4444),
+                            title: 'حذف جميع البيانات',
+                            subtitle: 'حذف نهائي — لا يمكن التراجع',
+                            titleColor: const Color(0xFFEF4444),
+                            onTap: () => _handleDeleteAll(context, settings),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: SPACING_SMALL),
-                      TextFormField(
-                        initialValue: settingsController.teacherSchool.value,
-                        decoration: const InputDecoration(labelText: 'المدرسة / المركز (اختياري)'),
-                        onChanged: settingsController.setTeacherSchool,
-                        textDirection: ui.TextDirection.rtl,
+                      const SizedBox(height: 14),
+
+                      // ── 7. عن التطبيق ─────────────────────────────
+                      _buildAboutSection(context, isDark),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── AppBar ───────────────────────────────────────────────────────────────
+
+  Widget _buildAppBar(BuildContext context, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Row(
+        children: [
+          _IconBtn(
+            icon: Icons.arrow_back_ios_new_rounded,
+            isDark: isDark,
+            onTap: () => Get.back(),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'الإعدادات',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: isDark ? Colors.white : const Color(0xFF111827),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Section Container ────────────────────────────────────────────────────
+
+  Widget _buildSection(
+    BuildContext context,
+    bool isDark, {
+    required String title,
+    required IconData icon,
+    required Color color,
+    required List<Widget> children,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(right: 4, bottom: 8),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 16, color: color),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: isDark ? Colors.white70 : const Color(0xFF374151),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: isDark
+                ? const Color(0xFF131D31).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.white.withValues(alpha: 0.9),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.18)
+                    : const Color(0xFFD8E0F0).withValues(alpha: 0.45),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(children: children),
+        ),
+      ],
+    );
+  }
+
+  // ─── معلومات المعلم ───────────────────────────────────────────────────────
+
+  Widget _buildTeacherSection(
+    BuildContext context,
+    bool isDark,
+    SettingsController settings,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(right: 4, bottom: 8),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF4D7A).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.person_rounded,
+                    size: 16, color: Color(0xFFFF4D7A)),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'بيانات المعلم',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: isDark ? Colors.white70 : const Color(0xFF374151),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: isDark
+                ? const Color(0xFF131D31).withValues(alpha: 0.95)
+                : Colors.white.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.white.withValues(alpha: 0.9),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.18)
+                    : const Color(0xFFD8E0F0).withValues(alpha: 0.45),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Obx(() {
+            final fullName   = settings.teacherFullName.value.trim();
+            final avatarPath = settings.teacherAvatarPath.value.trim();
+
+            ImageProvider? avatarImage;
+            if (avatarPath.isNotEmpty) {
+              final f = File(avatarPath);
+              if (f.existsSync()) avatarImage = FileImage(f);
+            }
+            final initial = fullName.isNotEmpty ? fullName.characters.first : 'م';
+
+            return Row(
+              children: [
+                // ── الصورة ──────────────────────────────────────────
+                GestureDetector(
+                  onTap: () async {
+                    final picker = ImagePicker();
+                    final x = await picker.pickImage(
+                      source: ImageSource.gallery,
+                      maxWidth: 800,
+                      imageQuality: 85,
+                    );
+                    if (x != null) {
+                      settings.setTeacherAvatarPath(x.path);
+                      await settings.saveTeacherInfo();
+                    }
+                  },
+                  child: Stack(
+                    alignment: Alignment.bottomLeft,
+                    children: [
+                      CircleAvatar(
+                        radius: 36,
+                        backgroundImage: avatarImage,
+                        backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.15),
+                        child: avatarImage == null
+                            ? Text(initial,
+                                style: const TextStyle(
+                                  color: AppTheme.primaryColor,
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'Cairo',
+                                ))
+                            : null,
                       ),
-                      const SizedBox(height: SPACING_SMALL),
-                      TextFormField(
-                        initialValue: settingsController.teacherAvatarPath.value,
-                        decoration: const InputDecoration(labelText: 'رابط/مسار الصورة (اختياري)'),
-                        onChanged: settingsController.setTeacherAvatarPath,
-                        textDirection: ui.TextDirection.ltr,
-                      ),
-                      const SizedBox(height: SPACING_NORMAL),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: ElevatedButton.icon(
-                          onPressed: () async {
-                            await settingsController.saveTeacherInfo();
-                            ToastHelper.success('تم حفظ معلومات المعلم');
-                          },
-                          icon: const Icon(Icons.save),
-                          label: const Text('حفظ'),
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF131D31) : Colors.white,
+                            width: 2,
+                          ),
                         ),
+                        child: const Icon(Icons.camera_alt_rounded,
+                            size: 11, color: Colors.white),
                       ),
                     ],
                   ),
                 ),
-              );
-            }),
-            const SizedBox(height: SPACING_LARGE),
+                const SizedBox(width: 16),
+                // ── الاسم + الجنس ─────────────────────────────────────────
+                Expanded(
+                  child: Column(
+                    children: [
+                      _buildTextField(
+                        isDark,
+                        label: 'اسم المعلم',
+                        value: settings.teacherFullName.value,
+                        icon: Icons.badge_rounded,
+                        onChanged: (v) async {
+                          settings.setTeacherFullName(v);
+                          await settings.saveTeacherInfo();
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      // ── اختيار الجنس ──────────────────────────
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _GenderChip(
+                              isDark: isDark,
+                              label: 'مستر',
+                              icon: Icons.male_rounded,
+                              color: const Color(0xFF4F46E5),
+                              selected: settings.teacherGender.value == 'male',
+                              onTap: () async {
+                                settings.setTeacherGender('male');
+                                await settings.saveTeacherInfo();
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _GenderChip(
+                              isDark: isDark,
+                              label: 'مس',
+                              icon: Icons.female_rounded,
+                              color: const Color(0xFFE91E8C),
+                              selected: settings.teacherGender.value == 'female',
+                              onTap: () async {
+                                settings.setTeacherGender('female');
+                                await settings.saveTeacherInfo();
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          }),
+        ),
+      ],
+    );
+  }
 
+  // ─── عن التطبيق ───────────────────────────────────────────────────────────
 
-            // Data Management Section
-                        _buildSectionTitle(context, 'إدارة البيانات'),
-            const SizedBox(height: SPACING_NORMAL),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.backup),
-                title: const Text('النسخ الاحتياطي'),
-                subtitle: const Text('حفظ البيانات في ملف JSON'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () => _handleBackup(context, settingsController),
-              ),
-            ),
-            const SizedBox(height: SPACING_SMALL),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.cloud_upload),
-                title: const Text('نسخ احتياطي محسّن'),
-                subtitle: const Text('نسخ كامل لقاعدة البيانات'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () => _handleEnhancedBackup(context),
-              ),
-            ),
-            const SizedBox(height: SPACING_SMALL),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.cloud_download),
-                title: const Text('استعادة نسخة احتياطية'),
-                subtitle: const Text('استعادة من نسخة محفوظة'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () => _handleRestoreBackup(context),
-              ),
-            ),
-            const SizedBox(height: SPACING_SMALL),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.folder_open),
-                title: const Text('إدارة النسخ الاحتياطية'),
-                subtitle: const Text('عرض وحذف النسخ القديمة'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () => _handleManageBackups(context),
-              ),
-            ),
-            const SizedBox(height: SPACING_SMALL),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('حذف جميع البيانات'),
-                subtitle: const Text('حذف نهائي - لا يمكن التراجع'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () => _handleDeleteAll(context, settingsController),
-              ),
-            ),
-            const SizedBox(height: SPACING_LARGE),
+  Widget _buildAboutSection(BuildContext context, bool isDark) {
+    return _buildSection(
+      context,
+      isDark,
+      title: 'عن التطبيق',
+      icon: Icons.info_rounded,
+      color: const Color(0xFF64748B),
+      children: [
+        _buildInfoTile(
+          isDark,
+          icon: Icons.verified_rounded,
+          iconColor: const Color(0xFF4F46E5),
+          title: 'الإصدار',
+          trailing: '1.0.0',
+        ),
+        _buildDivider(isDark),
+        _buildInfoTile(
+          isDark,
+          icon: Icons.update_rounded,
+          iconColor: const Color(0xFF10B981),
+          title: 'آخر تحديث',
+          trailing: '2025/06/01',
+        ),
+        _buildDivider(isDark),
+        _buildNavTile(
+          context,
+          isDark,
+          icon: Icons.help_outline_rounded,
+          iconColor: const Color(0xFFF59E0B),
+          title: 'المساعدة والدعم',
+          subtitle: 'تواصل معنا',
+          onTap: () => ToastHelper.info('قريباً — قسم المساعدة تحت التطوير'),
+        ),
+      ],
+    );
+  }
 
-            // About Section
-                        _buildSectionTitle(context, 'عن التطبيق'),
-            const SizedBox(height: SPACING_NORMAL),
-            Card(
+  // ─── Tile Builders ────────────────────────────────────────────────────────
+
+  Widget _buildSwitchTile(
+    BuildContext context,
+    bool isDark, {
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required RxBool rxValue,
+    required void Function(bool) onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 20, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Obx(() => Switch(
+                value: rxValue.value,
+                onChanged: onChanged,
+                activeColor: iconColor,
+              )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavTile(
+    BuildContext context,
+    bool isDark, {
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    String? subtitle,
+    Color? titleColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, size: 20, color: iconColor),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ListTile(
-                    leading: const Icon(Icons.info_outline),
-                    title: const Text('الإصدار'),
-                    trailing: const Text('1.0.0'),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: titleColor ??
+                          (isDark ? Colors.white : const Color(0xFF111827)),
+                    ),
                   ),
-                  const Divider(height: 0),
-                  ListTile(
-                    leading: const Icon(Icons.build),
-                    title: const Text('آخر تحديث'),
-                    trailing: const Text('2025/01/15'),
-                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
+                        color: isDark
+                            ? Colors.grey[400]
+                            : const Color(0xFF64748B),
+                      ),
+                    ),
                 ],
               ),
             ),
-            const SizedBox(height: SPACING_LARGE),
+            Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 14,
+              color: isDark ? Colors.grey[500] : const Color(0xFF9CA3AF),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-            // Support Section
-            Card(
-              color: AppTheme.primaryColor.withValues(alpha: 0.1),
-              child: ListTile(
-                leading: Icon(
-                  Icons.help_outline,
-                  color: AppTheme.primaryColor,
+  Widget _buildDropdownTile<T>(
+    BuildContext context,
+    bool isDark, {
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required T value,
+    required List<DropdownMenuItem<T>> items,
+    required void Function(T?) onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 20, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                  ),
                 ),
-                title: const Text('المساعدة والدعم'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('جار العمل على قسم المساعدة')),
-                  );
-                },
+                DropdownButtonFormField<T>(
+                  value: value,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                  ),
+                  dropdownColor: isDark
+                      ? const Color(0xFF1E293B)
+                      : Colors.white,
+                  items: items,
+                  onChanged: onChanged,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoTile(
+    bool isDark, {
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String trailing,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 20, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.white : const Color(0xFF111827),
               ),
             ),
-            const SizedBox(height: SPACING_LARGE),
+          ),
+          Text(
+            trailing,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-            // WhatsApp semi-automatic send
-            Card(
-              child: ListTile(
-                leading: Icon(Icons.chat, color: Colors.green),
-                title: const Text('إرسال تقارير الشهر عبر واتساب (شبه تلقائي)')
-,
-                subtitle: const Text('يفتح محادثة لكل ولي أمر بالنص، ثم اضغط إرسال'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () => _startWhatsappBatchSend(context, settingsController),
+  Widget _buildTextField(
+    bool isDark, {
+    required String label,
+    required String value,
+    required IconData icon,
+    required void Function(String) onChanged,
+    TextInputType? keyboardType,
+    ui.TextDirection? textDirection,
+  }) {
+    return TextFormField(
+      initialValue: value,
+      keyboardType: keyboardType,
+      textDirection: textDirection ?? ui.TextDirection.rtl,
+      onChanged: onChanged,
+      style: TextStyle(
+        fontFamily: 'Cairo',
+        fontSize: 14,
+        color: isDark ? Colors.white : const Color(0xFF111827),
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(
+          fontFamily: 'Cairo',
+          fontSize: 13,
+          color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+        ),
+        prefixIcon: Icon(icon, size: 18,
+            color: isDark ? Colors.grey[400] : const Color(0xFF9CA3AF)),
+        filled: true,
+        fillColor: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : const Color(0xFFF8FAFF),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+              color: AppTheme.primaryColor.withValues(alpha: 0.6), width: 1.5),
+        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      ),
+    );
+  }
+
+  Widget _buildDivider(bool isDark) {
+    return Divider(
+      height: 1,
+      indent: 52,
+      endIndent: 16,
+      color: isDark
+          ? Colors.white.withValues(alpha: 0.06)
+          : const Color(0xFFE5E7EB),
+    );
+  }
+
+  // ─── Actions ──────────────────────────────────────────────────────────────
+
+  // ── Backup ────────────────────────────────────────────────────────────────
+  Future<void> _handleEnhancedBackup(BuildContext context) async {
+    final svc = BackupService();
+    LoadingDialog.show(context, message: 'جاري إنشاء النسخة الاحتياطية...');
+    final result = await svc.createBackup();
+    if (!context.mounted) return;
+    LoadingDialog.hide();
+
+    if (!result.success) {
+      ToastHelper.error(result.error ?? 'فشل إنشاء النسخة الاحتياطية');
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('✅ تم إنشاء النسخة الاحتياطية',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _InfoRow(Icons.storage_rounded, Colors.green,
+                'محفوظة داخل التطبيق (دائمة)'),
+            if (result.downloadsUri != null)
+              _InfoRow(Icons.download_rounded, Colors.blue,
+                  'نسخة في Downloads/ActiveClass'),
+            const SizedBox(height: 6),
+            Text('الحجم: ${result.fileSize ?? '—'}',
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('إغلاق', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+          if (result.localPath != null)
+            ElevatedButton.icon(
+              onPressed: () {
+                svc.shareBackup(result.localPath!);
+                Navigator.of(ctx).pop();
+              },
+              icon: const Icon(Icons.share_rounded, size: 16),
+              label: const Text('مشاركة', style: TextStyle(fontFamily: 'Cairo')),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
         ],
@@ -406,36 +979,192 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  Future<void> _handleBackup(BuildContext context, SettingsController settingsController) async {
+  // ── Restore ───────────────────────────────────────────────────────────────
+  Future<void> _handleRestoreBackup(BuildContext context) async {
+    final svc = BackupService();
+
+    // عرض خيارات الاستعادة
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('استعادة نسخة احتياطية',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // تحذير
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      color: Colors.red, size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'سيتم استبدال جميع البيانات الحالية بالنسخة المختارة. هذا الإجراء لا يمكن التراجع عنه.',
+                      style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 12,
+                          color: Colors.red),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // خيار 1: نسخ محفوظة
+            _ChoiceButton(
+              icon: Icons.history_rounded,
+              color: AppTheme.primaryColor,
+              title: 'من النسخ المحفوظة',
+              subtitle: 'استعادة من نسخة أنشأتها سابقاً',
+              onTap: () => Navigator.of(ctx).pop('local'),
+            ),
+            const SizedBox(height: 10),
+            // خيار 2: اختيار ملف
+            _ChoiceButton(
+              icon: Icons.folder_open_rounded,
+              color: const Color(0xFF8B5CF6),
+              title: 'اختيار ملف من الجهاز',
+              subtitle: 'اختر ملف .db من Downloads أو أي مكان آخر',
+              onTap: () => Navigator.of(ctx).pop('pick'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null || !context.mounted) return;
+
+    String? selectedPath;
+
+    if (choice == 'local') {
+      // عرض النسخ المحفوظة
+      LoadingDialog.show(context, message: 'جاري تحميل النسخ...');
+      final backups = await svc.getLocalBackups();
+      if (!context.mounted) return;
+      LoadingDialog.hide();
+
+      if (backups.isEmpty) {
+        ToastHelper.info('لا توجد نسخ احتياطية محفوظة داخل التطبيق.\nجرّب "اختيار ملف من الجهاز"');
+        return;
+      }
+
+      selectedPath = await showDialog<String>(
+        context: context,
+        builder: (ctx) => _BackupListDialog(backups: backups, svc: svc),
+      );
+    } else {
+      // File picker
+      final picked = await svc.pickBackupFile();
+      if (picked == 'INVALID_EXT') {
+        if (context.mounted) ToastHelper.error('الملف المختار ليس ملف .db صالح');
+        return;
+      }
+      selectedPath = picked;
+    }
+
+    if (selectedPath == null || !context.mounted) return;
+
+    // تأكيد نهائي
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('تأكيد الاستعادة',
+            style: TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+                color: Colors.red)),
+        content: const Text(
+          'هل أنت متأكد؟\nسيتم مسح جميع البيانات الحالية واستبدالها بالنسخة المختارة.',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('استعادة الآن',
+                style: TextStyle(fontFamily: 'Cairo')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    LoadingDialog.show(context, message: 'جاري الاستعادة...');
+    final success = await svc.restoreBackup(selectedPath);
     if (!context.mounted) return;
-    LoadingDialog.show(context, message: 'جاري إنشاء النسخة الاحتياطية...');
-    try {
-      final path = await settingsController.backupData();
-      if (!context.mounted) return;
-      LoadingDialog.hide();
-      SuccessDialog.show(
-        context,
-        title: 'تم النسخ الاحتياطي',
-        message: 'تم حفظ الملف بنجاح:\n$path',
-      );
-    } catch (e) {
-      LoadingDialog.hide();
-      if (!context.mounted) return;
-      ErrorDialog.show(
-        context,
-        title: 'فشل النسخ الاحتياطي',
-        message: e.toString(),
-      );
+    LoadingDialog.hide();
+
+    if (success) {
+      ToastHelper.success('تم استعادة النسخة الاحتياطية بنجاح');
+      // إعادة تهيئة كاملة للتطبيق
+      await Future.delayed(const Duration(milliseconds: 500));
+      Get.offAllNamed(ROUTE_HOME);
+    } else {
+      ToastHelper.error('فشل الاستعادة — البيانات الأصلية لا تزال سليمة');
     }
   }
 
-  void _handleDeleteAll(BuildContext context, SettingsController settingsController) {
+  // ── Manage backups ────────────────────────────────────────────────────────
+  Future<void> _handleManageBackups(BuildContext context) async {
+    final svc = BackupService();
+    LoadingDialog.show(context, message: 'جاري تحميل النسخ...');
+    final backups = await svc.getLocalBackups();
+    if (!context.mounted) return;
+    LoadingDialog.hide();
+
+    if (backups.isEmpty) {
+      ToastHelper.info('لا توجد نسخ احتياطية محفوظة\nأنشئ نسخة أولاً من "نسخ احتياطي"');
+      return;
+    }
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => _ManageBackupsDialog(
+        backups: backups,
+        svc: svc,
+        onChanged: () {
+          Navigator.of(ctx).pop();
+          _handleManageBackups(context);
+        },
+      ),
+    );
+  }
+
+  void _handleDeleteAll(
+      BuildContext context, SettingsController settingsController) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!context.mounted) return;
       ConfirmDeleteDialog.show(
         context,
         title: 'حذف جميع البيانات',
-        message: 'هل أنت متأكد؟ سيتم حذف جميع البيانات بشكل نهائي ولا يمكن التراجع',
+        message:
+            'هل أنت متأكد؟ سيتم حذف جميع البيانات بشكل نهائي ولا يمكن التراجع',
         onConfirm: () async {
           LoadingDialog.show(context, message: 'جاري الحذف...');
           try {
@@ -461,7 +1190,8 @@ class SettingsPage extends StatelessWidget {
     });
   }
 
-  Future<void> _startWhatsappBatchSend(BuildContext context, SettingsController settings) async {
+  Future<void> _startWhatsappBatchSend(
+      BuildContext context, SettingsController settings) async {
     final db = DatabaseService();
     LoadingDialog.show(context, message: 'تحضير الرسائل...');
     try {
@@ -471,9 +1201,9 @@ class SettingsPage extends StatelessWidget {
       final nextMonth = DateTime(now.year, now.month + 1, 1);
       final end = nextMonth.subtract(const Duration(days: 1));
 
-
-
-      final valid = students.where((s) => (s.guardianPhone ?? '').trim().isNotEmpty).toList();
+      final valid = students
+          .where((s) => (s.guardianPhone ?? '').trim().isNotEmpty)
+          .toList();
       if (valid.isEmpty) {
         LoadingDialog.hide();
         ToastHelper.info('لا يوجد أولياء أمور بأرقام مسجلة');
@@ -495,8 +1225,7 @@ class SettingsPage extends StatelessWidget {
         return defaultDial + p;
       }
 
-      for (int i = 0; i < selected.length; i++) {
-        final s = selected[i];
+      for (final s in selected) {
         final rawPhone = s.guardianPhone!.trim();
         final phone = normalize(rawPhone, settings.countryDial.value);
 
@@ -507,48 +1236,68 @@ class SettingsPage extends StatelessWidget {
         final atts = await db.getAttendanceByStudent(s.id!);
         final pays = await db.getPaymentsByStudent(s.id!);
 
-        final monthEnd = DateTime(end.year, end.month, end.day, 23, 59, 59);
-        final attsMonth = atts.where((a) => !a.date.isBefore(start) && !a.date.isAfter(monthEnd)).toList();
-        final paysMonth = pays.where((p) => !p.date.isBefore(start) && !p.date.isAfter(monthEnd)).toList();
+        final monthEnd =
+            DateTime(end.year, end.month, end.day, 23, 59, 59);
+        final attsMonth = atts
+            .where((a) =>
+                !a.date.isBefore(start) && !a.date.isAfter(monthEnd))
+            .toList();
+        final paysMonth = pays
+            .where((p) =>
+                !p.date.isBefore(start) && !p.date.isAfter(monthEnd))
+            .toList();
 
-        final present = attsMonth.where((a) => a.status == ATTENDANCE_PRESENT).length;
-        final absent = attsMonth.where((a) => a.status == ATTENDANCE_ABSENT).length;
+        final present =
+            attsMonth.where((a) => a.status == ATTENDANCE_PRESENT).length;
+        final absent =
+            attsMonth.where((a) => a.status == ATTENDANCE_ABSENT).length;
         final total = present + absent;
-        final percent = total == 0 ? 0.0 : (present / total) * 100.0;
-        final totalPaid = paysMonth.fold<double>(0.0, (sum, p) => sum + p.amount);
+        final percent =
+            total == 0 ? 0.0 : (present / total) * 100.0;
+        final totalPaid =
+            paysMonth.fold<double>(0.0, (sum, p) => sum + p.amount);
 
-        final attsSorted = List.of(attsMonth)..sort((a, b) => b.date.compareTo(a.date));
-        final paysSorted = List.of(paysMonth)..sort((a, b) => b.date.compareTo(a.date));
+        final attsSorted = List.of(attsMonth)
+          ..sort((a, b) => b.date.compareTo(a.date));
+        final paysSorted = List.of(paysMonth)
+          ..sort((a, b) => b.date.compareTo(a.date));
 
         final buffer = StringBuffer()
           ..writeln('🧾 تقرير الشهر: $monthLabel')
           ..writeln('👤 الاسم: ${s.name}')
           ..writeln('🆔 الكود: ${s.code}')
           ..writeln('👥 المجموعة: $groupName')
-          ..writeln('📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
+          ..writeln(
+              '📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
           ..writeln('')
-          ..writeln('📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
+          ..writeln(
+              '📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
 
         if (attsSorted.isNotEmpty) {
-          buffer.writeln('');
-          buffer.writeln('📅 سجلات الحضور:');
+          buffer
+            ..writeln('')
+            ..writeln('📅 سجلات الحضور:');
           for (final a in attsSorted.take(10)) {
             final d = DateFormat('yyyy-MM-dd').format(a.date);
-            final st = a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب';
+            final st =
+                a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب';
             buffer.writeln('• $d — $st');
           }
-          if (attsSorted.length > 10) buffer.writeln('• … ${attsSorted.length - 10} سجلات إضافية');
+          if (attsSorted.length > 10) {
+            buffer
+                .writeln('• … ${attsSorted.length - 10} سجلات إضافية');
+          }
         }
 
         buffer
           ..writeln('')
-          ..writeln('💰 المدفوعات: إجمالي ${FormatHelper.formatCurrency(totalPaid)}');
+          ..writeln(
+              '💰 المدفوعات: إجمالي ${FormatHelper.formatCurrency(totalPaid)}');
 
-        if (paysSorted.isNotEmpty) {
-          for (final p in paysSorted) {
-            final d = DateFormat('yyyy-MM-dd').format(p.date);
-            buffer.writeln('• $d — ${FormatHelper.formatCurrency(p.amount)}');
-          }
+        for (final p in paysSorted) {
+          final d = DateFormat('yyyy-MM-dd HH:mm').format(p.date);
+          buffer.writeln(
+              '• $d — ${FormatHelper.formatCurrency(p.amount)}');
         }
 
         final tName = settings.teacherFullName.value.trim();
@@ -563,7 +1312,8 @@ class SettingsPage extends StatelessWidget {
           ..writeln('')
           ..writeln('تم الإرسال من تطبيق Active Class');
 
-        final uri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(buffer.toString())}');
+        final uri = Uri.parse(
+            'https://wa.me/$phone?text=${Uri.encodeComponent(buffer.toString())}');
         await launchUrl(uri, mode: LaunchMode.externalApplication);
         await _waitForResume();
       }
@@ -572,205 +1322,140 @@ class SettingsPage extends StatelessWidget {
       ToastHelper.error('تعذر التحضير أو الإرسال');
     }
   }
+}
 
-  /// Enhanced backup: creates a full DB backup and offers sharing.
-  Future<void> _handleEnhancedBackup(BuildContext context) async {
-    final backupService = BackupService();
-    LoadingDialog.show(context, message: 'جاري إنشاء النسخة الاحتياطية...');
-    try {
-      final backupPath = await backupService.createBackup();
-      if (!context.mounted) return;
-      LoadingDialog.hide();
-      if (backupPath != null) {
-        final fileSize = backupService.getBackupFileSize(backupPath);
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('تم إنشاء النسخة الاحتياطية'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('المسار: $backupPath'),
-                const SizedBox(height: 8),
-                Text('الحجم: $fileSize'),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('إغلاق'),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  backupService.shareBackup(backupPath);
-                  Navigator.of(ctx).pop();
-                },
-                icon: const Icon(Icons.share),
-                label: const Text('مشاركة'),
-              ),
-            ],
+// ─── Helper Widgets ────────────────────────────────────────────────────────
+
+class _IconBtn extends StatelessWidget {
+  final IconData icon;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _IconBtn({
+    required this.icon,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isDark
+              ? const Color(0xFF131D31).withValues(alpha: 0.94)
+              : Colors.white.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.white.withValues(alpha: 0.9),
           ),
-        );
-      } else {
-        ToastHelper.error('فشل إنشاء النسخة الاحتياطية');
-      }
-    } catch (e) {
-      LoadingDialog.hide();
-      if (!context.mounted) return;
-      ToastHelper.error('خطأ: ${e.toString()}');
-    }
-  }
-
-  /// Restore from a selected backup file.
-  Future<void> _handleRestoreBackup(BuildContext context) async {
-    final backupService = BackupService();
-    LoadingDialog.show(context, message: 'جاري تحميل النسخ الاحتياطية...');
-    try {
-      final backups = await backupService.getBackupFiles();
-      if (!context.mounted) return;
-      LoadingDialog.hide();
-
-      if (backups.isEmpty) {
-        ToastHelper.info('لا توجد نسخ احتياطية محفوظة');
-        return;
-      }
-
-      // Show a simple selection dialog similar to manage backups but only for restore.
-      final selected = await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('اختر نسخة لاستعادة'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 400,
-            child: ListView.builder(
-              itemCount: backups.length,
-              itemBuilder: (_, index) {
-                final backup = backups[index];
-                final fileName = backup.path.split('/').last;
-                final fileSize = backupService.getBackupFileSize(backup.path);
-                final modified = backup.statSync().modified;
-                final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(modified);
-                return ListTile(
-                  title: Text(fileName),
-                  subtitle: Text('$dateStr - $fileSize'),
-                  onTap: () => Navigator.of(ctx).pop(backup.path),
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('إلغاء'),
+          boxShadow: [
+            BoxShadow(
+              color: isDark
+                  ? Colors.black.withValues(alpha: 0.16)
+                  : const Color(0xFFD9E1F2).withValues(alpha: 0.5),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
-      );
-
-      if (selected == null) return;
-
-      if (!context.mounted) return;
-      LoadingDialog.show(context, message: 'جاري الاستعادة...');
-      final success = await backupService.restoreBackup(selected);
-      LoadingDialog.hide();
-      if (success) {
-        ToastHelper.success('تم استعادة النسخة الاحتياطية بنجاح');
-        Get.offAllNamed(ROUTE_HOME);
-      } else {
-        ToastHelper.error('فشل استعادة النسخة الاحتياطية');
-      }
-    } catch (e) {
-      LoadingDialog.hide();
-      if (!context.mounted) return;
-      ToastHelper.error('خطأ: ${e.toString()}');
-    }
-  }
-
-  /// Manage backups (list, delete, restore) – unchanged logic retained.
-  // Existing _handleManageBackups implementation remains as before.
-  Future<void> _handleManageBackups(BuildContext context) async {
-  final backupService = BackupService();
-  LoadingDialog.show(context, message: 'جاري تحميل النسخ الاحتياطية...');
-  try {
-    final backups = await backupService.getBackupFiles();
-    if (!context.mounted) return;
-    LoadingDialog.hide();
-    
-    if (backups.isEmpty) {
-      ToastHelper.info('لا توجد نسخ احتياطية محفوظة');
-      return;
-    }
-    
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('إدارة النسخ الاحتياطية'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('عدد النسخ: ${backups.length}'),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () async {
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('حذف النسخ القديمة'),
-                    content: const Text('هل تريد حذف النسخ الاحتياطية الأقدم من 30 يوم؟'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(false),
-                        child: const Text('إلغاء'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => Navigator.of(ctx).pop(true),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                        child: const Text('حذف'),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirmed == true) {
-                  await backupService.cleanOldBackups();
-                  if (!context.mounted) return;
-                  Navigator.of(ctx).pop();
-                  ToastHelper.success('تم حذف النسخ القديمة');
-                  _handleManageBackups(context);
-                }
-              },
-              icon: const Icon(Icons.cleaning_services),
-              label: const Text('حذف النسخ القديمة (أكثر من 30 يوم)'),
-            ),
-          ],
+        child: Icon(
+          icon,
+          size: 18,
+          color: isDark ? Colors.white : const Color(0xFF111827),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('إغلاق'),
-          ),
-        ],
       ),
     );
-  } catch (e) {
-    LoadingDialog.hide();
-    if (!context.mounted) return;
-    ToastHelper.error('خطأ: ${e.toString()}');
   }
 }
+
+// ─── Gender Chip ──────────────────────────────────────────────────────────
+
+class _GenderChip extends StatelessWidget {
+  final bool isDark;
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _GenderChip({
+    required this.isDark,
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? color.withValues(alpha: 0.14)
+              : (isDark
+                  ? Colors.white.withValues(alpha: 0.04)
+                  : const Color(0xFFF3F4F6)),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? color : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon,
+                size: 20,
+                color: selected
+                    ? color
+                    : (isDark ? Colors.white38 : Colors.grey.shade500)),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: selected
+                    ? color
+                    : (isDark ? Colors.white38 : Colors.grey.shade500),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-Future<List<Student>?> _pickRecipients(BuildContext context, List<Student> all) async {
+// ─── Top-level helpers (unchanged logic) ──────────────────────────────────
+
+Future<List<Student>?> _pickRecipients(
+    BuildContext context, List<Student> all) async {
   return await showDialog<List<Student>>(
     context: context,
     builder: (ctx) {
-      List<Student> items = List.of(all)..sort((a, b) => a.name.compareTo(b.name));
+      List<Student> items = List.of(all)
+        ..sort((a, b) => a.name.compareTo(b.name));
       List<bool> sel = List<bool>.filled(items.length, true);
       bool selectAll = true;
       return StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
-          title: const Text('اختر أولياء الأمور'),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('اختر أولياء الأمور',
+              style: TextStyle(
+                  fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
           content: SizedBox(
             width: 420,
             child: Column(
@@ -786,7 +1471,8 @@ Future<List<Student>?> _pickRecipients(BuildContext context, List<Student> all) 
                       }
                     });
                   },
-                  title: const Text('تحديد الكل'),
+                  title: const Text('تحديد الكل',
+                      style: TextStyle(fontFamily: 'Cairo')),
                   controlAffinity: ListTileControlAffinity.leading,
                 ),
                 const Divider(height: 0),
@@ -799,9 +1485,12 @@ Future<List<Student>?> _pickRecipients(BuildContext context, List<Student> all) 
                       final s = items[i];
                       return CheckboxListTile(
                         value: sel[i],
-                        onChanged: (v) => setState(() => sel[i] = v ?? false),
-                        title: Text(s.name),
-                        subtitle: Text(s.guardianPhone ?? '-'),
+                        onChanged: (v) =>
+                            setState(() => sel[i] = v ?? false),
+                        title: Text(s.name,
+                            style: const TextStyle(fontFamily: 'Cairo')),
+                        subtitle: Text(s.guardianPhone ?? '-',
+                            style: const TextStyle(fontFamily: 'Cairo')),
                         controlAffinity: ListTileControlAffinity.leading,
                       );
                     },
@@ -811,7 +1500,11 @@ Future<List<Student>?> _pickRecipients(BuildContext context, List<Student> all) 
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('إلغاء')),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: const Text('إلغاء',
+                  style: TextStyle(fontFamily: 'Cairo')),
+            ),
             ElevatedButton(
               onPressed: sel.any((e) => e)
                   ? () {
@@ -822,8 +1515,15 @@ Future<List<Student>?> _pickRecipients(BuildContext context, List<Student> all) 
                       Navigator.of(ctx).pop(chosen);
                     }
                   : null,
-              child: const Text('ابدأ الإرسال'),
-            )
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('ابدأ الإرسال',
+                  style: TextStyle(fontFamily: 'Cairo')),
+            ),
           ],
         ),
       );
@@ -834,11 +1534,10 @@ Future<List<Student>?> _pickRecipients(BuildContext context, List<Student> all) 
 class _ResumeObserver extends WidgetsBindingObserver {
   final void Function() onResume;
   _ResumeObserver(this.onResume);
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      onResume();
-    }
+    if (state == AppLifecycleState.resumed) onResume();
   }
 }
 
@@ -853,8 +1552,342 @@ Future<void> _waitForResume() {
   return c.future;
 }
 
-// دالة عامة لاستدعاء الإرسال الحالي عند الحاجة (لا تغيّر منطق الإرسال)
 Future<void> sendMonthlyReportsViaWhatsAppAuto(BuildContext context) async {
   final SettingsController settingsController = Get.find();
-  await const SettingsPage()._startWhatsappBatchSend(context, settingsController);
+  await const SettingsPage()
+      ._startWhatsappBatchSend(context, settingsController);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Backup UI Helpers
+// ══════════════════════════════════════════════════════════════════════════
+
+/// صف معلومة صغير (أيقونة + نص)
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  const _InfoRow(this.icon, this.color, this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(children: [
+        Icon(icon, color: color, size: 16),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(label,
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+        ),
+      ]),
+    );
+  }
+}
+
+/// زر اختيار كبير
+class _ChoiceButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  const _ChoiceButton({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color.withValues(alpha: 0.07),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+                  Text(subtitle,
+                      style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 11,
+                          color: Colors.grey[600])),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios_rounded, size: 14, color: color),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// ديالوج اختيار نسخة للاستعادة
+class _BackupListDialog extends StatelessWidget {
+  final List<BackupInfo> backups;
+  final BackupService svc;
+  const _BackupListDialog({required this.backups, required this.svc});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Text('النسخ المحفوظة (${backups.length})',
+          style: const TextStyle(
+              fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 400,
+        child: ListView.separated(
+          itemCount: backups.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (_, i) {
+            final b = backups[i];
+            final isLatest = i == 0;
+            return ListTile(
+              leading: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isLatest
+                          ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
+                          : AppTheme.primaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.backup_rounded,
+                        color: isLatest
+                            ? const Color(0xFFF59E0B)
+                            : AppTheme.primaryColor,
+                        size: 20),
+                  ),
+                  if (isLatest)
+                    Positioned(
+                      top: -4, left: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text('أحدث',
+                            style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 8,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white)),
+                      ),
+                    ),
+                ],
+              ),
+              title: Text(b.dateLabel,
+                  style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: isLatest ? const Color(0xFFF59E0B) : null)),
+              subtitle: Text(b.sizeLabel,
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11)),
+              onTap: () => Navigator.of(context).pop(b.path),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+        ),
+      ],
+    );
+  }
+}
+
+/// ديالوج إدارة النسخ الاحتياطية
+class _ManageBackupsDialog extends StatefulWidget {
+  final List<BackupInfo> backups;
+  final BackupService svc;
+  final VoidCallback onChanged;
+  const _ManageBackupsDialog(
+      {required this.backups, required this.svc, required this.onChanged});
+
+  @override
+  State<_ManageBackupsDialog> createState() => _ManageBackupsDialogState();
+}
+
+class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
+  late List<BackupInfo> _backups;
+  bool _deleting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _backups = List.from(widget.backups);
+  }
+
+  Future<void> _deleteOne(BackupInfo b) async {
+    setState(() => _deleting = true);
+    await widget.svc.deleteBackup(b.path);
+    setState(() {
+      _backups.remove(b);
+      _deleting = false;
+    });
+    if (_backups.isEmpty && mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _cleanOld() async {
+    setState(() => _deleting = true);
+    final deleted = await widget.svc.cleanOldBackups(keepCount: 5);
+    if (!mounted) return;
+    setState(() => _deleting = false);
+    Navigator.of(context).pop();
+    ToastHelper.success('تم حذف $deleted نسخة قديمة — تم الاحتفاظ بأحدث 5');
+    widget.onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Text('النسخ الاحتياطية (${_backups.length})',
+          style: const TextStyle(
+              fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 400,
+        child: Column(
+          children: [
+            // زر "احتفظ بأحدث 5"
+            if (_backups.length > 5)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _deleting ? null : _cleanOld,
+                    icon: const Icon(Icons.cleaning_services_rounded, size: 16),
+                    label: Text('احتفظ بأحدث 5 فقط (احذف ${_backups.length - 5})',
+                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ),
+            // القائمة
+            Expanded(
+              child: ListView.separated(
+                itemCount: _backups.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final b = _backups[i];
+                  final isLatest = i == 0;
+                  return ListTile(
+                    dense: true,
+                    leading: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(Icons.backup_rounded,
+                            color: isLatest
+                                ? const Color(0xFFF59E0B)
+                                : AppTheme.primaryColor,
+                            size: 20),
+                        if (isLatest)
+                          Positioned(
+                            top: -6, left: -6,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF59E0B),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: const Text('★',
+                                  style: TextStyle(
+                                      fontSize: 7,
+                                      color: Colors.white,
+                                      height: 1)),
+                            ),
+                          ),
+                      ],
+                    ),
+                    title: Text(b.dateLabel,
+                        style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            color: isLatest ? const Color(0xFFF59E0B) : null)),
+                    subtitle: Text(b.sizeLabel,
+                        style: const TextStyle(
+                            fontFamily: 'Cairo', fontSize: 11)),
+                    trailing: i == 0
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text('أحدث',
+                                    style: TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFFF59E0B))),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline_rounded,
+                                    color: Colors.red, size: 20),
+                                onPressed: _deleting ? null : () => _deleteOne(b),
+                                tooltip: 'حذف هذه النسخة',
+                              ),
+                            ],
+                          )
+                        : IconButton(
+                            icon: const Icon(Icons.delete_outline_rounded,
+                                color: Colors.red, size: 20),
+                            onPressed: _deleting ? null : () => _deleteOne(b),
+                            tooltip: 'حذف هذه النسخة',
+                          ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('إغلاق', style: TextStyle(fontFamily: 'Cairo')),
+        ),
+      ],
+    );
+  }
 }

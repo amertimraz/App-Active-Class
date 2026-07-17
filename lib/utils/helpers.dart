@@ -12,6 +12,17 @@ class FormatHelper {
     return DateFormat('yyyy-MM-dd', 'ar').format(date);
     }
 
+  /// تنسيق تاريخ الدفعة — يوم + ساعة + دقيقة (للدقة في السجلات)
+  static String formatPaymentDate(DateTime? date) {
+    if (date == null) return 'لم يتم التحديد';
+    String timePattern = 'HH:mm';
+    try {
+      final settings = Get.find<SettingsController>();
+      timePattern = settings.use24hFormat.value ? 'HH:mm' : 'hh:mm a';
+    } catch (_) {}
+    return DateFormat('yyyy-MM-dd  $timePattern', 'ar').format(date);
+  }
+
   /// تنسيق التاريخ الكامل (مثال: الاثنين، 10 يناير 2025)
   static String formatFullDate(DateTime? date) {
     if (date == null) return 'لم يتم التحديد';
@@ -261,24 +272,24 @@ class StorageHelper {
 
 class ToastHelper {
   static void _show(String title, String message, {Color bg = Colors.green}) {
-    try {
-      if (Get.isSnackbarOpen) {
-        Get.closeCurrentSnackbar();
-      }
-      Get.snackbar(
-        title,
-        message,
-        backgroundColor: bg,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.TOP,
-        margin: const EdgeInsets.all(12),
-        borderRadius: 8,
-        duration: const Duration(milliseconds: 1200),
-        animationDuration: const Duration(milliseconds: 150),
-      );
-    } catch (e) {
-      print('Error showing snackbar: $e');
-    }
+    // نأخر الـ snackbar لـ frame تاني عشان الـ Overlay يكون جاهز
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+        if (Get.context == null) return;
+        Get.snackbar(
+          title,
+          message,
+          backgroundColor: bg,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.TOP,
+          margin: const EdgeInsets.all(12),
+          borderRadius: 8,
+          duration: const Duration(milliseconds: 1200),
+          animationDuration: const Duration(milliseconds: 150),
+        );
+      } catch (_) {}
+    });
   }
 
   static void success(String message, {String title = 'تم'}) {

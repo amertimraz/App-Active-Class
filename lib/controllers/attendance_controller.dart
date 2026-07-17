@@ -87,6 +87,63 @@ class AttendanceController extends GetxController {
     }
   }
 
+  // تبديل حالة حضور طالب في يوم معين:
+  // لا يوجد سجل → حاضر | حاضر → غائب | غائب → حذف السجل
+  Future<void> toggleAttendance(int studentId, DateTime day) async {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
+    final existing = attendance.firstWhereOrNull((a) =>
+        a.studentId == studentId &&
+        !a.date.isBefore(dayStart) &&
+        !a.date.isAfter(dayEnd));
+    try {
+      if (existing == null) {
+        await _dbService.insertAttendance(Attendance(
+          studentId: studentId,
+          date: DateTime(day.year, day.month, day.day,
+              DateTime.now().hour, DateTime.now().minute),
+          status: ATTENDANCE_PRESENT,
+        ));
+      } else if (existing.status == ATTENDANCE_PRESENT) {
+        await _dbService.updateAttendance(
+            existing.copyWith(status: ATTENDANCE_ABSENT));
+      } else {
+        await _dbService.deleteAttendance(existing.id!);
+      }
+      await loadAttendance();
+    } catch (e) {
+      ToastHelper.error('حدث خطأ');
+    }
+  }
+
+  // تحضير جميع طلاب المجموعة الغير مسجلين في يوم معين
+  Future<void> markGroupAllPresent(
+      List<int> studentIds, DateTime day) async {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
+    final alreadyRecorded = attendance
+        .where((a) =>
+            !a.date.isBefore(dayStart) && !a.date.isAfter(dayEnd))
+        .map((a) => a.studentId)
+        .toSet();
+    try {
+      for (final id in studentIds) {
+        if (!alreadyRecorded.contains(id)) {
+          await _dbService.insertAttendance(Attendance(
+            studentId: id,
+            date: DateTime(day.year, day.month, day.day,
+                DateTime.now().hour, DateTime.now().minute),
+            status: ATTENDANCE_PRESENT,
+          ));
+        }
+      }
+      await loadAttendance();
+      ToastHelper.success('تم تحضير جميع الطلاب');
+    } catch (e) {
+      ToastHelper.error('حدث خطأ');
+    }
+  }
+
   // ضبط نطاق التاريخ
   void setDateRange(DateTimeRange? range) async {
     dateRange.value = range;
@@ -292,6 +349,39 @@ class AttendanceController extends GetxController {
       cursor = cursor.add(const Duration(days: 1));
     }
     return count;
+  }
+
+  // المجموعات التي لها حصة في يوم معين (حسب الجدول الأسبوعي)
+  List<Group> groupsForDay(List<Group> groups, DateTime day) {
+    final singleDay = DateTimeRange(
+      start: DateTime(day.year, day.month, day.day),
+      end: DateTime(day.year, day.month, day.day, 23, 59, 59),
+    );
+    return groups
+        .where((g) => _countExpectedForGroup(g, singleDay) > 0)
+        .toList();
+  }
+
+  // وقت الحصة لمجموعة في يوم معين (للعرض في الواجهة)
+  // يُرجع مثلاً "10:00 - 11:00"
+  String? sessionTimeForGroupOnDay(Group group, DateTime day) {
+    final schedule = group.schedule?.trim();
+    if (schedule == null || schedule.isEmpty) return null;
+    const Map<String, int> mapArDays = {
+      'الاثنين': 1, 'الثلاثاء': 2, 'الأربعاء': 3, 'الخميس': 4,
+      'الجمعة': 5, 'السبت': 6, 'الأحد': 7,
+    };
+    final parts = schedule.split(',');
+    for (final p in parts) {
+      final s = p.trim();
+      for (final entry in mapArDays.entries) {
+        if (s.startsWith(entry.key) && entry.value == day.weekday) {
+          final times = s.replaceFirst(entry.key, '').trim();
+          return times.isNotEmpty ? times : null;
+        }
+      }
+    }
+    return null;
   }
 
   // إحصاء ملخص شامل للنطاق: إجمالي حاضر/متوقع ونسبة الحضور

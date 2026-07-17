@@ -222,41 +222,89 @@ class NotificationService {
     }
   }
 
-  // Schedule birthday notification
+  // Schedule birthday notification (legacy - single notification)
   Future<void> scheduleBirthdayNotification(Student student) async {
-    if (student.birthDate == null) return;
+    await scheduleBirthdayNotifications(student);
+  }
 
-    final birthDate = student.birthDate!;
+  /// جدولة إشعارين لكل طالب:
+  /// - إشعار قبل يوم عيد الميلاد الساعة 8 صباحاً
+  /// - إشعار في يوم عيد الميلاد نفسه الساعة 8 صباحاً
+  Future<void> scheduleBirthdayNotifications(Student student) async {
+    if (student.birthDate == null || student.id == null) return;
+
+    final b = student.birthDate!;
     final now = DateTime.now();
-    final nextBirthday = DateTime(
-      now.year,
-      birthDate.month,
-      birthDate.day,
-      9, // 9 AM
-      0,
-    );
+    final today = DateTime(now.year, now.month, now.day);
 
-    if (nextBirthday.isBefore(now)) {
-      final nextYearBirthday = DateTime(
-        now.year + 1,
-        birthDate.month,
-        birthDate.day,
-        9,
-      );
-      await scheduleNotification(
-        title: 'عيد ميلاد ${student.name}',
-        body: 'تذكر عيد ميلاد الطالب ${student.name} اليوم!',
-        scheduledTime: nextYearBirthday,
-        payload: 'birthday_${student.id}',
-      );
-    } else {
-      await scheduleNotification(
-        title: 'عيد ميلاد ${student.name}',
-        body: 'تذكر عيد ميلاد الطالب ${student.name} اليوم!',
-        scheduledTime: nextBirthday,
-        payload: 'birthday_${student.id}',
+    // احسب تاريخ عيد الميلاد القادم
+    var nextBirthday = DateTime(now.year, b.month, b.day);
+    if (nextBirthday.isBefore(today)) {
+      nextBirthday = DateTime(now.year + 1, b.month, b.day);
+    }
+
+    // ID فريد لكل طالب (يوم قبل = id*2، يوم العيد = id*2+1)
+    final idDayBefore = (student.id! * 2) % 2147483647;
+    final idOnDay     = (student.id! * 2 + 1) % 2147483647;
+
+    // ─── إشعار قبل يوم ───────────────────────────────────────
+    final dayBefore = DateTime(
+      nextBirthday.year, nextBirthday.month, nextBirthday.day - 1, 8, 0,
+    );
+    if (dayBefore.isAfter(now)) {
+      await _scheduleById(
+        id: idDayBefore,
+        title: '🎂 غداً عيد ميلاد ${student.name}',
+        body: 'لا تنسَ تهنئة ${student.name} بعيد ميلاده غداً!',
+        scheduledTime: dayBefore,
+        payload: 'birthday_before_${student.id}',
       );
     }
+
+    // ─── إشعار يوم العيد ─────────────────────────────────────
+    final onDay = DateTime(
+      nextBirthday.year, nextBirthday.month, nextBirthday.day, 8, 0,
+    );
+    if (onDay.isAfter(now)) {
+      await _scheduleById(
+        id: idOnDay,
+        title: '🎉 عيد ميلاد ${student.name} اليوم!',
+        body: 'اليوم عيد ميلاد ${student.name} — لا تنسَ تهنئته! 🎂',
+        scheduledTime: onDay,
+        payload: 'birthday_on_${student.id}',
+      );
+    }
+  }
+
+  /// جدولة إشعار بـ ID محدد (يسمح بإلغائه لاحقاً)
+  Future<void> _scheduleById({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledTime,
+    String? payload,
+  }) async {
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+      'birthday_channel',
+      'أعياد الميلاد',
+      channelDescription: 'إشعارات أعياد ميلاد الطلاب',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const NotificationDetails details =
+        NotificationDetails(android: androidDetails);
+
+    await _notificationsPlugin.zonedSchedule(
+      id,
+      title,
+      body,
+      tz.TZDateTime.from(scheduledTime, tz.local),
+      details,
+      payload: payload,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+    );
   }
 
   // Cancel all notifications

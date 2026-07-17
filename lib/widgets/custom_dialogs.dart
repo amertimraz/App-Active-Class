@@ -1,4 +1,4 @@
-﻿// lib/widgets/custom_dialogs.dart
+// lib/widgets/custom_dialogs.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:active_class/config/theme.dart';
@@ -28,7 +28,7 @@ class ConfirmDeleteDialog {
         ),
       ),
       onConfirm: () {
-        Navigator.pop(context);
+        Get.back(); // يغلق الـ dialog نفسه
         onConfirm();
       },
       textConfirm: confirmText,
@@ -99,7 +99,7 @@ class ConfirmDialog {
         ],
       ),
       onConfirm: () {
-        Navigator.pop(context);
+        Get.back();
         onConfirm();
       },
       textConfirm: confirmText,
@@ -126,11 +126,7 @@ class SuccessDialog {
       ),
       content: Column(
         children: [
-          Icon(
-            Icons.check_circle,
-            size: 60,
-            color: Colors.green[400],
-          ),
+          Icon(Icons.check_circle, size: 60, color: Colors.green[400]),
           const SizedBox(height: 16),
           Text(
             message,
@@ -140,7 +136,7 @@ class SuccessDialog {
         ],
       ),
       onConfirm: () {
-        Navigator.pop(context);
+        Get.back();
         onDismiss?.call();
       },
       textConfirm: 'موافق',
@@ -165,11 +161,7 @@ class ErrorDialog {
       ),
       content: Column(
         children: [
-          Icon(
-            Icons.error_outline,
-            size: 60,
-            color: Colors.red[400],
-          ),
+          Icon(Icons.error_outline, size: 60, color: Colors.red[400]),
           const SizedBox(height: 16),
           Text(
             message,
@@ -179,7 +171,7 @@ class ErrorDialog {
         ],
       ),
       onConfirm: () {
-        Navigator.pop(context);
+        Get.back();
         onDismiss?.call();
       },
       textConfirm: 'موافق',
@@ -209,7 +201,7 @@ class ChoiceDialog {
             child: CustomButton(
               label: options[index],
               onPressed: () {
-                Navigator.pop(context);
+                Get.back();
                 onSelected(index);
               },
               width: double.infinity,
@@ -252,7 +244,7 @@ class InputDialog {
       ),
       onConfirm: () {
         if (controller.text.isNotEmpty) {
-          Navigator.pop(context);
+          Get.back();
           onConfirm(controller.text);
         } else {
           ToastHelper.info('يرجى إدخال ');
@@ -289,7 +281,7 @@ class SelectDialog {
             return ListTile(
               title: Text(item[displayField].toString()),
               onTap: () {
-                Navigator.pop(context);
+                Get.back();
                 onSelected(item);
               },
             );
@@ -322,7 +314,7 @@ class LoadingDialog {
 
   static void hide() {
     if (Get.isDialogOpen ?? false) {
-      Navigator.pop(Get.context!);
+      Get.back();
     }
   }
 }
@@ -341,11 +333,7 @@ class InfoDialog {
       titleStyle: Theme.of(context).textTheme.titleLarge!,
       content: Column(
         children: [
-          Icon(
-            icon,
-            size: 60,
-            color: AppTheme.primaryColor,
-          ),
+          Icon(icon, size: 60, color: AppTheme.primaryColor),
           const SizedBox(height: 16),
           Text(
             message,
@@ -355,7 +343,7 @@ class InfoDialog {
         ],
       ),
       onConfirm: () {
-        Navigator.pop(context);
+        Get.back();
         onDismiss?.call();
       },
       textConfirm: 'موافق',

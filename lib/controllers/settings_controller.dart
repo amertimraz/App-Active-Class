@@ -53,6 +53,10 @@ class SettingsController extends GetxController {
   static const String _keyCountryDial = 'country_dial';
   static const String _keyUse24h = 'use_24h_time_format';
 
+  // WhatsApp group-send button control
+  static const String _keyWaEnabled = 'wa_button_enabled';
+  static const String _keyWaSendDay = 'wa_send_day';
+
   // Teacher info keys
   static const String _keyTeacherFullName = 'teacher_full_name';
   static const String _keyTeacherAvatar = 'teacher_avatar_path';
@@ -60,10 +64,23 @@ class SettingsController extends GetxController {
   static const String _keyTeacherPhone = 'teacher_phone';
   static const String _keyTeacherEmail = 'teacher_email';
   static const String _keyTeacherSchool = 'teacher_school';
+  static const String _keyTeacherGender = 'teacher_gender'; // 'male' | 'female'
 
   final RxString currencyCode = 'SAR'.obs; // default
   final RxString countryDial = '20'.obs; // default Egypt
   final RxBool use24hFormat = true.obs;
+
+  // زر إرسال الواتساب للمجموعة
+  final RxBool whatsappEnabled = true.obs;   // إظهار/إخفاء الزر
+  final RxInt  whatsappSendDay = 1.obs;      // اليوم الذي يظهر فيه الزر (1-28)
+
+  /// هل وصل اليوم المحدد للإرسال في الشهر الحالي؟
+  bool get isWhatsappDayReached =>
+      DateTime.now().day >= whatsappSendDay.value;
+
+  /// هل زر الواتساب مرئي ومتاح الآن؟
+  bool get isWhatsappAvailable =>
+      whatsappEnabled.value && isWhatsappDayReached;
 
   // Teacher info state
   final RxString teacherFullName = ''.obs;
@@ -72,6 +89,10 @@ class SettingsController extends GetxController {
   final RxString teacherPhone = ''.obs;
   final RxString teacherEmail = ''.obs;
   final RxString teacherSchool = ''.obs;
+  final RxString teacherGender = 'male'.obs; // 'male' | 'female'
+
+  /// "مستر" or "مس" based on gender
+  String get teacherTitle => teacherGender.value == 'female' ? 'مس' : 'مستر';
 
 
   @override
@@ -81,6 +102,32 @@ class SettingsController extends GetxController {
     _loadCountryDial();
     _loadUse24hFormat();
     _loadTeacherInfo();
+    _loadWhatsappSettings();
+  }
+
+  Future<void> _loadWhatsappSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      whatsappEnabled.value = prefs.getBool(_keyWaEnabled) ?? true;
+      whatsappSendDay.value = prefs.getInt(_keyWaSendDay) ?? 1;
+    } catch (_) {}
+  }
+
+  Future<void> setWhatsappEnabled(bool v) async {
+    whatsappEnabled.value = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_keyWaEnabled, v);
+    } catch (_) {}
+  }
+
+  Future<void> setWhatsappSendDay(int day) async {
+    final d = day.clamp(1, 28);
+    whatsappSendDay.value = d;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_keyWaSendDay, d);
+    } catch (_) {}
   }
 
   Future<void> _loadCurrency() async {
@@ -119,6 +166,7 @@ class SettingsController extends GetxController {
       teacherPhone.value = prefs.getString(_keyTeacherPhone) ?? '';
       teacherEmail.value = prefs.getString(_keyTeacherEmail) ?? '';
       teacherSchool.value = prefs.getString(_keyTeacherSchool) ?? '';
+      teacherGender.value = prefs.getString(_keyTeacherGender) ?? 'male';
     } catch (_) {}
   }
 
@@ -190,6 +238,7 @@ class SettingsController extends GetxController {
   void setTeacherPhone(String v) => teacherPhone.value = v;
   void setTeacherEmail(String v) => teacherEmail.value = v;
   void setTeacherSchool(String v) => teacherSchool.value = v;
+  void setTeacherGender(String v) => teacherGender.value = v;
 
   Future<void> saveTeacherInfo() async {
     try {
@@ -200,6 +249,7 @@ class SettingsController extends GetxController {
       await prefs.setString(_keyTeacherPhone, teacherPhone.value);
       await prefs.setString(_keyTeacherEmail, teacherEmail.value);
       await prefs.setString(_keyTeacherSchool, teacherSchool.value);
+      await prefs.setString(_keyTeacherGender, teacherGender.value);
     } catch (_) {}
   }
 

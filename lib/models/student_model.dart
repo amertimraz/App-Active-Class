@@ -12,7 +12,9 @@ class Student {
   final DateTime? createdAt;
   final DateTime? attendanceStart;
   final String? guardianPhone;
-  final DateTime? birthDate; // تاريخ الميلاد
+  final DateTime? birthDate;       // تاريخ الميلاد
+  final double exemptPercent;      // 0 = لا إعفاء، 100 = إعفاء كامل، 50 = 50%
+  final String? exemptReason;      // سبب الإعفاء
 
   Student({
     this.id,
@@ -27,7 +29,18 @@ class Student {
     this.attendanceStart,
     this.guardianPhone,
     this.birthDate,
+    this.exemptPercent = 0,
+    this.exemptReason,
   });
+
+  /// هل الطالب معفى (كلياً أو جزئياً)؟
+  bool get isExempt => exemptPercent > 0;
+
+  /// هل الإعفاء كامل؟
+  bool get isFullyExempt => exemptPercent >= 100;
+
+  /// المبلغ بعد تطبيق نسبة الإعفاء
+  double get effectivePrice => price * (1 - exemptPercent / 100);
 
   Map<String, dynamic> toMap() {
     return {
@@ -43,6 +56,8 @@ class Student {
       'attendance_start': attendanceStart?.toIso8601String(),
       'guardian_phone': guardianPhone,
       'birth_date': birthDate?.toIso8601String(),
+      'exempt_percent': exemptPercent,
+      'exempt_reason': exemptReason,
     };
   }
 
@@ -66,6 +81,10 @@ class Student {
       birthDate: map['birth_date'] != null
           ? DateTime.parse(map['birth_date'] as String)
           : null,
+      exemptPercent: map['exempt_percent'] != null
+          ? (map['exempt_percent'] as num).toDouble()
+          : 0,
+      exemptReason: map['exempt_reason'] as String?,
     );
   }
 
@@ -82,6 +101,9 @@ class Student {
     DateTime? attendanceStart,
     String? guardianPhone,
     DateTime? birthDate,
+    double? exemptPercent,
+    String? exemptReason,
+    bool clearExemptReason = false,
   }) {
     return Student(
       id: id ?? this.id,
@@ -96,6 +118,8 @@ class Student {
       attendanceStart: attendanceStart ?? this.attendanceStart,
       guardianPhone: guardianPhone ?? this.guardianPhone,
       birthDate: birthDate ?? this.birthDate,
+      exemptPercent: exemptPercent ?? this.exemptPercent,
+      exemptReason: clearExemptReason ? null : (exemptReason ?? this.exemptReason),
     );
   }
 

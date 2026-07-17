@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
+import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/views/home_page.dart';
+import 'package:active_class/views/license/plans_page.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -12,29 +15,49 @@ class SplashPage extends StatefulWidget {
 }
 
 class _SplashPageState extends State<SplashPage> {
-  Timer? _timer;
-
   @override
   void initState() {
     super.initState();
-    _timer = Timer(const Duration(milliseconds: 1700), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomePage()),
-        );
-      }
-    });
+    _initAndNavigate();
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+  Future<void> _initAndNavigate() async {
+    // انتظر حد أدنى لعرض الـ splash
+    await Future.delayed(const Duration(milliseconds: 1800));
+    if (!mounted) return;
+
+    // انتظر حتى يكتمل فحص الترخيص
+    final lc = LicenseController.to;
+    int waited = 0;
+    while (lc.state.value == LicenseState.loading && waited < 6000) {
+      await Future.delayed(const Duration(milliseconds: 200));
+      waited += 200;
+    }
+
+    if (!mounted) return;
+
+    switch (lc.state.value) {
+      case LicenseState.active:
+      case LicenseState.trial:
+        Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const HomePage()));
+        break;
+      case LicenseState.trialExpired:
+      case LicenseState.expired:
+      case LicenseState.suspended:
+        Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const PlansPage()));
+        break;
+      case LicenseState.loading:
+        // timeout — نذهب للهوم كـ fallback
+        Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const HomePage()));
+        break;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -44,7 +67,7 @@ class _SplashPageState extends State<SplashPage> {
             end: Alignment.bottomRight,
             colors: [
               AppTheme.primaryColor,
-              Color(0xFF312E81), // Deep Indigo 900
+              Color(0xFF312E81),
             ],
           ),
         ),
@@ -98,14 +121,36 @@ class _SplashPageState extends State<SplashPage> {
                 ),
               ),
               const SizedBox(height: 36),
-              const SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.4,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
+
+              // Checking license indicator
+              Obx(() {
+                final lc = LicenseController.to;
+                if (lc.state.value == LicenseState.loading) {
+                  return Column(
+                    children: [
+                      const SizedBox(
+                        width: 28, height: 28,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text('جاري التحقق من الترخيص...',
+                          style: TextStyle(
+                              fontFamily: 'Cairo', fontSize: 12,
+                              color: Colors.white.withValues(alpha: 0.7))),
+                    ],
+                  );
+                }
+                return const SizedBox(
+                  width: 28, height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                );
+              }),
             ],
           ),
         ),

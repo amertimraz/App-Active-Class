@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Flutter – Android (USB)",
+      "runtimeExecutable": "flutter",
+      "runtimeArgs": ["run", "-d", "9aecbc89"],
+      "port": 8080
+    },
+    {
+      "name": "Flutter – Chrome (web)",
+      "runtimeExecutable": "flutter",
+      "runtimeArgs": ["run", "-d", "chrome", "--web-port", "5000"],
+      "port": 5000
+    },
+    {
+      "name": "Flutter – Windows (desktop)",
+      "runtimeExecutable": "flutter",
+      "runtimeArgs": ["run", "-d", "windows"],
+      "port": 8080
+    },
+    {
+      "name": "Flutter – Edge (web)",
+      "runtimeExecutable": "flutter",
+      "runtimeArgs": ["run", "-d", "edge", "--web-port", "5001"],
+      "port": 5001
+    }
+  ]
+}

@@ -5,12 +5,14 @@ import 'package:get/get.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/models/student_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/controllers/settings_controller.dart';
-import 'package:intl/intl.dart';
 import 'package:active_class/controllers/student_controller.dart';
+import 'package:active_class/controllers/license_controller.dart';
+import 'package:intl/intl.dart';
 
 class GroupsPage extends StatefulWidget {
   const GroupsPage({super.key});
@@ -23,22 +25,42 @@ class _GroupsPageState extends State<GroupsPage> {
   final GroupController controller = Get.put(GroupController());
   final StudentController studentController = Get.put(StudentController());
   final TextEditingController _searchController = TextEditingController();
-  bool _gridMode = false;
 
   @override
   void initState() {
     super.initState();
     controller.loadGroups();
+    studentController.loadAllStudents();
     _searchController.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // عدد طلاب المجموعة من الـ controller مباشرة (بدون FutureBuilder)
+  int _studentCount(int? groupId) {
+    if (groupId == null) return 0;
+    return studentController.students.where((s) => s.groupId == groupId).length;
+  }
+
+  List<Student> _groupStudents(int? groupId) {
+    if (groupId == null) return [];
+    return studentController.students.where((s) => s.groupId == groupId).toList();
   }
 
   String _displaySchedule(String raw, bool use24) {
     final parts = raw.split(',');
     String fmt(TimeOfDay t) {
-      if (use24) return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+      if (use24) {
+        return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+      }
       final dt = DateTime(2000, 1, 1, t.hour, t.minute);
       return DateFormat('hh:mm a', 'ar').format(dt);
     }
+
     TimeOfDay? parse(String v) {
       final p = v.split(':');
       if (p.length != 2) return null;
@@ -47,7 +69,8 @@ class _GroupsPageState extends State<GroupsPage> {
       if (h == null || m == null) return null;
       return TimeOfDay(hour: h, minute: m);
     }
-    final mapped = parts.map((s) {
+
+    return parts.map((s) {
       final txt = s.trim();
       if (txt.isEmpty) return txt;
       final sp = txt.split(' ');
@@ -60,490 +83,899 @@ class _GroupsPageState extends State<GroupsPage> {
       final to = parse(range[1].trim());
       if (from == null || to == null) return txt;
       return '$day ${fmt(from)}-${fmt(to)}';
-    }).join(', ');
-    return mapped;
+    }).join('\n');
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+  List<Map<String, String>> _parseScheduleSlots(String raw) {
+    final parts = raw.split(',');
+    return parts.map((s) {
+      final txt = s.trim();
+      if (txt.isEmpty) return <String, String>{};
+      final sp = txt.split(' ');
+      if (sp.length < 2) return <String, String>{'day': txt, 'time': ''};
+      final day = sp.first;
+      final time = txt.substring(day.length).trim();
+      return <String, String>{'day': day, 'time': time};
+    }).where((m) => m.isNotEmpty).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final primary = const Color(0xFF2196F3); // اللون الرئيسي
-    final secondary = const Color(0xFFFFC107); // اللون المساعد
-
     return Scaffold(
       appBar: buildGradientAppBar(
-        title: 'المجموعات والطلاب',
+        title: 'المجموعات',
         actions: [
           IconButton(
-            tooltip: _gridMode ? 'عرض قائمة' : 'عرض شبكة',
-            icon: Icon(_gridMode ? Icons.view_list : Icons.grid_view),
-            onPressed: () => setState(() => _gridMode = !_gridMode),
+            icon: const Icon(Icons.add_rounded),
+            tooltip: 'مجموعة جديدة',
+            onPressed: () => _showGroupFormDialog(context),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showGroupFormDialog(context),
-        backgroundColor: primary,
-        child: const Icon(Icons.add),
-      ),
-      body: Container(
-        decoration: buildScreenBackground(context),
+      body: buildSoftBackground(
+        context: context,
         child: Obx(() {
+          if (controller.isLoading.value) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
           final query = _searchController.text.trim();
-          final List<Group> items = controller.groups
-              .where((g) {
-                if (query.isEmpty) return true;
-                final byGroupFields = g.name.contains(query) || (g.code?.contains(query) ?? false);
-                final byStudentName = studentController.students.any((s) => s.groupId == g.id && s.name.contains(query));
-                return byGroupFields || byStudentName;
-              })
-              .toList();
+          final List<Group> items = controller.groups.where((g) {
+            if (query.isEmpty) return true;
+            final byGroup = g.name.contains(query) || (g.code?.contains(query) ?? false);
+            final byStudent = studentController.students
+                .any((s) => s.groupId == g.id && s.name.contains(query));
+            return byGroup || byStudent;
+          }).toList();
 
-        if (controller.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (controller.groups.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.all(PADDING_LARGE),
-            child: EmptyState(
-              icon: Icons.group_off,
-              title: 'لا توجد مجموعات',
-              subtitle: 'ابدأ بإضافة مجموعة جديدة',
-              actionLabel: 'إضافة مجموعة',
-              onActionPressed: () => _showGroupFormDialog(context),
-            ),
-          );
-        }
+          final totalStudents = studentController.students.length;
 
           return Column(
             children: [
+              // ── شريط البحث + ملخص ──────────────────────────────
               Padding(
-                padding: const EdgeInsets.all(PADDING_NORMAL),
-                child: CustomSearchBar(
-                  controller: _searchController,
-                  hintText: 'ابحث بالاسم أو الكود...',
-                  onChanged: (_) => setState(() {}),
-                  onClear: () {
-                    _searchController.clear();
-                    setState(() {});
-                  },
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Column(
+                  children: [
+                    // ملخص سريع
+                    Row(
+                      children: [
+                        _SummaryPill(
+                          icon: Icons.groups_rounded,
+                          label: '${controller.groups.length} مجموعة',
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 10),
+                        _SummaryPill(
+                          icon: Icons.person_rounded,
+                          label: '$totalStudents طالب',
+                          color: Colors.green,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    CustomSearchBar(
+                      controller: _searchController,
+                      hintText: 'ابحث بالاسم أو الكود...',
+                      onChanged: (_) => setState(() {}),
+                      onClear: () {
+                        _searchController.clear();
+                        setState(() {});
+                      },
+                    ),
+                  ],
                 ),
               ),
+
+              const SizedBox(height: 8),
+
+              // ── القائمة ─────────────────────────────────────────
               Expanded(
-                child: _gridMode
-                    ? GridView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: PADDING_NORMAL, vertical: PADDING_NORMAL),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: SPACING_NORMAL,
-                          mainAxisSpacing: SPACING_NORMAL,
-                          childAspectRatio: 1.3,
+                child: controller.groups.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(PADDING_LARGE),
+                        child: buildSoftPanel(
+                          context: context,
+                          child: EmptyState(
+                            icon: Icons.group_off,
+                            title: 'لا توجد مجموعات',
+                            subtitle: 'ابدأ بإضافة مجموعة جديدة',
+                            actionLabel: 'إضافة مجموعة',
+                            onActionPressed: () => _showGroupFormDialog(context),
+                          ),
                         ),
-                        itemCount: items.length,
-                        itemBuilder: (context, index) {
-                          final group = items[index];
-                          return _buildGroupGridTile(context, group);
-                        },
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: PADDING_NORMAL),
-                        itemCount: items.length,
-                        itemBuilder: (context, index) {
-                          final group = items[index];
-                          return _buildGroupCard(context, group, primary, secondary);
-                        },
-                      ),
+                    : items.isEmpty
+                        ? Center(
+                            child: Text('لا نتائج لـ "$query"',
+                                style: TextStyle(color: Colors.grey.shade500)),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+                            itemCount: items.length,
+                            itemBuilder: (_, i) =>
+                                _GroupCard(
+                                  group: items[i],
+                                  studentCount: _studentCount(items[i].id),
+                                  students: _groupStudents(items[i].id),
+                                  onEdit: () => _showGroupFormDialog(context, group: items[i]),
+                                  onDelete: () {
+                                    if (items[i].id != null) controller.deleteGroup(items[i].id!);
+                                  },
+                                  displaySchedule: (raw) => _displaySchedule(
+                                      raw, Get.find<SettingsController>().use24hFormat.value),
+                                  parseSlots: _parseScheduleSlots,
+                                ),
+                          ),
               ),
             ],
           );
         }),
       ),
-    );
-  }
-
-  Widget _buildGroupCard(
-    BuildContext context,
-    Group group,
-    Color primary,
-    Color secondary,
-  ) {
-    final Color avatarColor = (group.color != null)
-        ? Color(group.color!)
-        : ColorHelper.getRandomColor();
-    final iconData = _iconFromName(group.icon) ?? Icons.group;
-
-    return Card(
-      surfaceTintColor: Colors.white,
-      elevation: 1,
-      margin: const EdgeInsets.only(bottom: PADDING_NORMAL),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(BORDER_RADIUS_NORMAL),
-      ),
-      child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: avatarColor.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(iconData, color: avatarColor),
-        ),
-        title: Text(
-          group.name,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          final lic = Get.find<LicenseController>();
+          final err = lic.checkCanCreateGroup(controller.groups.length);
+          if (err != null) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(err, style: const TextStyle(fontFamily: 'Cairo')),
+              backgroundColor: Colors.red.shade700,
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(
+                label: 'ترقية',
+                textColor: Colors.white,
+                onPressed: () => Get.toNamed(ROUTE_PLANS),
               ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              FutureBuilder<int>(
-                future: group.id != null
-                    ? controller.getGroupStudentCount(group.id!)
-                    : Future.value(0),
-                builder: (context, snapshot) {
-                  final count = snapshot.data ?? 0;
-                  final chips = <Widget>[
-                    _infoChip(
-                      label: 'الطلاب',
-                      value: '$count',
-                      color: Colors.blue,
-                    ),
-                  ];
-                  if (group.price != null) {
-                    chips.add(_infoChip(
-                      label: 'السعر',
-                      value: FormatHelper.formatCurrency(group.price),
-                      color: Colors.green,
-                    ));
-                  }
-                  if (group.code != null && group.code!.isNotEmpty) {
-                    chips.add(_infoChip(
-                      label: 'الكود',
-                      value: group.code!,
-                      color: Colors.deepPurple,
-                    ));
-                  }
-                  return Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: chips,
-                  );
-                },
-              ),
-              if (group.schedule != null && group.schedule!.trim().isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Obx(() {
-                    final use24 = Get.find<SettingsController>().use24hFormat.value;
-                    final disp = _displaySchedule(group.schedule!, use24);
-                    return Text(
-                      'المواعيد: $disp',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    );
-                  }),
-                ),
-            ],
-          ),
-        ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'edit') {
-              _showGroupFormDialog(context, group: group);
-            } else if (value == 'delete') {
-              if (group.id != null) controller.deleteGroup(group.id!);
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-              value: 'edit',
-              child: Row(
-                children: [
-                  Icon(Icons.edit, size: 18),
-                  SizedBox(width: 8),
-                  Text('تعديل'),
-                ],
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'delete',
-              child: Row(
-                children: [
-                  Icon(Icons.delete, size: 18, color: Colors.red),
-                  SizedBox(width: 8),
-                  Text('حذف', style: TextStyle(color: Colors.red)),
-                ],
-              ),
-            ),
-          ],
-        ),
-        onTap: () => Get.toNamed(ROUTE_GROUP_DETAILS, arguments: group),
-      ),
-    );
-  }
-
-  Widget _infoChip({
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.24)),
-      ),
-      child: Text(
-        '$label: $value',
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGroupGridTile(BuildContext context, Group group) {
-    final Color avatarColor = (group.color != null)
-        ? Color(group.color!)
-        : ColorHelper.getRandomColor();
-    final iconData = _iconFromName(group.icon) ?? Icons.group;
-
-    return Card(
-      surfaceTintColor: Colors.white,
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(BORDER_RADIUS_NORMAL),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(BORDER_RADIUS_NORMAL),
-        onTap: () => Get.toNamed(ROUTE_GROUP_DETAILS, arguments: group),
-        child: Padding(
-          padding: const EdgeInsets.all(PADDING_NORMAL),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircleAvatar(
-                backgroundColor: avatarColor.withValues(alpha: 0.15),
-                child: Icon(iconData, color: avatarColor),
-              ),
-              const SizedBox(height: SPACING_NORMAL),
-              Text(
-                group.name,
-                style: Theme.of(context).textTheme.titleMedium,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              FutureBuilder<int>(
-                future: group.id != null
-                    ? controller.getGroupStudentCount(group.id!)
-                    : Future.value(0),
-                builder: (context, snapshot) {
-                  final count = snapshot.data ?? 0;
-                  return Text(
-                    'عدد الطلاب: $count',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
+            ));
+            return;
+          }
+          _showGroupFormDialog(context);
+        },
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('مجموعة جديدة'),
       ),
     );
   }
 
   void _showGroupFormDialog(BuildContext context, {Group? group}) {
-    // Controllers
-    final nameCtrl = TextEditingController(text: group?.name ?? '');
-    final codeCtrl = TextEditingController(text: group?.code ?? '');
-    final priceCtrl = TextEditingController(text: group?.price?.toString() ?? '');
-    final scheduleCtrl = TextEditingController(text: group?.schedule ?? '');
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _GroupFormSheet(
+        group: group,
+        existingGroups: controller.groups,
+        onSave: (newGroup) async {
+          if (group == null) {
+            await controller.addGroup(newGroup);
+          } else {
+            await controller.updateGroup(newGroup);
+          }
+        },
+        onSaved: (name) {
+          ToastHelper.success('تم حفظ "$name"', title: 'تم');
+        },
+      ),
+    );
+  }
+}
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Group form bottom sheet
+// ─────────────────────────────────────────────────────────────────────────────
 
+class _GroupFormSheet extends StatefulWidget {
+  final Group? group;
+  final List<Group> existingGroups;
+  final Future<void> Function(Group) onSave;
+  final void Function(String groupName) onSaved;
 
-    Get.dialog(
-      StatefulBuilder(
-        builder: (context, setSt) => AlertDialog(
-          title: Text(group == null ? 'إضافة مجموعة جديدة' : 'تعديل المجموعة'),
-          content: SizedBox(
-            width: 420,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+  const _GroupFormSheet({
+    required this.group,
+    required this.existingGroups,
+    required this.onSave,
+    required this.onSaved,
+  });
+
+  @override
+  State<_GroupFormSheet> createState() => _GroupFormSheetState();
+}
+
+class _GroupFormSheetState extends State<_GroupFormSheet> {
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _codeCtrl;
+  late final TextEditingController _priceCtrl;
+  late final TextEditingController _scheduleCtrl;
+
+  late String _selectedIcon;
+  late int _selectedColor;
+  bool _saving = false;
+
+  // Inline validation errors
+  String? _nameError;
+  String? _codeError;
+  String? _priceError;
+  String? _scheduleError;
+
+  static const _iconOptions = <String, IconData>{
+    'group': Icons.groups_rounded,
+    'class': Icons.class_rounded,
+    'book': Icons.menu_book_rounded,
+    'math': Icons.calculate_rounded,
+    'science': Icons.science_rounded,
+    'language': Icons.language_rounded,
+    'code': Icons.code_rounded,
+    'star': Icons.star_rounded,
+    'music': Icons.music_note_rounded,
+    'art': Icons.brush_rounded,
+    'sport': Icons.sports_soccer_rounded,
+    'english': Icons.translate_rounded,
+  };
+
+  static const _colorOptions = <int>[
+    0xFFE53935, // أحمر
+    0xFF1E88E5, // أزرق
+    0xFF43A047, // أخضر
+    0xFFFB8C00, // برتقالي
+    0xFF8E24AA, // بنفسجي
+    0xFF00ACC1, // سماوي
+    0xFFEC407A, // وردي
+    0xFFFFB300, // ذهبي
+    0xFF6D4C41, // بني
+    0xFF546E7A, // رمادي
+    0xFF00897B, // تيل
+    0xFF3949AB, // نيلي
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    final g = widget.group;
+    _nameCtrl = TextEditingController(text: g?.name ?? '');
+    _codeCtrl = TextEditingController(text: g?.code ?? '');
+    _priceCtrl = TextEditingController(text: g?.price?.toString() ?? '');
+    _scheduleCtrl = TextEditingController(text: g?.schedule ?? '');
+
+    // اختيار أيقونة ولون افتراضيين
+    if (g?.icon != null && _iconOptions.containsKey(g!.icon)) {
+      _selectedIcon = g.icon!;
+    } else {
+      final usedIcons = widget.existingGroups.map((x) => x.icon).whereType<String>().toSet();
+      _selectedIcon = _iconOptions.keys.firstWhere(
+        (k) => !usedIcons.contains(k),
+        orElse: () => 'group',
+      );
+    }
+
+    if (g?.color != null) {
+      _selectedColor = g!.color!;
+    } else {
+      final usedColors = widget.existingGroups.map((x) => x.color).whereType<int>().toSet();
+      _selectedColor = _colorOptions.firstWhere(
+        (c) => !usedColors.contains(c),
+        orElse: () => _colorOptions.first,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _codeCtrl.dispose();
+    _priceCtrl.dispose();
+    _scheduleCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final name      = _nameCtrl.text.trim();
+    final code      = _codeCtrl.text.trim();
+    final priceText = _priceCtrl.text.trim();
+    final slots     = _scheduleCtrl.text.split(',').where((e) => e.trim().isNotEmpty).length;
+
+    // Inline validation
+    setState(() {
+      _nameError     = name.isEmpty      ? 'مطلوب' : null;
+      _codeError     = code.isEmpty      ? 'مطلوب' : null;
+      _priceError    = priceText.isEmpty ? 'مطلوب'
+                     : double.tryParse(priceText) == null ? 'رقم غير صالح' : null;
+      _scheduleError = slots < 2         ? 'أضف موعدين على الأقل' : null;
+    });
+
+    if (_nameError != null || _codeError != null ||
+        _priceError != null || _scheduleError != null) return;
+
+    final price = double.parse(priceText);
+    setState(() => _saving = true);
+    try {
+      await widget.onSave(Group(
+        id: widget.group?.id,
+        name: name,
+        code: code,
+        price: price,
+        color: _selectedColor,
+        icon: _selectedIcon,
+        schedule: _scheduleCtrl.text.trim().isEmpty ? null : _scheduleCtrl.text.trim(),
+        createdAt: widget.group?.createdAt,
+      ));
+      if (mounted) {
+        widget.onSaved(name);
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ToastHelper.error('حدث خطأ: $e');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = Color(_selectedColor);
+    final isEdit = widget.group != null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF131D31) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.92,
+        maxChildSize: 0.97,
+        builder: (_, sc) => Column(
+          children: [
+            // ── Handle ───────────────────────────────────────────
+            const SizedBox(height: 10),
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+
+            // ── Header مع أيقونة المجموعة ────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Row(
                 children: [
-                  // الاسم
-                  CustomTextField(
-                    controller: nameCtrl,
-                    label: 'اسم المجموعة',
+                  // أيقونة المجموعة (preview)
+                  Container(
+                    width: 52, height: 52,
+                    decoration: BoxDecoration(
+                      color: primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(_iconOptions[_selectedIcon]!, color: primary, size: 26),
                   ),
-                  const SizedBox(height: SPACING_NORMAL),
-
-                  // بادئة الكود (يدوي فقط)
-                  CustomTextField(
-                    controller: codeCtrl,
-                    label: 'بادئة الكود',
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isEdit ? 'تعديل المجموعة' : 'مجموعة جديدة',
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.w900),
+                        ),
+                        Text(
+                          isEdit ? widget.group!.name : 'أدخل بيانات المجموعة',
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade500),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: SPACING_NORMAL),
-
-                  // السعر (إجباري)
-                  CustomTextField(
-                    controller: priceCtrl,
-                    label: 'السعر',
-                    keyboardType: TextInputType.number,
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
                   ),
-                  const SizedBox(height: SPACING_NORMAL),
-
-                  // الأيقونة واللون سيتم تعيينهما تلقائيًا بدون تكرار بين المجموعات الجديدة
-                  const SizedBox(height: SPACING_NORMAL),
-
-                  // المواعيد: عنصرين أسبوعيًا مع زر إضافة/حذف
-                  _ScheduleEditor(controller: scheduleCtrl),
                 ],
               ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Get.back(),
-              child: const Text('إلغاء'),
+
+            const Divider(height: 24),
+
+            // ── Form ─────────────────────────────────────────────
+            Expanded(
+              child: ListView(
+                controller: sc,
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                children: [
+                  // اسم المجموعة
+                  _FormLabel('اسم المجموعة *'),
+                  const SizedBox(height: 6),
+                  CustomTextField(
+                    controller: _nameCtrl,
+                    label: 'مثال: الرابعة الابتدائي أ',
+                  ),
+                  if (_nameError != null) _ErrorText(_nameError!),
+                  const SizedBox(height: 16),
+
+                  // بادئة الكود والسعر في صف
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _FormLabel('بادئة الكود *'),
+                            const SizedBox(height: 6),
+                            CustomTextField(
+                              controller: _codeCtrl,
+                              label: 'مثال: G4A',
+                            ),
+                            if (_codeError != null) _ErrorText(_codeError!),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _FormLabel('سعر الاشتراك *'),
+                            const SizedBox(height: 6),
+                            CustomTextField(
+                              controller: _priceCtrl,
+                              label: '0',
+                              keyboardType: TextInputType.number,
+                            ),
+                            if (_priceError != null) _ErrorText(_priceError!),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // اختيار اللون
+                  _FormLabel('لون المجموعة'),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: _colorOptions.map((c) {
+                      final selected = _selectedColor == c;
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedColor = c),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          width: 36, height: 36,
+                          decoration: BoxDecoration(
+                            color: Color(c),
+                            shape: BoxShape.circle,
+                            border: selected
+                                ? Border.all(
+                                    color: Colors.white, width: 2.5)
+                                : null,
+                            boxShadow: selected
+                                ? [BoxShadow(
+                                    color: Color(c).withValues(alpha: 0.5),
+                                    blurRadius: 8, spreadRadius: 1)]
+                                : null,
+                          ),
+                          child: selected
+                              ? const Icon(Icons.check_rounded,
+                                  color: Colors.white, size: 18)
+                              : null,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // اختيار الأيقونة
+                  _FormLabel('أيقونة المجموعة'),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: _iconOptions.entries.map((e) {
+                      final selected = _selectedIcon == e.key;
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedIcon = e.key),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          width: 48, height: 48,
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? primary.withValues(alpha: 0.15)
+                                : Colors.grey.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: selected
+                                  ? primary
+                                  : Colors.grey.withValues(alpha: 0.2),
+                              width: selected ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Icon(e.value,
+                              color: selected ? primary : Colors.grey.shade500,
+                              size: 22),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // المواعيد
+                  _ScheduleEditor(
+                    controller: _scheduleCtrl,
+                    onChanged: () {
+                      if (_scheduleError != null) setState(() => _scheduleError = null);
+                    },
+                  ),
+                  if (_scheduleError != null) _ErrorText(_scheduleError!),
+                ],
+              ),
             ),
-            CustomButton(
-              label: group == null ? 'إضافة' : 'حفظ',
-              onPressed: () async {
-                final name = nameCtrl.text.trim();
-                if (name.isEmpty) return;
 
-                final priceText = priceCtrl.text.trim();
-                final codeText = codeCtrl.text.trim();
-                if (codeText.isEmpty || priceText.isEmpty) {
-                  ToastHelper.info('يرجى إدخال بادئة الكود والسعر');
-                  return;
-                }
-                final double? price = double.tryParse(priceText);
-                if (price == null) {
-                  ToastHelper.info('السعر غير صالح');
-                  return;
-                }
-                final slotsCount = scheduleCtrl.text.split(',').where((e) => e.trim().isNotEmpty).length;
-                if (slotsCount < 2) {
-                  ToastHelper.info('يجب إضافة موعدين على الأقل');
-                  return;
-                }
-                // تعيين أيقونة ولون عشوائيين بدون تكرار بسيط داخل الجلسة الحالية
-                final usedIcons = controller.groups.map((g) => g.icon).whereType<String>().toSet();
-                final availableIcons = _iconOptions.where((i) => !usedIcons.contains(i)).toList();
-                final chosenIcon = (availableIcons.isNotEmpty)
-                    ? availableIcons[DateTime.now().millisecond % availableIcons.length]
-                    : _randomIconName();
-                final usedColors = controller.groups.map((g) => g.color).whereType<int>().toSet();
-                final candidateColors = [
-                  Colors.red.toARGB32(),
-                  Colors.blue.toARGB32(),
-                  Colors.green.toARGB32(),
-                  Colors.orange.toARGB32(),
-                  Colors.purple.toARGB32(),
-                  Colors.cyan.toARGB32(),
-                  Colors.pink.toARGB32(),
-                  Colors.amber.toARGB32(),
-                ];
-                final remainingColors = candidateColors.where((c) => !usedColors.contains(c)).toList();
-                final chosenColor = (remainingColors.isNotEmpty)
-                    ? remainingColors[DateTime.now().second % remainingColors.length]
-                    : candidateColors[DateTime.now().second % candidateColors.length];
-
-                final newGroup = Group(
-                  id: group?.id,
-                  name: name,
-                  code: codeText, // بادئة الكود يدوي فقط
-                  price: price,
-                  color: chosenColor,
-                  icon: chosenIcon,
-                  schedule: scheduleCtrl.text.trim().isEmpty ? null : scheduleCtrl.text.trim(),
-                  createdAt: group?.createdAt,
-                );
-
-                if (group == null) {
-                  await controller.addGroup(newGroup);
-                } else {
-                  await controller.updateGroup(newGroup);
-                }
-                ToastHelper.success('تم انشاء وحفظ المجموعة', title: 'تم');
-                Get.back();
-              },
+            // ── زر الحفظ ─────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _submit,
+                style: FilledButton.styleFrom(
+                  backgroundColor: primary,
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+                icon: _saving
+                    ? const SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : Icon(isEdit ? Icons.save_rounded : Icons.add_rounded),
+                label: Text(
+                  isEdit ? 'حفظ التعديلات' : 'إضافة المجموعة',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+              ),
             ),
           ],
         ),
       ),
     );
   }
+}
 
-  // ===== Helpers =====
+class _FormLabel extends StatelessWidget {
+  final String text;
+  const _FormLabel(this.text);
 
-  String _randomIconName() => _iconOptions[DateTime.now().millisecond % _iconOptions.length];
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+    );
+  }
+}
 
-  IconData? _iconFromName(String? name) {
-    switch (name) {
-      case 'group':
-        return Icons.group;
-      case 'class':
-        return Icons.class_;
-      case 'book':
-        return Icons.menu_book;
-      case 'math':
-        return Icons.calculate;
-      case 'science':
-        return Icons.science;
-      case 'language':
-        return Icons.language;
-      case 'code':
-        return Icons.code;
-      case 'star':
-        return Icons.star;
-      default:
-        return null;
+class _ErrorText extends StatelessWidget {
+  final String text;
+  const _ErrorText(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, right: 4),
+      child: Row(children: [
+        const Icon(Icons.error_outline_rounded, size: 13, color: Colors.red),
+        const SizedBox(width: 4),
+        Text(text,
+            style: const TextStyle(
+                color: Colors.red,
+                fontSize: 11,
+                fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group card widget
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _GroupCard extends StatelessWidget {
+  final Group group;
+  final int studentCount;
+  final List<Student> students;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final String Function(String) displaySchedule;
+  final List<Map<String, String>> Function(String) parseSlots;
+
+  const _GroupCard({
+    required this.group,
+    required this.studentCount,
+    required this.students,
+    required this.onEdit,
+    required this.onDelete,
+    required this.displaySchedule,
+    required this.parseSlots,
+  });
+
+  IconData get _icon {
+    switch (group.icon) {
+      case 'class': return Icons.class_;
+      case 'book': return Icons.menu_book;
+      case 'math': return Icons.calculate;
+      case 'science': return Icons.science;
+      case 'language': return Icons.language;
+      case 'code': return Icons.code;
+      case 'star': return Icons.star;
+      default: return Icons.groups_rounded;
     }
   }
 
-  final List<String> _iconOptions = const [
-    'group',
-    'class',
-    'book',
-    'math',
-    'science',
-    'language',
-    'code',
-    'star',
-  ];
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = group.color != null ? Color(group.color!) : Colors.indigo;
+    final slots = group.schedule != null && group.schedule!.isNotEmpty
+        ? parseSlots(group.schedule!)
+        : <Map<String, String>>[];
+
+    return GestureDetector(
+      onTap: () => Get.toNamed(ROUTE_GROUP_DETAILS, arguments: group),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF131D31).withValues(alpha: 0.94) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : color.withValues(alpha: 0.15),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: isDark ? 0.1 : 0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            // ── Header ───────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
+              child: Row(
+                children: [
+                  // أيقونة المجموعة
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(_icon, color: color, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // اسم + كود
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          group.name,
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w800),
+                        ),
+                        if (group.code != null && group.code!.isNotEmpty)
+                          Text(
+                            'الكود: ${group.code}',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey.shade500),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  // عدد الطلاب badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: color.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.person_rounded, size: 13, color: color),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$studentCount',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: color),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // قائمة الخيارات
+                  PopupMenuButton<String>(
+                    onSelected: (v) {
+                      if (v == 'edit') onEdit();
+                      if (v == 'delete') {
+                        Get.defaultDialog(
+                          title: 'حذف المجموعة',
+                          middleText:
+                              'هل تريد حذف مجموعة "${group.name}"؟\nسيتم حذف المجموعة فقط دون طلابها.',
+                          textCancel: 'إلغاء',
+                          textConfirm: 'حذف',
+                          confirmTextColor: Colors.white,
+                          buttonColor: Colors.red,
+                          onConfirm: () {
+                            Get.back(); // أغلق الـ dialog
+                            onDelete();
+                          },
+                        );
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(children: [
+                          Icon(Icons.edit_rounded, size: 18),
+                          SizedBox(width: 8),
+                          Text('تعديل'),
+                        ]),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(children: [
+                          Icon(Icons.delete_rounded, size: 18, color: Colors.red),
+                          SizedBox(width: 8),
+                          Text('حذف', style: TextStyle(color: Colors.red)),
+                        ]),
+                      ),
+                    ],
+                    child: const Icon(Icons.more_vert_rounded, size: 20),
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Divider ──────────────────────────────────────────
+            Divider(
+              height: 1,
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : color.withValues(alpha: 0.1),
+            ),
+
+            // ── Footer: سعر + مواعيد ─────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // المواعيد
+                  Expanded(
+                    child: slots.isEmpty
+                        ? Text('لا توجد مواعيد',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey.shade400))
+                        : Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: slots.map((s) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '${s['day']} ${s['time']}',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: color,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                  ),
+
+                  // السعر
+                  if (group.price != null && group.price! > 0) ...[
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Obx(() {
+                        final currency =
+                            Get.find<SettingsController>().currencyCode.value;
+                        return Text(
+                          '${FormatHelper.formatCurrency(group.price)} $currency',
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.green),
+                        );
+                      }),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-// Widget to manage up to two weekly schedules and serialize into controller text.
+// ─────────────────────────────────────────────────────────────────────────────
+// Summary pill
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SummaryPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _SummaryPill({required this.icon, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 5),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w700, color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Schedule editor
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _ScheduleEditor extends StatefulWidget {
   final TextEditingController controller;
-  const _ScheduleEditor({required this.controller});
+  final VoidCallback? onChanged;
+  const _ScheduleEditor({required this.controller, this.onChanged});
 
   @override
   State<_ScheduleEditor> createState() => _ScheduleEditorState();
 }
 
 class _ScheduleEditorState extends State<_ScheduleEditor> {
-  static const List<String> _days = <String>[
+  static const List<String> _days = [
     'السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'
   ];
 
@@ -558,21 +990,15 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
   void _parseFromText() {
     final text = widget.controller.text.trim();
     if (text.isEmpty) return;
-    final parts = text.split(',');
-    for (final raw in parts) {
+    for (final raw in text.split(',')) {
       final s = raw.trim();
-      final day = _days.firstWhere(
-        (d) => s.startsWith(d),
-        orElse: () => '',
-      );
+      final day = _days.firstWhere((d) => s.startsWith(d), orElse: () => '');
       if (day.isEmpty) continue;
-      final times = s.replaceFirst(day, '').trim();
-      final range = times.split('-');
-      if (range.length == 2) {
-        final from = _parseTime(range[0].trim());
+      final times = s.replaceFirst(day, '').trim().split('-');
+      if (times.length == 2) {
+        final from = _parseTime(times[0].trim());
         if (from != null) {
-          final fixedTo = _addHour(from);
-          _entries.add(_ScheduleEntry(day: day, from: from, to: fixedTo));
+          _entries.add(_ScheduleEntry(day: day, from: from, to: _addHour(from)));
         }
       }
     }
@@ -589,46 +1015,35 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
   }
 
   void _syncToText() {
-    final str = _entries
-        .map((e) => '${e.day} ${_fmtStore(e.from)}-${_fmtStore(e.to)}')
+    widget.controller.text = _entries
+        .map((e) => '${e.day} ${_fmt(e.from)}-${_fmt(e.to)}')
         .join(', ');
-    widget.controller.text = str;
+    widget.onChanged?.call();
     setState(() {});
   }
 
-  String _pad2(int n) => n.toString().padLeft(2, '0');
-  String _fmtStore(TimeOfDay t) => '${_pad2(t.hour)}:${_pad2(t.minute)}';
+  String _pad(int n) => n.toString().padLeft(2, '0');
+  String _fmt(TimeOfDay t) => '${_pad(t.hour)}:${_pad(t.minute)}';
   String _fmtDisplay(TimeOfDay t) {
     try {
-      final settings = Get.find<SettingsController>();
-      if (!settings.use24hFormat.value) {
-        final dt = DateTime(2000, 1, 1, t.hour, t.minute);
-        return DateFormat('hh:mm a', 'ar').format(dt);
+      if (!Get.find<SettingsController>().use24hFormat.value) {
+        return DateFormat('hh:mm a', 'ar').format(DateTime(2000, 1, 1, t.hour, t.minute));
       }
     } catch (_) {}
-    return _fmtStore(t);
+    return _fmt(t);
   }
 
-  TimeOfDay _addHour(TimeOfDay t) {
-    final h = (t.hour + 1) % 24;
-    return TimeOfDay(hour: h, minute: t.minute);
-  }
+  TimeOfDay _addHour(TimeOfDay t) => TimeOfDay(hour: (t.hour + 1) % 24, minute: t.minute);
+  TimeOfDay _subHour(TimeOfDay t) => TimeOfDay(hour: (t.hour + 23) % 24, minute: t.minute);
 
-  TimeOfDay _subHour(TimeOfDay t) {
-    final h = (t.hour + 23) % 24;
-    return TimeOfDay(hour: h, minute: t.minute);
-  }
-
-  Future<void> _pickTime({required int index, required bool isFrom}) async {
-    final current = isFrom ? _entries[index].from : _entries[index].to;
-    final picked = await showTimePicker(context: context, initialTime: current);
+  Future<void> _pickTime(int index, bool isFrom) async {
+    final cur = isFrom ? _entries[index].from : _entries[index].to;
+    final picked = await showTimePicker(context: context, initialTime: cur);
     if (picked != null) {
       if (isFrom) {
-        final to = _addHour(picked);
-        _entries[index] = _entries[index].copyWith(from: picked, to: to);
+        _entries[index] = _entries[index].copyWith(from: picked, to: _addHour(picked));
       } else {
-        final from = _subHour(picked);
-        _entries[index] = _entries[index].copyWith(from: from, to: picked);
+        _entries[index] = _entries[index].copyWith(from: _subHour(picked), to: picked);
       }
       _syncToText();
     }
@@ -639,7 +1054,8 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('المواعيد الأسبوعية (حد أدنى 2)', style: Theme.of(context).textTheme.bodyMedium),
+        Text('المواعيد الأسبوعية (حد أدنى 2)',
+            style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 8),
         ...List.generate(_entries.length, (i) {
           final e = _entries[i];
@@ -647,7 +1063,6 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(
               children: [
-                // Day selector
                 Expanded(
                   flex: 2,
                   child: DropdownButtonFormField<String>(
@@ -662,10 +1077,9 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // From time
                 Expanded(
                   child: InkWell(
-                    onTap: () => _pickTime(index: i, isFrom: true),
+                    onTap: () => _pickTime(i, true),
                     child: InputDecorator(
                       decoration: const InputDecoration(labelText: 'من'),
                       child: Text(_fmtDisplay(e.from)),
@@ -673,10 +1087,9 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // To time
                 Expanded(
                   child: InkWell(
-                    onTap: () => _pickTime(index: i, isFrom: false),
+                    onTap: () => _pickTime(i, false),
                     child: InputDecorator(
                       decoration: const InputDecoration(labelText: 'إلى'),
                       child: Text(_fmtDisplay(e.to)),
@@ -689,8 +1102,7 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
                     _entries.removeAt(i);
                     _syncToText();
                   },
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  tooltip: 'حذف',
+                  icon: const Icon(Icons.delete_rounded, color: Colors.red),
                 ),
               ],
             ),
@@ -700,13 +1112,11 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
           alignment: Alignment.centerRight,
           child: TextButton.icon(
             onPressed: () {
-              _entries.add(
-                _ScheduleEntry(
-                  day: _days[_entries.isEmpty ? 0 : (_entries.length % _days.length)],
-                  from: const TimeOfDay(hour: 18, minute: 0),
-                  to: const TimeOfDay(hour: 19, minute: 0),
-                ),
-              );
+              _entries.add(_ScheduleEntry(
+                day: _days[_entries.isEmpty ? 0 : (_entries.length % _days.length)],
+                from: const TimeOfDay(hour: 18, minute: 0),
+                to: const TimeOfDay(hour: 19, minute: 0),
+              ));
               _syncToText();
             },
             icon: const Icon(Icons.add),
@@ -722,8 +1132,7 @@ class _ScheduleEntry {
   final String day;
   final TimeOfDay from;
   final TimeOfDay to;
-  _ScheduleEntry({required this.day, required this.from, required this.to});
-
+  const _ScheduleEntry({required this.day, required this.from, required this.to});
   _ScheduleEntry copyWith({String? day, TimeOfDay? from, TimeOfDay? to}) =>
       _ScheduleEntry(day: day ?? this.day, from: from ?? this.from, to: to ?? this.to);
 }

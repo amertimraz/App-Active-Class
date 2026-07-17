@@ -1,7 +1,41 @@
 // lib/widgets/custom_widgets.dart
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/controllers/settings_controller.dart';
+import 'package:active_class/utils/helpers.dart';
+
+/// يعرض مبلغاً مالياً بعملة المستخدم ويتحدث تلقائياً عند تغيير العملة.
+class CurrencyText extends StatelessWidget {
+  final double? amount;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+
+  const CurrencyText(this.amount, {super.key, this.style, this.textAlign});
+
+  @override
+  Widget build(BuildContext context) {
+    try {
+      final settings = Get.find<SettingsController>();
+      return Obx(() {
+        // قراءة currencyCode.value تجعل GetX يتابع التغييرات
+        settings.currencyCode.value;
+        return Text(
+          FormatHelper.formatCurrency(amount),
+          style: style,
+          textAlign: textAlign,
+        );
+      });
+    } catch (_) {
+      return Text(
+        FormatHelper.formatCurrency(amount),
+        style: style,
+        textAlign: textAlign,
+      );
+    }
+  }
+}
 
 /// بطاقة إحصائية مخصصة
 class StatsCard extends StatefulWidget {
@@ -124,6 +158,7 @@ class CustomTextField extends StatelessWidget {
   final bool obscureText;
   final bool enabled; // تمكين/تعطيل الحقل
   final VoidCallback? onClear;
+  final FocusNode? focusNode;
 
   const CustomTextField({
     Key? key,
@@ -138,12 +173,14 @@ class CustomTextField extends StatelessWidget {
     this.obscureText = false,
     this.enabled = true,
     this.onClear,
+    this.focusNode,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
+      focusNode: focusNode,
       enabled: enabled,
       keyboardType: keyboardType,
       maxLines: maxLines,

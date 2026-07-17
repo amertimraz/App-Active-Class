@@ -1,4 +1,4 @@
-﻿// lib/controllers/student_controller.dart
+// lib/controllers/student_controller.dart
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -9,25 +9,33 @@ import 'package:active_class/utils/helpers.dart';
 
 class StudentController extends GetxController {
   final DatabaseService _dbService = DatabaseService();
+
+  /// القائمة الكاملة — مصدر الحقيقة، لا تُمس إلا بـ loadAllStudents
   final RxList<Student> students = <Student>[].obs;
+
+  /// القائمة المعروضة بعد تطبيق البحث والفلتر
   final RxList<Student> filteredStudents = <Student>[].obs;
-  final RxBool isLoading = false.obs;
-  final RxString searchQuery = ''.obs;
-  final Rxn<int> selectedGroupId = Rxn<int>();
+
+  final RxBool    isLoading    = false.obs;
+  final RxString  searchQuery  = ''.obs;
+  final Rxn<int>  selectedGroupId = Rxn<int>();
 
   @override
   void onInit() {
     super.onInit();
-    debounce(searchQuery, (_) => filterStudents(), time: const Duration(milliseconds: 180));
+    // debounce على searchQuery يُعيد تطبيق الفلتر
+    debounce(searchQuery, (_) => filterStudents(),
+        time: const Duration(milliseconds: 180));
     loadAllStudents();
   }
 
-  Future<void> loadStudentsByGroup(int groupId) async {
+  // ── تحميل كل الطلاب (المصدر الأساسي) ───────────────────────────
+  Future<void> loadAllStudents() async {
     isLoading(true);
     try {
-      final loadedStudents = await _dbService.getStudentsByGroup(groupId);
-      students.assignAll(loadedStudents);
-      filteredStudents.assignAll(loadedStudents);
+      final loaded = await _dbService.getAllStudents();
+      students.assignAll(loaded);
+      filterStudents(); // طبّق الفلتر الحالي (إن وُجد)
     } catch (e) {
       ToastHelper.error('حدث خطأ في تحميل الطلاب');
     } finally {
@@ -35,12 +43,15 @@ class StudentController extends GetxController {
     }
   }
 
-  Future<void> loadAllStudents() async {
+  /// تحميل طلاب مجموعة — يُحدِّث `students` AND يضع الفلتر
+  /// بحيث ترى `filteredStudents` طلاب المجموعة فقط
+  Future<void> loadStudentsByGroup(int groupId) async {
     isLoading(true);
     try {
-      final loadedStudents = await _dbService.getAllStudents();
-      students.assignAll(loadedStudents);
-      filteredStudents.assignAll(loadedStudents);
+      final loaded = await _dbService.getAllStudents();
+      students.assignAll(loaded);          // حدِّث المصدر الكامل
+      selectedGroupId.value = groupId;     // ضع فلتر المجموعة
+      filterStudents();
     } catch (e) {
       ToastHelper.error('حدث خطأ في تحميل الطلاب');
     } finally {
@@ -52,13 +63,13 @@ class StudentController extends GetxController {
     return await _dbService.getAllGroups();
   }
 
+  // ── إضافة طالب ──────────────────────────────────────────────────
   Future<Student?> addStudent(Student student) async {
     try {
       final id = await _dbService.insertStudent(student);
       final newStudent = student.copyWith(id: id);
       students.add(newStudent);
-      filteredStudents.add(newStudent);
-      ToastHelper.success('تم إضافة الطالب بنجاح');
+      filterStudents(); // أعِد تطبيق الفلتر بدل الإضافة المباشرة
       return newStudent;
     } catch (e) {
       ToastHelper.error('حدث خطأ في إضافة الطالب');
@@ -66,33 +77,28 @@ class StudentController extends GetxController {
     }
   }
 
-  /// توليد كود الطالب التالي بناءً على بادئة كود المجموعة مع تسلسل يبدأ من 01
-  Future<String> generateNextStudentCode({required String groupPrefix, required int groupId}) async {
-    // اجلب طلاب المجموعة الحالية
+  /// توليد كود الطالب التالي بناءً على بادئة كود المجموعة
+  Future<String> generateNextStudentCode(
+      {required String groupPrefix, required int groupId}) async {
     final existing = await _dbService.getStudentsByGroup(groupId);
-    // استخرج الملحق الرقمي بعد البادئة
     int maxSuffix = 0;
     for (final s in existing) {
       if (s.code.startsWith(groupPrefix)) {
         final suffix = s.code.substring(groupPrefix.length);
         final numVal = int.tryParse(suffix);
-        if (numVal != null && numVal > maxSuffix) {
-          maxSuffix = numVal;
-        }
+        if (numVal != null && numVal > maxSuffix) maxSuffix = numVal;
       }
     }
     final next = maxSuffix + 1;
-    final suffixStr = next.toString().padLeft(2, '0');
-    return '$groupPrefix$suffixStr';
+    return '$groupPrefix${next.toString().padLeft(2, '0')}';
   }
 
+  // ── تعديل طالب ──────────────────────────────────────────────────
   Future<void> updateStudent(Student student) async {
     try {
       await _dbService.updateStudent(student);
       final index = students.indexWhere((s) => s.id == student.id);
-      if (index != -1) {
-        students[index] = student;
-      }
+      if (index != -1) students[index] = student;
       filterStudents();
       ToastHelper.success('تم تحديث الطالب بنجاح');
     } catch (e) {
@@ -100,6 +106,7 @@ class StudentController extends GetxController {
     }
   }
 
+  // ── حذف طالب ────────────────────────────────────────────────────
   Future<void> deleteStudent(int id) async {
     Get.defaultDialog(
       title: 'تأكيد الحذف',
@@ -128,23 +135,28 @@ class StudentController extends GetxController {
     );
   }
 
+  // ── بحث ─────────────────────────────────────────────────────────
   void searchStudents(String query) {
     searchQuery.value = query;
   }
 
+  // ── فلتر مجموعة ──────────────────────────────────────────────────
   void setGroupFilter(int? groupId) {
     selectedGroupId.value = groupId;
     filterStudents();
   }
 
+  // ── تطبيق الفلتر (يعمل دائماً على students الكاملة) ─────────────
   void filterStudents() {
-    final q = searchQuery.value.trim();
+    final q   = searchQuery.value.trim().toLowerCase();
     final gid = selectedGroupId.value;
 
     filteredStudents.assignAll(
-      students.where((student) {
-        final matchSearch = q.isEmpty || student.name.contains(q) || student.code.contains(q);
-        final matchGroup = gid == null || student.groupId == gid;
+      students.where((s) {
+        final matchSearch = q.isEmpty ||
+            s.name.toLowerCase().contains(q) ||
+            s.code.toLowerCase().contains(q);
+        final matchGroup = gid == null || s.groupId == gid;
         return matchSearch && matchGroup;
       }).toList(),
     );

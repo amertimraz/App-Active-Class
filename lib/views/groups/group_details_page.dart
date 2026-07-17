@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
+import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
@@ -15,11 +16,30 @@ import 'package:active_class/services/database_service.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/controllers/settings_controller.dart';
+import 'package:active_class/controllers/license_controller.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'dart:async';
+import 'package:active_class/widgets/add_student_sheet.dart';
+import 'package:active_class/widgets/edit_student_sheet.dart';
+
+// ─── أيقونات المجموعات (نفس قائمة groups_page) ──────────────────────────────
+const _kIconMap = <String, IconData>{
+  'group':    Icons.groups_rounded,
+  'class':    Icons.class_rounded,
+  'book':     Icons.menu_book_rounded,
+  'math':     Icons.calculate_rounded,
+  'science':  Icons.science_rounded,
+  'language': Icons.language_rounded,
+  'code':     Icons.code_rounded,
+  'star':     Icons.star_rounded,
+  'music':    Icons.music_note_rounded,
+  'art':      Icons.brush_rounded,
+  'sport':    Icons.sports_soccer_rounded,
+  'english':  Icons.translate_rounded,
+};
 
 class GroupDetailsPage extends StatefulWidget {
   const GroupDetailsPage({super.key});
@@ -32,7 +52,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   final StudentController studentController = Get.put(StudentController());
   Group? group;
   late final TextEditingController _searchCtrl;
-  
+
   bool _isSelectionMode = false;
   final Set<int> _selectedStudents = {};
   final Set<int> _paidStudentIds = {};
@@ -42,7 +62,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     super.initState();
     group = Get.arguments as Group?;
     _searchCtrl = TextEditingController(text: studentController.searchQuery.value)
-      ..selection = TextSelection.fromPosition(ui.TextPosition(offset: studentController.searchQuery.value.length));
+      ..selection = TextSelection.fromPosition(
+          ui.TextPosition(offset: studentController.searchQuery.value.length));
     _searchCtrl.addListener(() => studentController.searchStudents(_searchCtrl.text));
     final g = group;
     if (g != null && g.id != null) studentController.loadStudentsByGroup(g.id!);
@@ -51,12 +72,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
 
   Future<void> _loadPaidStudents() async {
     final paid = await DatabaseService().getPaidStudentIdsForMonth(DateTime.now());
-    if (mounted) {
-      setState(() {
-        _paidStudentIds.clear();
-        _paidStudentIds.addAll(paid);
-      });
-    }
+    if (mounted) setState(() { _paidStudentIds..clear()..addAll(paid); });
   }
 
   void _toggleSelection(int studentId) {
@@ -74,20 +90,19 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     if (_selectedStudents.isEmpty) return;
     final now = DateTime.now();
     for (final id in _selectedStudents) {
-      final a = Attendance(
-        studentId: id,
-        date: now,
-        status: status,
-      );
       try {
-        await DatabaseService().insertAttendance(a);
-      } catch (_) {} // Ignore unique constraint if already recorded
+        await DatabaseService().insertAttendance(Attendance(studentId: id, date: now, status: status));
+      } catch (_) {}
     }
     ToastHelper.success('تم تسجيل ${status == ATTENDANCE_PRESENT ? "الحضور" : "الغياب"} بنجاح');
-    setState(() {
-      _selectedStudents.clear();
-      _isSelectionMode = false;
-    });
+    setState(() { _selectedStudents.clear(); _isSelectionMode = false; });
+  }
+
+  void _refreshGroup() async {
+    final g = group;
+    if (g?.id == null) return;
+    final updated = await DatabaseService().getGroup(g!.id!);
+    if (mounted && updated != null) setState(() => group = updated);
   }
 
   @override
@@ -96,10 +111,50 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     super.dispose();
   }
 
+  // ─── helpers ─────────────────────────────────────────────────────────────
+  Color get _groupColor {
+    final c = group?.color;
+    return c != null ? Color(c) : AppTheme.primaryColor;
+  }
+
+  IconData get _groupIcon =>
+      _kIconMap[group?.icon ?? ''] ?? Icons.groups_rounded;
+
+  String _formatSchedule(String? raw) {
+    final r = raw?.trim() ?? '';
+    if (r.isEmpty) return '-';
+    final settings = Get.find<SettingsController>();
+    String fmt(TimeOfDay t) {
+      if (settings.use24hFormat.value) {
+        return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+      }
+      return DateFormat('hh:mm a', 'ar').format(DateTime(2000, 1, 1, t.hour, t.minute));
+    }
+    TimeOfDay? parse(String v) {
+      final p = v.split(':');
+      if (p.length != 2) return null;
+      final h = int.tryParse(p[0]), m = int.tryParse(p[1]);
+      if (h == null || m == null) return null;
+      return TimeOfDay(hour: h, minute: m);
+    }
+    return r.split(',').map((s) {
+      final txt = s.trim();
+      if (txt.isEmpty) return txt;
+      final sp = txt.split(' ');
+      if (sp.length < 2) return txt;
+      final day = sp.first;
+      final times = txt.substring(day.length).trim().split('-');
+      if (times.length != 2) return txt;
+      final from = parse(times[0].trim()), to = parse(times[1].trim());
+      if (from == null || to == null) return txt;
+      return '$day ${fmt(from)}-${fmt(to)}';
+    }).join('  •  ');
+  }
+
+  // ─── Build ────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final g = group;
-
     if (g == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('تفاصيل المجموعة')),
@@ -107,254 +162,106 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       );
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = _groupColor;
+
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0D1520) : const Color(0xFFF5F7FA),
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: isDark ? Colors.white : Colors.black87,
         title: _isSelectionMode
             ? Text('${_selectedStudents.length} محدد')
-            : const Text('تفاصيل المجموعة'),
+            : Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         centerTitle: true,
-        elevation: 0,
         leading: _isSelectionMode
             ? IconButton(
-                icon: const Icon(Icons.close),
+                icon: const Icon(Icons.close_rounded),
                 onPressed: () => setState(() {
                   _isSelectionMode = false;
                   _selectedStudents.clear();
                 }),
               )
             : null,
+        actions: _isSelectionMode
+            ? null
+            : [
+                IconButton(
+                  tooltip: 'تعديل المجموعة',
+                  icon: const Icon(Icons.edit_rounded),
+                  onPressed: () => _showEditGroupSheet(context, g),
+                ),
+              ],
       ),
-      floatingActionButton: _isSelectionMode ? null : FloatingActionButton(
-        onPressed: () => _gdShowAddStudentDialog(context, studentController, g),
-        child: const Icon(Icons.person_add),
-      ),
-      bottomNavigationBar: _isSelectionMode
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                      onPressed: () => _recordBulkAttendance(ATTENDANCE_PRESENT),
-                      icon: const Icon(Icons.check, color: Colors.white),
-                      label: const Text('حضور للجميع', style: TextStyle(color: Colors.white)),
+      floatingActionButton: _isSelectionMode
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () {
+                final lic = Get.find<LicenseController>();
+                final allStudents = Get.find<StudentController>().students;
+                final err = lic.checkCanAddStudent(allStudents.length);
+                if (err != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(err, style: const TextStyle(fontFamily: 'Cairo')),
+                    backgroundColor: Colors.red.shade700,
+                    duration: const Duration(seconds: 4),
+                    action: SnackBarAction(
+                      label: 'ترقية',
+                      textColor: Colors.white,
+                      onPressed: () => Get.toNamed(ROUTE_PLANS),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                      onPressed: () => _recordBulkAttendance(ATTENDANCE_ABSENT),
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      label: const Text('غياب للجميع', style: TextStyle(color: Colors.white)),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : null,
+                  ));
+                  return;
+                }
+                _showAddStudentSheet(context, g);
+              },
+              backgroundColor: primary,
+              icon: const Icon(Icons.person_add_rounded, color: Colors.white),
+              label: const Text('إضافة طالب',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            ),
+      bottomNavigationBar: _isSelectionMode ? _buildSelectionBar(primary) : null,
       body: Obx(() {
-        final List<Student> groupStudents = studentController.students
-            .where((s) => s.groupId == g.id)
-            .toList();
-        final double totalFees = groupStudents
-            .fold<double>(0.0, (sum, student) => sum + student.price);
+        final allStudents = studentController.students.where((s) => s.groupId == g.id).toList();
+        final totalFees = allStudents.fold<double>(0.0, (sum, s) => sum + s.price);
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(PADDING_NORMAL),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Card(
-                elevation: 0,
-                child: Padding(
-                  padding: const EdgeInsets.all(PADDING_SMALL),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: CircleAvatar(
-                          radius: 22,
-                          backgroundColor: AppTheme.primaryColor,
-                          child: const Icon(Icons.group, size: 22, color: Colors.white),
-                        ),
-                        title: Text(g.name, style: Theme.of(context).textTheme.titleMedium),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(height: 2),
-                            Text('رمز المجموعة: ${g.code ?? '-'}', style: Theme.of(context).textTheme.bodySmall),
-                            Text('الرسوم: ${g.price != null ? FormatHelper.formatCurrency(g.price!) : '-'}', style: Theme.of(context).textTheme.bodySmall),
-                            Obx(() {
-                              final s = Get.find<SettingsController>();
-                              String fmt(TimeOfDay t) {
-                                if (s.use24hFormat.value) return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-                                final dt = DateTime(2000, 1, 1, t.hour, t.minute);
-                                return DateFormat('hh:mm a', 'ar').format(dt);
-                              }
-                              TimeOfDay? parse(String v) {
-                                final p = v.split(':');
-                                if (p.length != 2) return null;
-                                final h = int.tryParse(p[0]);
-                                final m = int.tryParse(p[1]);
-                                if (h == null || m == null) return null;
-                                return TimeOfDay(hour: h, minute: m);
-                              }
-                              String display(String? raw) {
-                                final r = raw?.trim() ?? '';
-                                if (r.isEmpty) return '-';
-                                final parts = r.split(',');
-                                final mapped = parts.map((s) {
-                                  final txt = s.trim();
-                                  if (txt.isEmpty) return txt;
-                                  final sp = txt.split(' ');
-                                  if (sp.length < 2) return txt;
-                                  final day = sp.first;
-                                  final times = txt.substring(day.length).trim();
-                                  final range = times.split('-');
-                                  if (range.length != 2) return txt;
-                                  final from = parse(range[0].trim());
-                                  final to = parse(range[1].trim());
-                                  if (from == null || to == null) return txt;
-                                  return '$day ${fmt(from)}-${fmt(to)}';
-                                }).join(', ');
-                                return mapped.isEmpty ? '-' : mapped;
-                              }
-                              return Text('المواعيد: ${display(g.schedule)}', maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall);
-                            }),
-                          ],
-                        ),
+        return CustomScrollView(
+          slivers: [
+            // ── Header ─────────────────────────────────────────────────────
+            SliverToBoxAdapter(child: _buildHeader(context, g, allStudents, totalFees, primary, isDark)),
+
+            // ── Action buttons ──────────────────────────────────────────────
+            SliverToBoxAdapter(child: _buildActionRow(context, g, allStudents, primary)),
+
+            // ── Student list header ─────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                child: Row(
+                  children: [
+                    Text('قائمة الطلاب',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900)),
+                    const Spacer(),
+                    if (!_isSelectionMode && allStudents.isNotEmpty)
+                      TextButton.icon(
+                        onPressed: () => setState(() => _isSelectionMode = true),
+                        icon: const Icon(Icons.checklist_rounded, size: 18),
+                        label: const Text('تحديد متعدد'),
+                        style: TextButton.styleFrom(foregroundColor: primary),
                       ),
-                      const SizedBox(height: SPACING_SMALL),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red),
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                visualDensity: VisualDensity.compact,
-                              ),
-                              onPressed: () async {
-                                Get.defaultDialog(
-                                  title: 'حذف المجموعة',
-                                  middleText: 'سيتم حذف المجموعة فقط دون طلابها. هل تريد المتابعة؟',
-                                  textCancel: 'إلغاء',
-                                  textConfirm: 'حذف',
-                                  confirmTextColor: Colors.white,
-                                  onConfirm: () async {
-                                    await DatabaseService().deleteGroup(g.id!);
-                                    Get.back();
-                                    Get.back();
-                                  },
-                                );
-                              },
-                              icon: const Icon(Icons.delete),
-                              label: const Text('حذف المجموعة'),
-                            ),
-                            OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                visualDensity: VisualDensity.compact,
-                              ),
-                              onPressed: () async {
-                                Get.defaultDialog(
-                                  title: 'حذف الطلاب وتصفير الأكواد',
-                                  middleText: 'سيتم حذف جميع الطلاب وسجلاتهم لهذه المجموعة، وسيبدأ الترقيم من البداية.',
-                                  textCancel: 'إلغاء',
-                                  textConfirm: 'متابعة',
-                                  onConfirm: () async {
-                                    await DatabaseService().deleteStudentsByGroup(g.id!);
-                                    await studentController.loadStudentsByGroup(g.id!);
-                                    Get.back();
-                                    ToastHelper.success('تم حذف الطلاب وتصفير الأكواد');
-                                  },
-                                );
-                              },
-                              icon: const Icon(Icons.clear_all),
-                              label: const Text('حذف الطلاب وتصفير الأكواد'),
-                            ),
-                            OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                visualDensity: VisualDensity.compact,
-                              ),
-                              onPressed: () => _startGroupWhatsappBatchSend(context, g.id!),
-                              icon: const Icon(Icons.chat, color: Colors.green),
-                              label: const Text('إرسال واتساب للمجموعة'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
-              const SizedBox(height: SPACING_NORMAL),
-              Text(
-                'الملخص',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: SPACING_NORMAL),
-              GridView.count(
-                crossAxisCount: 2,
-                crossAxisSpacing: SPACING_NORMAL,
-                mainAxisSpacing: SPACING_NORMAL,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  StatsCard(
-                    title: 'عدد الطلاب',
-                    value: '${groupStudents.length}',
-                    icon: Icons.people,
-                    color: Colors.blue,
-                  ),
-                  StatsCard(
-                    title: 'إجمالي الرسوم',
-                    value: FormatHelper.formatCurrency(totalFees),
-                    icon: Icons.attach_money,
-                    color: Colors.green,
-                    onTap: () => _gdShowFeesBreakdownDialog(context, groupStudents),
-                  ),
-                ],
-              ),
-              const SizedBox(height: SPACING_LARGE),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'قائمة الطلاب',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ),
-                  if (!_isSelectionMode && groupStudents.isNotEmpty)
-                    TextButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _isSelectionMode = true;
-                        });
-                      },
-                      icon: const Icon(Icons.checklist),
-                      label: const Text('تحديد متعدد'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: SPACING_NORMAL),
-              Padding(
-                padding: const EdgeInsets.only(bottom: SPACING_NORMAL),
+            ),
+
+            // ── Search ─────────────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: CustomSearchBar(
                   controller: _searchCtrl,
                   hintText: 'ابحث بالاسم أو الكود...',
@@ -365,72 +272,35 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                   },
                 ),
               ),
-              if (groupStudents.isEmpty)
-                const EmptyState(
-                  icon: Icons.person_off,
-                  title: 'لا توجد طلاب',
-                  subtitle: 'ابدأ بإضافة طالب إلى المجموعة',
-                )
-              else
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: studentController.filteredStudents.length,
-                  itemBuilder: (context, index) {
-                    final student = studentController.filteredStudents[index];
-                    final isSelected = _selectedStudents.contains(student.id);
-                    final hasPaid = _paidStudentIds.contains(student.id);
-                    
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: SPACING_SMALL),
-                      color: isSelected ? AppTheme.primaryColor.withValues(alpha: 0.1) : null,
-                      child: ListTile(
-                        leading: _isSelectionMode
-                            ? Checkbox(
-                                value: isSelected,
-                                onChanged: (v) {
-                                  if (student.id != null) _toggleSelection(student.id!);
-                                },
-                              )
-                            : null,
-                        title: Row(
-                          children: [
-                            Text(student.name),
-                            if (!hasPaid) ...[
-                              const SizedBox(width: 8),
-                              const Icon(Icons.circle, color: Colors.red, size: 10),
-                            ],
-                          ],
-                        ),
-                        subtitle: Text('الكود: ${student.code}'),
-                        trailing: _isSelectionMode ? null : Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: 'QR',
-                              icon: const Icon(Icons.qr_code),
-                              onPressed: () => _gdShowQRDialog(context, student),
-                            ),
-                            IconButton(
-                              tooltip: 'تعديل',
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => _gdShowEditStudentDialog(context, studentController, student, g),
-                            ),
-                            IconButton(
-                              tooltip: 'حذف',
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () {
-                                if (student.id != null) studentController.deleteStudent(student.id!);
-                              },
-                            ),
-                          ],
-                        ),
-                        onLongPress: () {
-                          if (!_isSelectionMode) {
-                            setState(() => _isSelectionMode = true);
-                          }
-                          if (student.id != null) _toggleSelection(student.id!);
-                        },
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 10)),
+
+            // ── Students ────────────────────────────────────────────────────
+            if (studentController.filteredStudents.isEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  child: EmptyState(
+                    icon: Icons.person_off_rounded,
+                    title: 'لا يوجد طلاب',
+                    subtitle: 'اضغط على "إضافة طالب" للبدء',
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final student = studentController.filteredStudents[index];
+                      return _StudentCard(
+                        student: student,
+                        groupColor: primary,
+                        hasPaid: _paidStudentIds.contains(student.id),
+                        isSelectionMode: _isSelectionMode,
+                        isSelected: _selectedStudents.contains(student.id),
                         onTap: () {
                           if (_isSelectionMode) {
                             if (student.id != null) _toggleSelection(student.id!);
@@ -438,141 +308,971 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                             Get.toNamed(ROUTE_STUDENT_DETAILS, arguments: student);
                           }
                         },
-                      ),
-                    );
-                  },
+                        onLongPress: () {
+                          if (!_isSelectionMode) setState(() => _isSelectionMode = true);
+                          if (student.id != null) _toggleSelection(student.id!);
+                        },
+                        onQr: () => _gdShowQRDialog(context, student),
+                        onEdit: () => _showEditStudentSheet(context, student, g),
+                        onDelete: () => _confirmDeleteStudent(student),
+                      );
+                    },
+                    childCount: studentController.filteredStudents.length,
+                  ),
                 ),
-              const SizedBox(height: SPACING_LARGE),
-            ],
-          ),
+              ),
+          ],
         );
       }),
     );
   }
+
+  // ─── Header widget ────────────────────────────────────────────────────────
+  Widget _buildHeader(BuildContext context, Group g, List<Student> students,
+      double totalFees, Color primary, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [primary, primary.withValues(alpha: 0.7)],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(color: primary.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6)),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // أيقونة + اسم
+            Row(
+              children: [
+                Container(
+                  width: 56, height: 56,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Icon(_groupIcon, color: Colors.white, size: 28),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(g.name,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(g.code ?? '-',
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            // مواعيد
+            if ((g.schedule?.isNotEmpty ?? false)) ...[
+              const SizedBox(height: 14),
+              Text(_formatSchedule(g.schedule),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
+            ],
+
+            const SizedBox(height: 16),
+
+            // إحصائيات
+            Row(
+              children: [
+                _HeaderStat(label: 'الطلاب', value: '${students.length}', icon: Icons.people_rounded),
+                const SizedBox(width: 12),
+                _HeaderStat(
+                    label: 'إجمالي الرسوم',
+                    value: FormatHelper.formatCurrency(totalFees),
+                    icon: Icons.payments_rounded,
+                    onTap: students.isEmpty
+                        ? null
+                        : () => _gdShowFeesBreakdownDialog(context, students)),
+                const SizedBox(width: 12),
+                _HeaderStat(
+                    label: 'اشتراك',
+                    value: g.price != null ? FormatHelper.formatCurrency(g.price!) : '-',
+                    icon: Icons.monetization_on_rounded),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Action row ───────────────────────────────────────────────────────────
+  Widget _buildActionRow(BuildContext context, Group g, List<Student> students, Color primary) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Row(
+        children: [
+          // ── زر الواتساب (يتحكم في ظهوره من الإعدادات) ───────────
+          Obx(() {
+            final settings = Get.find<SettingsController>();
+            if (!settings.whatsappEnabled.value) {
+              return const SizedBox.shrink();
+            }
+            final reached = settings.isWhatsappDayReached;
+            return Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: _ActionChip(
+                icon: Icons.chat_rounded,
+                label: 'واتساب',
+                color: reached ? Colors.green : Colors.grey,
+                onTap: reached
+                    ? () => _startGroupWhatsappBatchSend(context, g.id!)
+                    : () => ToastHelper.info(
+                        'زر الواتساب يظهر يوم '
+                        '${settings.whatsappSendDay.value} من الشهر'),
+              ),
+            );
+          }),
+          _ActionChip(
+            icon: Icons.clear_all_rounded,
+            label: 'تصفير الطلاب',
+            color: Colors.orange,
+            onTap: () => _confirmResetStudents(g),
+          ),
+          const SizedBox(width: 8),
+          _ActionChip(
+            icon: Icons.delete_rounded,
+            label: 'حذف',
+            color: Colors.red,
+            onTap: () => _confirmDeleteGroup(g),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Selection bottom bar ─────────────────────────────────────────────────
+  Widget _buildSelectionBar(Color primary) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: Colors.green),
+              onPressed: () => _recordBulkAttendance(ATTENDANCE_PRESENT),
+              icon: const Icon(Icons.check_rounded),
+              label: const Text('حضور'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => _recordBulkAttendance(ATTENDANCE_ABSENT),
+              icon: const Icon(Icons.close_rounded),
+              label: const Text('غياب'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Dialogs / sheets ─────────────────────────────────────────────────────
+  void _confirmDeleteGroup(Group g) {
+    Get.defaultDialog(
+      title: 'حذف المجموعة',
+      middleText: 'سيتم حذف المجموعة فقط دون طلابها. هل تريد المتابعة؟',
+      textCancel: 'إلغاء',
+      textConfirm: 'حذف',
+      confirmTextColor: Colors.white,
+      buttonColor: Colors.red,
+      onConfirm: () async {
+        await DatabaseService().deleteGroup(g.id!);
+        Get.back(); // close dialog
+        Get.back(); // back to groups list
+      },
+    );
+  }
+
+  void _confirmResetStudents(Group g) {
+    Get.defaultDialog(
+      title: 'تصفير الطلاب',
+      middleText: 'سيتم حذف جميع الطلاب وسجلاتهم لهذه المجموعة. هل تريد المتابعة؟',
+      textCancel: 'إلغاء',
+      textConfirm: 'متابعة',
+      confirmTextColor: Colors.white,
+      buttonColor: Colors.orange,
+      onConfirm: () async {
+        await DatabaseService().deleteStudentsByGroup(g.id!);
+        await studentController.loadStudentsByGroup(g.id!);
+        Get.back();
+        ToastHelper.success('تم حذف الطلاب وتصفير الأكواد');
+      },
+    );
+  }
+
+  void _confirmDeleteStudent(Student student) {
+    Get.defaultDialog(
+      title: 'حذف الطالب',
+      middleText: 'هل تريد حذف ${student.name}؟',
+      textCancel: 'إلغاء',
+      textConfirm: 'حذف',
+      confirmTextColor: Colors.white,
+      buttonColor: Colors.red,
+      onConfirm: () async {
+        if (student.id != null) await studentController.deleteStudent(student.id!);
+        Get.back();
+      },
+    );
+  }
+
+  void _showEditGroupSheet(BuildContext context, Group g) {
+    final groupController = Get.find<GroupController>();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _GroupEditSheet(
+        group: g,
+        onSave: (updated) async {
+          await groupController.updateGroup(updated);
+          _refreshGroup();
+          ToastHelper.success('تم حفظ التعديلات', title: 'تم');
+        },
+      ),
+    );
+  }
+
+  void _showAddStudentSheet(BuildContext context, Group g) {
+    showAddStudentSheet(
+      context,
+      controller: studentController,
+      preselectedGroup: g,
+      onAdded: _loadPaidStudents,
+    );
+  }
+
+  Future<void> _showEditStudentSheet(
+      BuildContext context, Student student, Group g) async {
+    await showEditStudentSheet(
+      context,
+      student: student,
+      accentColor: _groupColor,
+      controller: studentController,
+    );
+    _loadPaidStudents();
+  }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Header stat card
+// ─────────────────────────────────────────────────────────────────────────────
+class _HeaderStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  const _HeaderStat({required this.label, required this.value, required this.icon, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: Colors.white, size: 18),
+              const SizedBox(height: 4),
+              Text(value,
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+              Text(label,
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 10),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Action chip
+// ─────────────────────────────────────────────────────────────────────────────
+class _ActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ActionChip({required this.icon, required this.label, required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withValues(alpha: 0.25)),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(height: 3),
+              Text(label,
+                  style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Student card
+// ─────────────────────────────────────────────────────────────────────────────
+class _StudentCard extends StatelessWidget {
+  final Student student;
+  final Color groupColor;
+  final bool hasPaid;
+  final bool isSelectionMode;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  final VoidCallback onQr;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _StudentCard({
+    required this.student,
+    required this.groupColor,
+    required this.hasPaid,
+    required this.isSelectionMode,
+    required this.isSelected,
+    required this.onTap,
+    required this.onLongPress,
+    required this.onQr,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final initials = student.name.trim().isNotEmpty ? student.name.trim()[0] : '؟';
+
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? groupColor.withValues(alpha: 0.12)
+              : (isDark ? const Color(0xFF1A2540) : Colors.white),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? groupColor : Colors.transparent,
+            width: 1.5,
+          ),
+          boxShadow: [
+            if (!isDark)
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2)),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              // Checkbox or Avatar
+              if (isSelectionMode)
+                Padding(
+                  padding: const EdgeInsets.only(left: 10),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 24, height: 24,
+                    decoration: BoxDecoration(
+                      color: isSelected ? groupColor : Colors.transparent,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: isSelected ? groupColor : Colors.grey.shade400, width: 2),
+                    ),
+                    child: isSelected
+                        ? const Icon(Icons.check_rounded, color: Colors.white, size: 14)
+                        : null,
+                  ),
+                )
+              else
+                Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: groupColor.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(initials,
+                        style: TextStyle(
+                            color: groupColor,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 18)),
+                  ),
+                ),
+
+              const SizedBox(width: 12),
+
+              // Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(student.name,
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                        if (!hasPaid) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text('لم يدفع',
+                                style: TextStyle(
+                                    color: Colors.red, fontSize: 9, fontWeight: FontWeight.w700)),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(student.code,
+                        style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                  ],
+                ),
+              ),
+
+              // Actions
+              if (!isSelectionMode)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _IconBtn(icon: Icons.qr_code_rounded, color: groupColor, onTap: onQr),
+                    const SizedBox(width: 4),
+                    PopupMenuButton<String>(
+                      icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade500, size: 20),
+                      onSelected: (v) {
+                        if (v == 'edit') onEdit();
+                        if (v == 'delete') onDelete();
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit_rounded, size: 18), SizedBox(width: 8), Text('تعديل')])),
+                        const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_rounded, size: 18, color: Colors.red), SizedBox(width: 8), Text('حذف', style: TextStyle(color: Colors.red))])),
+                      ],
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _IconBtn extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  const _IconBtn({required this.icon, required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 34, height: 34,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: color, size: 18),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// تعديل المجموعة (bottom sheet بسيط — يعيد استخدام _GroupFormSheet من groups_page)
+// ─────────────────────────────────────────────────────────────────────────────
+class _GroupEditSheet extends StatefulWidget {
+  final Group group;
+  final Future<void> Function(Group) onSave;
+  const _GroupEditSheet({required this.group, required this.onSave});
+
+  @override
+  State<_GroupEditSheet> createState() => _GroupEditSheetState();
+}
+
+class _GroupEditSheetState extends State<_GroupEditSheet> {
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _codeCtrl;
+  late final TextEditingController _priceCtrl;
+  late final TextEditingController _scheduleCtrl;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final g = widget.group;
+    _nameCtrl    = TextEditingController(text: g.name);
+    _codeCtrl    = TextEditingController(text: g.code ?? '');
+    _priceCtrl   = TextEditingController(text: g.price?.toString() ?? '');
+    _scheduleCtrl = TextEditingController(text: g.schedule ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose(); _codeCtrl.dispose();
+    _priceCtrl.dispose(); _scheduleCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final name = _nameCtrl.text.trim();
+    final code = _codeCtrl.text.trim();
+    final price = double.tryParse(_priceCtrl.text.trim());
+    if (name.isEmpty) { ToastHelper.info('أدخل اسم المجموعة'); return; }
+    if (code.isEmpty) { ToastHelper.info('أدخل بادئة الكود'); return; }
+    if (price == null) { ToastHelper.info('السعر غير صالح'); return; }
+
+    setState(() => _saving = true);
+    await widget.onSave(widget.group.copyWith(
+      name: name,
+      code: code,
+      price: price,
+      schedule: _scheduleCtrl.text.trim().isEmpty ? null : _scheduleCtrl.text.trim(),
+    ));
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = widget.group.color != null ? Color(widget.group.color!) : AppTheme.primaryColor;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF131D31) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: EdgeInsets.fromLTRB(20, 16, 20,
+          MediaQuery.of(context).viewInsets.bottom + 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(child: Container(width: 40, height: 4,
+              decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: 14),
+          Text('تعديل المجموعة',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 16),
+          CustomTextField(controller: _nameCtrl, label: 'اسم المجموعة'),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: CustomTextField(controller: _codeCtrl, label: 'بادئة الكود')),
+            const SizedBox(width: 12),
+            Expanded(child: CustomTextField(controller: _priceCtrl, label: 'السعر', keyboardType: TextInputType.number)),
+          ]),
+          const SizedBox(height: 12),
+          _GDScheduleLabel(),
+          const SizedBox(height: 8),
+          _GDScheduleEditor(controller: _scheduleCtrl),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed: _saving ? null : _submit,
+            style: FilledButton.styleFrom(
+              backgroundColor: primary,
+              minimumSize: const Size.fromHeight(50),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            icon: _saving
+                ? const SizedBox(width: 18, height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.save_rounded),
+            label: const Text('حفظ التعديلات',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GDScheduleLabel extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) =>
+      const Text('المواعيد الأسبوعية', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Schedule editor (minimal, reused from groups_page logic)
+// ─────────────────────────────────────────────────────────────────────────────
+class _GDScheduleEditor extends StatefulWidget {
+  final TextEditingController controller;
+  const _GDScheduleEditor({required this.controller});
+
+  @override
+  State<_GDScheduleEditor> createState() => _GDScheduleEditorState();
+}
+
+class _GDScheduleEditorState extends State<_GDScheduleEditor> {
+  static const _days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+  List<_Slot> _slots = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _slots = _parse(widget.controller.text);
+    if (_slots.isEmpty) _slots = [_Slot(), _Slot()];
+  }
+
+  List<_Slot> _parse(String raw) {
+    final parts = raw.split(',').where((e) => e.trim().isNotEmpty).toList();
+    return parts.map((p) {
+      final t = p.trim();
+      final sp = t.split(' ');
+      if (sp.length < 2) return _Slot(day: t);
+      final day = sp.first;
+      final range = t.substring(day.length).trim().split('-');
+      TimeOfDay? from, to;
+      TimeOfDay? parse(String v) {
+        final pp = v.split(':');
+        if (pp.length != 2) return null;
+        final h = int.tryParse(pp[0].trim()), m = int.tryParse(pp[1].trim());
+        if (h == null || m == null) return null;
+        return TimeOfDay(hour: h, minute: m);
+      }
+      if (range.length == 2) { from = parse(range[0]); to = parse(range[1]); }
+      return _Slot(day: day, from: from, to: to);
+    }).toList();
+  }
+
+  void _sync() {
+    final parts = _slots.map((s) {
+      if (s.day == null) return '';
+      if (s.from == null || s.to == null) return s.day!;
+      String fmt(TimeOfDay t) =>
+          '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+      return '${s.day} ${fmt(s.from!)}-${fmt(s.to!)}';
+    }).where((e) => e.isNotEmpty).join(',');
+    widget.controller.text = parts;
+  }
+
+  Future<void> _pickTime(int i, bool isFrom) async {
+    final t = await showTimePicker(
+      context: context,
+      initialTime: (isFrom ? _slots[i].from : _slots[i].to) ?? TimeOfDay.now(),
+    );
+    if (t == null) return;
+    setState(() {
+      if (isFrom) {
+        // حساب مدة الحصة الحالية والحفاظ عليها عند تغيير البداية
+        final oldFrom = _slots[i].from;
+        final oldTo   = _slots[i].to;
+        int durMins = 60; // افتراضي ساعة
+        if (oldFrom != null && oldTo != null) {
+          final d = oldTo.hour * 60 + oldTo.minute
+                  - (oldFrom.hour * 60 + oldFrom.minute);
+          if (d > 0) durMins = d;
+        }
+        _slots[i].from = t;
+        final endTotal = (t.hour * 60 + t.minute + durMins) % (24 * 60);
+        _slots[i].to = TimeOfDay(hour: endTotal ~/ 60, minute: endTotal % 60);
+      } else {
+        // تعديل النهاية فقط — البداية لا تتغير
+        _slots[i].to = t;
+      }
+      _sync();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        ..._slots.asMap().entries.map((e) {
+          final i = e.key;
+          final s = e.value;
+          String fmtT(TimeOfDay? t) => t == null ? '--:--'
+              : '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _days.contains(s.day) ? s.day : null,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    isDense: true,
+                  ),
+                  hint: const Text('اليوم', style: TextStyle(fontSize: 13)),
+                  items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 13)))).toList(),
+                  onChanged: (v) => setState(() { _slots[i].day = v; _sync(); }),
+                ),
+              ),
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: () => _pickTime(i, true),
+                child: _TimeBox(label: fmtT(s.from)),
+              ),
+              const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text('-')),
+              GestureDetector(
+                onTap: () => _pickTime(i, false),
+                child: _TimeBox(label: fmtT(s.to)),
+              ),
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: _slots.length > 1 ? () => setState(() { _slots.removeAt(i); _sync(); }) : null,
+                child: Icon(Icons.remove_circle_rounded,
+                    color: _slots.length > 1 ? Colors.red.shade300 : Colors.grey.shade300, size: 20),
+              ),
+            ]),
+          );
+        }),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: () => setState(() => _slots.add(_Slot())),
+            icon: const Icon(Icons.add_rounded, size: 16),
+            label: const Text('إضافة موعد', style: TextStyle(fontSize: 13)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TimeBox extends StatelessWidget {
+  final String label;
+  const _TimeBox({required this.label});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(label, style: const TextStyle(fontSize: 12)),
+    );
+  }
+}
+
+class _Slot {
+  String? day;
+  TimeOfDay? from;
+  TimeOfDay? to;
+  _Slot({this.day, this.from, this.to});
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QR dialog
+// ─────────────────────────────────────────────────────────────────────────────
+void _gdShowQRDialog(BuildContext context, Student student) {
+  showDialog(
+    context: context,
+    builder: (ctx) => FutureBuilder<Group?>(
+      future: DatabaseService().getGroup(student.groupId),
+      builder: (_, snap) {
+        final groupName = snap.data?.name ?? '';
+        return AlertDialog(
+          title: const Text('QR Code'),
+          content: SizedBox(
+            width: 280,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(student.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+              if (groupName.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text('المجموعة: $groupName', style: const TextStyle(fontSize: 13)),
+              ],
+              const SizedBox(height: 12),
+              if (student.code.trim().isEmpty)
+                const Text('لا يوجد كود', style: TextStyle(color: Colors.red))
+              else
+                QrImageView(data: student.code, version: QrVersions.auto, size: 200,
+                    backgroundColor: Colors.white),
+              const SizedBox(height: 8),
+              Text('الكود: ${student.code}'),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('إغلاق')),
+            FilledButton.icon(
+              onPressed: student.code.trim().isEmpty ? null : () async {
+                final ok = await _gdSaveStudentQrImage(student);
+                if (!ctx.mounted) return;
+                if (ok) { ToastHelper.success('تم حفظ صورة QR'); }
+                else { ToastHelper.error('تعذر حفظ صورة QR'); }
+              },
+              icon: const Icon(Icons.download_rounded),
+              label: const Text('حفظ'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Save QR image to gallery
+// ─────────────────────────────────────────────────────────────────────────────
 Future<bool> _gdSaveStudentQrImage(Student student) async {
   try {
     final group = await DatabaseService().getGroup(student.groupId);
     final groupName = group?.name;
-
     const int qrSize = 700;
-    const double padding = 40;
-    const double spacing = 24;
+    const double padding = 40, spacing = 24;
 
     final painter = QrPainter(
-      data: student.code,
-      version: QrVersions.auto,
+      data: student.code, version: QrVersions.auto,
       eyeStyle: const QrEyeStyle(color: Color(0xFF000000)),
       dataModuleStyle: const QrDataModuleStyle(color: Color(0xFF000000)),
     );
     final ui.Image qrImage = await painter.toImage(qrSize.toDouble());
 
-    final textStyleTitle = const TextStyle(color: Colors.black, fontSize: 48, fontWeight: FontWeight.w600, fontFamily: 'Cairo');
-    final textStyleSub = const TextStyle(color: Colors.black, fontSize: 36, fontFamily: 'Cairo');
+    const textStyleTitle = TextStyle(color: Colors.black, fontSize: 48, fontWeight: FontWeight.w600, fontFamily: 'Cairo');
+    const textStyleSub   = TextStyle(color: Colors.black, fontSize: 36, fontFamily: 'Cairo');
 
     final tpName = TextPainter(
       text: TextSpan(text: student.name, style: textStyleTitle),
-      textAlign: TextAlign.center,
-      textDirection: ui.TextDirection.rtl,
+      textAlign: TextAlign.center, textDirection: ui.TextDirection.rtl,
     )..layout(maxWidth: qrSize.toDouble());
 
     final groupLine = (groupName == null || groupName.isEmpty) ? null : 'المجموعة: $groupName';
-    final TextPainter? tpGroup = groupLine == null
-        ? null
-        : (TextPainter(
-            text: TextSpan(text: groupLine, style: textStyleSub),
-            textAlign: TextAlign.center,
-            textDirection: ui.TextDirection.rtl,
-          )..layout(maxWidth: qrSize.toDouble()));
+    final TextPainter? tpGroup = groupLine == null ? null
+        : (TextPainter(text: TextSpan(text: groupLine, style: textStyleSub),
+            textAlign: TextAlign.center, textDirection: ui.TextDirection.rtl)
+            ..layout(maxWidth: qrSize.toDouble()));
 
-    final codeLine = 'الكود: ${student.code}';
     final tpCode = TextPainter(
-      text: TextSpan(text: codeLine, style: textStyleSub),
-      textAlign: TextAlign.center,
-      textDirection: ui.TextDirection.ltr,
+      text: TextSpan(text: 'الكود: ${student.code}', style: textStyleSub),
+      textAlign: TextAlign.center, textDirection: ui.TextDirection.ltr,
     )..layout(maxWidth: qrSize.toDouble());
 
     final double textHeight = tpName.height + (tpGroup?.height ?? 0) + tpCode.height + spacing * 2;
-
     final int widthPx = (qrSize + padding * 2).round();
     final int heightPx = (padding + qrSize + spacing + textHeight + padding).round();
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    final bg = Paint()..color = const Color(0xFFFFFFFF);
-    canvas.drawRect(Rect.fromLTWH(0, 0, widthPx.toDouble(), heightPx.toDouble()), bg);
+    canvas.drawRect(Rect.fromLTWH(0, 0, widthPx.toDouble(), heightPx.toDouble()),
+        Paint()..color = const Color(0xFFFFFFFF));
 
-    final double qrLeft = (widthPx - qrSize) / 2;
-    final double qrTop = padding;
-    final srcRect = Rect.fromLTWH(0, 0, qrSize.toDouble(), qrSize.toDouble());
-    final dstRect = Rect.fromLTWH(qrLeft, qrTop, qrSize.toDouble(), qrSize.toDouble());
-    canvas.drawImageRect(qrImage, srcRect, dstRect, Paint());
+    final qrLeft = (widthPx - qrSize) / 2;
+    canvas.drawImageRect(qrImage,
+        Rect.fromLTWH(0, 0, qrSize.toDouble(), qrSize.toDouble()),
+        Rect.fromLTWH(qrLeft, padding, qrSize.toDouble(), qrSize.toDouble()), Paint());
 
-    double cursorY = qrTop + qrSize + spacing;
-    tpName.paint(canvas, Offset((widthPx - tpName.width) / 2, cursorY));
-    cursorY += tpName.height + 8;
-    if (tpGroup != null) {
-      tpGroup.paint(canvas, Offset((widthPx - tpGroup.width) / 2, cursorY));
-      cursorY += tpGroup.height + 8;
-    }
-    tpCode.paint(canvas, Offset((widthPx - tpCode.width) / 2, cursorY));
+    double y = padding + qrSize + spacing;
+    tpName.paint(canvas, Offset((widthPx - tpName.width) / 2, y)); y += tpName.height + 8;
+    if (tpGroup != null) { tpGroup.paint(canvas, Offset((widthPx - tpGroup.width) / 2, y)); y += tpGroup.height + 8; }
+    tpCode.paint(canvas, Offset((widthPx - tpCode.width) / 2, y));
 
     final composed = await recorder.endRecording().toImage(widthPx, heightPx);
     final byteData = await composed.toByteData(format: ui.ImageByteFormat.png);
     if (byteData == null) return false;
-    final bytes = byteData.buffer.asUint8List();
 
     await Permission.storage.request();
     await MediaStore.ensureInitialized();
-    MediaStore.appFolder = "ActiveClass";
+    MediaStore.appFolder = 'ActiveClass';
 
     final tmpDir = await getTemporaryDirectory();
     final tmpFile = File('${tmpDir.path}/student_qr_${student.code}.png');
-    await tmpFile.writeAsBytes(bytes, flush: true);
+    await tmpFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
 
     var saveInfo = await MediaStore().saveFile(
-      tempFilePath: tmpFile.path,
-      dirType: DirType.photo,
-      dirName: DirType.photo.defaults,
-    );
-
+        tempFilePath: tmpFile.path, dirType: DirType.photo, dirName: DirType.photo.defaults);
     if (saveInfo?.uri == null) {
       saveInfo = await MediaStore().saveFile(
-        tempFilePath: tmpFile.path,
-        dirType: DirType.download,
-        dirName: DirType.download.defaults,
-      );
+          tempFilePath: tmpFile.path, dirType: DirType.download, dirName: DirType.download.defaults);
     }
 
     final success = saveInfo?.uri != null;
-    if (success && saveInfo?.uri != null) {
+    if (success) {
       try {
-        final sUri = saveInfo?.uri;
-        if (sUri != null) {
-          final path = await MediaStore().getFilePathFromUri(uriString: sUri.toString());
-          if (path != null && path.isNotEmpty) {
-            await DatabaseService().updateStudent(student.copyWith(qrPath: path));
-          }
+        final path = await MediaStore().getFilePathFromUri(uriString: saveInfo!.uri.toString());
+        if (path != null && path.isNotEmpty) {
+          await DatabaseService().updateStudent(student.copyWith(qrPath: path));
         }
       } catch (_) {}
     }
     return success;
-  } catch (_) {
-    return false;
-  }
+  } catch (_) { return false; }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WhatsApp batch send
+// ─────────────────────────────────────────────────────────────────────────────
 Future<void> _startGroupWhatsappBatchSend(BuildContext context, int groupId) async {
   final db = DatabaseService();
   final settings = Get.find<SettingsController>();
   final students = await db.getStudentsByGroup(groupId);
   final valid = students.where((s) => (s.guardianPhone ?? '').trim().isNotEmpty).toList()
     ..sort((a, b) => a.name.compareTo(b.name));
-  if (valid.isEmpty) {
-    ToastHelper.info('لا يوجد أولياء أمور بأرقام مسجلة');
-    return;
-  }
+  if (valid.isEmpty) { ToastHelper.info('لا يوجد أولياء أمور بأرقام مسجلة'); return; }
   if (!context.mounted) return;
   await _pickAndSend(context, valid, settings);
 }
@@ -581,8 +1281,7 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all, SettingsContr
   final db = DatabaseService();
   final now = DateTime.now();
   final start = DateTime(now.year, now.month, 1);
-  final nextMonth = DateTime(now.year, now.month + 1, 1);
-  final end = nextMonth.subtract(const Duration(days: 1));
+  final end = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
   final sentMap = await db.getReportSentMap(all.map((s) => s.id!).toList(), start);
 
   String normalize(String input, String defaultDial) {
@@ -601,39 +1300,114 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all, SettingsContr
     barrierDismissible: false,
     builder: (ctx) {
       List<Student> items = List.of(all);
-      List<bool> sel = List<bool>.filled(items.length, true);
+      // افتراضياً: الطلاب اللي اتبعتلهم الشهر ده ميتشيكوش (عشان ميتكررش الإرسال)
+      List<bool> sel =
+          items.map((s) => !sentMap.containsKey(s.id)).toList();
       bool sending = false;
       return StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('اختر أولياء الأمور'),
+        builder: (ctx, setSt) {
+          final sentCount      = items.where((s) => sentMap.containsKey(s.id)).length;
+          final remainingCount = items.length - sentCount;
+          final selectedCount  = sel.where((e) => e).length;
+          return AlertDialog(
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('إرسال تقرير واتساب'),
+              const SizedBox(height: 6),
+              Row(children: [
+                _SendStatBadge(
+                    label: 'تم الإرسال', count: sentCount,
+                    color: const Color(0xFF10B981),
+                    icon: Icons.check_circle_rounded),
+                const SizedBox(width: 8),
+                _SendStatBadge(
+                    label: 'لم يُرسل', count: remainingCount,
+                    color: const Color(0xFFF59E0B),
+                    icon: Icons.schedule_rounded),
+              ]),
+            ],
+          ),
           content: SizedBox(
             width: 460,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // أزرار تحديد سريعة
+                Row(children: [
+                  TextButton.icon(
+                    onPressed: sending
+                        ? null
+                        : () => setSt(() {
+                              for (int i = 0; i < sel.length; i++) {
+                                sel[i] = !sentMap.containsKey(items[i].id);
+                              }
+                            }),
+                    icon: const Icon(Icons.filter_alt_rounded, size: 16),
+                    label: const Text('غير المُرسَل فقط'),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: sending
+                        ? null
+                        : () => setSt(() {
+                              for (int i = 0; i < sel.length; i++) {
+                                sel[i] = true;
+                              }
+                            }),
+                    child: const Text('تحديد الكل'),
+                  ),
+                ]),
+                const Divider(height: 1),
                 SizedBox(
-                  height: 360,
-                  width: double.maxFinite,
+                  height: 320,
                   child: ListView.builder(
                     itemCount: items.length,
                     itemBuilder: (_, i) {
                       final s = items[i];
                       final last = sentMap[s.id!];
+                      final alreadySent = last != null;
                       return CheckboxListTile(
                         value: sel[i],
-                        onChanged: sending ? null : (v) => setState(() => sel[i] = v ?? false),
-                        title: Text(s.name),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(s.guardianPhone ?? '-'),
-                            if (last != null)
-                              Text(
-                                'آخر إرسال: ${FormatHelper.formatDateTime(last)}',
-                                style: Theme.of(ctx).textTheme.bodySmall,
+                        onChanged: sending
+                            ? null
+                            : (v) => setSt(() => sel[i] = v ?? false),
+                        title: Row(children: [
+                          Expanded(child: Text(s.name)),
+                          if (alreadySent)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981)
+                                    .withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                          ],
-                        ),
+                              child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.check_circle_rounded,
+                                        size: 13,
+                                        color: Color(0xFF10B981)),
+                                    SizedBox(width: 3),
+                                    Text('تم الإرسال',
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF10B981))),
+                                  ]),
+                            ),
+                        ]),
+                        subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(s.guardianPhone ?? '-'),
+                              if (last != null)
+                                Text(
+                                    'آخر إرسال: ${FormatHelper.formatDateTime(last)}',
+                                    style:
+                                        Theme.of(ctx).textTheme.bodySmall),
+                            ]),
                         controlAffinity: ListTileControlAffinity.leading,
                       );
                     },
@@ -644,103 +1418,110 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all, SettingsContr
           ),
           actions: [
             TextButton(onPressed: sending ? null : () => Navigator.of(ctx).pop(), child: const Text('إلغاء')),
-            ElevatedButton(
-              onPressed: sending || !sel.any((e) => e)
-                  ? null
-                  : () async {
-                      setState(() => sending = true);
-                      for (int i = 0; i < items.length; i++) {
-                        if (!sel[i]) continue;
-                        final s = items[i];
-                        final rawPhone = s.guardianPhone!.trim();
-                        final phone = normalize(rawPhone, settings.countryDial.value);
+            FilledButton(
+              onPressed: sending || selectedCount == 0 ? null : () async {
+                setSt(() => sending = true);
+                for (int i = 0; i < items.length; i++) {
+                  if (!sel[i]) continue;
+                  final s = items[i];
+                  final phone = normalize(s.guardianPhone!.trim(), settings.countryDial.value);
+                  final group = await db.getGroup(s.groupId);
+                  final atts = await db.getAttendanceByStudent(s.id!);
+                  final pays = await db.getPaymentsByStudent(s.id!);
+                  final attsMonth = atts.where((a) => !a.date.isBefore(start) && !a.date.isAfter(end)).toList();
+                  final paysMonth = pays.where((p) => !p.date.isBefore(start) && !p.date.isAfter(end)).toList();
+                  final present = attsMonth.where((a) => a.status == ATTENDANCE_PRESENT).length;
+                  final absent  = attsMonth.where((a) => a.status == ATTENDANCE_ABSENT).length;
+                  final total   = present + absent;
+                  final percent = total == 0 ? 0.0 : (present / total) * 100.0;
+                  final totalPaid = paysMonth.fold<double>(0.0, (sum, p) => sum + p.amount);
 
-                        final group = await db.getGroup(s.groupId);
-                        final groupName = group?.name ?? '-';
+                  final buffer = StringBuffer()
+                    ..writeln('🧾 تقرير الشهر: ${DateFormat('MMMM yyyy', 'ar').format(start)}')
+                    ..writeln('👤 الاسم: ${s.name}')
+                    ..writeln('🆔 الكود: ${s.code}')
+                    ..writeln('👥 المجموعة: ${group?.name ?? '-'}')
+                    ..writeln('📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
+                    ..writeln('')
+                    ..writeln('📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
 
-                        final atts = await db.getAttendanceByStudent(s.id!);
-                        final pays = await db.getPaymentsByStudent(s.id!);
+                  final attsSorted = List.of(attsMonth)..sort((a, b) => b.date.compareTo(a.date));
+                  if (attsSorted.isNotEmpty) {
+                    buffer.writeln('\n📅 سجلات الحضور:');
+                    for (final a in attsSorted.take(10)) {
+                      buffer.writeln('• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب'}');
+                    }
+                  }
+                  buffer.writeln('\n💰 المدفوعات: إجمالي ${FormatHelper.formatCurrency(totalPaid)}');
+                  for (final p in (List.of(paysMonth)..sort((a, b) => b.date.compareTo(a.date)))) {
+                    buffer.writeln('• ${DateFormat('yyyy-MM-dd HH:mm').format(p.date)} — ${FormatHelper.formatCurrency(p.amount)}');
+                  }
+                  final tName = settings.teacherFullName.value.trim();
+                  final tSpec = settings.teacherSpecialization.value.trim();
+                  if (tName.isNotEmpty || tSpec.isNotEmpty) {
+                    buffer.writeln('\n👨‍🏫 المعلم: ${tName.isNotEmpty ? tName : '-'}');
+                    buffer.writeln('📘 التخصص: ${tSpec.isNotEmpty ? tSpec : '-'}');
+                  }
+                  buffer.writeln('\nتم الإرسال من تطبيق Active Class');
 
-                        final monthEnd = DateTime(end.year, end.month, end.day, 23, 59, 59);
-                        final attsMonth = atts.where((a) => !a.date.isBefore(start) && !a.date.isAfter(monthEnd)).toList();
-                        final paysMonth = pays.where((p) => !p.date.isBefore(start) && !p.date.isAfter(monthEnd)).toList();
+                  final uri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(buffer.toString())}');
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  await _gdWaitForResume();
 
-                        final present = attsMonth.where((a) => a.status == ATTENDANCE_PRESENT).length;
-                        final absent = attsMonth.where((a) => a.status == ATTENDANCE_ABSENT).length;
-                        final total = present + absent;
-                        final percent = total == 0 ? 0.0 : (present / total) * 100.0;
-                        final totalPaid = paysMonth.fold<double>(0.0, (sum, p) => sum + p.amount);
+                  final sentAt = DateTime.now();
+                  await db.upsertReportLog(s.id!, start, sentAt);
+                  ToastHelper.success('تم إرسال التقرير لـ ${s.name}');
 
-                        final attsSorted = List.of(attsMonth)..sort((a, b) => b.date.compareTo(a.date));
-                        final paysSorted = List.of(paysMonth)..sort((a, b) => b.date.compareTo(a.date));
-
-                        final buffer = StringBuffer()
-                          ..writeln('🧾 تقرير الشهر: ${DateFormat('MMMM yyyy', 'ar').format(start)}')
-                          ..writeln('👤 الاسم: ${s.name}')
-                          ..writeln('🆔 الكود: ${s.code}')
-                          ..writeln('👥 المجموعة: $groupName')
-                          ..writeln('📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
-                          ..writeln('')
-                          ..writeln('📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
-
-                        if (attsSorted.isNotEmpty) {
-                          buffer.writeln('');
-                          buffer.writeln('📅 سجلات الحضور:');
-                          for (final a in attsSorted.take(10)) {
-                            final d = DateFormat('yyyy-MM-dd').format(a.date);
-                            final st = a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب';
-                            buffer.writeln('• $d — $st');
-                          }
-                          if (attsSorted.length > 10) buffer.writeln('• … ${attsSorted.length - 10} سجلات إضافية');
-                        }
-
-                        buffer
-                          ..writeln('')
-                          ..writeln('💰 المدفوعات: إجمالي ${FormatHelper.formatCurrency(totalPaid)}');
-
-                        if (paysSorted.isNotEmpty) {
-                          for (final p in paysSorted) {
-                            final d = DateFormat('yyyy-MM-dd').format(p.date);
-                            buffer.writeln('• $d — ${FormatHelper.formatCurrency(p.amount)}');
-                          }
-                        }
-
-                        final tName = settings.teacherFullName.value.trim();
-                        final tSpec = settings.teacherSpecialization.value.trim();
-                        if (tName.isNotEmpty || tSpec.isNotEmpty) {
-                          buffer
-                            ..writeln('')
-                            ..writeln('👨‍🏫 المعلم: ${tName.isNotEmpty ? tName : '-'}')
-                            ..writeln('📘 التخصص: ${tSpec.isNotEmpty ? tSpec : '-'}');
-                        }
-                        buffer
-                          ..writeln('')
-                          ..writeln('تم الإرسال من تطبيق Active Class');
-
-                        final uri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(buffer.toString())}');
-                        await launchUrl(uri, mode: LaunchMode.externalApplication);
-                        await _gdWaitForResume();
-
-                        final sentAt = DateTime.now();
-                        await db.upsertReportLog(s.id!, start, sentAt);
-                        ToastHelper.success('تم إرسال التقرير لولي أمر الطالب ${s.name}');
-
-                        setState(() {
-                          sentMap[s.id!] = sentAt;
-                          items.removeAt(i);
-                          sel.removeAt(i);
-                          i--;
-                        });
-                      }
-                      if (ctx.mounted) Navigator.of(ctx).pop();
-                    },
-              child: const Text('ابدأ الإرسال'),
+                  setSt(() {
+                    sentMap[s.id!] = sentAt;
+                    items.removeAt(i);
+                    sel.removeAt(i);
+                    i--;
+                  });
+                }
+                if (ctx.mounted) Navigator.of(ctx).pop();
+              },
+              child: Text('ابدأ الإرسال ($selectedCount)'),
             ),
           ],
-        ),
+        );
+        },
       );
     },
   );
+}
+
+// شارة إحصائية صغيرة في عنوان نافذة الإرسال
+class _SendStatBadge extends StatelessWidget {
+  final String   label;
+  final int      count;
+  final Color    color;
+  final IconData icon;
+  const _SendStatBadge({
+    required this.label,
+    required this.count,
+    required this.color,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 5),
+          Text('$label: $count',
+              style: TextStyle(
+                  fontFamily: 'Cairo', fontSize: 12,
+                  fontWeight: FontWeight.w800, color: color)),
+        ]),
+      );
 }
 
 class _GDResumeObserver extends WidgetsBindingObserver {
@@ -748,9 +1529,7 @@ class _GDResumeObserver extends WidgetsBindingObserver {
   _GDResumeObserver(this.onResume);
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      onResume();
-    }
+    if (state == AppLifecycleState.resumed) onResume();
   }
 }
 
@@ -765,377 +1544,9 @@ Future<void> _gdWaitForResume() {
   return c.future;
 }
 
-void _gdShowQRDialog(BuildContext context, Student student) {
-  showDialog(
-    context: context,
-    builder: (ctx) {
-      return FutureBuilder<Group?>(
-        future: DatabaseService().getGroup(student.groupId),
-        builder: (context, snapshot) {
-          final groupName = snapshot.data?.name ?? '';
-          return AlertDialog(
-            title: const Text('QR Code'),
-            content: SizedBox(
-              width: 340,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(student.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  if (groupName.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text('المجموعة: $groupName'),
-                  ],
-                  const SizedBox(height: 12),
-                  if (student.code.trim().isEmpty)
-                    const Text('لا يوجد كود لعرضه', style: TextStyle(color: Colors.red))
-                  else
-                    QrImageView(
-                      data: student.code,
-                      version: QrVersions.auto,
-                      size: 200,
-                      backgroundColor: Colors.white,
-                    ),
-                  const SizedBox(height: 12),
-                  Text('الكود: ${student.code}')
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('إغلاق'),
-              ),
-              ElevatedButton.icon(
-                onPressed: student.code.trim().isEmpty ? null : () async {
-                  final ok = await _gdSaveStudentQrImage(student);
-                  if (!ctx.mounted) return;
-                  if (ok) {
-                    ToastHelper.success('تم حفظ صورة QR بنجاح');
-                  } else {
-                    ToastHelper.error('تعذر حفظ صورة QR');
-                  }
-                },
-                icon: const Icon(Icons.download),
-                label: const Text('حفظ الصورة'),
-              ),
-            ],
-          );
-        },
-      );
-    },
-  );
-}
-
-void _gdShowAddStudentDialog(BuildContext context, StudentController controller, Group group) async {
-  final nameController = TextEditingController();
-  final guardianPhoneController = TextEditingController();
-  DateTime? attendanceStart = DateTime.now();
-  DateTime? birthDate;
-  double? price = group.price ?? 0.0;
-  String nextCode = '';
-
-  // Generate initial code
-  if ((group.code?.isNotEmpty ?? false) && group.id != null) {
-    nextCode = await controller.generateNextStudentCode(groupPrefix: group.code!, groupId: group.id!);
-  }
-
-  Get.dialog(
-    StatefulBuilder(
-      builder: (context, setSt) {
-        Future<void> addStudentAndReset() async {
-          final name = nameController.text.trim();
-          final guardianPhone = guardianPhoneController.text.trim();
-          
-          if (name.isEmpty || nextCode.isEmpty || group.id == null) {
-            ToastHelper.error('يرجى إدخال اسم الطالب');
-            return;
-          }
-
-          final student = Student(
-            name: name,
-            code: nextCode,
-            groupId: group.id!,
-            price: price,
-            attendanceStart: attendanceStart,
-            guardianPhone: guardianPhone.isEmpty ? null : guardianPhone,
-            birthDate: birthDate,
-          );
-
-          await controller.addStudent(student);
-          ToastHelper.success('تم إضافة الطالب $name بنجاح');
-
-          // Reset only name and guardian phone
-          nameController.clear();
-          guardianPhoneController.clear();
-          
-          // Generate new code for next student
-          if ((group.code?.isNotEmpty ?? false) && group.id != null) {
-            nextCode = await controller.generateNextStudentCode(groupPrefix: group.code!, groupId: group.id!);
-          }
-
-          // Update UI
-          setSt(() {});
-        }
-
-        return AlertDialog(
-          title: Row(
-            children: [
-              const Icon(Icons.person_add, color: AppTheme.primaryColor),
-              const SizedBox(width: 8),
-              const Text('إضافة طالب جديد'),
-            ],
-          ),
-          content: SizedBox(
-            width: 420,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Group info
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.group, size: 20, color: AppTheme.primaryColor),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'المجموعة: ${group.name}',
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: SPACING_NORMAL),
-
-                  // Student name
-                  CustomTextField(
-                    controller: nameController,
-                    label: 'اسم الطالب *',
-                    validator: (v) => ValidationHelper.validateNotEmpty(v, 'اسم الطالب'),
-                  ),
-                  const SizedBox(height: SPACING_NORMAL),
-
-                  // Code display
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceColor,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppTheme.dividerColor),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.qr_code, size: 20, color: AppTheme.textSecondary),
-                        const SizedBox(width: 8),
-                        Text(
-                          'الكود: $nextCode',
-                          style: const TextStyle(color: AppTheme.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: SPACING_NORMAL),
-
-                  // Guardian phone
-                  CustomTextField(
-                    controller: guardianPhoneController,
-                    label: 'رقم ولي الأمر',
-                    keyboardType: TextInputType.phone,
-                  ),
-                  const SizedBox(height: SPACING_NORMAL),
-
-                  // Date pickers row
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              firstDate: DateTime(2000, 1, 1),
-                              lastDate: DateTime.now(),
-                              initialDate: birthDate ?? DateTime(2010, 1, 1),
-                              helpText: 'تاريخ الميلاد',
-                              confirmText: 'تأكيد',
-                            );
-                            if (picked != null) {
-                              setSt(() => birthDate = DateTime(picked.year, picked.month, picked.day));
-                            }
-                          },
-                          icon: const Icon(Icons.cake, size: 18),
-                          label: Text(
-                            birthDate != null 
-                                ? '${birthDate!.day}/${birthDate!.month}' 
-                                : 'تاريخ الميلاد',
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: birthDate != null 
-                                ? AppTheme.accentColor.withValues(alpha: 0.1) 
-                                : null,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              firstDate: DateTime(2020, 1, 1),
-                              lastDate: DateTime(2100, 12, 31),
-                              initialDate: attendanceStart ?? DateTime.now(),
-                              helpText: 'بداية الحضور',
-                              confirmText: 'تأكيد',
-                            );
-                            if (picked != null) {
-                              setSt(() => attendanceStart = DateTime(picked.year, picked.month, picked.day));
-                            }
-                          },
-                          icon: const Icon(Icons.date_range, size: 18),
-                          label: Text(
-                            '${attendanceStart!.day}/${attendanceStart!.month}/${attendanceStart!.year}',
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Get.back(), 
-              child: const Text('إغلاق'),
-            ),
-            ElevatedButton.icon(
-              onPressed: addStudentAndReset,
-              icon: const Icon(Icons.add),
-              label: const Text('إضافة طالب'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        );
-      },
-    ),
-  );
-}
-
-void _gdShowEditStudentDialog(BuildContext context, StudentController controller, Student student, Group group) async {
-  final nameController = TextEditingController(text: student.name);
-  final priceController = TextEditingController(text: student.price.toString());
-  final guardianPhoneController = TextEditingController(text: student.guardianPhone ?? '');
-  DateTime? attendanceStart = student.attendanceStart ?? DateTime.now();
-  DateTime? birthDate = student.birthDate;
-
-  Get.dialog(
-    StatefulBuilder(
-      builder: (context, setSt) => AlertDialog(
-        title: const Text('تعديل الطالب'),
-        content: SizedBox(
-          width: 420,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CustomTextField(
-                  controller: nameController,
-                  label: 'اسم الطالب',
-                ),
-                const SizedBox(height: SPACING_NORMAL),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text('المجموعة: ${group.name}'),
-                ),
-                const SizedBox(height: SPACING_NORMAL),
-                CustomTextField(
-                  controller: priceController,
-                  label: 'الرسوم',
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: SPACING_NORMAL),
-                CustomTextField(
-                  controller: guardianPhoneController,
-                  label: 'رقم ولي الأمر',
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: SPACING_NORMAL),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        firstDate: DateTime(2000, 1, 1),
-                        lastDate: DateTime.now(),
-                        initialDate: birthDate ?? DateTime(2010, 1, 1),
-                        helpText: 'اختر تاريخ الميلاد',
-                        confirmText: 'تأكيد',
-                      );
-                      if (picked != null) setSt(() => birthDate = DateTime(picked.year, picked.month, picked.day));
-                    },
-                    icon: const Icon(Icons.cake),
-                    label: Text('تاريخ الميلاد: ${birthDate != null ? FormatHelper.formatDate(birthDate) : 'غير محدد'}'),
-                  ),
-                ),
-                const SizedBox(height: SPACING_NORMAL),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        firstDate: DateTime(2020, 1, 1),
-                        lastDate: DateTime(2100, 12, 31),
-                        initialDate: attendanceStart ?? DateTime.now(),
-                        helpText: 'اختر تاريخ بداية الحضور',
-                        confirmText: 'تأكيد',
-                      );
-                      if (picked != null) setSt(() => attendanceStart = DateTime(picked.year, picked.month, picked.day));
-                    },
-                    icon: const Icon(Icons.date_range),
-                    label: Text('بداية الحضور: ${FormatHelper.formatDate(attendanceStart)}'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('إلغاء')),
-          CustomButton(
-            label: 'حفظ التعديلات',
-            onPressed: () async {
-              final updatedStudent = student.copyWith(
-                name: nameController.text.trim(),
-                price: double.tryParse(priceController.text.trim()) ?? student.price,
-                attendanceStart: attendanceStart,
-                guardianPhone: guardianPhoneController.text.trim().isEmpty ? null : guardianPhoneController.text.trim(),
-                birthDate: birthDate,
-              );
-              await controller.updateStudent(updatedStudent);
-              Get.back();
-            },
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Fees breakdown dialog
+// ─────────────────────────────────────────────────────────────────────────────
 void _gdShowFeesBreakdownDialog(BuildContext context, List<Student> students) {
   showDialog(
     context: context,
@@ -1157,222 +1568,168 @@ void _gdShowFeesBreakdownDialog(BuildContext context, List<Student> students) {
       Future<Map<String, dynamic>> load(DateTime monthStart) async {
         final monthEnd = DateTime(monthStart.year, monthStart.month + 1, 0, 23, 59, 59);
         final byId = {for (final s in students) if (s.id != null) s.id!: s};
-
         final Set<int> allowed = {};
         for (final s in students) {
           if (s.id == null) continue;
           final st = s.attendanceStart;
-          if (st != null) {
-            final sMonthStart = DateTime(st.year, st.month, 1);
-            if (sMonthStart.isAfter(monthStart)) continue;
-          }
+          if (st != null && DateTime(st.year, st.month, 1).isAfter(monthStart)) continue;
           allowed.add(s.id!);
         }
 
-        final Map<double, int> solo = {};
-        final Map<double, int> pairs = {};
+        final Map<double, int> solo = {}, pairs = {};
         final Set<int> paired = {};
         for (final id in allowed) {
           final s = byId[id]!;
           if (s.siblingId != null && s.siblingsTotal != null && allowed.contains(s.siblingId!) && !paired.contains(id)) {
             final sib = byId[s.siblingId!];
             if (sib != null && sib.siblingId == id && sib.siblingsTotal == s.siblingsTotal) {
-              paired.add(id);
-              paired.add(sib.id!);
-              final t = s.siblingsTotal!;
-              pairs[t] = (pairs[t] ?? 0) + 1;
-            } else {
-              final p = s.price;
-              solo[p] = (solo[p] ?? 0) + 1;
-            }
-          } else {
-            final p = s.price;
-            solo[p] = (solo[p] ?? 0) + 1;
-          }
+              paired..add(id)..add(sib.id!);
+              pairs[s.siblingsTotal!] = (pairs[s.siblingsTotal!] ?? 0) + 1;
+            } else { solo[s.price] = (solo[s.price] ?? 0) + 1; }
+          } else { solo[s.price] = (solo[s.price] ?? 0) + 1; }
         }
 
         double expected = 0;
-        solo.forEach((price, count) => expected += price * count);
-        pairs.forEach((total, count) => expected += total * count);
+        solo.forEach((p, c) => expected += p * c);
+        pairs.forEach((t, c) => expected += t * c);
 
-        int paidCount = 0;
-        double paidAmount = 0;
+        int paidCount = 0; double paidAmount = 0;
         final key = '${monthStart.year.toString().padLeft(4, '0')}-${monthStart.month.toString().padLeft(2, '0')}';
         final List<Student> unpaidStudents = [];
 
         for (final id in allowed) {
           final s = byId[id]!;
           final list = await db.getPaymentsByStudent(id);
-          bool isPaid = false;
-          double stuPaid = 0;
+          bool isPaid = false; double stuPaid = 0;
           for (final p in list) {
-            final inRange = !p.date.isBefore(monthStart) && !p.date.isAfter(monthEnd);
-            if (inRange) {
-              stuPaid += p.amount;
-              isPaid = true;
+            if (!p.date.isBefore(monthStart) && !p.date.isAfter(monthEnd)) {
+              stuPaid += p.amount; isPaid = true;
             } else {
               final note = p.note ?? '';
-              if (note.startsWith('months=')) {
-                final raw = note.split(';').first.substring(7).split(',').map((e) => e.trim()).where((e) => e.isNotEmpty);
-                if (raw.contains(key)) {
-                  stuPaid += p.amount;
-                  isPaid = true;
-                }
+              if (note.startsWith('months=') &&
+                  note.split(';').first.substring(7).split(',').map((e) => e.trim()).contains(key)) {
+                stuPaid += p.amount; isPaid = true;
               }
             }
           }
-          if (isPaid) {
-            paidCount++;
-          } else {
-            unpaidStudents.add(s);
-          }
+          if (isPaid) paidCount++; else unpaidStudents.add(s);
           paidAmount += stuPaid;
         }
 
         return {
-          'solo': solo,
-          'pairs': pairs,
-          'expected': expected,
-          'paidCount': paidCount,
-          'unpaidCount': allowed.length - paidCount,
-          'paidAmount': paidAmount,
-          'month': DateFormat('MMMM yyyy', 'ar').format(monthStart),
-          'key': key,
-          'allowedTotal': allowed.length,
-          'unpaidStudents': unpaidStudents,
+          'solo': solo, 'pairs': pairs, 'expected': expected,
+          'paidCount': paidCount, 'unpaidCount': allowed.length - paidCount,
+          'paidAmount': paidAmount, 'month': DateFormat('MMMM yyyy', 'ar').format(monthStart),
+          'key': key, 'allowedTotal': allowed.length, 'unpaidStudents': unpaidStudents,
         };
       }
 
-      return StatefulBuilder(
-        builder: (ctx, setSt) {
-          return FutureBuilder<Map<String, dynamic>>(
-            future: load(selected),
-            builder: (context, snap) {
-              final data = snap.data;
-              final expected = (data?['expected'] as double?) ?? 0;
-              final paidAmount = (data?['paidAmount'] as double?) ?? 0;
-              final progress = expected > 0 ? (paidAmount / expected).clamp(0.0, 1.0) : 0.0;
+      return StatefulBuilder(builder: (ctx, setSt) {
+        return FutureBuilder<Map<String, dynamic>>(
+          future: load(selected),
+          builder: (context, snap) {
+            final data = snap.data;
+            final expected   = (data?['expected']   as double?) ?? 0;
+            final paidAmount = (data?['paidAmount']  as double?) ?? 0;
+            final progress   = expected > 0 ? (paidAmount / expected).clamp(0.0, 1.0) : 0.0;
 
-              return AlertDialog(
-                title: Row(
-                  children: [
-                    const Text('تفاصيل الرسوم'),
-                    const Spacer(),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final picked = await showDatePicker(
-                          context: ctx,
-                          firstDate: DateTime(2020, 1, 1),
-                          lastDate: DateTime(2100, 12, 31),
-                          initialDate: selected,
-                          helpText: 'اختر أي تاريخ داخل الشهر',
-                          confirmText: 'تأكيد',
-                        );
-                        if (picked != null) setSt(() => selected = DateTime(picked.year, picked.month, 1));
-                      },
-                      icon: const Icon(Icons.date_range),
-                      label: Text(data == null ? '...' : data['month']),
-                    ),
-                  ],
+            return AlertDialog(
+              title: Row(children: [
+                const Text('تفاصيل الرسوم'),
+                const Spacer(),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final p = await showDatePicker(
+                        context: ctx, firstDate: DateTime(2020, 1, 1),
+                        lastDate: DateTime(2100, 12, 31), initialDate: selected);
+                    if (p != null) setSt(() => selected = DateTime(p.year, p.month, 1));
+                  },
+                  icon: const Icon(Icons.date_range_rounded, size: 16),
+                  label: Text(data == null ? '...' : data['month']),
                 ),
-                content: SizedBox(
-                  width: 480,
-                  height: 520,
-                  child: snap.connectionState != ConnectionState.done
-                      ? const Center(child: CircularProgressIndicator())
-                      : Column(
+              ]),
+              content: SizedBox(
+                width: 480, height: 520,
+                child: snap.connectionState != ConnectionState.done
+                    ? const Center(child: CircularProgressIndicator())
+                    : Column(children: [
+                        Row(children: [
+                          Expanded(child: Row(children: [
+                            const Text('تحصيل: '), CurrencyText(paidAmount),
+                            const Text(' / '), CurrencyText(expected),
+                          ])),
+                          const SizedBox(width: 8),
+                          Text('${(progress * 100).toStringAsFixed(0)}%'),
+                        ]),
+                        const SizedBox(height: 6),
+                        LinearProgressIndicator(value: expected > 0 ? progress : null, minHeight: 6),
+                        const SizedBox(height: 12),
+                        Expanded(child: SingleChildScrollView(child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Row(
-                              children: [
-                                Expanded(child: Text('تحصيل: ${FormatHelper.formatCurrency(paidAmount)} / ${FormatHelper.formatCurrency(expected)}')),
-                                const SizedBox(width: 8),
-                                Text('${(progress * 100).toStringAsFixed(0)}%'),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            LinearProgressIndicator(value: expected > 0 ? progress : null, minHeight: 6),
+                            if ((data?['solo'] as Map<double, int>?)?.isNotEmpty ?? false) ...[
+                              Text('أسعار فردية', style: Theme.of(context).textTheme.titleMedium),
+                              const SizedBox(height: 8),
+                              ...((data!['solo'] as Map<double, int>).entries.toList()
+                                    ..sort((a, b) => (b.key * b.value).compareTo(a.key * a.value)))
+                                  .map((e) => Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 2),
+                                    child: Row(children: [
+                                      Expanded(child: Row(children: [Text('${e.value} طالب × '), CurrencyText(e.key)])),
+                                      CurrencyText(e.key * e.value),
+                                    ]),
+                                  )),
+                              const SizedBox(height: 12),
+                            ],
+                            if ((data?['pairs'] as Map<double, int>?)?.isNotEmpty ?? false) ...[
+                              Text('عروض الإخوة', style: Theme.of(context).textTheme.titleMedium),
+                              const SizedBox(height: 8),
+                              ...((data!['pairs'] as Map<double, int>).entries.toList()
+                                    ..sort((a, b) => (b.key * b.value).compareTo(a.key * a.value)))
+                                  .map((e) => Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 2),
+                                    child: Row(children: [
+                                      Expanded(child: Row(children: [Text('${e.value} زوج × '), CurrencyText(e.key)])),
+                                      CurrencyText(e.key * e.value),
+                                    ]),
+                                  )),
+                              const SizedBox(height: 12),
+                            ],
+                            Divider(color: Colors.grey[300]),
+                            const SizedBox(height: 8),
+                            Row(children: [
+                              Expanded(child: Text('مدفوع: ${data?['paidCount'] ?? 0}')),
+                              Expanded(child: Text('غير مدفوع: ${data?['unpaidCount'] ?? 0}')),
+                            ]),
                             const SizedBox(height: 12),
-                            Expanded(
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    if ((data?['solo'] as Map<double, int>?)?.isNotEmpty ?? false) ...[
-                                      Text('أسعار فردية', style: Theme.of(context).textTheme.titleMedium),
-                                      const SizedBox(height: 8),
-                                      ...((data!['solo'] as Map<double, int>).entries.toList()
-                                            ..sort((a, b) => (b.key * b.value).compareTo(a.key * a.value)))
-                                          .map((e) => Padding(
-                                                padding: const EdgeInsets.symmetric(vertical: 2),
-                                                child: Row(
-                                                  children: [
-                                                    Expanded(child: Text('${e.value} طالب × ${FormatHelper.formatCurrency(e.key)}')),
-                                                    Text(FormatHelper.formatCurrency(e.key * e.value)),
-                                                  ],
-                                                ),
-                                              )),
-                                      const SizedBox(height: 12),
-                                    ],
-                                    if ((data?['pairs'] as Map<double, int>?)?.isNotEmpty ?? false) ...[
-                                      Text('عروض الإخوة', style: Theme.of(context).textTheme.titleMedium),
-                                      const SizedBox(height: 8),
-                                      ...((data!['pairs'] as Map<double, int>).entries.toList()
-                                            ..sort((a, b) => (b.key * b.value).compareTo(a.key * a.value)))
-                                          .map((e) => Padding(
-                                                padding: const EdgeInsets.symmetric(vertical: 2),
-                                                child: Row(
-                                                  children: [
-                                                    Expanded(child: Text('${e.value} زوج × ${FormatHelper.formatCurrency(e.key)}')),
-                                                    Text(FormatHelper.formatCurrency(e.key * e.value)),
-                                                  ],
-                                                ),
-                                              )),
-                                      const SizedBox(height: 12),
-                                    ],
-                                    Divider(color: Colors.grey[300]),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      children: [
-                                        Expanded(child: Text('مدفوع: ${data?['paidCount'] ?? 0}')),
-                                        Expanded(child: Text('غير مدفوع: ${data?['unpaidCount'] ?? 0}')),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    if ((data?['unpaidStudents'] as List<Student>?)?.isNotEmpty ?? false) ...[
-                                      Text('غير المدفوعين', style: Theme.of(context).textTheme.titleMedium),
-                                      const SizedBox(height: 8),
-                                      ...((data!['unpaidStudents'] as List<Student>)).map((s) => ListTile(
-                                            contentPadding: EdgeInsets.zero,
-                                            title: Text(s.name),
-                                            subtitle: Text('الكود: ${s.code}'),
-                                            trailing: IconButton(
-                                              icon: const Icon(Icons.message, color: Colors.green),
-                                              onPressed: () async {
-                                                final raw = (s.guardianPhone ?? '').trim();
-                                                if (raw.isEmpty) return;
-                                                final phone = normalize(raw, settings.countryDial.value);
-                                                final msg = 'تذكير برسوم شهر ${data['month']} للطالب ${s.name}.';
-                                                final uri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
-                                                await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                              },
-                                            ),
-                                          )),
-                                    ],
-                                  ],
+                            if ((data?['unpaidStudents'] as List<Student>?)?.isNotEmpty ?? false) ...[
+                              Text('غير المدفوعين', style: Theme.of(context).textTheme.titleMedium),
+                              const SizedBox(height: 8),
+                              ...((data!['unpaidStudents'] as List<Student>)).map((s) => ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(s.name),
+                                subtitle: Text('الكود: ${s.code}'),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.message_rounded, color: Colors.green),
+                                  onPressed: () async {
+                                    final raw = (s.guardianPhone ?? '').trim();
+                                    if (raw.isEmpty) return;
+                                    final phone = normalize(raw, settings.countryDial.value);
+                                    final uri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent('تذكير برسوم شهر ${data['month']} للطالب ${s.name}.')}');
+                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                  },
                                 ),
-                              ),
-                            ),
+                              )),
+                            ],
                           ],
-                        ),
-                ),
-                actions: [
-                  TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('إغلاق')),
-                ],
-              );
-            },
-          );
-        },
-      );
+                        ))),
+                      ]),
+              ),
+              actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('إغلاق'))],
+            );
+          },
+        );
+      });
     },
   );
 }
