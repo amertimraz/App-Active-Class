@@ -9,38 +9,52 @@ import 'package:active_class/views/license/plans_page.dart';
 class ActivationPage extends StatefulWidget {
   final bool showBackButton;
   const ActivationPage({super.key, this.showBackButton = false});
-  @override State<ActivationPage> createState() => _ActivationPageState();
+  @override
+  State<ActivationPage> createState() => _ActivationPageState();
 }
 
 class _ActivationPageState extends State<ActivationPage> {
-  final _ctrl  = TextEditingController();
+  final _ctrl = TextEditingController();
   bool _loading = false;
   String? _error;
   bool _success = false;
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _activate() async {
-    setState(() { _loading = true; _error = null; _success = false; });
+    setState(() {
+      _loading = true;
+      _error = null;
+      _success = false;
+    });
     final err = await LicenseController.to.activateCode(_ctrl.text);
     if (!mounted) return;
     if (err == null) {
-      setState(() { _success = true; _loading = false; });
+      setState(() {
+        _success = true;
+        _loading = false;
+      });
       await Future.delayed(const Duration(milliseconds: 900));
       if (mounted) {
         Navigator.of(context).pushNamedAndRemoveUntil(ROUTE_HOME, (_) => false);
       }
     } else {
-      setState(() { _error = err; _loading = false; });
+      setState(() {
+        _error = err;
+        _loading = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg     = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
-    final card   = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final bg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final card = isDark ? const Color(0xFF1E293B) : Colors.white;
     final border = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
 
     return Scaffold(
@@ -62,20 +76,22 @@ class _ActivationPageState extends State<ActivationPage> {
                     ),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Icon(Icons.school_rounded,
-                      color: Colors.white, size: 42),
+                  child: Image.asset('assets/icon/logo_foreground.png',
+                      width: 42, height: 42),
                 ),
                 const SizedBox(height: 20),
                 const Text('Active Class',
                     style: TextStyle(
-                        fontFamily: 'Cairo', fontSize: 26,
+                        fontFamily: 'Cairo',
+                        fontSize: 26,
                         fontWeight: FontWeight.w900,
                         color: AppTheme.primaryColor)),
                 const SizedBox(height: 6),
                 Text(
                   'أدخل كود التفعيل للاستمرار',
                   style: TextStyle(
-                      fontFamily: 'Cairo', fontSize: 14,
+                      fontFamily: 'Cairo',
+                      fontSize: 14,
                       color: isDark ? Colors.white60 : Colors.black45),
                 ),
                 const SizedBox(height: 32),
@@ -90,7 +106,8 @@ class _ActivationPageState extends State<ActivationPage> {
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 20, offset: const Offset(0, 4),
+                        blurRadius: 20,
+                        offset: const Offset(0, 4),
                       )
                     ],
                   ),
@@ -99,7 +116,8 @@ class _ActivationPageState extends State<ActivationPage> {
                     children: [
                       Text('كود التفعيل',
                           style: TextStyle(
-                              fontFamily: 'Cairo', fontSize: 13,
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
                               fontWeight: FontWeight.w700,
                               color: isDark ? Colors.white70 : Colors.black54)),
                       const SizedBox(height: 8),
@@ -108,14 +126,16 @@ class _ActivationPageState extends State<ActivationPage> {
                         textDirection: TextDirection.ltr,
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                            fontFamily: 'Cairo', fontSize: 16,
+                            fontFamily: 'Cairo',
+                            fontSize: 16,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 2,
                             color: isDark ? Colors.white : Colors.black87),
                         decoration: InputDecoration(
                           hintText: 'ACTV-XXXX-XXXX-XXXX',
                           hintStyle: TextStyle(
-                              fontFamily: 'Cairo', fontSize: 13,
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
                               letterSpacing: 1,
                               color: isDark ? Colors.white30 : Colors.black26),
                           filled: true,
@@ -145,8 +165,10 @@ class _ActivationPageState extends State<ActivationPage> {
                         _Feedback(msg: _error!, isError: true),
                       if (_success)
                         const _Feedback(
-                            msg: 'تم التفعيل بنجاح! جاري التحميل...', isError: false),
-                      if (_error != null || _success) const SizedBox(height: 12),
+                            msg: 'تم التفعيل بنجاح! جاري التحميل...',
+                            isError: false),
+                      if (_error != null || _success)
+                        const SizedBox(height: 12),
 
                       // Activate button
                       SizedBox(
@@ -162,7 +184,9 @@ class _ActivationPageState extends State<ActivationPage> {
                             elevation: 0,
                           ),
                           child: _loading
-                              ? const SizedBox(width: 20, height: 20,
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
                                   child: CircularProgressIndicator(
                                       color: Colors.white, strokeWidth: 2))
                               : const Text('تفعيل الترخيص',
@@ -182,7 +206,8 @@ class _ActivationPageState extends State<ActivationPage> {
                   onPressed: () => Get.to(() => const PlansPage()),
                   child: Text('ليس لديك كود؟ اطلب ترقية',
                       style: TextStyle(
-                          fontFamily: 'Cairo', fontSize: 13,
+                          fontFamily: 'Cairo',
+                          fontSize: 13,
                           color: AppTheme.primaryColor.withValues(alpha: 0.8))),
                 ),
                 if (widget.showBackButton)
@@ -190,7 +215,8 @@ class _ActivationPageState extends State<ActivationPage> {
                     onPressed: () => Get.back(),
                     child: const Text('رجوع',
                         style: TextStyle(
-                            fontFamily: 'Cairo', fontSize: 13,
+                            fontFamily: 'Cairo',
+                            fontSize: 13,
                             color: Colors.grey)),
                   ),
               ],
@@ -214,12 +240,13 @@ class _Feedback extends StatelessWidget {
           color: (isError ? Colors.red : Colors.green).withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-              color: (isError ? Colors.red : Colors.green)
-                  .withValues(alpha: 0.3)),
+              color:
+                  (isError ? Colors.red : Colors.green).withValues(alpha: 0.3)),
         ),
         child: Text(msg,
             style: TextStyle(
-                fontFamily: 'Cairo', fontSize: 12,
+                fontFamily: 'Cairo',
+                fontSize: 12,
                 color: isError ? Colors.red : Colors.green)),
       );
 }

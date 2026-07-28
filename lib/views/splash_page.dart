@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/views/home_page.dart';
 import 'package:active_class/views/license/plans_page.dart';
+import 'package:active_class/views/onboarding/onboarding_page.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -39,8 +41,7 @@ class _SplashPageState extends State<SplashPage> {
     switch (lc.state.value) {
       case LicenseState.active:
       case LicenseState.trial:
-        Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const HomePage()));
+        await _goHomeOrOnboarding();
         break;
       case LicenseState.trialExpired:
       case LicenseState.expired:
@@ -50,10 +51,21 @@ class _SplashPageState extends State<SplashPage> {
         break;
       case LicenseState.loading:
         // timeout — نذهب للهوم كـ fallback
-        Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const HomePage()));
+        await _goHomeOrOnboarding();
         break;
     }
+  }
+
+  /// يعرض الشرح التعريفي مرة واحدة بس (أول تشغيل)، وبعدها يروح للرئيسية مباشرة.
+  Future<void> _goHomeOrOnboarding() async {
+    bool seen = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      seen = prefs.getBool(OnboardingPage.prefsKey) ?? false;
+    } catch (_) {}
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => seen ? const HomePage() : const OnboardingPage()));
   }
 
   @override
@@ -94,10 +106,10 @@ class _SplashPageState extends State<SplashPage> {
                       ),
                     ],
                   ),
-                  child: const Icon(
-                    Icons.school_rounded,
-                    size: 74,
-                    color: Colors.white,
+                  child: Image.asset(
+                    'assets/icon/logo_foreground.png',
+                    width: 74,
+                    height: 74,
                   ),
                 ),
               ),
@@ -129,22 +141,26 @@ class _SplashPageState extends State<SplashPage> {
                   return Column(
                     children: [
                       const SizedBox(
-                        width: 28, height: 28,
+                        width: 28,
+                        height: 28,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.4,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       ),
                       const SizedBox(height: 12),
                       Text('جاري التحقق من الترخيص...',
                           style: TextStyle(
-                              fontFamily: 'Cairo', fontSize: 12,
+                              fontFamily: 'Cairo',
+                              fontSize: 12,
                               color: Colors.white.withValues(alpha: 0.7))),
                     ],
                   );
                 }
                 return const SizedBox(
-                  width: 28, height: 28,
+                  width: 28,
+                  height: 28,
                   child: CircularProgressIndicator(
                     strokeWidth: 2.4,
                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),

@@ -152,7 +152,6 @@ const String ROUTE_GROUP_DETAILS = '/group_details';
 const String ROUTE_ADD_STUDENT = '/add_student';
 const String ROUTE_QR_GALLERY = '/qr_gallery';
 const String ROUTE_PAYMENTS_REPORT = '/payments_report';
-const String ROUTE_CODE39_SCANNER_PAYMENT = '/code39_scanner_payment';
 const String ROUTE_ACTIVATION   = '/activation';
 const String ROUTE_PLANS        = '/plans';
 const String ROUTE_EXAMS               = '/exams';

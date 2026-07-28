@@ -200,15 +200,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           Expanded(
             child: Column(
               children: [
-                Text(
-                  APP_NAME,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: isDark ? Colors.white : const Color(0xFF111827),
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.asset('assets/icon/logo.png',
+                          width: 22, height: 22),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      APP_NAME,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: isDark ? Colors.white : const Color(0xFF111827),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -290,11 +301,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Obx(() {
-        final teacherName   = _settingsController.teacherFullName.value.trim();
-        final teacherAvatar = _settingsController.teacherAvatarPath.value.trim();
-        final title         = _settingsController.teacherTitle;
-        final isFemale      = _settingsController.teacherGender.value == 'female';
-        final displayName   = teacherName.isNotEmpty ? teacherName : 'المعلم';
+        final teacherName = _settingsController.teacherFullName.value.trim();
+        final teacherAvatar =
+            _settingsController.teacherAvatarPath.value.trim();
+        final title = _settingsController.teacherTitle;
+        final isFemale = _settingsController.teacherGender.value == 'female';
+        final displayName = teacherName.isNotEmpty ? teacherName : 'المعلم';
 
         return Container(
           decoration: BoxDecoration(
@@ -475,12 +487,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               // زر تحديث
               Obx(() => _dashboardController.isLoading.value
                   ? const SizedBox(
-                      width: 18, height: 18,
+                      width: 18,
+                      height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2))
                   : GestureDetector(
                       onTap: _dashboardController.loadDashboardData,
-                      child: Icon(Icons.refresh_rounded, size: 18,
-                          color: isDark ? Colors.white38 : Colors.grey.shade500),
+                      child: Icon(Icons.refresh_rounded,
+                          size: 18,
+                          color:
+                              isDark ? Colors.white38 : Colors.grey.shade500),
                     )),
               const SizedBox(width: 10),
               GestureDetector(
@@ -501,17 +516,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 4),
           Obx(() {
-            final currency    = _settingsController.currencyCode.value;
-            final paid        = _dashboardController.monthPaid.value;
-            final expected    = _dashboardController.monthExpected.value;
-            final rate        = _dashboardController.monthPaymentRate.value;
-            final paidCount   = _dashboardController.paidStudentsCount.value;
+            final currency = _settingsController.currencyCode.value;
+            final paid = _dashboardController.monthPaid.value;
+            final expected = _dashboardController.monthExpected.value;
+            final rate = _dashboardController.monthPaymentRate.value;
+            final paidCount = _dashboardController.paidStudentsCount.value;
             final unpaidCount = _dashboardController.unpaidStudentsCount.value;
-            final exempt      = _dashboardController.exemptStudents.value;
-            final present        = _dashboardController.todayPresent.value;
-            final absent         = _dashboardController.todayAbsent.value;
-            final todayExpected  = _dashboardController.todayExpected.value;
-            final attRate        = _dashboardController.todayAttendanceRate.value;
+            final exempt = _dashboardController.exemptStudents.value;
+            final present = _dashboardController.todayPresent.value;
+            final absent = _dashboardController.todayAbsent.value;
+            final todayExpected = _dashboardController.todayExpected.value;
+            final attRate = _dashboardController.todayAttendanceRate.value;
 
             String fmtMoney(double v) => v >= 1000
                 ? '${(v / 1000).toStringAsFixed(1)}k $currency'
@@ -537,7 +552,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       child: _StatCard(
                         icon: Icons.people_rounded,
                         value: _statsVisible
-                            ? _dashboardController.totalStudents.value.toString()
+                            ? _dashboardController.totalStudents.value
+                                .toString()
                             : '••',
                         label: 'الطلاب',
                         gradient: const [Color(0xFF4F46E5), Color(0xFF6366F1)],
@@ -587,8 +603,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Obx(() {
-      final all        = _dashboardController.recentActivities;
-      final isLoading  = _dashboardController.isLoading.value;
+      final all = _dashboardController.recentActivities;
+      final isLoading = _dashboardController.isLoading.value;
       final lastUpdate = _dashboardController.lastUpdated.value;
 
       if (isLoading && all.isEmpty) {
@@ -605,14 +621,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         );
       }
 
-      final attendance = all.where((a) => a.type == ActivityType.attendance).take(3).toList();
-      final payments   = all.where((a) => a.type == ActivityType.payment).take(3).toList();
+      final attendance =
+          all.where((a) => a.type == ActivityType.attendance).take(3).toList();
+      final payments =
+          all.where((a) => a.type == ActivityType.payment).take(3).toList();
 
       // وقت آخر تحديث
-      final diff    = DateTime.now().difference(lastUpdate);
-      final updLabel = diff.inSeconds < 60 ? 'الآن'
-          : diff.inMinutes < 60 ? 'منذ ${diff.inMinutes} د'
-          : 'منذ ${diff.inHours} س';
+      final diff = DateTime.now().difference(lastUpdate);
+      final updLabel = diff.inSeconds < 60
+          ? 'الآن'
+          : diff.inMinutes < 60
+              ? 'منذ ${diff.inMinutes} د'
+              : 'منذ ${diff.inHours} س';
 
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -623,7 +643,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             Row(children: [
               _SectionHeader(title: 'النشاط الأخير', isDark: isDark),
               const Spacer(),
-              Icon(Icons.update_rounded, size: 12,
+              Icon(Icons.update_rounded,
+                  size: 12,
                   color: isDark ? Colors.white30 : Colors.grey.shade400),
               const SizedBox(width: 4),
               Text(updLabel,
@@ -661,14 +682,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final base = isDark ? const Color(0xFF1E2D45) : const Color(0xFFEEF0F5);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: List.generate(3, (i) => Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        height: 64,
-        decoration: BoxDecoration(
-          color: base,
-          borderRadius: BorderRadius.circular(22),
-        ),
-      )),
+      children: List.generate(
+          3,
+          (i) => Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                height: 64,
+                decoration: BoxDecoration(
+                  color: base,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+              )),
     );
   }
 
@@ -785,7 +808,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ),
     );
   }
-
 
   Widget _buildDrawer() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1007,7 +1029,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           children: [
             Container(
               margin: const EdgeInsets.only(top: 10, bottom: 6),
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
                 color: Colors.grey.shade400,
                 borderRadius: BorderRadius.circular(2),
@@ -1208,7 +1231,6 @@ class _AppBarIcon extends StatelessWidget {
   }
 }
 
-
 class _QuickActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -1354,7 +1376,7 @@ class _AttendanceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final pct    = (rate * 100).toInt();
+    final pct = (rate * 100).toInt();
 
     // لو مفيش مجموعات اليوم يبان باللون المحايد
     final barColor = expected == 0
@@ -1470,7 +1492,8 @@ class _AttStat extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String label;
-  const _AttStat({required this.icon, required this.color, required this.label});
+  const _AttStat(
+      {required this.icon, required this.color, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -1539,8 +1562,7 @@ class _PaymentProgressCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.bar_chart_rounded,
-                  size: 16, color: barColor),
+              Icon(Icons.bar_chart_rounded, size: 16, color: barColor),
               const SizedBox(width: 6),
               Text(
                 'دفعات ${_arabicMonth(DateTime.now().month)}',
@@ -1552,8 +1574,7 @@ class _PaymentProgressCard extends StatelessWidget {
               ),
               const Spacer(),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: barColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
@@ -1576,8 +1597,7 @@ class _PaymentProgressCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: rate.clamp(0.0, 1.0),
               minHeight: 8,
-              backgroundColor:
-                  isDark ? Colors.white12 : Colors.grey.shade200,
+              backgroundColor: isDark ? Colors.white12 : Colors.grey.shade200,
               valueColor: AlwaysStoppedAnimation<Color>(barColor),
             ),
           ),
@@ -1599,9 +1619,7 @@ class _PaymentProgressCard extends StatelessWidget {
                     Text(
                       'من $fmtExpected',
                       style: TextStyle(
-                        color: isDark
-                            ? Colors.white38
-                            : Colors.grey.shade500,
+                        color: isDark ? Colors.white38 : Colors.grey.shade500,
                         fontSize: 11,
                       ),
                     ),
@@ -1613,8 +1631,8 @@ class _PaymentProgressCard extends StatelessWidget {
                 GestureDetector(
                   onTap: onTapUnpaid,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEF4444).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
@@ -1664,8 +1682,19 @@ class _PaymentProgressCard extends StatelessWidget {
 
   static String _arabicMonth(int month) {
     const months = [
-      '', 'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-      'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+      '',
+      'يناير',
+      'فبراير',
+      'مارس',
+      'أبريل',
+      'مايو',
+      'يونيو',
+      'يوليو',
+      'أغسطس',
+      'سبتمبر',
+      'أكتوبر',
+      'نوفمبر',
+      'ديسمبر'
     ];
     return months[month.clamp(1, 12)];
   }
@@ -1884,14 +1913,16 @@ class _ActivityItem extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                if (activity.type == ActivityType.payment && activity.amount != null)
+                if (activity.type == ActivityType.payment &&
+                    activity.amount != null)
                   CurrencyText(
                     activity.amount,
                     style: TextStyle(
                       fontFamily: 'Cairo',
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                      color:
+                          isDark ? Colors.grey[400] : const Color(0xFF64748B),
                     ),
                   )
                 else
@@ -1901,7 +1932,8 @@ class _ActivityItem extends StatelessWidget {
                       fontFamily: 'Cairo',
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+                      color:
+                          isDark ? Colors.grey[400] : const Color(0xFF64748B),
                     ),
                   ),
               ],

@@ -75,7 +75,6 @@ lib/
 │   ├── qr_scanner/
 │   │   ├── qr_scanner_attendance_page.dart    # مسح QR للحضور
 │   │   ├── qr_scanner_payment_page.dart       # مسح QR للدفع
-│   │   ├── code39_scanner_payment_page.dart   # مسح باركود Code39
 │   │   └── qr_gallery_page.dart               # معرض QR وتصدير PDF
 │   ├── reports/
 │   │   ├── reports_page.dart          # لوحة الإحصاءات
@@ -235,9 +234,6 @@ Views  ──Obx()──►  Controllers  ──async──►  Services / Datab
 ### ماسح QR للدفع (`qr_scanner_payment_page.dart`)
 - تسجيل دفع بعد المسح
 - اختيار الشهر + تعديل المبلغ + منع المسح المكرر (500ms)
-
-### ماسح Code39 (`code39_scanner_payment_page.dart`)
-- مسح باركود Code39 مع احتياطي OCR (ML Kit)
 
 ### معرض QR (`qr_gallery_page.dart`)
 - عرض QR لجميع الطلاب مع فلتر المجموعة والبحث

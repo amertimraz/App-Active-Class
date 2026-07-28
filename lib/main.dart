@@ -20,7 +20,6 @@ import 'package:active_class/views/reports/reports_page.dart';
 import 'package:active_class/views/settings/settings_page.dart';
 import 'package:active_class/views/settings/notification_settings_page.dart';
 import 'package:active_class/views/reports/payments_report_page.dart';
-import 'package:active_class/views/qr_scanner/code39_scanner_payment_page.dart';
 import 'package:active_class/views/splash_page.dart';
 import 'package:active_class/views/license/activation_page.dart';
 import 'package:active_class/views/license/plans_page.dart';
@@ -198,9 +197,6 @@ class MyApp extends StatelessWidget {
             GetPage(
                 name: ROUTE_PAYMENTS_REPORT,
                 page: () => const PaymentsReportPage()),
-            GetPage(
-                name: ROUTE_CODE39_SCANNER_PAYMENT,
-                page: () => const Code39ScannerPaymentPage()),
             GetPage(name: ROUTE_ACTIVATION, page: () => const ActivationPage()),
             GetPage(name: ROUTE_PLANS,     page: () => const PlansPage()),
             GetPage(name: ROUTE_EXAMS,     page: () => const ExamsPage()),

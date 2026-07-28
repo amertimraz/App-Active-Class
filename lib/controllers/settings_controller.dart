@@ -28,8 +28,8 @@ class CountryDialOption {
 class SettingsController extends GetxController {
   // Supported Arabic currencies + USD
   static const List<CurrencyOption> supported = [
-    CurrencyOption(code: 'SAR', nameAr: 'ريال سعودي', symbol: 'ريال'),
     CurrencyOption(code: 'EGP', nameAr: 'جنيه مصري', symbol: 'جنيه'),
+    CurrencyOption(code: 'SAR', nameAr: 'ريال سعودي', symbol: 'ريال'),
     CurrencyOption(code: 'AED', nameAr: 'درهم إماراتي', symbol: 'درهم'),
     CurrencyOption(code: 'KWD', nameAr: 'دينار كويتي', symbol: 'دينار'),
     CurrencyOption(code: 'QAR', nameAr: 'ريال قطري', symbol: 'ريال'),
@@ -66,8 +66,8 @@ class SettingsController extends GetxController {
   static const String _keyTeacherSchool = 'teacher_school';
   static const String _keyTeacherGender = 'teacher_gender'; // 'male' | 'female'
 
-  final RxString currencyCode = 'SAR'.obs; // default
-  final RxString countryDial = '20'.obs; // default Egypt
+  final RxString currencyCode = 'EGP'.obs; // افتراضي: جنيه مصري
+  final RxString countryDial = '20'.obs; // افتراضي: مصر
   final RxBool use24hFormat = true.obs;
 
   // زر إرسال الواتساب للمجموعة
