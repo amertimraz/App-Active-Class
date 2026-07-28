@@ -459,20 +459,18 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
               return const SizedBox.shrink();
             }
             final reached = settings.isWhatsappDayReached;
-            return Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: _ActionChip(
-                icon: Icons.chat_rounded,
-                label: 'واتساب',
-                color: reached ? Colors.green : Colors.grey,
-                onTap: reached
-                    ? () => _startGroupWhatsappBatchSend(context, g.id!)
-                    : () => ToastHelper.info(
-                        'زر الواتساب يظهر يوم '
-                        '${settings.whatsappSendDay.value} من الشهر'),
-              ),
+            return _ActionChip(
+              icon: Icons.chat_rounded,
+              label: 'واتساب',
+              color: reached ? Colors.green : Colors.grey,
+              onTap: reached
+                  ? () => _startGroupWhatsappBatchSend(context, g.id!)
+                  : () => ToastHelper.info(
+                      'زر الواتساب يظهر يوم '
+                      '${settings.whatsappSendDay.value} من الشهر'),
             );
           }),
+          const SizedBox(width: 8),
           _ActionChip(
             icon: Icons.picture_as_pdf_rounded,
             label: 'تصدير PDF',
