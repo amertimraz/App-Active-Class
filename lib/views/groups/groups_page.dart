@@ -424,7 +424,7 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
                      : null;
       _priceError    = priceText.isEmpty ? 'مطلوب'
                      : double.tryParse(priceText) == null ? 'رقم غير صالح' : null;
-      _scheduleError = slots < 2         ? 'أضف موعدين على الأقل'
+      _scheduleError = slots < 1         ? 'أضف موعد واحد على الأقل'
                      : _hasScheduleOverlap(_scheduleCtrl.text)
                                            ? 'فيه موعدين متداخلين في نفس اليوم'
                      : null;
@@ -1110,7 +1110,7 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('المواعيد الأسبوعية (حد أدنى 2)',
+        Text('المواعيد الأسبوعية (حد أدنى موعد واحد)',
             style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 8),
         ...List.generate(_entries.length, (i) {

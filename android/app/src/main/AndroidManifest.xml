@@ -7,6 +7,9 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- مطلوبة عشان التطبيق يقدر يشغّل مثبّت الـ APK بعد تحميل التحديث
+         مباشرة من جوّه التطبيق (بدل ما المعلم يروح المتصفح ويرجع). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <application
         android:label="Active Class"
