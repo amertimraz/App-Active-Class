@@ -7,9 +7,9 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
+import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
-import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
@@ -24,6 +24,9 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'dart:async';
 import 'package:active_class/widgets/add_student_sheet.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 // ─── أيقونات المجموعات (نفس قائمة groups_page) ──────────────────────────────
 const _kIconMap = <String, IconData>{
@@ -89,12 +92,31 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   Future<void> _recordBulkAttendance(String status) async {
     if (_selectedStudents.isEmpty) return;
     final now = DateTime.now();
+    final total = _selectedStudents.length;
+    final attCtrl = Get.isRegistered<AttendanceController>()
+        ? Get.find<AttendanceController>()
+        : Get.put(AttendanceController());
+
+    // بنستخدم setAttendanceStatus (تحديث مباشر) بدل insertAttendance
+    // المباشر — عشان لو طالب اتسجّل حضوره النهارده بالفعل، العملية
+    // تحدّث حالته بدل ما تفشل بصمت بسبب UNIQUE(student_id, date).
+    var failed = 0;
     for (final id in _selectedStudents) {
       try {
-        await DatabaseService().insertAttendance(Attendance(studentId: id, date: now, status: status));
-      } catch (_) {}
+        await attCtrl.setAttendanceStatus(id, now, status);
+      } catch (_) {
+        failed++;
+      }
     }
-    ToastHelper.success('تم تسجيل ${status == ATTENDANCE_PRESENT ? "الحضور" : "الغياب"} بنجاح');
+
+    final label = status == ATTENDANCE_PRESENT ? 'الحضور' : 'الغياب';
+    if (failed == 0) {
+      ToastHelper.success('تم تسجيل $label لـ$total طالب بنجاح');
+    } else if (failed == total) {
+      ToastHelper.error('فشل تسجيل $label — حاول تاني');
+    } else {
+      ToastHelper.error('اتسجّل $label لـ${total - failed} من $total طالب — فشل $failed');
+    }
     setState(() { _selectedStudents.clear(); _isSelectionMode = false; });
   }
 
@@ -452,6 +474,15 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             );
           }),
           _ActionChip(
+            icon: Icons.picture_as_pdf_rounded,
+            label: 'تصدير PDF',
+            color: const Color(0xFF8B5CF6),
+            onTap: students.isEmpty
+                ? () => ToastHelper.info('لا يوجد طلاب في هذه المجموعة')
+                : () => _exportGroupRosterPdf(g, students),
+          ),
+          const SizedBox(width: 8),
+          _ActionChip(
             icon: Icons.clear_all_rounded,
             label: 'تصفير الطلاب',
             color: Colors.orange,
@@ -503,17 +534,23 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
 
   // ─── Dialogs / sheets ─────────────────────────────────────────────────────
   void _confirmDeleteGroup(Group g) {
+    final count =
+        studentController.students.where((s) => s.groupId == g.id).length;
     Get.defaultDialog(
       title: 'حذف المجموعة',
-      middleText: 'سيتم حذف المجموعة فقط دون طلابها. هل تريد المتابعة؟',
+      middleText: count > 0
+          ? 'تحذير: هيتحذف معاها $count طالب وكل سجلات حضورهم '
+              'ودفعاتهم ودرجات امتحاناتهم نهائياً — لا يمكن التراجع عن هذا الإجراء.'
+          : 'هل تريد حذف هذه المجموعة؟ لا يمكن التراجع عن هذا الإجراء.',
       textCancel: 'إلغاء',
       textConfirm: 'حذف',
       confirmTextColor: Colors.white,
       buttonColor: Colors.red,
       onConfirm: () async {
-        await DatabaseService().deleteGroup(g.id!);
         Get.back(); // close dialog
-        Get.back(); // back to groups list
+        await Future.delayed(const Duration(milliseconds: 80));
+        final ok = await Get.find<GroupController>().deleteGroup(g.id!);
+        if (ok) Get.back(); // back to groups list — الخطأ (لو حصل) اتعرض بالفعل
       },
     );
   }
@@ -527,10 +564,14 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       confirmTextColor: Colors.white,
       buttonColor: Colors.orange,
       onConfirm: () async {
-        await DatabaseService().deleteStudentsByGroup(g.id!);
-        await studentController.loadStudentsByGroup(g.id!);
         Get.back();
-        ToastHelper.success('تم حذف الطلاب وتصفير الأكواد');
+        try {
+          await DatabaseService().deleteStudentsByGroup(g.id!);
+          await studentController.loadStudentsByGroup(g.id!);
+          ToastHelper.success('تم حذف الطلاب وتصفير الأكواد');
+        } catch (e) {
+          ToastHelper.error('فشل تصفير الطلاب — حاول تاني');
+        }
       },
     );
   }
@@ -538,14 +579,19 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   void _confirmDeleteStudent(Student student) {
     Get.defaultDialog(
       title: 'حذف الطالب',
-      middleText: 'هل تريد حذف ${student.name}؟',
+      middleText: 'هل تريد حذف ${student.name}؟\n'
+          'تحذير: هيتحذف معاه كل سجلات حضوره ومدفوعاته ودرجات '
+          'امتحاناته — الإجراء ده لا يمكن التراجع عنه.',
       textCancel: 'إلغاء',
       textConfirm: 'حذف',
       confirmTextColor: Colors.white,
       buttonColor: Colors.red,
       onConfirm: () async {
-        if (student.id != null) await studentController.deleteStudent(student.id!);
         Get.back();
+        if (student.id == null) return;
+        await Future.delayed(const Duration(milliseconds: 80));
+        final ok = await studentController.deleteStudent(student.id!);
+        if (ok) ToastHelper.success('تم حذف الطالب');
       },
     );
   }
@@ -559,9 +605,12 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       builder: (_) => _GroupEditSheet(
         group: g,
         onSave: (updated) async {
-          await groupController.updateGroup(updated);
-          _refreshGroup();
-          ToastHelper.success('تم حفظ التعديلات', title: 'تم');
+          final ok = await groupController.updateGroup(updated);
+          if (ok) {
+            _refreshGroup();
+            ToastHelper.success('تم حفظ التعديلات', title: 'تم');
+          }
+          return ok;
         },
       ),
     );
@@ -851,12 +900,48 @@ class _IconBtn extends StatelessWidget {
   }
 }
 
+/// يتحقق من: (أ) وجود يوم بدون وقت كامل، (ب) تداخل مواعيد في نفس اليوم.
+/// بيرجّع رسالة الخطأ أو null لو الجدول سليم أو فاضي.
+String? _validateScheduleText(String raw) {
+  final byDay = <String, List<(int, int)>>{};
+  for (final part in raw.split(',')) {
+    final s = part.trim();
+    if (s.isEmpty) continue;
+    final sp = s.split(' ');
+    final day = sp.first;
+    if (sp.length < 2) return 'اليوم "$day" بدون وقت — حدد وقت البداية والنهاية';
+    final range = s.substring(day.length).trim().split('-');
+    TimeOfDay? parseT(String v) {
+      final p = v.trim().split(':');
+      if (p.length != 2) return null;
+      final h = int.tryParse(p[0]), m = int.tryParse(p[1]);
+      if (h == null || m == null) return null;
+      return TimeOfDay(hour: h, minute: m);
+    }
+    final from = range.length == 2 ? parseT(range[0]) : null;
+    final to   = range.length == 2 ? parseT(range[1]) : null;
+    if (from == null || to == null) {
+      return 'اليوم "$day" بدون وقت كامل — حدد وقت البداية والنهاية';
+    }
+    byDay
+        .putIfAbsent(day, () => [])
+        .add((from.hour * 60 + from.minute, to.hour * 60 + to.minute));
+  }
+  for (final ranges in byDay.values) {
+    ranges.sort((a, b) => a.$1.compareTo(b.$1));
+    for (var i = 1; i < ranges.length; i++) {
+      if (ranges[i].$1 < ranges[i - 1].$2) return 'فيه موعدين متداخلين في نفس اليوم';
+    }
+  }
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // تعديل المجموعة (bottom sheet بسيط — يعيد استخدام _GroupFormSheet من groups_page)
 // ─────────────────────────────────────────────────────────────────────────────
 class _GroupEditSheet extends StatefulWidget {
   final Group group;
-  final Future<void> Function(Group) onSave;
+  final Future<bool> Function(Group) onSave;
   const _GroupEditSheet({required this.group, required this.onSave});
 
   @override
@@ -894,15 +979,22 @@ class _GroupEditSheetState extends State<_GroupEditSheet> {
     if (name.isEmpty) { ToastHelper.info('أدخل اسم المجموعة'); return; }
     if (code.isEmpty) { ToastHelper.info('أدخل بادئة الكود'); return; }
     if (price == null) { ToastHelper.info('السعر غير صالح'); return; }
+    final scheduleErr = _validateScheduleText(_scheduleCtrl.text);
+    if (scheduleErr != null) { ToastHelper.error(scheduleErr); return; }
 
     setState(() => _saving = true);
-    await widget.onSave(widget.group.copyWith(
-      name: name,
-      code: code,
-      price: price,
-      schedule: _scheduleCtrl.text.trim().isEmpty ? null : _scheduleCtrl.text.trim(),
-    ));
-    if (mounted) Navigator.of(context).pop();
+    try {
+      final ok = await widget.onSave(widget.group.copyWith(
+        name: name,
+        code: code,
+        price: price,
+        schedule: _scheduleCtrl.text.trim().isEmpty ? null : _scheduleCtrl.text.trim(),
+      ));
+      if (mounted && ok) Navigator.of(context).pop();
+      // لو فشل: رسالة الخطأ اتعرضت بالفعل من الـcontroller، خلّي الشيت مفتوح
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -1056,38 +1148,48 @@ class _GDScheduleEditorState extends State<_GDScheduleEditor> {
           final s = e.value;
           String fmtT(TimeOfDay? t) => t == null ? '--:--'
               : '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+          // يوم متحدد بدون وقت كامل = الموعد ده مش هيظهر في جدول الحصص
+          final incomplete = s.day != null && (s.from == null || s.to == null);
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Row(children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: _days.contains(s.day) ? s.day : null,
-                  decoration: InputDecoration(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    isDense: true,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _days.contains(s.day) ? s.day : null,
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      isDense: true,
+                    ),
+                    hint: const Text('اليوم', style: TextStyle(fontSize: 13)),
+                    items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 13)))).toList(),
+                    onChanged: (v) => setState(() { _slots[i].day = v; _sync(); }),
                   ),
-                  hint: const Text('اليوم', style: TextStyle(fontSize: 13)),
-                  items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 13)))).toList(),
-                  onChanged: (v) => setState(() { _slots[i].day = v; _sync(); }),
                 ),
-              ),
-              const SizedBox(width: 6),
-              GestureDetector(
-                onTap: () => _pickTime(i, true),
-                child: _TimeBox(label: fmtT(s.from)),
-              ),
-              const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text('-')),
-              GestureDetector(
-                onTap: () => _pickTime(i, false),
-                child: _TimeBox(label: fmtT(s.to)),
-              ),
-              const SizedBox(width: 4),
-              GestureDetector(
-                onTap: _slots.length > 1 ? () => setState(() { _slots.removeAt(i); _sync(); }) : null,
-                child: Icon(Icons.remove_circle_rounded,
-                    color: _slots.length > 1 ? Colors.red.shade300 : Colors.grey.shade300, size: 20),
-              ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () => _pickTime(i, true),
+                  child: _TimeBox(label: fmtT(s.from), warning: incomplete),
+                ),
+                const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text('-')),
+                GestureDetector(
+                  onTap: () => _pickTime(i, false),
+                  child: _TimeBox(label: fmtT(s.to), warning: incomplete),
+                ),
+                const SizedBox(width: 4),
+                GestureDetector(
+                  onTap: _slots.length > 1 ? () => setState(() { _slots.removeAt(i); _sync(); }) : null,
+                  child: Icon(Icons.remove_circle_rounded,
+                      color: _slots.length > 1 ? Colors.red.shade300 : Colors.grey.shade300, size: 20),
+                ),
+              ]),
+              if (incomplete)
+                const Padding(
+                  padding: EdgeInsets.only(top: 2, right: 4),
+                  child: Text('⚠️ حدد وقت البداية والنهاية وإلا الموعد ده مش هيظهر في جدول الحصص',
+                      style: TextStyle(fontSize: 11, color: Colors.orange)),
+                ),
             ]),
           );
         }),
@@ -1106,16 +1208,18 @@ class _GDScheduleEditorState extends State<_GDScheduleEditor> {
 
 class _TimeBox extends StatelessWidget {
   final String label;
-  const _TimeBox({required this.label});
+  final bool   warning;
+  const _TimeBox({required this.label, this.warning = false});
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: warning ? Colors.orange : Colors.grey.shade300),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(label, style: const TextStyle(fontSize: 12)),
+      child: Text(label, style: TextStyle(
+          fontSize: 12, color: warning ? Colors.orange.shade800 : null)),
     );
   }
 }
@@ -1261,6 +1365,112 @@ Future<bool> _gdSaveStudentQrImage(Student student) async {
     }
     return success;
   } catch (_) { return false; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// تصدير PDF لكشف طلاب المجموعة
+// ─────────────────────────────────────────────────────────────────────────────
+Future<void> _exportGroupRosterPdf(Group g, List<Student> students) async {
+  final pdf = pw.Document();
+  final font = await PdfGoogleFonts.cairoRegular();
+  final fontBold = await PdfGoogleFonts.cairoBold();
+  final sorted = List<Student>.from(students)
+    ..sort((a, b) => a.name.compareTo(b.name));
+
+  pdf.addPage(pw.Page(
+    pageFormat: PdfPageFormat.a4,
+    textDirection: pw.TextDirection.rtl,
+    build: (ctx) => pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Container(
+          width: double.infinity,
+          padding: const pw.EdgeInsets.all(16),
+          decoration: pw.BoxDecoration(
+            color: g.color != null
+                ? PdfColor.fromInt(g.color!)
+                : PdfColor.fromInt(0xFF4F46E5),
+            borderRadius: pw.BorderRadius.circular(8),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Text('كشف طلاب مجموعة',
+                  style: pw.TextStyle(
+                      font: fontBold, fontSize: 16, color: PdfColors.white)),
+              pw.SizedBox(height: 4),
+              pw.Text(g.name,
+                  style: pw.TextStyle(
+                      font: fontBold, fontSize: 22, color: PdfColors.white)),
+              pw.SizedBox(height: 4),
+              pw.Text('عدد الطلاب: ${sorted.length}',
+                  style: pw.TextStyle(
+                      font: font,
+                      fontSize: 12,
+                      color: const PdfColor(1, 1, 1, 0.7))),
+            ],
+          ),
+        ),
+        pw.SizedBox(height: 16),
+        pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+          columnWidths: {
+            0: const pw.FlexColumnWidth(1),
+            1: const pw.FlexColumnWidth(3),
+            2: const pw.FlexColumnWidth(2),
+            3: const pw.FlexColumnWidth(2),
+            4: const pw.FlexColumnWidth(2),
+          },
+          children: [
+            pw.TableRow(
+              decoration:
+                  const pw.BoxDecoration(color: PdfColor.fromInt(0xFF4F46E5)),
+              children: ['#', 'اسم الطالب', 'الكود', 'هاتف ولي الأمر', 'الرسوم']
+                  .map((h) => pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(h,
+                            style: pw.TextStyle(
+                                font: fontBold,
+                                fontSize: 11,
+                                color: PdfColors.white),
+                            textAlign: pw.TextAlign.center),
+                      ))
+                  .toList(),
+            ),
+            ...sorted.asMap().entries.map((entry) {
+              final i = entry.key;
+              final s = entry.value;
+              final bg = i.isEven
+                  ? PdfColors.white
+                  : const PdfColor.fromInt(0xFFF8FAFF);
+              return pw.TableRow(
+                decoration: pw.BoxDecoration(color: bg),
+                children: [
+                  '${i + 1}',
+                  s.name,
+                  s.code,
+                  s.guardianPhone?.trim().isNotEmpty == true
+                      ? s.guardianPhone!
+                      : '-',
+                  s.effectivePrice.toStringAsFixed(0),
+                ]
+                    .map((v) => pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(v,
+                              style: pw.TextStyle(font: font, fontSize: 10),
+                              textAlign: pw.TextAlign.center),
+                        ))
+                    .toList(),
+              );
+            }),
+          ],
+        ),
+      ],
+    ),
+  ));
+
+  await Printing.sharePdf(
+      bytes: await pdf.save(), filename: 'مجموعة_${g.name}.pdf');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

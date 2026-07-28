@@ -11,6 +11,22 @@ import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 
+/// ملخص أعداد البيانات (مجموعات، طلاب، إلخ) في لحظة معيّنة.
+class DataSummary {
+  final int groups;
+  final int students;
+  final int attendanceRecords;
+  final int payments;
+  final int exams;
+  const DataSummary({
+    required this.groups,
+    required this.students,
+    required this.attendanceRecords,
+    required this.payments,
+    required this.exams,
+  });
+}
+
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
   factory DatabaseService() => _instance;
@@ -159,11 +175,16 @@ class DatabaseService {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      await db.execute('ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_CODE TEXT');
-      await db.execute('ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_PRICE REAL');
-      await db.execute('ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_COLOR INTEGER');
-      await db.execute('ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_ICON TEXT');
-      await db.execute('ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_SCHEDULE TEXT');
+      await db
+          .execute('ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_CODE TEXT');
+      await db.execute(
+          'ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_PRICE REAL');
+      await db.execute(
+          'ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_COLOR INTEGER');
+      await db
+          .execute('ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_ICON TEXT');
+      await db.execute(
+          'ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_SCHEDULE TEXT');
       await db.execute(
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_GROUPS}_$COL_GROUP_CODE '
         'ON $TABLE_GROUPS($COL_GROUP_CODE) '
@@ -171,17 +192,24 @@ class DatabaseService {
       );
     }
     if (oldVersion < 5) {
-      await db.execute('ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_SIBLING_ID INTEGER');
-      await db.execute('ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_SIBLINGS_TOTAL REAL');
-      await db.execute('ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_ATTENDANCE_START TEXT');
-      await db.execute('ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_GUARDIAN_PHONE TEXT');
+      await db.execute(
+          'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_SIBLING_ID INTEGER');
+      await db.execute(
+          'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_SIBLINGS_TOTAL REAL');
+      await db.execute(
+          'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_ATTENDANCE_START TEXT');
+      await db.execute(
+          'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_GUARDIAN_PHONE TEXT');
     }
     if (oldVersion < 7) {
-      await db.execute('ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_BIRTH_DATE TEXT');
+      await db.execute(
+          'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_BIRTH_DATE TEXT');
     }
     if (oldVersion < 8) {
-      await db.execute('ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_EXEMPT_PERCENT REAL DEFAULT 0');
-      await db.execute('ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_EXEMPT_REASON TEXT');
+      await db.execute(
+          'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_EXEMPT_PERCENT REAL DEFAULT 0');
+      await db.execute(
+          'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_EXEMPT_REASON TEXT');
     }
     if (oldVersion < 6) {
       await db.execute('''
@@ -413,6 +441,20 @@ class DatabaseService {
     return n;
   }
 
+  /// يربط طالبين كإخوة بتحديث الاثنين في عملية واحدة ذرية —
+  /// إما يتحدّثوا مع بعض أو ولا واحد، عشان ميحصلش ربط باتجاه واحد بس
+  /// لو فشل التحديث الثاني.
+  Future<void> linkSiblings(Student s1, Student s2) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.update(TABLE_STUDENTS, s1.toMap(),
+          where: '$COL_STUDENT_ID = ?', whereArgs: [s1.id]);
+      await txn.update(TABLE_STUDENTS, s2.toMap(),
+          where: '$COL_STUDENT_ID = ?', whereArgs: [s2.id]);
+    });
+    _notifyChanged();
+  }
+
   Future<int> deleteStudent(int id) async {
     final db = await database;
     final n = await db.delete(
@@ -526,15 +568,16 @@ class DatabaseService {
   Future<Set<int>> getPaidStudentIdsForMonth(DateTime month) async {
     final db = await database;
     final start = DateTime(month.year, month.month, 1).toIso8601String();
-    final end = DateTime(month.year, month.month + 1, 0, 23, 59, 59).toIso8601String();
-    
+    final end =
+        DateTime(month.year, month.month + 1, 0, 23, 59, 59).toIso8601String();
+
     final result = await db.query(
       TABLE_PAYMENTS,
       columns: [COL_PAYMENT_STUDENT_ID],
       where: '$COL_PAYMENT_DATE >= ? AND $COL_PAYMENT_DATE <= ?',
       whereArgs: [start, end],
     );
-    
+
     return result.map((row) => row[COL_PAYMENT_STUDENT_ID] as int).toSet();
   }
 
@@ -572,6 +615,31 @@ class DatabaseService {
     return n;
   }
 
+  /// ملخص أعداد البيانات الحالية — يُستخدم في رسائل تأكيد النسخ
+  /// الاحتياطي والحذف عشان المستخدم يشوف بالظبط قد إيه اتحفظ/اتحذف.
+  Future<DataSummary> getDataSummary() async {
+    final db = await database;
+    Future<int> count(String table) async {
+      final r = await db.rawQuery('SELECT COUNT(*) as c FROM $table');
+      return (r.first['c'] as int?) ?? 0;
+    }
+
+    final counts = await Future.wait([
+      count(TABLE_GROUPS),
+      count(TABLE_STUDENTS),
+      count(TABLE_ATTENDANCE),
+      count(TABLE_PAYMENTS),
+      count(TABLE_EXAMS),
+    ]);
+    return DataSummary(
+      groups: counts[0],
+      students: counts[1],
+      attendanceRecords: counts[2],
+      payments: counts[3],
+      exams: counts[4],
+    );
+  }
+
   /// Delete all app data from the database in a safe order
   Future<void> deleteAllData() async {
     final db = await database;
@@ -579,6 +647,10 @@ class DatabaseService {
       // Delete children first to avoid FK issues (even if FKs are disabled)
       await txn.delete(TABLE_ATTENDANCE);
       await txn.delete(TABLE_PAYMENTS);
+      await txn.delete(TABLE_EXAM_GRADES);
+      await txn.delete(TABLE_EXAM_GROUPS);
+      await txn.delete(TABLE_EXAMS);
+      await txn.delete(TABLE_REPORT_LOGS);
       await txn.delete(TABLE_STUDENTS);
       await txn.delete(TABLE_GROUPS);
     });
@@ -608,24 +680,28 @@ class DatabaseService {
     return DateTime.parse(res.first[COL_REPORT_SENT_AT] as String);
   }
 
-  Future<Map<int, DateTime>> getReportSentMap(List<int> studentIds, DateTime monthStart) async {
+  Future<Map<int, DateTime>> getReportSentMap(
+      List<int> studentIds, DateTime monthStart) async {
     if (studentIds.isEmpty) return {};
     final db = await database;
     final m = DateTime(monthStart.year, monthStart.month, 1).toIso8601String();
     final placeholders = List.filled(studentIds.length, '?').join(',');
     final res = await db.query(
       TABLE_REPORT_LOGS,
-      where: '$COL_REPORT_MONTH_START = ? AND $COL_REPORT_STUDENT_ID IN ($placeholders)',
+      where:
+          '$COL_REPORT_MONTH_START = ? AND $COL_REPORT_STUDENT_ID IN ($placeholders)',
       whereArgs: [m, ...studentIds],
     );
     final map = <int, DateTime>{};
     for (final row in res) {
-      map[row[COL_REPORT_STUDENT_ID] as int] = DateTime.parse(row[COL_REPORT_SENT_AT] as String);
+      map[row[COL_REPORT_STUDENT_ID] as int] =
+          DateTime.parse(row[COL_REPORT_SENT_AT] as String);
     }
     return map;
   }
 
-  Future<void> upsertReportLog(int studentId, DateTime monthStart, DateTime sentAt) async {
+  Future<void> upsertReportLog(
+      int studentId, DateTime monthStart, DateTime sentAt) async {
     final db = await database;
     final m = DateTime(monthStart.year, monthStart.month, 1).toIso8601String();
     await db.insert(
@@ -705,15 +781,15 @@ class DatabaseService {
     final db = await database;
     return await db.transaction((txn) async {
       final examId = await txn.insert(TABLE_EXAMS, {
-        COL_EXAM_NAME:          exam.name,
-        COL_EXAM_DATE:          exam.date.toIso8601String(),
-        COL_EXAM_MAX_GRADE:     exam.maxGrade,
+        COL_EXAM_NAME: exam.name,
+        COL_EXAM_DATE: exam.date.toIso8601String(),
+        COL_EXAM_MAX_GRADE: exam.maxGrade,
         COL_EXAM_PASSING_GRADE: exam.passingGrade,
       });
 
       for (final gId in groupIds) {
         await txn.insert(TABLE_EXAM_GROUPS, {
-          COL_EG_EXAM_ID:  examId,
+          COL_EG_EXAM_ID: examId,
           COL_EG_GROUP_ID: gId,
         });
       }
@@ -725,8 +801,7 @@ class DatabaseService {
   /// جلب كل الامتحانات مع قوائم مجموعاتها
   Future<List<Exam>> getAllExams() async {
     final db = await database;
-    final rows = await db.query(TABLE_EXAMS,
-        orderBy: '$COL_EXAM_DATE DESC');
+    final rows = await db.query(TABLE_EXAMS, orderBy: '$COL_EXAM_DATE DESC');
     final exams = <Exam>[];
     for (final row in rows) {
       final id = row[COL_EXAM_ID] as int;
@@ -752,21 +827,49 @@ class DatabaseService {
     return rows.map(Exam.fromMap).toList();
   }
 
+  /// أسماء المجموعات المرتبطة حالياً بامتحان معين واللي هتتشال (مش
+  /// موجودة في [keepGroupIds]) لكن عندها درجات مُدخلة بالفعل لهذا
+  /// الامتحان — بنستخدمها عشان نمنع التعديل من إخفاء درجات بصمت.
+  Future<List<String>> groupsWithGradesNotIn(
+      int examId, List<int> keepGroupIds) async {
+    final db = await database;
+    final notInClause = keepGroupIds.isEmpty
+        ? ''
+        : 'AND eg.$COL_EG_GROUP_ID NOT IN (${keepGroupIds.map((_) => '?').join(',')})';
+    final rows = await db.rawQuery('''
+      SELECT DISTINCT g.$COL_GROUP_NAME AS name
+      FROM $TABLE_EXAM_GROUPS eg
+      INNER JOIN $TABLE_GROUPS g ON g.$COL_GROUP_ID = eg.$COL_EG_GROUP_ID
+      WHERE eg.$COL_EG_EXAM_ID = ? $notInClause
+        AND EXISTS (
+          SELECT 1 FROM $TABLE_EXAM_GRADES eg2
+          INNER JOIN $TABLE_STUDENTS s ON s.$COL_STUDENT_ID = eg2.$COL_GRADE_STUDENT_ID
+          WHERE eg2.$COL_GRADE_EXAM_ID = ? AND s.$COL_STUDENT_GROUP_ID = eg.$COL_EG_GROUP_ID
+            AND (eg2.$COL_GRADE_VALUE IS NOT NULL OR eg2.$COL_GRADE_IS_ABSENT = 1)
+        )
+    ''', [examId, ...keepGroupIds, examId]);
+    return rows.map((r) => r['name'] as String).toList();
+  }
+
   Future<int> updateExam(Exam exam, List<int> groupIds) async {
     final db = await database;
     return await db.transaction((txn) async {
-      await txn.update(TABLE_EXAMS, {
-        COL_EXAM_NAME:          exam.name,
-        COL_EXAM_DATE:          exam.date.toIso8601String(),
-        COL_EXAM_MAX_GRADE:     exam.maxGrade,
-        COL_EXAM_PASSING_GRADE: exam.passingGrade,
-      }, where: '$COL_EXAM_ID = ?', whereArgs: [exam.id]);
+      await txn.update(
+          TABLE_EXAMS,
+          {
+            COL_EXAM_NAME: exam.name,
+            COL_EXAM_DATE: exam.date.toIso8601String(),
+            COL_EXAM_MAX_GRADE: exam.maxGrade,
+            COL_EXAM_PASSING_GRADE: exam.passingGrade,
+          },
+          where: '$COL_EXAM_ID = ?',
+          whereArgs: [exam.id]);
 
       await txn.delete(TABLE_EXAM_GROUPS,
           where: '$COL_EG_EXAM_ID = ?', whereArgs: [exam.id]);
       for (final gId in groupIds) {
         await txn.insert(TABLE_EXAM_GROUPS, {
-          COL_EG_EXAM_ID:  exam.id,
+          COL_EG_EXAM_ID: exam.id,
           COL_EG_GROUP_ID: gId,
         });
       }
@@ -777,16 +880,15 @@ class DatabaseService {
 
   Future<void> deleteExam(int examId) async {
     final db = await database;
-    await db.delete(TABLE_EXAMS,
-        where: '$COL_EXAM_ID = ?', whereArgs: [examId]);
+    await db
+        .delete(TABLE_EXAMS, where: '$COL_EXAM_ID = ?', whereArgs: [examId]);
     _notifyChanged();
   }
 
   // ========== EXAM GRADES ==========
 
   /// جلب درجات طلاب مجموعة في امتحان معين
-  Future<List<ExamGrade>> getGradesForExamGroup(
-      int examId, int groupId) async {
+  Future<List<ExamGrade>> getGradesForExamGroup(int examId, int groupId) async {
     final db = await database;
     final rows = await db.rawQuery('''
       SELECT
@@ -809,24 +911,26 @@ class DatabaseService {
       ORDER BY s.$COL_STUDENT_NAME ASC
     ''', [examId, examId, groupId]);
 
-    return rows.map((r) => ExamGrade.fromMap({
-      'id':           r['id'],
-      'exam_id':      examId,
-      'student_id':   r['student_id'],
-      'grade':        r['grade'],
-      'notes':        r['notes'],
-      'is_absent':    r['is_absent'] ?? 0,
-      'created_at':   r['created_at'],
-      'student_name': r['student_name'],
-      'max_grade':    r['max_grade'],
-      'passing_grade':r['passing_grade'],
-    })).toList();
+    return rows
+        .map((r) => ExamGrade.fromMap({
+              'id': r['id'],
+              'exam_id': examId,
+              'student_id': r['student_id'],
+              'grade': r['grade'],
+              'notes': r['notes'],
+              'is_absent': r['is_absent'] ?? 0,
+              'created_at': r['created_at'],
+              'student_name': r['student_name'],
+              'max_grade': r['max_grade'],
+              'passing_grade': r['passing_grade'],
+            }))
+        .toList();
   }
 
   /// حفظ أو تحديث درجة طالب (مع دعم الغياب)
   Future<void> upsertGrade({
-    required int    examId,
-    required int    studentId,
+    required int examId,
+    required int studentId,
     required double? grade,
     String? notes,
     bool isAbsent = false,
@@ -851,8 +955,8 @@ class DatabaseService {
       int examId, int groupId, String groupName) async {
     final grades = await getGradesForExamGroup(examId, groupId);
     final absentList = grades.where((g) => g.isAbsent).toList();
-    final entered    = grades.where((g) => g.grade != null).toList();
-    final maxGrade   = grades.isNotEmpty ? (grades.first.maxGrade ?? 100) : 100;
+    final entered = grades.where((g) => g.grade != null).toList();
+    final maxGrade = grades.isNotEmpty ? (grades.first.maxGrade ?? 100) : 100;
     final passingGrade = grades.isNotEmpty
         ? (grades.first.passingGrade ?? maxGrade * 0.5)
         : maxGrade * 0.5;
@@ -864,32 +968,38 @@ class DatabaseService {
     int excellent = 0, veryGood = 0, good = 0, pass = 0, fail = 0;
     for (final g in entered) {
       final pct = maxGrade > 0 ? (g.grade! / maxGrade) * 100 : 0;
-      if (pct >= 90) excellent++;
-      else if (pct >= 80) veryGood++;
-      else if (pct >= 70) good++;
-      else if (pct >= 60) pass++;
-      else fail++;
+      if (pct >= 90)
+        excellent++;
+      else if (pct >= 80)
+        veryGood++;
+      else if (pct >= 70)
+        good++;
+      else if (pct >= 60)
+        pass++;
+      else
+        fail++;
     }
 
     return ExamGroupStats(
-      examId:    examId,
-      groupId:   groupId,
+      examId: examId,
+      groupId: groupId,
       groupName: groupName,
-      total:     grades.length,
-      entered:   entered.length,
-      passed:    passed,
-      failed:    entered.length - passed,
-      absent:    absentList.length,
-      average:   values.isEmpty ? 0 : values.reduce((a, b) => a + b) / values.length,
-      highest:   values.isEmpty ? 0 : values.reduce((a, b) => a > b ? a : b),
-      lowest:    values.isEmpty ? 0 : values.reduce((a, b) => a < b ? a : b),
+      total: grades.length,
+      entered: entered.length,
+      passed: passed,
+      failed: entered.length - passed,
+      absent: absentList.length,
+      average:
+          values.isEmpty ? 0 : values.reduce((a, b) => a + b) / values.length,
+      highest: values.isEmpty ? 0 : values.reduce((a, b) => a > b ? a : b),
+      lowest: values.isEmpty ? 0 : values.reduce((a, b) => a < b ? a : b),
       distribution: GradeDistribution(
         excellent: excellent,
-        veryGood:  veryGood,
-        good:      good,
-        pass:      pass,
-        fail:      fail,
-        absent:    absentList.length,
+        veryGood: veryGood,
+        good: good,
+        pass: pass,
+        fail: fail,
+        absent: absentList.length,
       ),
     );
   }
@@ -916,12 +1026,12 @@ class DatabaseService {
     ''', [examId]);
 
     final entered = (enteredRes.first['entered'] as int?) ?? 0;
-    final absent  = (enteredRes.first['absent']  as int?) ?? 0;
+    final absent = (enteredRes.first['absent'] as int?) ?? 0;
 
     return ExamProgress(
-      examId:         examId,
-      totalStudents:  total,
-      enteredGrades:  entered,
+      examId: examId,
+      totalStudents: total,
+      enteredGrades: entered,
       absentStudents: absent,
     );
   }
@@ -949,16 +1059,18 @@ class DatabaseService {
       ORDER BY e.$COL_EXAM_DATE ASC
     ''', [studentId, studentId]);
 
-    return rows.map((r) => StudentExamRecord(
-      examId:       r['exam_id'] as int,
-      examName:     r['exam_name'] as String,
-      examDate:     DateTime.parse(r['exam_date'] as String),
-      maxGrade:     (r['max_grade'] as num).toDouble(),
-      passingGrade: (r['passing_grade'] as num).toDouble(),
-      grade:        r['grade'] != null ? (r['grade'] as num).toDouble() : null,
-      isAbsent:     (r['is_absent'] as int? ?? 0) == 1,
-      groupName:    r['group_name'] as String,
-    )).toList();
+    return rows
+        .map((r) => StudentExamRecord(
+              examId: r['exam_id'] as int,
+              examName: r['exam_name'] as String,
+              examDate: DateTime.parse(r['exam_date'] as String),
+              maxGrade: (r['max_grade'] as num).toDouble(),
+              passingGrade: (r['passing_grade'] as num).toDouble(),
+              grade: r['grade'] != null ? (r['grade'] as num).toDouble() : null,
+              isAbsent: (r['is_absent'] as int? ?? 0) == 1,
+              groupName: r['group_name'] as String,
+            ))
+        .toList();
   }
 
   /// قائمة الأوائل لامتحان معين (كل المجموعات أو مجموعة محددة)
@@ -1001,14 +1113,14 @@ class DatabaseService {
     final list = rows.asMap().entries.map((entry) {
       final r = entry.value;
       return LeaderboardEntry(
-        studentId:   r['student_id'] as int,
+        studentId: r['student_id'] as int,
         studentName: r['student_name'] as String,
-        groupId:     r['group_id'] as int,
-        groupName:   r['group_name'] as String,
-        totalGrade:  (r['total_grade'] as num).toDouble(),
-        totalMax:    (r['total_max'] as num).toDouble(),
-        examCount:   r['exam_count'] as int,
-        rank:        entry.key + 1,
+        groupId: r['group_id'] as int,
+        groupName: r['group_name'] as String,
+        totalGrade: (r['total_grade'] as num).toDouble(),
+        totalMax: (r['total_max'] as num).toDouble(),
+        examCount: r['exam_count'] as int,
+        rank: entry.key + 1,
       );
     }).toList();
     return list;

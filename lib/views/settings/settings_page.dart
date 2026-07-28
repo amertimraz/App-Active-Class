@@ -12,7 +12,9 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/theme_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
+import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/widgets/custom_dialogs.dart';
+import 'package:active_class/widgets/progress_dialog.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/backup_service.dart';
@@ -187,8 +189,15 @@ class SettingsPage extends StatelessWidget {
                             iconColor: const Color(0xFF25D366),
                             title: 'إرسال تقارير الشهر',
                             subtitle: 'يفتح محادثة واتساب لكل ولي أمر بتقرير مفصل',
-                            onTap: () =>
-                                _startWhatsappBatchSend(context, settings),
+                            onTap: () {
+                              if (!requireLicenseFeature(
+                                  context,
+                                  Get.find<LicenseController>().canWhatsApp,
+                                  'الإرسال الجماعي عبر واتساب غير متاح في باقتك الحالية — قم بالترقية')) {
+                                return;
+                              }
+                              _startWhatsappBatchSend(context, settings);
+                            },
                           ),
                           _buildDivider(isDark),
                           // ── إظهار زر الواتساب في المجموعات ──────────
@@ -272,7 +281,15 @@ class SettingsPage extends StatelessWidget {
                             iconColor: const Color(0xFF4F46E5),
                             title: 'إنشاء نسخة احتياطية',
                             subtitle: 'نسخ كامل لقاعدة البيانات مع خيار المشاركة',
-                            onTap: () => _handleEnhancedBackup(context),
+                            onTap: () {
+                              if (!requireLicenseFeature(
+                                  context,
+                                  Get.find<LicenseController>().canBackup,
+                                  'النسخ الاحتياطي غير متاح في الفترة التجريبية — قم بالترقية')) {
+                                return;
+                              }
+                              _handleEnhancedBackup(context);
+                            },
                           ),
                           _buildDivider(isDark),
                           _buildNavTile(
@@ -281,7 +298,15 @@ class SettingsPage extends StatelessWidget {
                             iconColor: const Color(0xFF06B6D4),
                             title: 'استعادة نسخة احتياطية',
                             subtitle: 'استعادة البيانات من نسخة محفوظة',
-                            onTap: () => _handleRestoreBackup(context),
+                            onTap: () {
+                              if (!requireLicenseFeature(
+                                  context,
+                                  Get.find<LicenseController>().canBackup,
+                                  'استعادة النسخ الاحتياطية غير متاحة في الفترة التجريبية — قم بالترقية')) {
+                                return;
+                              }
+                              _handleRestoreBackup(context);
+                            },
                           ),
                           _buildDivider(isDark),
                           _buildNavTile(
@@ -924,16 +949,39 @@ class SettingsPage extends StatelessWidget {
   // ── Backup ────────────────────────────────────────────────────────────────
   Future<void> _handleEnhancedBackup(BuildContext context) async {
     final svc = BackupService();
-    LoadingDialog.show(context, message: 'جاري إنشاء النسخة الاحتياطية...');
-    final result = await svc.createBackup();
+    final result = await ProgressDialog.run(
+      context,
+      title: 'جاري إنشاء النسخة الاحتياطية...',
+      icon: Icons.backup_rounded,
+      task: svc.createBackup,
+    );
+    // فسحة صغيرة عشان أنيميشن إغلاق حوار التقدّم يخلص تماماً قبل ما
+    // نفتح حوار تاني على نفس الـ Navigator (تجنّب تعارض بين إغلاق
+    // وفتح حوارين في نفس الوقت تقريباً).
+    await Future.delayed(const Duration(milliseconds: 80));
     if (!context.mounted) return;
-    LoadingDialog.hide();
 
     if (!result.success) {
       ToastHelper.error(result.error ?? 'فشل إنشاء النسخة الاحتياطية');
       return;
     }
 
+    // نسخة Downloads اختيارية وبطيئة على بعض الأجهزة (MediaStore بيجمّد
+    // الـ main thread لثوانٍ — قيد في المكتبة الأصلية مش حاجة نقدر نلغيها
+    // من الداخل) — بنأجّلها شوية عشان شاشة النجاح تترسم وتبان فعلاً
+    // للمستخدم قبل ما الجمود المؤقت يحصل، بدل ما تفضل شاشة "معلّقة"
+    // بصريًا من أول لمسة. من غير toast عمداً: بتتنفذ بعيد زمنياً عن
+    // لمسة المستخدم وممكن تحصل بعد ما يغيّر شاشة.
+    if (result.localPath != null && result.fileName != null) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        svc.saveToDownloads(result.localPath!, result.fileName!);
+      });
+    }
+
+    // البيانات اللي فعلياً اتحفظت جوه النسخة (نفس محتوى قاعدة البيانات
+    // الحالية وقت الحفظ)، عشان المستخدم يشوف بالظبط قد إيه اتحفظ.
+    final summary = await DatabaseService().getDataSummary();
+    if (!context.mounted) return;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -946,12 +994,11 @@ class SettingsPage extends StatelessWidget {
           children: [
             _InfoRow(Icons.storage_rounded, Colors.green,
                 'محفوظة داخل التطبيق (دائمة)'),
-            if (result.downloadsUri != null)
-              _InfoRow(Icons.download_rounded, Colors.blue,
-                  'نسخة في Downloads/ActiveClass'),
             const SizedBox(height: 6),
             Text('الحجم: ${result.fileSize ?? '—'}',
                 style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+            const Divider(height: 20),
+            _DataSummaryList(summary: summary),
           ],
         ),
         actions: [
@@ -1114,11 +1161,18 @@ class SettingsPage extends StatelessWidget {
     );
 
     if (confirmed != true || !context.mounted) return;
-
-    LoadingDialog.show(context, message: 'جاري الاستعادة...');
-    final success = await svc.restoreBackup(selectedPath);
+    // فسحة صغيرة عشان أنيميشن إغلاق حوار التأكيد يخلص الأول
+    await Future.delayed(const Duration(milliseconds: 80));
     if (!context.mounted) return;
-    LoadingDialog.hide();
+
+    final success = await ProgressDialog.run(
+      context,
+      title: 'جاري استعادة النسخة الاحتياطية...',
+      icon: Icons.restore_rounded,
+      color: const Color(0xFF06B6D4),
+      task: () => svc.restoreBackup(selectedPath!),
+    );
+    if (!context.mounted) return;
 
     if (success) {
       ToastHelper.success('تم استعادة النسخة الاحتياطية بنجاح');
@@ -1166,18 +1220,28 @@ class SettingsPage extends StatelessWidget {
         message:
             'هل أنت متأكد؟ سيتم حذف جميع البيانات بشكل نهائي ولا يمكن التراجع',
         onConfirm: () async {
-          LoadingDialog.show(context, message: 'جاري الحذف...');
           try {
-            await settingsController.deleteAllData();
+            // لازم ناخد الملخص قبل الحذف — بعد الحذف كل الأعداد بتبقى صفر
+            final summary = await DatabaseService().getDataSummary();
+            // فسحة صغيرة عشان أنيميشن إغلاق حوار التأكيد يخلص الأول
+            await Future.delayed(const Duration(milliseconds: 80));
             if (!context.mounted) return;
-            LoadingDialog.hide();
+            await ProgressDialog.run(
+              context,
+              title: 'جاري حذف البيانات...',
+              icon: Icons.delete_forever_rounded,
+              color: Colors.red,
+              task: settingsController.deleteAllData,
+            );
+            await Future.delayed(const Duration(milliseconds: 80));
+            if (!context.mounted) return;
             SuccessDialog.show(
               context,
               title: 'تم الحذف',
               message: 'تم حذف جميع البيانات بنجاح',
+              content: _DataSummaryList(summary: summary),
             );
           } catch (e) {
-            LoadingDialog.hide();
             if (!context.mounted) return;
             ErrorDialog.show(
               context,
@@ -1585,6 +1649,30 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
+/// ملخص أعداد البيانات — بيُستخدم في حوارات نجاح النسخ الاحتياطي والحذف
+class _DataSummaryList extends StatelessWidget {
+  final DataSummary summary;
+  const _DataSummaryList({required this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <(IconData, String)>[
+      (Icons.groups_rounded, '${summary.groups} مجموعة'),
+      (Icons.person_rounded, '${summary.students} طالب'),
+      (Icons.how_to_reg_rounded, '${summary.attendanceRecords} سجل حضور'),
+      (Icons.payments_rounded, '${summary.payments} دفعة'),
+      (Icons.assignment_rounded, '${summary.exams} امتحان'),
+    ];
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: rows
+          .map((r) => _InfoRow(r.$1, AppTheme.primaryColor, r.$2))
+          .toList(),
+    );
+  }
+}
+
 /// زر اختيار كبير
 class _ChoiceButton extends StatelessWidget {
   final IconData icon;
@@ -1747,14 +1835,34 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
     _backups = List.from(widget.backups);
   }
 
+  void _confirmDeleteOne(BackupInfo b) {
+    ConfirmDeleteDialog.show(
+      context,
+      title: 'حذف النسخة الاحتياطية',
+      message: 'هل تريد حذف هذه النسخة الاحتياطية نهائياً؟ لا يمكن التراجع عن هذا الإجراء.',
+      onConfirm: () => _deleteOne(b),
+    );
+  }
+
   Future<void> _deleteOne(BackupInfo b) async {
     setState(() => _deleting = true);
     await widget.svc.deleteBackup(b.path);
+    if (!mounted) return;
     setState(() {
       _backups.remove(b);
       _deleting = false;
     });
     if (_backups.isEmpty && mounted) Navigator.of(context).pop();
+  }
+
+  void _confirmCleanOld() {
+    ConfirmDeleteDialog.show(
+      context,
+      title: 'حذف النسخ القديمة',
+      message:
+          'سيتم حذف ${_backups.length - 5} نسخة احتياطية قديمة نهائياً والاحتفاظ بأحدث 5 فقط. لا يمكن التراجع عن هذا الإجراء.',
+      onConfirm: _cleanOld,
+    );
   }
 
   Future<void> _cleanOld() async {
@@ -1786,7 +1894,7 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
                 child: SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: _deleting ? null : _cleanOld,
+                    onPressed: _deleting ? null : _confirmCleanOld,
                     icon: const Icon(Icons.cleaning_services_rounded, size: 16),
                     label: Text('احتفظ بأحدث 5 فقط (احذف ${_backups.length - 5})',
                         style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
@@ -1864,7 +1972,7 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
                               IconButton(
                                 icon: const Icon(Icons.delete_outline_rounded,
                                     color: Colors.red, size: 20),
-                                onPressed: _deleting ? null : () => _deleteOne(b),
+                                onPressed: _deleting ? null : () => _confirmDeleteOne(b),
                                 tooltip: 'حذف هذه النسخة',
                               ),
                             ],
@@ -1872,7 +1980,7 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
                         : IconButton(
                             icon: const Icon(Icons.delete_outline_rounded,
                                 color: Colors.red, size: 20),
-                            onPressed: _deleting ? null : () => _deleteOne(b),
+                            onPressed: _deleting ? null : () => _confirmDeleteOne(b),
                             tooltip: 'حذف هذه النسخة',
                           ),
                   );

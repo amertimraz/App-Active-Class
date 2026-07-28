@@ -70,7 +70,10 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
     }
     if (_dateFrom != null || _dateTo != null) {
       list = list.where((s) {
-        final d = s.createdAt;
+        // attendanceStart هو تاريخ الانضمام الفعلي اللي المدرّس بيحدده
+        // (بيتحدد دايمًا عند الإضافة)؛ createdAt احتياطي للبيانات
+        // القديمة اللي معندهاش قيمة.
+        final d = s.attendanceStart ?? s.createdAt;
         if (d == null) return false;
         if (_dateFrom != null && d.isBefore(_dateFrom!)) return false;
         if (_dateTo != null && d.isAfter(_dateTo!)) return false;

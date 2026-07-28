@@ -12,10 +12,11 @@ import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/exam_controller.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
+import 'package:active_class/utils/helpers.dart';
 
 class ExamGradesPage extends StatefulWidget {
-  final Exam   exam;
-  final int    groupId;
+  final Exam exam;
+  final int groupId;
   final String groupName;
 
   const ExamGradesPage({
@@ -31,14 +32,16 @@ class ExamGradesPage extends StatefulWidget {
 
 class _ExamGradesPageState extends State<ExamGradesPage> {
   late final ExamController _ec;
-  List<ExamGrade> _grades  = [];
-  bool            _loading = true;
+  List<ExamGrade> _grades = [];
+  bool _loading = true;
   ExamGroupStats? _stats;
 
-  final Map<int, TextEditingController> _ctrls      = {};
-  final Map<int, TextEditingController> _notes      = {};
-  final Set<int>                        _saveLock   = {};  // منع التزامن
-  Timer?                                _statsTimer;       // debounce إحصائيات
+  final Map<int, TextEditingController> _ctrls = {};
+  final Map<int, TextEditingController> _notes = {};
+  // طابور بدل قفل: لو فيه حفظ شغال لنفس الطالب، الطلب الجديد بينتظره
+  // يخلص الأول بدل ما يتجاهَل (منع فقدان تعديلات لو المستخدم كان سريع).
+  final Map<int, Future<void>> _pending = {};
+  Timer? _statsTimer; // debounce إحصائيات
 
   @override
   void initState() {
@@ -50,8 +53,12 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
   @override
   void dispose() {
     _statsTimer?.cancel();
-    for (final c in _ctrls.values) { c.dispose(); }
-    for (final c in _notes.values) { c.dispose(); }
+    for (final c in _ctrls.values) {
+      c.dispose();
+    }
+    for (final c in _notes.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -59,8 +66,8 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
   void _scheduleStatsRefresh() {
     _statsTimer?.cancel();
     _statsTimer = Timer(const Duration(milliseconds: 1500), () async {
-      final stats = await _ec.getStats(
-          widget.exam.id!, widget.groupId, widget.groupName);
+      final stats =
+          await _ec.getStats(widget.exam.id!, widget.groupId, widget.groupName);
       if (mounted) setState(() => _stats = stats);
     });
   }
@@ -68,41 +75,57 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
   Future<void> _load() async {
     if (!mounted) return;
     setState(() => _loading = true);
-    final grades = await _ec.getGradesForExamGroup(
-        widget.exam.id!, widget.groupId);
+    final grades =
+        await _ec.getGradesForExamGroup(widget.exam.id!, widget.groupId);
 
     for (final g in grades) {
       if (!_ctrls.containsKey(g.studentId)) {
         _ctrls[g.studentId] = TextEditingController(
             text: g.isAbsent
                 ? ''
-                : g.grade != null ? _fmt(g.grade!) : '');
-        _notes[g.studentId] = TextEditingController(
-            text: g.notes ?? '');
+                : g.grade != null
+                    ? _fmt(g.grade!)
+                    : '');
+        _notes[g.studentId] = TextEditingController(text: g.notes ?? '');
       }
     }
-    final stats = await _ec.getStats(
-        widget.exam.id!, widget.groupId, widget.groupName);
-    if (mounted) setState(() { _grades = grades; _stats = stats; _loading = false; });
+    final stats =
+        await _ec.getStats(widget.exam.id!, widget.groupId, widget.groupName);
+    if (mounted)
+      setState(() {
+        _grades = grades;
+        _stats = stats;
+        _loading = false;
+      });
   }
 
   String _fmt(double v) =>
       v == v.toInt() ? v.toInt().toString() : v.toStringAsFixed(1);
 
-  Future<void> _saveGrade(int studentId, String raw,
-      {bool? absent}) async {
-    // ── منع التزامن: لو طالب بيتحفظ بالفعل، تجاهل ──────────────────────────
-    if (_saveLock.contains(studentId)) return;
-    _saveLock.add(studentId);
+  Future<void> _saveGrade(int studentId, String raw, {bool? absent}) async {
+    // طابور بدل تجاهل: انتظر أي عملية حفظ سابقة لنفس الطالب تخلص الأول
+    final previous = _pending[studentId] ?? Future<void>.value();
+    final run =
+        previous.then((_) => _doSaveGrade(studentId, raw, absent: absent));
+    final queued = run.catchError((_) {}); // متابعة الطابور حتى لو فشلت
+    _pending[studentId] = queued;
+    queued.whenComplete(() {
+      if (identical(_pending[studentId], queued)) _pending.remove(studentId);
+    });
+    return run;
+  }
 
+  Future<void> _doSaveGrade(int studentId, String raw, {bool? absent}) async {
     try {
       double? val;
-      final trimmed  = raw.trim();
+      final trimmed = raw.trim();
       final isAbsent = absent ?? false;
 
       if (!isAbsent && trimmed.isNotEmpty) {
         val = double.tryParse(trimmed);
-        if (val == null) { return; }
+        if (val == null) {
+          return;
+        }
         if (val < 0) val = 0;
         if (val > widget.exam.maxGrade) val = widget.exam.maxGrade;
         final corrected = _fmt(val);
@@ -112,13 +135,13 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
       }
 
       await _ec.saveGrade(
-        examId:    widget.exam.id!,
+        examId: widget.exam.id!,
         studentId: studentId,
-        grade:     isAbsent ? null : val,
-        notes:     _notes[studentId]?.text.trim().isEmpty == true
-                     ? null
-                     : _notes[studentId]?.text.trim(),
-        isAbsent:  isAbsent,
+        grade: isAbsent ? null : val,
+        notes: _notes[studentId]?.text.trim().isEmpty == true
+            ? null
+            : _notes[studentId]?.text.trim(),
+        isAbsent: isAbsent,
       );
 
       // تحديث فوري للقائمة المحلية (بدون إعادة تحميل من DB)
@@ -126,17 +149,16 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
       final idx = _grades.indexWhere((g) => g.studentId == studentId);
       if (idx >= 0) {
         setState(() {
-          _grades[idx] = _grades[idx].copyWith(
-              grade:    isAbsent ? null : val,
-              isAbsent: isAbsent);
+          _grades[idx] = _grades[idx]
+              .copyWith(grade: isAbsent ? null : val, isAbsent: isAbsent);
         });
       }
 
       // تحديث الإحصائيات بعد توقف 1.5 ث (لا تُوقف الإدخال)
       _scheduleStatsRefresh();
-
-    } finally {
-      _saveLock.remove(studentId);
+    } catch (e) {
+      if (mounted) ToastHelper.error('فشل حفظ الدرجة — حاول تاني');
+      rethrow; // يوصل الخطأ للـ _GradeRowState._runSave عشان يقفل الـ spinner
     }
   }
 
@@ -145,8 +167,10 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
     final buffer = StringBuffer();
     buffer.writeln('📋 كشف درجات امتحان: ${widget.exam.name}');
     buffer.writeln('👥 المجموعة: ${widget.groupName}');
-    buffer.writeln('📅 ${DateFormat('d MMMM yyyy', 'ar').format(widget.exam.date)}');
-    buffer.writeln('📊 الدرجة الكاملة: ${widget.exam.maxGrade.toStringAsFixed(0)}');
+    buffer.writeln(
+        '📅 ${DateFormat('d MMMM yyyy', 'ar').format(widget.exam.date)}');
+    buffer.writeln(
+        '📊 الدرجة الكاملة: ${widget.exam.maxGrade.toStringAsFixed(0)}');
     buffer.writeln('─' * 30);
 
     for (final g in _grades) {
@@ -154,9 +178,10 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
       if (g.isAbsent) {
         buffer.writeln('⚠️ $name — غائب');
       } else if (g.grade != null) {
-        final pct  = widget.exam.maxGrade > 0
-            ? (g.grade! / widget.exam.maxGrade * 100).toStringAsFixed(0) : '0';
-        final cat  = g.category.label;
+        final pct = widget.exam.maxGrade > 0
+            ? (g.grade! / widget.exam.maxGrade * 100).toStringAsFixed(0)
+            : '0';
+        final cat = g.category.label;
         buffer.writeln('• $name — ${_fmt(g.grade!)} ($pct%) [$cat]');
       } else {
         buffer.writeln('○ $name — لم يُدخل');
@@ -165,13 +190,16 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
 
     if (_stats != null) {
       buffer.writeln('─' * 30);
-      buffer.writeln('✅ ناجح: ${_stats!.passed}  |  ❌ راسب: ${_stats!.failed}  |  ⚠️ غياب: ${_stats!.absent}');
+      buffer.writeln(
+          '✅ ناجح: ${_stats!.passed}  |  ❌ راسب: ${_stats!.failed}  |  ⚠️ غياب: ${_stats!.absent}');
       if (_stats!.entered > 0) {
-        buffer.writeln('📈 متوسط: ${_stats!.average.toStringAsFixed(1)} | أعلى: ${_stats!.highest.toStringAsFixed(0)} | نسبة النجاح: ${_stats!.passRate.toStringAsFixed(0)}%');
+        buffer.writeln(
+            '📈 متوسط: ${_stats!.average.toStringAsFixed(1)} | أعلى: ${_stats!.highest.toStringAsFixed(0)} | نسبة النجاح: ${_stats!.passRate.toStringAsFixed(0)}%');
       }
     }
 
-    await Share.share(buffer.toString(), subject: 'كشف درجات ${widget.exam.name}');
+    await Share.share(buffer.toString(),
+        subject: 'كشف درجات ${widget.exam.name}');
   }
 
   // ── تصدير PDF ─────────────────────────────────────────────────────────────
@@ -200,16 +228,18 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
               crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
                 pw.Text('كشف درجات',
-                    style: pw.TextStyle(font: fontBold, fontSize: 18,
-                        color: PdfColors.white)),
+                    style: pw.TextStyle(
+                        font: fontBold, fontSize: 18, color: PdfColors.white)),
                 pw.SizedBox(height: 4),
                 pw.Text(widget.exam.name,
-                    style: pw.TextStyle(font: fontBold, fontSize: 22,
-                        color: PdfColors.white)),
+                    style: pw.TextStyle(
+                        font: fontBold, fontSize: 22, color: PdfColors.white)),
                 pw.SizedBox(height: 4),
                 pw.Text(
                   '${widget.groupName}  —  ${DateFormat('d MMMM yyyy', 'ar').format(widget.exam.date)}',
-                  style: pw.TextStyle(font: font, fontSize: 12,
+                  style: pw.TextStyle(
+                      font: font,
+                      fontSize: 12,
                       color: const PdfColor(1, 1, 1, 0.7)),
                 ),
               ],
@@ -222,14 +252,14 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
               children: [
-                _pdfStat(font, fontBold, 'إجمالي الطلاب',
-                    '${_stats!.total}', PdfColors.blue700),
-                _pdfStat(font, fontBold, 'ناجح',
-                    '${_stats!.passed}', PdfColors.green700),
-                _pdfStat(font, fontBold, 'راسب',
-                    '${_stats!.failed}', PdfColors.red700),
-                _pdfStat(font, fontBold, 'غياب',
-                    '${_stats!.absent}', PdfColors.orange700),
+                _pdfStat(font, fontBold, 'إجمالي الطلاب', '${_stats!.total}',
+                    PdfColors.blue700),
+                _pdfStat(font, fontBold, 'ناجح', '${_stats!.passed}',
+                    PdfColors.green700),
+                _pdfStat(font, fontBold, 'راسب', '${_stats!.failed}',
+                    PdfColors.red700),
+                _pdfStat(font, fontBold, 'غياب', '${_stats!.absent}',
+                    PdfColors.orange700),
                 if (_stats!.entered > 0)
                   _pdfStat(font, fontBold, 'المتوسط',
                       _stats!.average.toStringAsFixed(1), PdfColors.purple700),
@@ -249,13 +279,15 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
             children: [
               // Header row
               pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF4F46E5)),
+                decoration:
+                    const pw.BoxDecoration(color: PdfColor.fromInt(0xFF4F46E5)),
                 children: ['اسم الطالب', 'الدرجة', 'النسبة', 'التصنيف']
                     .map((h) => pw.Padding(
                           padding: const pw.EdgeInsets.all(8),
                           child: pw.Text(h,
                               style: pw.TextStyle(
-                                  font: fontBold, fontSize: 11,
+                                  font: fontBold,
+                                  fontSize: 11,
                                   color: PdfColors.white),
                               textAlign: pw.TextAlign.center),
                         ))
@@ -265,17 +297,24 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
               ..._grades.asMap().entries.map((entry) {
                 final i = entry.key;
                 final g = entry.value;
-                final bg = i.isEven ? PdfColors.white : const PdfColor.fromInt(0xFFF8FAFF);
+                final bg = i.isEven
+                    ? PdfColors.white
+                    : const PdfColor.fromInt(0xFFF8FAFF);
 
                 String gradeStr, pctStr, catStr;
                 if (g.isAbsent) {
-                  gradeStr = 'غائب'; pctStr = '---'; catStr = 'غائب';
+                  gradeStr = 'غائب';
+                  pctStr = '---';
+                  catStr = 'غائب';
                 } else if (g.grade != null) {
                   gradeStr = _fmt(g.grade!);
-                  pctStr   = '${(g.grade! / widget.exam.maxGrade * 100).toStringAsFixed(0)}%';
-                  catStr   = g.category.label;
+                  pctStr =
+                      '${(g.grade! / widget.exam.maxGrade * 100).toStringAsFixed(0)}%';
+                  catStr = g.category.label;
                 } else {
-                  gradeStr = '---'; pctStr = '---'; catStr = 'لم يُدخل';
+                  gradeStr = '---';
+                  pctStr = '---';
+                  catStr = 'لم يُدخل';
                 }
 
                 return pw.TableRow(
@@ -298,22 +337,23 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
 
     final bytes = await pdf.save();
     await Printing.sharePdf(
-        bytes: bytes,
-        filename: 'grades_${widget.exam.name}.pdf');
+        bytes: bytes, filename: 'grades_${widget.exam.name}.pdf');
   }
 
-  pw.Widget _pdfStat(pw.Font font, pw.Font bold,
-      String label, String value, PdfColor color) =>
+  pw.Widget _pdfStat(pw.Font font, pw.Font bold, String label, String value,
+          PdfColor color) =>
       pw.Container(
         padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: pw.BoxDecoration(
             color: color, borderRadius: pw.BorderRadius.circular(6)),
         child: pw.Column(children: [
           pw.Text(value,
-              style: pw.TextStyle(font: bold, fontSize: 14,
-                  color: PdfColors.white)),
+              style: pw.TextStyle(
+                  font: bold, fontSize: 14, color: PdfColors.white)),
           pw.Text(label,
-              style: pw.TextStyle(font: font, fontSize: 9,
+              style: pw.TextStyle(
+                  font: font,
+                  fontSize: 9,
                   color: const PdfColor(1, 1, 1, 0.7))),
         ]),
       );
@@ -328,10 +368,14 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(widget.exam.name,
-                style: const TextStyle(fontFamily: 'Cairo',
-                    fontWeight: FontWeight.w800, fontSize: 15)),
+                style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15)),
             Text(widget.groupName,
-                style: TextStyle(fontFamily: 'Cairo', fontSize: 12,
+                style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12,
                     color: cs.onSurface.withValues(alpha: 0.6))),
           ],
         ),
@@ -353,14 +397,13 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
           : Column(
               children: [
                 if (_stats != null)
-                  _StatsPanel(
-                      stats: _stats!,
-                      maxGrade: widget.exam.maxGrade),
+                  _StatsPanel(stats: _stats!, maxGrade: widget.exam.maxGrade),
                 Expanded(
                   child: _grades.isEmpty
                       ? Center(
                           child: Text('لا يوجد طلاب في هذه المجموعة',
-                              style: TextStyle(fontFamily: 'Cairo',
+                              style: TextStyle(
+                                  fontFamily: 'Cairo',
                                   color: cs.onSurface.withValues(alpha: 0.4))))
                       : ListView.builder(
                           padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
@@ -368,18 +411,16 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
                           itemBuilder: (_, i) {
                             final g = _grades[i];
                             return _GradeRow(
-                              grade:        g,
-                              ctrl:         _ctrls[g.studentId]!,
-                              notesCtrl:    _notes[g.studentId]!,
-                              maxGrade:     widget.exam.maxGrade,
+                              grade: g,
+                              ctrl: _ctrls[g.studentId]!,
+                              notesCtrl: _notes[g.studentId]!,
+                              maxGrade: widget.exam.maxGrade,
                               passingGrade: widget.exam.passingGrade,
-                              onSaved: (raw) =>
-                                  _saveGrade(g.studentId, raw),
+                              onSaved: (raw) => _saveGrade(g.studentId, raw),
                               onAbsent: (val) =>
                                   _saveGrade(g.studentId, '', absent: val),
-                              onNotesSaved: () =>
-                                  _saveGrade(g.studentId,
-                                      _ctrls[g.studentId]?.text ?? ''),
+                              onNotesSaved: () => _saveGrade(
+                                  g.studentId, _ctrls[g.studentId]?.text ?? ''),
                             );
                           },
                         ),
@@ -393,7 +434,7 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
 // ─── لوحة الإحصائيات + التوزيع ───────────────────────────────────────────────
 class _StatsPanel extends StatelessWidget {
   final ExamGroupStats stats;
-  final double         maxGrade;
+  final double maxGrade;
   const _StatsPanel({required this.stats, required this.maxGrade});
 
   @override
@@ -411,23 +452,18 @@ class _StatsPanel extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
             child: Wrap(
-              spacing: 16, runSpacing: 6,
+              spacing: 16,
+              runSpacing: 6,
               children: [
-                _StatChip('المُدخلة',
-                    '${stats.entered}/${stats.total}',
+                _StatChip('المُدخلة', '${stats.entered}/${stats.total}',
                     AppTheme.primaryColor),
-                _StatChip('ناجح', '${stats.passed}',
-                    AppTheme.successColor),
-                _StatChip('راسب', '${stats.failed}',
-                    AppTheme.errorColor),
-                _StatChip('غياب', '${stats.absent}',
-                    Colors.grey),
+                _StatChip('ناجح', '${stats.passed}', AppTheme.successColor),
+                _StatChip('راسب', '${stats.failed}', AppTheme.errorColor),
+                _StatChip('غياب', '${stats.absent}', Colors.grey),
                 if (stats.entered > 0) ...[
-                  _StatChip('المتوسط',
-                      stats.average.toStringAsFixed(1),
+                  _StatChip('المتوسط', stats.average.toStringAsFixed(1),
                       AppTheme.warningColor),
-                  _StatChip('نجاح%',
-                      '${stats.passRate.toStringAsFixed(0)}%',
+                  _StatChip('نجاح%', '${stats.passRate.toStringAsFixed(0)}%',
                       Colors.teal),
                 ],
               ],
@@ -451,7 +487,7 @@ class _StatsPanel extends StatelessWidget {
 
 class _StatChip extends StatelessWidget {
   final String label, value;
-  final Color  color;
+  final Color color;
   const _StatChip(this.label, this.value, this.color);
 
   @override
@@ -459,10 +495,15 @@ class _StatChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(value,
-              style: TextStyle(fontFamily: 'Cairo', fontSize: 14,
-                  fontWeight: FontWeight.w900, color: color)),
+              style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: color)),
           Text(label,
-              style: TextStyle(fontFamily: 'Cairo', fontSize: 9,
+              style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 9,
                   color: color.withValues(alpha: 0.8))),
         ],
       );
@@ -477,10 +518,10 @@ class _DistributionChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final cats = [
       (GradeCategory.excellent, dist.excellent),
-      (GradeCategory.veryGood,  dist.veryGood),
-      (GradeCategory.good,      dist.good),
-      (GradeCategory.pass,      dist.pass),
-      (GradeCategory.fail,      dist.fail),
+      (GradeCategory.veryGood, dist.veryGood),
+      (GradeCategory.good, dist.good),
+      (GradeCategory.pass, dist.pass),
+      (GradeCategory.fail, dist.fail),
     ];
     final maxVal = cats.map((c) => c.$2).fold(0, (a, b) => a > b ? a : b);
 
@@ -489,12 +530,12 @@ class _DistributionChart extends StatelessWidget {
         alignment: BarChartAlignment.spaceAround,
         maxY: (maxVal + 1).toDouble(),
         titlesData: FlTitlesData(
-          leftTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false)),
-          topTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false)),
+          leftTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
@@ -517,7 +558,7 @@ class _DistributionChart extends StatelessWidget {
         gridData: FlGridData(show: false),
         borderData: FlBorderData(show: false),
         barGroups: cats.asMap().entries.map((e) {
-          final cat   = e.value.$1;
+          final cat = e.value.$1;
           final count = e.value.$2;
           return BarChartGroupData(
             x: e.key,
@@ -526,8 +567,8 @@ class _DistributionChart extends StatelessWidget {
                 toY: count.toDouble(),
                 color: cat.color,
                 width: 22,
-                borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(4)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(4)),
                 rodStackItems: [],
               ),
             ],
@@ -536,15 +577,14 @@ class _DistributionChart extends StatelessWidget {
         }).toList(),
         barTouchData: BarTouchData(
           touchTooltipData: BarTouchTooltipData(
-            getTooltipItem: (group, gIdx, rod, rIdx) =>
-                BarTooltipItem(
-                  '${rod.toY.toInt()}',
-                  const TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 10,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800),
-                ),
+            getTooltipItem: (group, gIdx, rod, rIdx) => BarTooltipItem(
+              '${rod.toY.toInt()}',
+              const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 10,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800),
+            ),
           ),
         ),
       ),
@@ -554,14 +594,14 @@ class _DistributionChart extends StatelessWidget {
 
 // ─── صف درجة طالب ─────────────────────────────────────────────────────────────
 class _GradeRow extends StatefulWidget {
-  final ExamGrade             grade;
+  final ExamGrade grade;
   final TextEditingController ctrl;
   final TextEditingController notesCtrl;
-  final double                maxGrade;
-  final double                passingGrade;
-  final Future<void> Function(String)      onSaved;
-  final Future<void> Function(bool)        onAbsent;
-  final Future<void> Function()            onNotesSaved;
+  final double maxGrade;
+  final double passingGrade;
+  final Future<void> Function(String) onSaved;
+  final Future<void> Function(bool) onAbsent;
+  final Future<void> Function() onNotesSaved;
 
   const _GradeRow({
     required this.grade,
@@ -579,8 +619,8 @@ class _GradeRow extends StatefulWidget {
 }
 
 class _GradeRowState extends State<_GradeRow> {
-  bool   _saving    = false;
-  bool   _showNotes = false;
+  bool _saving = false;
+  bool _showNotes = false;
   String _lastSaved = ''; // آخر قيمة اتحفظت — منع double-fire
 
   @override
@@ -588,6 +628,19 @@ class _GradeRowState extends State<_GradeRow> {
     super.initState();
     // تهيئة _lastSaved من القيمة الموجودة مسبقاً
     _lastSaved = widget.ctrl.text;
+  }
+
+  /// ينفّذ عملية حفظ (درجة أو غياب) ويضمن إن الـ spinner يقفل دايماً،
+  /// حتى لو فشل الحفظ فعلياً — بدل ما يفضل معلّق للأبد بصمت.
+  Future<void> _runSave(Future<void> Function() action) async {
+    setState(() => _saving = true);
+    try {
+      await action();
+    } catch (e) {
+      if (mounted) ToastHelper.error('فشل حفظ الدرجة — حاول تاني');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Color? _rowBg(BuildContext context) {
@@ -627,35 +680,31 @@ class _GradeRowState extends State<_GradeRow> {
 
   @override
   Widget build(BuildContext context) {
-    final cs     = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg     = _rowBg(context);
-    final cat    = _category;
+    final bg = _rowBg(context);
+    final cat = _category;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: bg ?? (isDark
-            ? cs.surface.withValues(alpha: 0.6)
-            : cs.surface),
+        color: bg ?? (isDark ? cs.surface.withValues(alpha: 0.6) : cs.surface),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: cs.onSurface.withValues(alpha: 0.1)),
+        border: Border.all(color: cs.onSurface.withValues(alpha: 0.1)),
       ),
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(children: [
               // Avatar + Initials
               CircleAvatar(
                 radius: 18,
-                backgroundColor:
-                    AppTheme.primaryColor.withValues(alpha: 0.12),
+                backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.12),
                 child: Text(_initials,
                     style: const TextStyle(
-                        fontFamily: 'Cairo', fontSize: 12,
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
                         fontWeight: FontWeight.w800,
                         color: AppTheme.primaryColor)),
               ),
@@ -668,7 +717,8 @@ class _GradeRowState extends State<_GradeRow> {
                   children: [
                     Text(widget.grade.studentName ?? '---',
                         style: TextStyle(
-                            fontFamily: 'Cairo', fontSize: 13,
+                            fontFamily: 'Cairo',
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: widget.grade.isAbsent
                                 ? cs.onSurface.withValues(alpha: 0.4)
@@ -686,7 +736,8 @@ class _GradeRowState extends State<_GradeRow> {
                         ),
                         child: Text(cat.label,
                             style: TextStyle(
-                                fontFamily: 'Cairo', fontSize: 9,
+                                fontFamily: 'Cairo',
+                                fontSize: 9,
                                 fontWeight: FontWeight.w700,
                                 color: cat.color)),
                       ),
@@ -697,8 +748,8 @@ class _GradeRowState extends State<_GradeRow> {
               // % badge
               if (_pct.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   margin: const EdgeInsets.only(left: 6),
                   decoration: BoxDecoration(
                     color: cs.onSurface.withValues(alpha: 0.07),
@@ -706,7 +757,8 @@ class _GradeRowState extends State<_GradeRow> {
                   ),
                   child: Text(_pct,
                       style: TextStyle(
-                          fontFamily: 'Cairo', fontSize: 10,
+                          fontFamily: 'Cairo',
+                          fontSize: 10,
                           color: cs.onSurface.withValues(alpha: 0.5))),
                 ),
 
@@ -715,15 +767,13 @@ class _GradeRowState extends State<_GradeRow> {
                 onTap: () async {
                   final now = !widget.grade.isAbsent;
                   if (now) widget.ctrl.clear();
-                  setState(() => _saving = true);
-                  await widget.onAbsent(now);
-                  if (mounted) setState(() => _saving = false);
+                  await _runSave(() => widget.onAbsent(now));
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   margin: const EdgeInsets.symmetric(horizontal: 6),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: widget.grade.isAbsent
                         ? Colors.grey.withValues(alpha: 0.25)
@@ -737,7 +787,8 @@ class _GradeRowState extends State<_GradeRow> {
                   ),
                   child: Text('غ',
                       style: TextStyle(
-                          fontFamily: 'Cairo', fontSize: 12,
+                          fontFamily: 'Cairo',
+                          fontSize: 12,
                           fontWeight: FontWeight.w800,
                           color: widget.grade.isAbsent
                               ? Colors.grey
@@ -750,56 +801,60 @@ class _GradeRowState extends State<_GradeRow> {
                 opacity: widget.grade.isAbsent ? 0.3 : 1.0,
                 child: SizedBox(
                   width: 65,
-                  child: TextField(
-                    controller: widget.ctrl,
-                    enabled: !widget.grade.isAbsent,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontFamily: 'Cairo', fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: cs.onSurface),
-                    decoration: InputDecoration(
-                      hintText: '---',
-                      hintStyle: TextStyle(
-                          color: cs.onSurface.withValues(alpha: 0.3)),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 8),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(
-                              color: cs.onSurface.withValues(alpha: 0.2))),
-                      filled: true,
-                      fillColor: isDark
-                          ? cs.onSurface.withValues(alpha: 0.05)
-                          : Colors.white,
+                  child: Tooltip(
+                    // اضغط مطوّلاً لمعرفة إزاي تتراجع عن درجة مُدخلة
+                    message: 'امسح الخانة وسيبها فاضية عشان تتراجع عن الدرجة',
+                    triggerMode: TooltipTriggerMode.longPress,
+                    child: TextField(
+                      controller: widget.ctrl,
+                      enabled: !widget.grade.isAbsent,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: cs.onSurface),
+                      decoration: InputDecoration(
+                        hintText: '---',
+                        hintStyle: TextStyle(
+                            color: cs.onSurface.withValues(alpha: 0.3)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 8),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(
+                                color: cs.onSurface.withValues(alpha: 0.2))),
+                        filled: true,
+                        fillColor: isDark
+                            ? cs.onSurface.withValues(alpha: 0.05)
+                            : Colors.white,
+                      ),
+                      onChanged: (_) => setState(() {}),
+                      onSubmitted: (v) async {
+                        // سجّل القيمة أولاً — يمنع onTapOutside من الحفظ مرة ثانية
+                        _lastSaved = v;
+                        await _runSave(() => widget.onSaved(v));
+                      },
+                      onTapOutside: (_) async {
+                        FocusScope.of(context).unfocus();
+                        final current = widget.ctrl.text;
+                        // احفظ فقط لو القيمة تغيّرت عن آخر مرة
+                        if (current == _lastSaved) return;
+                        _lastSaved = current;
+                        await _runSave(() => widget.onSaved(current));
+                      },
                     ),
-                    onChanged: (_) => setState(() {}),
-                    onSubmitted: (v) async {
-                      // سجّل القيمة أولاً — يمنع onTapOutside من الحفظ مرة ثانية
-                      _lastSaved = v;
-                      setState(() => _saving = true);
-                      await widget.onSaved(v);
-                      if (mounted) setState(() => _saving = false);
-                    },
-                    onTapOutside: (_) async {
-                      FocusScope.of(context).unfocus();
-                      final current = widget.ctrl.text;
-                      // احفظ فقط لو القيمة تغيّرت عن آخر مرة
-                      if (current == _lastSaved) return;
-                      _lastSaved = current;
-                      setState(() => _saving = true);
-                      await widget.onSaved(current);
-                      if (mounted) setState(() => _saving = false);
-                    },
                   ),
                 ),
               ),
               const SizedBox(width: 4),
 
               Text('/${widget.maxGrade.toStringAsFixed(0)}',
-                  style: TextStyle(fontFamily: 'Cairo', fontSize: 10,
+                  style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 10,
                       color: cs.onSurface.withValues(alpha: 0.4))),
 
               // Notes icon
@@ -808,9 +863,7 @@ class _GradeRowState extends State<_GradeRow> {
                 child: Padding(
                   padding: const EdgeInsets.only(right: 4),
                   child: Icon(
-                    _showNotes
-                        ? Icons.note_rounded
-                        : Icons.note_add_outlined,
+                    _showNotes ? Icons.note_rounded : Icons.note_add_outlined,
                     size: 18,
                     color: widget.notesCtrl.text.isNotEmpty
                         ? AppTheme.primaryColor
@@ -823,7 +876,8 @@ class _GradeRowState extends State<_GradeRow> {
                 const Padding(
                   padding: EdgeInsets.only(right: 4),
                   child: SizedBox(
-                      width: 12, height: 12,
+                      width: 12,
+                      height: 12,
                       child: CircularProgressIndicator(strokeWidth: 2)),
                 ),
             ]),
@@ -836,15 +890,15 @@ class _GradeRowState extends State<_GradeRow> {
               child: TextField(
                 controller: widget.notesCtrl,
                 style: TextStyle(
-                    fontFamily: 'Cairo', fontSize: 12,
-                    color: cs.onSurface),
+                    fontFamily: 'Cairo', fontSize: 12, color: cs.onSurface),
                 decoration: InputDecoration(
                   hintText: 'ملاحظة على الطالب...',
                   hintStyle: TextStyle(
-                      fontFamily: 'Cairo', fontSize: 12,
+                      fontFamily: 'Cairo',
+                      fontSize: 12,
                       color: cs.onSurface.withValues(alpha: 0.35)),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 8),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   filled: true,
                   fillColor: isDark
                       ? cs.onSurface.withValues(alpha: 0.04)
@@ -859,8 +913,8 @@ class _GradeRowState extends State<_GradeRow> {
                           color: cs.onSurface.withValues(alpha: 0.15))),
                   focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(
-                          color: AppTheme.primaryColor)),
+                      borderSide:
+                          const BorderSide(color: AppTheme.primaryColor)),
                 ),
                 onSubmitted: (_) => widget.onNotesSaved(),
                 onTapOutside: (_) {

@@ -1,7 +1,7 @@
 ﻿// lib/controllers/group_controller.dart
 
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -29,55 +29,56 @@ class GroupController extends GetxController {
     }
   }
 
-  Future<void> addGroup(Group group) async {
+  /// يضيف مجموعة جديدة. بيرجّع true لو نجح فعلاً — الشاشة المستدعية
+  /// هي المسؤولة عن إظهار رسالة النجاح، عشان ميحصلش "تم الحفظ" وهمي
+  /// لو الحفظ فشل فعلياً (زي تكرار اسم/كود المجموعة).
+  Future<bool> addGroup(Group group) async {
     try {
       final id = await _dbService.insertGroup(group);
       final newGroup = group.copyWith(id: id);
       groups.add(newGroup);
-      ToastHelper.success('تم إضافة المجموعة بنجاح');
+      return true;
     } catch (e) {
-      ToastHelper.error('حدث خطأ في إضافة المجموعة');
+      ToastHelper.error(_groupErrorMessage(e));
+      return false;
     }
   }
 
-  Future<void> updateGroup(Group group) async {
+  Future<bool> updateGroup(Group group) async {
     try {
       await _dbService.updateGroup(group);
       final index = groups.indexWhere((g) => g.id == group.id);
       if (index != -1) {
         groups[index] = group;
       }
-      ToastHelper.success('تم تحديث المجموعة بنجاح');
+      return true;
     } catch (e) {
-      ToastHelper.error('حدث خطأ في تحديث المجموعة');
+      ToastHelper.error(_groupErrorMessage(e));
+      return false;
     }
   }
 
-  Future<void> deleteGroup(int id) async {
-    Get.defaultDialog(
-      title: 'تأكيد الحذف',
-      content: const Text('هل أنت متأكد من حذف هذه المجموعة؟'),
-      actions: [
-        TextButton(
-          onPressed: () => Get.back(),
-          child: const Text('إلغاء'),
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-          onPressed: () async {
-            Get.back();
-            try {
-              await _dbService.deleteGroup(id);
-              groups.removeWhere((g) => g.id == id);
-              ToastHelper.success('تم حذف المجموعة بنجاح');
-            } catch (e) {
-              ToastHelper.error('حدث خطأ في حذف المجموعة');
-            }
-          },
-          child: const Text('حذف'),
-        ),
-      ],
-    );
+  /// يترجم أخطاء قاعدة البيانات الشائعة لرسالة مفهومة (زي تكرار
+  /// اسم/كود المجموعة — كلاهما UNIQUE) بدل رسالة عامة تخفي السبب.
+  String _groupErrorMessage(Object e) {
+    if (e is DatabaseException && e.isUniqueConstraintError()) {
+      return 'يوجد مجموعة بنفس الاسم أو الكود بالفعل — غيّر البيانات وحاول تاني';
+    }
+    return 'حدث خطأ في حفظ المجموعة';
+  }
+
+  /// يحذف مجموعة نهائياً — بدون أي تأكيد داخلي (التأكيد وتوضيح حجم
+  /// الحذف المتتالي مسؤولية الشاشة المستدعية). بيرجّع true لو نجح
+  /// وبيحدّث قائمة المجموعات محلياً على طول.
+  Future<bool> deleteGroup(int id) async {
+    try {
+      await _dbService.deleteGroup(id);
+      groups.removeWhere((g) => g.id == id);
+      return true;
+    } catch (e) {
+      ToastHelper.error('حدث خطأ في حذف المجموعة');
+      return false;
+    }
   }
 
   Future<int> getGroupStudentCount(int groupId) async {

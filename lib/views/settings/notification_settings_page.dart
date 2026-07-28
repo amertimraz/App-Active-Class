@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/utils/helpers.dart';
 
 class NotificationSettingsPage extends StatefulWidget {
   const NotificationSettingsPage({super.key});
@@ -101,10 +101,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
     final granted = await _notificationService.requestPermission();
     if (!granted) {
       if (mounted) {
-        Get.snackbar('تنبيه', 'صلاحية الإشعارات غير مفعلة',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: AppTheme.errorColor,
-            colorText: Colors.white);
+        ToastHelper.error('صلاحية الإشعارات غير مفعلة', title: 'تنبيه');
       }
       setState(() => _schedulingAll = false);
       return;
@@ -116,12 +113,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
 
     if (mounted) {
       setState(() => _schedulingAll = false);
-      Get.snackbar(
-        '✓ تم الجدولة',
+      ToastHelper.success(
         'تم جدولة إشعارات ${_upcomingBirthdays.length} عيد ميلاد',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: const Color(0xFF059669),
-        colorText: Colors.white,
+        title: '✓ تم الجدولة',
       );
     }
   }
@@ -203,10 +197,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
                 body: 'هذا إشعار تجريبي لأعياد الميلاد',
               );
             } else {
-              Get.snackbar('تنبيه', 'صلاحية الإشعارات غير مفعلة',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: AppTheme.errorColor,
-                  colorText: Colors.white);
+              ToastHelper.error('صلاحية الإشعارات غير مفعلة', title: 'تنبيه');
             }
           },
           icon: Icons.cake_rounded,
@@ -223,10 +214,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
                 body: 'هذا إشعار تجريبي للحصص',
               );
             } else {
-              Get.snackbar('تنبيه', 'صلاحية الإشعارات غير مفعلة',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: AppTheme.errorColor,
-                  colorText: Colors.white);
+              ToastHelper.error('صلاحية الإشعارات غير مفعلة', title: 'تنبيه');
             }
           },
           icon: Icons.event_rounded,
@@ -331,12 +319,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
                       await _notificationService
                           .scheduleBirthdayNotifications(e.student);
                       if (mounted) {
-                        Get.snackbar(
-                          '✓ تم',
+                        ToastHelper.success(
                           'جُدول إشعار عيد ميلاد ${e.student.name}',
-                          snackPosition: SnackPosition.BOTTOM,
-                          backgroundColor: const Color(0xFF059669),
-                          colorText: Colors.white,
+                          title: '✓ تم',
                         );
                       }
                     }))),

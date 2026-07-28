@@ -380,7 +380,7 @@ class _TrialBanner extends StatelessWidget {
   final bool isExpired;
   const _TrialBanner({required this.days, required this.isExpired});
 
-  static const int _trialTotal = 14;
+  static const int _trialTotal = LicenseController.kTrialDays;
 
   @override
   Widget build(BuildContext context) {

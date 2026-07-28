@@ -1,7 +1,8 @@
 // lib/controllers/student_controller.dart
 
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
@@ -64,7 +65,15 @@ class StudentController extends GetxController {
   }
 
   // ── إضافة طالب ──────────────────────────────────────────────────
+  /// نقطة الدخول الوحيدة للإضافة — فحص حد الترخيص هنا يضمن إنفاذه
+  /// بغض النظر عن الشاشة اللي بينادي منها (رئيسية، طلاب، تفاصيل مجموعة).
   Future<Student?> addStudent(Student student) async {
+    final licenseErr =
+        Get.find<LicenseController>().checkCanAddStudent(students.length);
+    if (licenseErr != null) {
+      ToastHelper.error(licenseErr);
+      return null;
+    }
     try {
       final id = await _dbService.insertStudent(student);
       final newStudent = student.copyWith(id: id);
@@ -72,9 +81,18 @@ class StudentController extends GetxController {
       filterStudents(); // أعِد تطبيق الفلتر بدل الإضافة المباشرة
       return newStudent;
     } catch (e) {
-      ToastHelper.error('حدث خطأ في إضافة الطالب');
+      ToastHelper.error(_studentErrorMessage(e, 'إضافة'));
       return null;
     }
+  }
+
+  /// يترجم أخطاء قاعدة البيانات الشائعة لرسالة مفهومة للمدرّس
+  /// بدل رسالة عامة تخفي السبب الحقيقي (زي تكرار كود الطالب).
+  String _studentErrorMessage(Object e, String action) {
+    if (e is DatabaseException && e.isUniqueConstraintError()) {
+      return 'يوجد طالب بنفس الكود بالفعل — غيّر الكود وحاول تاني';
+    }
+    return 'حدث خطأ في $action الطالب';
   }
 
   /// توليد كود الطالب التالي بناءً على بادئة كود المجموعة
@@ -102,37 +120,41 @@ class StudentController extends GetxController {
       filterStudents();
       ToastHelper.success('تم تحديث الطالب بنجاح');
     } catch (e) {
-      ToastHelper.error('حدث خطأ في تحديث الطالب');
+      ToastHelper.error(_studentErrorMessage(e, 'تحديث'));
+    }
+  }
+
+  /// يربط طالبين كإخوة بشكل ذري — تحديث محلي للاثنين فقط لو نجحت
+  /// عملية القاعدة كاملة (منع ربط باتجاه واحد لو فشل نص العملية).
+  Future<bool> linkSiblings(Student s1, Student s2) async {
+    try {
+      await _dbService.linkSiblings(s1, s2);
+      for (final s in [s1, s2]) {
+        final index = students.indexWhere((x) => x.id == s.id);
+        if (index != -1) students[index] = s;
+      }
+      filterStudents();
+      return true;
+    } catch (e) {
+      ToastHelper.error(_studentErrorMessage(e, 'ربط الإخوة'));
+      return false;
     }
   }
 
   // ── حذف طالب ────────────────────────────────────────────────────
-  Future<void> deleteStudent(int id) async {
-    Get.defaultDialog(
-      title: 'تأكيد الحذف',
-      content: const Text('هل أنت متأكد من حذف هذا الطالب؟'),
-      actions: [
-        TextButton(
-          onPressed: () => Get.back(),
-          child: const Text('إلغاء'),
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-          onPressed: () async {
-            Get.back();
-            try {
-              await _dbService.deleteStudent(id);
-              students.removeWhere((s) => s.id == id);
-              filterStudents();
-              ToastHelper.success('تم حذف الطالب بنجاح');
-            } catch (e) {
-              ToastHelper.error('حدث خطأ في حذف الطالب');
-            }
-          },
-          child: const Text('حذف'),
-        ),
-      ],
-    );
+  /// يحذف طالب نهائياً — بدون أي تأكيد داخلي (التأكيد وتوضيح حجم
+  /// الحذف المتتالي مسؤولية الشاشة المستدعية، زي deleteGroup تمامًا).
+  /// بيرجّع true لو نجح وبيحدّث قائمة الطلاب محلياً على طول.
+  Future<bool> deleteStudent(int id) async {
+    try {
+      await _dbService.deleteStudent(id);
+      students.removeWhere((s) => s.id == id);
+      filterStudents();
+      return true;
+    } catch (e) {
+      ToastHelper.error('حدث خطأ في حذف الطالب');
+      return false;
+    }
   }
 
   // ── بحث ─────────────────────────────────────────────────────────

@@ -1,6 +1,9 @@
 # Miscellaneous
 *.class
 *.log
+
+# Release signing secrets — never commit
+RELEASE_SIGNING_INFO.md
 *.pyc
 *.swp
 .DS_Store

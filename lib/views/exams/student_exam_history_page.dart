@@ -1,13 +1,18 @@
 // lib/views/exams/student_exam_history_page.dart
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/exam_controller.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/exam_grade_model.dart';
+import 'package:active_class/services/database_service.dart';
+import 'package:active_class/utils/helpers.dart';
 
 class StudentExamHistoryPage extends StatefulWidget {
-  final int    studentId;
+  final int studentId;
   final String studentName;
 
   const StudentExamHistoryPage({
@@ -17,12 +22,10 @@ class StudentExamHistoryPage extends StatefulWidget {
   });
 
   @override
-  State<StudentExamHistoryPage> createState() =>
-      _StudentExamHistoryPageState();
+  State<StudentExamHistoryPage> createState() => _StudentExamHistoryPageState();
 }
 
-class _StudentExamHistoryPageState
-    extends State<StudentExamHistoryPage> {
+class _StudentExamHistoryPageState extends State<StudentExamHistoryPage> {
   List<StudentExamRecord> _records = [];
   bool _loading = true;
 
@@ -33,28 +36,80 @@ class _StudentExamHistoryPageState
   }
 
   Future<void> _load() async {
-    final data = await ExamController.to
-        .getStudentHistory(widget.studentId);
-    if (mounted) setState(() { _records = data; _loading = false; });
+    final data = await ExamController.to.getStudentHistory(widget.studentId);
+    if (mounted)
+      setState(() {
+        _records = data;
+        _loading = false;
+      });
+  }
+
+  // ── مشاركة نتائج الامتحانات عبر واتساب ────────────────────────────────────
+  Future<void> _shareViaWhatsApp() async {
+    final student = await DatabaseService().getStudent(widget.studentId);
+    final rawPhone = student?.guardianPhone?.trim() ?? '';
+    if (rawPhone.isEmpty) {
+      ToastHelper.error('لا يوجد رقم ولي أمر مسجّل لهذا الطالب');
+      return;
+    }
+
+    final sorted = List<StudentExamRecord>.from(_records)
+      ..sort((a, b) => b.examDate.compareTo(a.examDate));
+
+    final buffer = StringBuffer()
+      ..writeln('📋 نتائج امتحانات: ${widget.studentName}')
+      ..writeln(
+          '📊 المعدل العام: ${_overallPct.toStringAsFixed(1)}% (${_overallCategory.label})')
+      ..writeln('✅ ناجح في $_passCount من ${_records.length} امتحان');
+    if (_absentCount > 0) buffer.writeln('⚠️ غياب: $_absentCount امتحان');
+    buffer.writeln('');
+
+    for (final r in sorted) {
+      final dateStr = DateFormat('yyyy-MM-dd').format(r.examDate);
+      if (r.isAbsent) {
+        buffer.writeln('• $dateStr — ${r.examName}: غائب');
+      } else if (r.grade != null) {
+        buffer.writeln(
+            '• $dateStr — ${r.examName}: ${r.grade!.toStringAsFixed(1)}/${r.maxGrade.toStringAsFixed(0)} (${r.category.label})');
+      } else {
+        buffer.writeln('• $dateStr — ${r.examName}: لم تُدخل الدرجة بعد');
+      }
+    }
+    buffer.writeln('\nتم الإرسال من تطبيق Active Class');
+
+    String normalize(String input, String defaultDial) {
+      var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
+      if (p.startsWith('+')) p = p.substring(1);
+      if (p.startsWith('00')) p = p.substring(2);
+      if (p.startsWith(defaultDial)) return p;
+      if (RegExp(r'^[1-9][0-9]{6,}$').hasMatch(p)) return p;
+      return defaultDial + p.replaceFirst(RegExp(r'^0+'), '');
+    }
+
+    final dial = Get.isRegistered<SettingsController>()
+        ? Get.find<SettingsController>().countryDial.value
+        : '20';
+    final phone = normalize(rawPhone, dial);
+    final uri = Uri.parse(
+        'https://wa.me/$phone?text=${Uri.encodeComponent(buffer.toString())}');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   double get _overallPct {
-    final withGrades = _records
-        .where((r) => !r.isAbsent && r.grade != null)
-        .toList();
+    final withGrades =
+        _records.where((r) => !r.isAbsent && r.grade != null).toList();
     if (withGrades.isEmpty) return 0;
     final total = withGrades.fold(0.0, (s, r) => s + r.grade!);
-    final max   = withGrades.fold(0.0, (s, r) => s + r.maxGrade);
+    final max = withGrades.fold(0.0, (s, r) => s + r.maxGrade);
     return max > 0 ? (total / max) * 100 : 0;
   }
 
-  int get _absentCount =>
-      _records.where((r) => r.isAbsent).length;
+  int get _absentCount => _records.where((r) => r.isAbsent).length;
 
-  int get _passCount =>
-      _records.where((r) =>
-          !r.isAbsent && r.grade != null &&
-          r.grade! >= r.passingGrade).length;
+  int get _passCount => _records
+      .where(
+          (r) => !r.isAbsent && r.grade != null && r.grade! >= r.passingGrade)
+      .length;
 
   GradeCategory get _overallCategory =>
       GradeCategoryExt.fromPercentage(_overallPct);
@@ -67,7 +122,7 @@ class _StudentExamHistoryPageState
 
   @override
   Widget build(BuildContext context) {
-    final cs     = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -79,6 +134,15 @@ class _StudentExamHistoryPageState
                 SliverAppBar(
                   expandedHeight: 200,
                   pinned: true,
+                  actions: [
+                    if (_records.isNotEmpty)
+                      IconButton(
+                        tooltip: 'مشاركة عبر واتساب',
+                        icon:
+                            const Icon(Icons.chat_rounded, color: Colors.white),
+                        onPressed: _shareViaWhatsApp,
+                      ),
+                  ],
                   flexibleSpace: FlexibleSpaceBar(
                     background: Container(
                       decoration: BoxDecoration(
@@ -122,10 +186,8 @@ class _StudentExamHistoryPageState
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 14, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: Colors.white
-                                      .withValues(alpha: 0.2),
-                                  borderRadius:
-                                      BorderRadius.circular(20),
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
                                   '${_overallPct.toStringAsFixed(0)}%  •  ${_overallCategory.label}',
@@ -146,8 +208,8 @@ class _StudentExamHistoryPageState
                             fontWeight: FontWeight.w800,
                             fontSize: 14,
                             color: Colors.white)),
-                    titlePadding: const EdgeInsets.only(
-                        right: 56, bottom: 14, left: 56),
+                    titlePadding:
+                        const EdgeInsets.only(right: 56, bottom: 14, left: 56),
                   ),
                   backgroundColor: AppTheme.primaryColor,
                 ),
@@ -159,23 +221,26 @@ class _StudentExamHistoryPageState
                       padding: const EdgeInsets.all(16),
                       child: Row(
                         children: [
-                          Expanded(child: _SummaryCard(
-                              icon: Icons.assignment_rounded,
-                              label: 'إجمالي الامتحانات',
-                              value: '${_records.length}',
-                              color: AppTheme.primaryColor)),
+                          Expanded(
+                              child: _SummaryCard(
+                                  icon: Icons.assignment_rounded,
+                                  label: 'إجمالي الامتحانات',
+                                  value: '${_records.length}',
+                                  color: AppTheme.primaryColor)),
                           const SizedBox(width: 10),
-                          Expanded(child: _SummaryCard(
-                              icon: Icons.check_circle_rounded,
-                              label: 'ناجح',
-                              value: '$_passCount',
-                              color: AppTheme.successColor)),
+                          Expanded(
+                              child: _SummaryCard(
+                                  icon: Icons.check_circle_rounded,
+                                  label: 'ناجح',
+                                  value: '$_passCount',
+                                  color: AppTheme.successColor)),
                           const SizedBox(width: 10),
-                          Expanded(child: _SummaryCard(
-                              icon: Icons.warning_amber_rounded,
-                              label: 'غياب',
-                              value: '$_absentCount',
-                              color: Colors.grey)),
+                          Expanded(
+                              child: _SummaryCard(
+                                  icon: Icons.warning_amber_rounded,
+                                  label: 'غياب',
+                                  value: '$_absentCount',
+                                  color: Colors.grey)),
                         ],
                       ),
                     ),
@@ -190,13 +255,10 @@ class _StudentExamHistoryPageState
                         height: 180,
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: isDark
-                              ? cs.surface
-                              : cs.surface,
+                          color: isDark ? cs.surface : cs.surface,
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                              color: cs.onSurface
-                                  .withValues(alpha: 0.1)),
+                              color: cs.onSurface.withValues(alpha: 0.1)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,12 +268,11 @@ class _StudentExamHistoryPageState
                                     fontFamily: 'Cairo',
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
-                                    color: cs.onSurface
-                                        .withValues(alpha: 0.7))),
+                                    color:
+                                        cs.onSurface.withValues(alpha: 0.7))),
                             const SizedBox(height: 8),
                             Expanded(
-                              child: _PerformanceChart(
-                                  records: _records),
+                              child: _PerformanceChart(records: _records),
                             ),
                           ],
                         ),
@@ -226,28 +287,24 @@ class _StudentExamHistoryPageState
                       ? SliverToBoxAdapter(
                           child: Center(
                             child: Padding(
-                              padding:
-                                  const EdgeInsets.only(top: 80),
+                              padding: const EdgeInsets.only(top: 80),
                               child: Column(children: [
                                 Icon(Icons.assignment_outlined,
                                     size: 52,
-                                    color: cs.onSurface
-                                        .withValues(alpha: 0.2)),
+                                    color: cs.onSurface.withValues(alpha: 0.2)),
                                 const SizedBox(height: 12),
                                 Text('لا توجد درجات مسجلة',
                                     style: TextStyle(
                                         fontFamily: 'Cairo',
                                         color: cs.onSurface
-                                            .withValues(
-                                                alpha: 0.4))),
+                                            .withValues(alpha: 0.4))),
                               ]),
                             ),
                           ),
                         )
                       : SliverList(
                           delegate: SliverChildBuilderDelegate(
-                            (_, i) => _ExamRecordCard(
-                                record: _records[i]),
+                            (_, i) => _ExamRecordCard(record: _records[i]),
                             childCount: _records.length,
                           ),
                         ),
@@ -261,34 +318,38 @@ class _StudentExamHistoryPageState
 // ── ملخص رقمي ──────────────────────────────────────────────────────────────────
 class _SummaryCard extends StatelessWidget {
   final IconData icon;
-  final String   label, value;
-  final Color    color;
-  const _SummaryCard({
-    required this.icon, required this.label,
-    required this.value, required this.color});
+  final String label, value;
+  final Color color;
+  const _SummaryCard(
+      {required this.icon,
+      required this.label,
+      required this.value,
+      required this.color});
 
   @override
   Widget build(BuildContext context) {
-    final cs     = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
         color: isDark ? cs.surface : cs.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: color.withValues(alpha: 0.25)),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 20, color: color),
         const SizedBox(height: 4),
         Text(value,
             style: TextStyle(
-                fontFamily: 'Cairo', fontSize: 18,
-                fontWeight: FontWeight.w900, color: color)),
+                fontFamily: 'Cairo',
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: color)),
         Text(label,
             style: TextStyle(
-                fontFamily: 'Cairo', fontSize: 9,
+                fontFamily: 'Cairo',
+                fontSize: 9,
                 color: cs.onSurface.withValues(alpha: 0.5)),
             textAlign: TextAlign.center),
       ]),
@@ -312,16 +373,20 @@ class _PerformanceChart extends StatelessWidget {
       return Center(
           child: Text('لا توجد درجات لعرض المنحنى',
               style: TextStyle(
-                  fontFamily: 'Cairo', fontSize: 11,
+                  fontFamily: 'Cairo',
+                  fontSize: 11,
                   color: Theme.of(context)
                       .colorScheme
                       .onSurface
                       .withValues(alpha: 0.35))));
     }
 
-    final spots = withGrades.asMap().entries.map((e) =>
-        FlSpot(e.key.toDouble(),
-            (e.value.grade! / e.value.maxGrade) * 100)).toList();
+    final spots = withGrades
+        .asMap()
+        .entries
+        .map((e) =>
+            FlSpot(e.key.toDouble(), (e.value.grade! / e.value.maxGrade) * 100))
+        .toList();
 
     return LineChart(LineChartData(
       minX: 0,
@@ -333,21 +398,17 @@ class _PerformanceChart extends StatelessWidget {
         drawVerticalLine: false,
         horizontalInterval: 25,
         getDrawingHorizontalLine: (val) => FlLine(
-          color: Theme.of(context)
-              .colorScheme
-              .onSurface
-              .withValues(alpha: 0.08),
+          color:
+              Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08),
           strokeWidth: 1,
         ),
       ),
       borderData: FlBorderData(show: false),
       titlesData: FlTitlesData(
-        leftTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false)),
-        rightTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false)),
-        topTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false)),
+        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         bottomTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
@@ -362,7 +423,8 @@ class _PerformanceChart extends StatelessWidget {
                 child: Text(
                   DateFormat('d/M').format(withGrades[idx].examDate),
                   style: TextStyle(
-                      fontFamily: 'Cairo', fontSize: 9,
+                      fontFamily: 'Cairo',
+                      fontSize: 9,
                       color: Theme.of(context)
                           .colorScheme
                           .onSurface
@@ -382,13 +444,12 @@ class _PerformanceChart extends StatelessWidget {
           isStrokeCapRound: true,
           dotData: FlDotData(
             show: true,
-            getDotPainter: (spot, pct, bar, idx) =>
-                FlDotCirclePainter(
-                  radius: 4,
-                  color: AppTheme.primaryColor,
-                  strokeWidth: 2,
-                  strokeColor: Colors.white,
-                ),
+            getDotPainter: (spot, pct, bar, idx) => FlDotCirclePainter(
+              radius: 4,
+              color: AppTheme.primaryColor,
+              strokeWidth: 2,
+              strokeColor: Colors.white,
+            ),
           ),
           belowBarData: BarAreaData(
             show: true,
@@ -427,21 +488,19 @@ class _ExamRecordCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs     = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cat    = record.category;
+    final cat = record.category;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isDark ? cs.surface : cs.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: cat.color.withValues(alpha: 0.2)),
+        border: Border.all(color: cat.color.withValues(alpha: 0.2)),
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         leading: Container(
           width: 46,
           height: 46,
@@ -450,11 +509,9 @@ class _ExamRecordCard extends StatelessWidget {
             color: cat.color.withValues(alpha: 0.12),
           ),
           child: record.isAbsent
-              ? Icon(Icons.warning_amber_rounded,
-                    size: 22, color: cat.color)
+              ? Icon(Icons.warning_amber_rounded, size: 22, color: cat.color)
               : record.grade == null
-                  ? Icon(Icons.help_outline_rounded,
-                        size: 22, color: cat.color)
+                  ? Icon(Icons.help_outline_rounded, size: 22, color: cat.color)
                   : Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -463,23 +520,25 @@ class _ExamRecordCard extends StatelessWidget {
                               ? record.grade!.toInt().toString()
                               : record.grade!.toStringAsFixed(1),
                           style: TextStyle(
-                              fontFamily: 'Cairo', fontSize: 14,
+                              fontFamily: 'Cairo',
+                              fontSize: 14,
                               fontWeight: FontWeight.w900,
                               color: cat.color),
                         ),
                         Text(
                           '/${record.maxGrade.toInt()}',
                           style: TextStyle(
-                              fontFamily: 'Cairo', fontSize: 9,
-                              color: cat.color
-                                  .withValues(alpha: 0.7)),
+                              fontFamily: 'Cairo',
+                              fontSize: 9,
+                              color: cat.color.withValues(alpha: 0.7)),
                         ),
                       ],
                     ),
         ),
         title: Text(record.examName,
             style: TextStyle(
-                fontFamily: 'Cairo', fontSize: 13,
+                fontFamily: 'Cairo',
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
                 color: cs.onSurface)),
         subtitle: Column(
@@ -488,14 +547,14 @@ class _ExamRecordCard extends StatelessWidget {
             Text(
               '${record.groupName}  •  ${DateFormat('d MMMM yyyy', 'ar').format(record.examDate)}',
               style: TextStyle(
-                  fontFamily: 'Cairo', fontSize: 11,
+                  fontFamily: 'Cairo',
+                  fontSize: 11,
                   color: cs.onSurface.withValues(alpha: 0.5)),
             ),
           ],
         ),
         trailing: Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             color: cat.color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(8),
@@ -505,16 +564,17 @@ class _ExamRecordCard extends StatelessWidget {
             children: [
               Text(cat.label,
                   style: TextStyle(
-                      fontFamily: 'Cairo', fontSize: 10,
+                      fontFamily: 'Cairo',
+                      fontSize: 10,
                       fontWeight: FontWeight.w800,
                       color: cat.color)),
               if (!record.isAbsent && record.grade != null)
                 Text(
                   '${record.percentage.toStringAsFixed(0)}%',
                   style: TextStyle(
-                      fontFamily: 'Cairo', fontSize: 9,
-                      color: cat.color
-                          .withValues(alpha: 0.7)),
+                      fontFamily: 'Cairo',
+                      fontSize: 9,
+                      color: cat.color.withValues(alpha: 0.7)),
                 ),
             ],
           ),

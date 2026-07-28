@@ -115,11 +115,11 @@ class ReportController extends GetxController {
     return allGroups.map((g) {
       final students = studentsByGroup[g.id] ?? [];
       final expectedIncome =
-          students.fold<double>(0, (s, st) => s + st.price);
+          students.fold<double>(0, (s, st) => s + st.effectivePrice);
       final collectedIncome = students.fold<double>(
           0, (s, st) => s + (paidByStudent[st.id] ?? 0));
       final fullyPaid =
-          students.where((s) => (paidByStudent[s.id] ?? 0) >= s.price && s.price > 0).length;
+          students.where((s) => (paidByStudent[s.id] ?? 0) >= s.effectivePrice && s.effectivePrice > 0).length;
       final totalPresent =
           students.fold<int>(0, (s, st) => s + (presentByStudent[st.id] ?? 0));
       return GroupMonthSummary(
@@ -145,14 +145,14 @@ class ReportController extends GetxController {
     final groupById = {for (final g in allGroups) g.id: g};
     final result = <AtRiskStudent>[];
     for (final s in _studentsActiveInMonth) {
-      if (s.price <= 0) continue;
+      if (s.effectivePrice <= 0) continue;
       final paid = paidByStudent[s.id] ?? 0;
-      if (paid < s.price) {
+      if (paid < s.effectivePrice) {
         result.add(AtRiskStudent(
           student: s,
           group: groupById[s.groupId],
           paid: paid,
-          due: s.price,
+          due: s.effectivePrice,
           month: m,
         ));
       }

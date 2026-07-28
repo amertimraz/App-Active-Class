@@ -112,9 +112,34 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
     }
   }
 
-  // ── Confirm attendance from QR tab ──────────────────────────────
+  // ── Confirm attendance from QR tab (وكذلك التبويب اليدوي) ────────
+  // بيحدد الحالة المستهدفة حسب حالة اليوم الحالية (حاضر → غائب، وأي
+  // حالة تانية → حاضر) بدل استخدام toggleAttendance اللي بتدور على
+  // 3 حالات (حاضر/غائب/حذف) وكانت بتدّي رسالة "تم تسجيل حضور" غلط
+  // لما الطالب يتحول من حاضر لغائب.
   Future<void> _confirmAttendance(Student student) async {
-    await attCtrl.toggleAttendance(student.id!, DateTime.now());
+    final today = _todayStart();
+    final record = attCtrl.attendance.firstWhereOrNull((a) =>
+        a.studentId == student.id &&
+        a.date.year == today.year &&
+        a.date.month == today.month &&
+        a.date.day == today.day);
+    final targetStatus = record?.status == ATTENDANCE_PRESENT
+        ? ATTENDANCE_ABSENT
+        : ATTENDANCE_PRESENT;
+
+    try {
+      await attCtrl.setAttendanceStatus(student.id!, DateTime.now(), targetStatus);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('فشل تسجيل الحضور — حاول تاني'),
+          backgroundColor: Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+      return;
+    }
     if (!mounted) return;
     HapticFeedback.heavyImpact();
 
@@ -125,13 +150,22 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
     if (mounted) scannerController.start();
 
     if (!mounted) return;
+    final isPresent = targetStatus == ATTENDANCE_PRESENT;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Row(children: [
-        const Icon(Icons.check_circle_rounded, color: Colors.white),
+        Icon(
+          isPresent ? Icons.check_circle_rounded : Icons.cancel_rounded,
+          color: Colors.white,
+        ),
         const SizedBox(width: 10),
-        Expanded(child: Text('تم تسجيل حضور: ${student.name}')),
+        Expanded(
+          child: Text(isPresent
+              ? 'تم تسجيل حضور: ${student.name}'
+              : 'تم تسجيل غياب: ${student.name}'),
+        ),
       ]),
-      backgroundColor: const Color(0xFF10B981),
+      backgroundColor:
+          isPresent ? const Color(0xFF10B981) : const Color(0xFFEF4444),
       behavior: SnackBarBehavior.floating,
       duration: const Duration(seconds: 2),
     ));
@@ -331,17 +365,9 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
               setState(() => _manualStudent = null);
             },
             onConfirm: (s) async {
-              await attCtrl.toggleAttendance(s.id!, DateTime.now());
-              HapticFeedback.heavyImpact();
-              qrCtrl.scannedStudent.value = null;
+              await _confirmAttendance(s);
+              if (!mounted) return;
               setState(() => _manualStudent = null);
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('تم تسجيل حضور: ${s.name}'),
-                  backgroundColor: const Color(0xFF10B981),
-                  behavior: SnackBarBehavior.floating,
-                  duration: const Duration(seconds: 2),
-                ));
             },
           ),
         ],
@@ -624,9 +650,13 @@ class _AttendancePanel extends StatelessWidget {
                         borderRadius: BorderRadius.circular(14)),
                   ),
                   onPressed: () async {
-                    await attCtrl.toggleAttendance(student.id!, DateTime.now());
-                    await attCtrl.toggleAttendance(student.id!, DateTime.now());
-                    onClear();
+                    try {
+                      await attCtrl.setAttendanceStatus(
+                          student.id!, DateTime.now(), ATTENDANCE_ABSENT);
+                      onClear();
+                    } catch (e) {
+                      ToastHelper.error('فشل تسجيل الغياب — حاول تاني');
+                    }
                   },
                   icon: const Icon(Icons.cancel_rounded, size: 18),
                   label: const Text('تسجيل غياب',

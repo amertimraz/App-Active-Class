@@ -48,14 +48,6 @@ class PaymentController extends GetxController {
     totalPayments.value = payments.fold(0.0, (sum, payment) => sum + payment.amount);
   }
 
-  void filterPayments(String studentName) {
-    if (studentName.isEmpty) {
-      filteredPayments.assignAll(payments);
-    } else {
-      filteredPayments.assignAll(payments);
-    }
-  }
-
   void bindStudentNameResolver(String? Function(int) resolver) {
     _studentNameById = resolver;
     _applyFilter();
@@ -125,6 +117,19 @@ class PaymentController extends GetxController {
       ToastHelper.success('تم إضافة الدفع بنجاح');
     } catch (e) {
       ToastHelper.error('حدث خطأ في إضافة الدفع');
+    }
+  }
+
+  /// يعدّل دفعة موجودة. بيرجّع true لو نجح — الشاشة المستدعية مسؤولة
+  /// عن إظهار رسالة النجاح، عشان ميحصلش "تم الحفظ" وهمي لو الحفظ فشل.
+  Future<bool> updatePayment(Payment payment) async {
+    try {
+      await _dbService.updatePayment(payment);
+      await loadPayments();
+      return true;
+    } catch (e) {
+      ToastHelper.error('حدث خطأ في تعديل الدفعة');
+      return false;
     }
   }
 

@@ -330,10 +330,14 @@ class _LeaderboardCard extends StatelessWidget {
                             ? FontWeight.w900
                             : FontWeight.w700,
                         color: cs.onSurface)),
-                Text(entry.groupName,
-                    style: TextStyle(
-                        fontFamily: 'Cairo', fontSize: 11,
-                        color: cs.onSurface.withValues(alpha: 0.45))),
+                Text(
+                  entry.examCount > 1
+                      ? '${entry.groupName} · ${entry.examCount} امتحانات'
+                      : entry.groupName,
+                  style: TextStyle(
+                      fontFamily: 'Cairo', fontSize: 11,
+                      color: cs.onSurface.withValues(alpha: 0.45)),
+                ),
               ],
             ),
           ),

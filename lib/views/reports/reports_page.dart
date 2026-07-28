@@ -3,8 +3,10 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/report_controller.dart';
+import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/utils/helpers.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -789,6 +791,12 @@ void _showExportMenu(BuildContext context, ReportController ctrl) {
               subtitle: 'جدول بالطلاب والمبالغ والحالة',
               onTap: () {
                 Navigator.pop(ctx);
+                if (!requireLicenseFeature(
+                    context,
+                    Get.find<LicenseController>().canExport,
+                    'تصدير التقارير غير متاح في الفترة التجريبية — قم بالترقية')) {
+                  return;
+                }
                 ctrl.exportPaymentsPDF();
               },
             ),
@@ -800,6 +808,12 @@ void _showExportMenu(BuildContext context, ReportController ctrl) {
               subtitle: 'جدول تفصيلي لحضور وغياب كل طالب',
               onTap: () {
                 Navigator.pop(ctx);
+                if (!requireLicenseFeature(
+                    context,
+                    Get.find<LicenseController>().canExport,
+                    'تصدير التقارير غير متاح في الفترة التجريبية — قم بالترقية')) {
+                  return;
+                }
                 ctrl.exportAttendancePDF();
               },
             ),
@@ -811,6 +825,12 @@ void _showExportMenu(BuildContext context, ReportController ctrl) {
               subtitle: 'إجماليات كل مجموعة (دفعات + حضور)',
               onTap: () {
                 Navigator.pop(ctx);
+                if (!requireLicenseFeature(
+                    context,
+                    Get.find<LicenseController>().canExport,
+                    'تصدير التقارير غير متاح في الفترة التجريبية — قم بالترقية')) {
+                  return;
+                }
                 ctrl.exportGroupsSummaryPDF();
               },
             ),

@@ -1,4 +1,4 @@
-package com.example.active_class
+package com.amertimraz.activeclass
 
 import io.flutter.embedding.android.FlutterActivity
 

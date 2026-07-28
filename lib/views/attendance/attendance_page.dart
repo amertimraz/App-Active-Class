@@ -13,6 +13,7 @@ import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/export_service.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
+import 'package:active_class/widgets/custom_dialogs.dart' as custom_dialogs;
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -952,7 +953,15 @@ class _RecordsTabState extends State<_RecordsTab> {
                         IconButton(
                           icon: Icon(Icons.delete_outline_rounded,
                               size: 18, color: Colors.grey.shade400),
-                          onPressed: () => widget.controller.deleteAttendance(att.id!),
+                          onPressed: () => custom_dialogs.ConfirmDeleteDialog.show(
+                            context,
+                            title: 'حذف السجل',
+                            message:
+                                'هل تريد حذف سجل حضور ${s?.name ?? "الطالب"} '
+                                'بتاريخ ${FormatHelper.formatDate(att.date)}؟',
+                            onConfirm: () =>
+                                widget.controller.deleteAttendance(att.id!),
+                          ),
                           visualDensity: VisualDensity.compact,
                         ),
                       ]),

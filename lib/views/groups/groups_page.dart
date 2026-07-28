@@ -14,6 +14,41 @@ import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:intl/intl.dart';
 
+/// يتحقق من وجود مواعيد متداخلة في نفس اليوم داخل نص الجدول
+/// (صيغة "اليوم HH:MM-HH:MM,...") — بيرجّع true لو فيه تداخل.
+bool _hasScheduleOverlap(String raw) {
+  final byDay = <String, List<(int, int)>>{};
+  for (final part in raw.split(',')) {
+    final s = part.trim();
+    if (s.isEmpty) continue;
+    final sp = s.split(' ');
+    if (sp.length < 2) continue;
+    final day = sp.first;
+    final range = s.substring(day.length).trim().split('-');
+    if (range.length != 2) continue;
+    TimeOfDay? parseT(String v) {
+      final p = v.trim().split(':');
+      if (p.length != 2) return null;
+      final h = int.tryParse(p[0]), m = int.tryParse(p[1]);
+      if (h == null || m == null) return null;
+      return TimeOfDay(hour: h, minute: m);
+    }
+    final from = parseT(range[0]);
+    final to = parseT(range[1]);
+    if (from == null || to == null) continue;
+    byDay
+        .putIfAbsent(day, () => [])
+        .add((from.hour * 60 + from.minute, to.hour * 60 + to.minute));
+  }
+  for (final ranges in byDay.values) {
+    ranges.sort((a, b) => a.$1.compareTo(b.$1));
+    for (var i = 1; i < ranges.length; i++) {
+      if (ranges[i].$1 < ranges[i - 1].$2) return true;
+    }
+  }
+  return false;
+}
+
 class GroupsPage extends StatefulWidget {
   const GroupsPage({super.key});
 
@@ -245,13 +280,9 @@ class _GroupsPageState extends State<GroupsPage> {
       builder: (_) => _GroupFormSheet(
         group: group,
         existingGroups: controller.groups,
-        onSave: (newGroup) async {
-          if (group == null) {
-            await controller.addGroup(newGroup);
-          } else {
-            await controller.updateGroup(newGroup);
-          }
-        },
+        onSave: (newGroup) => group == null
+            ? controller.addGroup(newGroup)
+            : controller.updateGroup(newGroup),
         onSaved: (name) {
           ToastHelper.success('تم حفظ "$name"', title: 'تم');
         },
@@ -267,7 +298,7 @@ class _GroupsPageState extends State<GroupsPage> {
 class _GroupFormSheet extends StatefulWidget {
   final Group? group;
   final List<Group> existingGroups;
-  final Future<void> Function(Group) onSave;
+  final Future<bool> Function(Group) onSave;
   final void Function(String groupName) onSaved;
 
   const _GroupFormSheet({
@@ -373,13 +404,30 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
     final priceText = _priceCtrl.text.trim();
     final slots     = _scheduleCtrl.text.split(',').where((e) => e.trim().isNotEmpty).length;
 
+    // تحقق مبدئي من التكرار قبل ما نلجأ لقاعدة البيانات — بيدّي رسالة
+    // أوضح فوراً بدل ما ننتظر خطأ UNIQUE constraint من الـDB.
+    final nameTaken = widget.existingGroups.any((g) =>
+        g.id != widget.group?.id &&
+        g.name.trim().toLowerCase() == name.toLowerCase());
+    final codeTaken = code.isNotEmpty &&
+        widget.existingGroups.any((g) =>
+            g.id != widget.group?.id &&
+            (g.code?.trim().toLowerCase() ?? '') == code.toLowerCase());
+
     // Inline validation
     setState(() {
-      _nameError     = name.isEmpty      ? 'مطلوب' : null;
-      _codeError     = code.isEmpty      ? 'مطلوب' : null;
+      _nameError     = name.isEmpty      ? 'مطلوب'
+                     : nameTaken          ? 'الاسم ده مستخدم بالفعل'
+                     : null;
+      _codeError     = code.isEmpty      ? 'مطلوب'
+                     : codeTaken          ? 'الكود ده مستخدم بالفعل'
+                     : null;
       _priceError    = priceText.isEmpty ? 'مطلوب'
                      : double.tryParse(priceText) == null ? 'رقم غير صالح' : null;
-      _scheduleError = slots < 2         ? 'أضف موعدين على الأقل' : null;
+      _scheduleError = slots < 2         ? 'أضف موعدين على الأقل'
+                     : _hasScheduleOverlap(_scheduleCtrl.text)
+                                           ? 'فيه موعدين متداخلين في نفس اليوم'
+                     : null;
     });
 
     if (_nameError != null || _codeError != null ||
@@ -388,7 +436,7 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
     final price = double.parse(priceText);
     setState(() => _saving = true);
     try {
-      await widget.onSave(Group(
+      final success = await widget.onSave(Group(
         id: widget.group?.id,
         name: name,
         code: code,
@@ -398,15 +446,16 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
         schedule: _scheduleCtrl.text.trim().isEmpty ? null : _scheduleCtrl.text.trim(),
         createdAt: widget.group?.createdAt,
       ));
-      if (mounted) {
+      if (!mounted) return;
+      if (success) {
         widget.onSaved(name);
         Navigator.of(context).pop();
       }
+      // لو فشل: الـcontroller أظهر رسالة الخطأ بالفعل، خلّي الشيت مفتوح
     } catch (e) {
-      if (mounted) {
-        setState(() => _saving = false);
-        ToastHelper.error('حدث خطأ: $e');
-      }
+      if (mounted) ToastHelper.error('حدث خطأ: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -815,14 +864,21 @@ class _GroupCard extends StatelessWidget {
                       if (v == 'delete') {
                         Get.defaultDialog(
                           title: 'حذف المجموعة',
-                          middleText:
-                              'هل تريد حذف مجموعة "${group.name}"؟\nسيتم حذف المجموعة فقط دون طلابها.',
+                          middleText: studentCount > 0
+                              ? 'هل تريد حذف مجموعة "${group.name}"؟\n'
+                                  'تحذير: هيتحذف معاها $studentCount طالب '
+                                  'وكل سجلات حضورهم ودفعاتهم ودرجات امتحاناتهم '
+                                  'نهائياً — الإجراء ده لا يمكن التراجع عنه.'
+                              : 'هل تريد حذف مجموعة "${group.name}"؟ '
+                                  'لا يمكن التراجع عن هذا الإجراء.',
                           textCancel: 'إلغاء',
                           textConfirm: 'حذف',
                           confirmTextColor: Colors.white,
                           buttonColor: Colors.red,
-                          onConfirm: () {
+                          onConfirm: () async {
                             Get.back(); // أغلق الـ dialog
+                            await Future.delayed(
+                                const Duration(milliseconds: 80));
                             onDelete();
                           },
                         );

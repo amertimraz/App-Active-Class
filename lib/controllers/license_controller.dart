@@ -76,9 +76,11 @@ class LicenseController extends GetxController {
   final hasRequest    = false.obs; // هل عنده طلب ترقية pending
   final expiresAt     = Rxn<DateTime>(); // تاريخ انتهاء الترخيص
 
-  // Firebase
-  final _db   = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
+  // Firebase — getters كسولة (مش final fields) عشان ما تتقيّمش عند بناء
+  // الكلاس نفسه (Get.put في main.dart)؛ لو Firebase.initializeApp فشل،
+  // أول لمسة فعلية بتحصل جوه try/catch في _init() بدل ما تكسر الإقلاع كله.
+  FirebaseFirestore get _db   => FirebaseFirestore.instance;
+  FirebaseAuth      get _auth => FirebaseAuth.instance;
 
   // Real-time listener على الترخيص النشط
   StreamSubscription? _licenseSubscription;
@@ -89,9 +91,9 @@ class LicenseController extends GetxController {
   static const _kFirstLaunch  = 'lic_first_launch';
   static const _kPlan         = 'lic_plan';
   static const _kHasRequest   = 'lic_has_request';
-  static const _kTrialDays    = 7;
-  // ignore: unused_field
-  static const int _kGraceDays = 3; // grace period (offline use) — future use
+  static const _kLastVerified = 'lic_last_verified'; // آخر تحقق ناجح من السيرفر
+  static const kTrialDays    = 7;
+  static const int _kGraceDays = 3; // مهلة الاستخدام أوفلاين بعد آخر تحقق ناجح
 
   // ── init ──────────────────────────────────────────────────────────────────
   @override
@@ -180,7 +182,7 @@ class LicenseController extends GetxController {
 
     final firstLaunch = DateTime.fromMillisecondsSinceEpoch(firstLaunchMs);
     final elapsed   = DateTime.now().difference(firstLaunch).inDays;
-    final daysLeft  = _kTrialDays - elapsed;
+    final daysLeft  = kTrialDays - elapsed;
 
     if (daysLeft > 0) {
       trialDaysLeft.value = daysLeft;
@@ -193,7 +195,13 @@ class LicenseController extends GetxController {
   }
 
   // ── License Validation ────────────────────────────────────────────────────
+  /// بيتحدّث لـ true لو آخر محاولة تحقق فشلت بسبب مشكلة اتصال قبل أي
+  /// تحقق ناجح من السيرفر — يُستخدم في activateCode() عشان الرسالة
+  /// تكون "تعذر الاتصال" مش "كود غير صالح" (الكود ممكن يكون سليم فعلاً).
+  bool _lastValidationOffline = false;
+
   Future<void> _validateLicense(String code, SharedPreferences prefs) async {
+    _lastValidationOffline = false;
     try {
       final doc = await _db.collection('licenses').doc(code).get()
           .timeout(const Duration(seconds: 6));
@@ -204,6 +212,10 @@ class LicenseController extends GetxController {
         await _checkTrial(prefs);
         return;
       }
+
+      // وصلنا للسيرفر فعلياً وقرأنا بيانات معتمدة — سجّل وقت التحقق
+      // الناجح ده عشان يبدأ منه حساب مهلة الاستخدام أوفلاين لاحقاً.
+      await prefs.setInt(_kLastVerified, DateTime.now().millisecondsSinceEpoch);
 
       final data      = doc.data()!;
       final status    = data['status']   as String? ?? 'active';
@@ -253,12 +265,37 @@ class LicenseController extends GetxController {
       // ابدأ الاستماع للتغييرات في real-time
       _watchLicense(code, prefs);
 
-    } catch (_) {
-      // Offline — نستخدم الـ grace period
-      final cachedPlan = prefs.getString(_kPlan) ?? 'basic';
-      plan.value        = _parsePlan(cachedPlan);
-      licenseCode.value = code;
-      state.value       = LicenseState.active;
+    } catch (e) {
+      // Offline أو فشل تحقق — نسمح باستخدام محدود (grace period) بدل
+      // ثقة دائمة في آخر حالة معروفة، عشان تعليق/إلغاء ترخيص من لوحة
+      // الإدارة ينعكس فعلياً حتى لو تعطّلت القراءة لفترة طويلة.
+      debugPrint('LicenseController: تحقق الترخيص فشل — $e');
+      final cachedPlan   = prefs.getString(_kPlan) ?? 'basic';
+      final lastVerified = prefs.getInt(_kLastVerified);
+
+      if (lastVerified == null) {
+        // أول محاولة تحقق للكود ده وفشلت — منقدرش نأكد إن الكود ده
+        // موجود فعلاً على السيرفر، فمنمنحش وصول كامل بناءً على مجرد
+        // صيغة صحيحة. نرجع لحالة التجربة (لو لسه سارية) والكود يفضل
+        // محفوظ محلياً عشان يتحقق تلقائياً أول ما النت يرجع.
+        _lastValidationOffline = true;
+        await _checkTrial(prefs);
+        return;
+      }
+
+      final daysSinceVerified = DateTime.now()
+          .difference(DateTime.fromMillisecondsSinceEpoch(lastVerified))
+          .inDays;
+
+      if (daysSinceVerified <= _kGraceDays) {
+        plan.value        = _parsePlan(cachedPlan);
+        licenseCode.value = code;
+        state.value       = LicenseState.active;
+      } else {
+        // انتهت مهلة الاستخدام بدون اتصال — لازم يتأكد من السيرفر تاني
+        licenseCode.value = code;
+        state.value       = LicenseState.expired;
+      }
     }
   }
 
@@ -281,6 +318,9 @@ class LicenseController extends GetxController {
             return;
           }
 
+          // كل رسالة real-time وصلت فعلاً = اتصال شغال بالسيرفر
+          await prefs.setInt(_kLastVerified, DateTime.now().millisecondsSinceEpoch);
+
           final data   = doc.data()!;
           final status = data['status'] as String? ?? 'active';
           final planStr = data['plan']   as String? ?? 'basic';
@@ -297,7 +337,12 @@ class LicenseController extends GetxController {
             state.value          = LicenseState.active;
             await prefs.setString(_kPlan, planStr);
           }
-        }, onError: (_) {});
+        }, onError: (e) {
+          // القراءة اتقطعت (مثلاً صلاحيات Firestore اتغيّرت) — سجّل الخطأ
+          // بدل ما يتبلع بصمت؛ الحالة المخزّنة تفضل زي ما هي لحد ما
+          // مهلة الـ grace period تنتهي في المحاولة الجاية لـ _validateLicense.
+          debugPrint('LicenseController: انقطع الاستماع للترخيص — $e');
+        });
   }
 
   @override
@@ -378,7 +423,9 @@ class LicenseController extends GetxController {
             hasRequest.value = false;
             await prefs.setBool(_kHasRequest, false);
           }
-        }, onError: (_) {});
+        }, onError: (e) {
+          debugPrint('LicenseController: فشل متابعة طلب الترقية — $e');
+        });
   }
 
   // ── Public: Activate Code ─────────────────────────────────────────────────
@@ -391,6 +438,10 @@ class LicenseController extends GetxController {
     await prefs.setString(_kCode, code);
     await _validateLicense(code, prefs);
     if (state.value == LicenseState.active) return null; // success
+    if (_lastValidationOffline) {
+      return 'تعذر التحقق من الكود — تأكد من الاتصال بالإنترنت وحاول تاني. '
+          'سيتم التحقق تلقائياً بمجرد توفر الاتصال.';
+    }
     return _stateErrorMsg();
   }
 

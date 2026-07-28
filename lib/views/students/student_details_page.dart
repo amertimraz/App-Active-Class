@@ -16,6 +16,7 @@ import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
+import 'package:active_class/views/exams/student_exam_history_page.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -26,18 +27,18 @@ import 'package:media_store_plus/media_store_plus.dart';
 
 // أيقونات المجموعات
 const _kGroupIconMap = <String, IconData>{
-  'group':    Icons.groups_rounded,
-  'class':    Icons.class_rounded,
-  'book':     Icons.menu_book_rounded,
-  'math':     Icons.calculate_rounded,
-  'science':  Icons.science_rounded,
+  'group': Icons.groups_rounded,
+  'class': Icons.class_rounded,
+  'book': Icons.menu_book_rounded,
+  'math': Icons.calculate_rounded,
+  'science': Icons.science_rounded,
   'language': Icons.language_rounded,
-  'code':     Icons.code_rounded,
-  'star':     Icons.star_rounded,
-  'music':    Icons.music_note_rounded,
-  'art':      Icons.brush_rounded,
-  'sport':    Icons.sports_soccer_rounded,
-  'english':  Icons.translate_rounded,
+  'code': Icons.code_rounded,
+  'star': Icons.star_rounded,
+  'music': Icons.music_note_rounded,
+  'art': Icons.brush_rounded,
+  'sport': Icons.sports_soccer_rounded,
+  'english': Icons.translate_rounded,
 };
 
 class StudentDetailsPage extends StatefulWidget {
@@ -49,11 +50,13 @@ class StudentDetailsPage extends StatefulWidget {
 
 class _StudentDetailsPageState extends State<StudentDetailsPage>
     with SingleTickerProviderStateMixin {
-  final AttendanceController attendanceController = Get.put(AttendanceController());
+  final AttendanceController attendanceController =
+      Get.put(AttendanceController());
   final PaymentController paymentController = Get.put(PaymentController());
 
   Student? student;
   Group? _group;
+  List<Group> _groups = [];
   late TabController _tabController;
 
   @override
@@ -61,7 +64,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
     super.initState();
     student = Get.arguments as Student?;
     _tabController = TabController(length: 2, vsync: this);
-    if (attendanceController.attendance.isEmpty) attendanceController.loadAttendance();
+    if (attendanceController.attendance.isEmpty)
+      attendanceController.loadAttendance();
     if (paymentController.payments.isEmpty) paymentController.loadPayments();
     _loadGroup();
   }
@@ -69,8 +73,16 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
   Future<void> _loadGroup() async {
     final s = student;
     if (s == null) return;
-    final g = await DatabaseService().getGroup(s.groupId);
-    if (mounted) setState(() => _group = g);
+    final results = await Future.wait([
+      DatabaseService().getGroup(s.groupId),
+      DatabaseService().getAllGroups(),
+    ]);
+    if (mounted) {
+      setState(() {
+        _group = results[0] as Group?;
+        _groups = results[1] as List<Group>;
+      });
+    }
   }
 
   @override
@@ -86,26 +98,35 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
 
   Future<void> _shareMonthlyReport(Student s) async {
     final rawPhone = s.guardianPhone?.trim() ?? '';
-    if (rawPhone.isEmpty) { ToastHelper.info('أضف رقم ولي الأمر أولاً'); return; }
+    if (rawPhone.isEmpty) {
+      ToastHelper.info('أضف رقم ولي الأمر أولاً');
+      return;
+    }
 
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, 1);
     final end = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
 
     final atts = attendanceController.attendance
-        .where((a) => a.studentId == s.id && !a.date.isBefore(start) && !a.date.isAfter(end))
+        .where((a) =>
+            a.studentId == s.id &&
+            !a.date.isBefore(start) &&
+            !a.date.isAfter(end))
         .toList();
     final pays = paymentController.payments
-        .where((p) => p.studentId == s.id && !p.date.isBefore(start) && !p.date.isAfter(end))
+        .where((p) =>
+            p.studentId == s.id &&
+            !p.date.isBefore(start) &&
+            !p.date.isAfter(end))
         .toList();
 
-    final present    = atts.where((a) => a.status == ATTENDANCE_PRESENT).length;
-    final absent     = atts.where((a) => a.status == ATTENDANCE_ABSENT).length;
-    final total      = present + absent;
-    final percent    = total == 0 ? 0.0 : (present / total) * 100.0;
-    final totalPaid  = pays.fold<double>(0.0, (sum, p) => sum + p.amount);
+    final present = atts.where((a) => a.status == ATTENDANCE_PRESENT).length;
+    final absent = atts.where((a) => a.status == ATTENDANCE_ABSENT).length;
+    final total = present + absent;
+    final percent = total == 0 ? 0.0 : (present / total) * 100.0;
+    final totalPaid = pays.fold<double>(0.0, (sum, p) => sum + p.amount);
     final monthLabel = DateFormat('MMMM yyyy', 'ar').format(start);
-    final groupName  = _group?.name ?? '-';
+    final groupName = _group?.name ?? '-';
 
     final attsSorted = List.of(atts)..sort((a, b) => b.date.compareTo(a.date));
     final paysSorted = List.of(pays)..sort((a, b) => b.date.compareTo(a.date));
@@ -115,21 +136,27 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
       ..writeln('👤 الاسم: ${s.name}')
       ..writeln('🆔 الكود: ${s.code}')
       ..writeln('👥 المجموعة: $groupName')
-      ..writeln('📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
+      ..writeln(
+          '📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
       ..writeln('')
-      ..writeln('📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
+      ..writeln(
+          '📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
 
     if (attsSorted.isNotEmpty) {
       buffer.writeln('\n📅 سجلات الحضور:');
       for (final a in attsSorted.take(10)) {
-        buffer.writeln('• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب'}');
+        buffer.writeln(
+            '• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب'}');
       }
-      if (attsSorted.length > 10) buffer.writeln('• … ${attsSorted.length - 10} سجلات إضافية');
+      if (attsSorted.length > 10)
+        buffer.writeln('• … ${attsSorted.length - 10} سجلات إضافية');
     }
 
-    buffer.writeln('\n💰 المدفوعات: إجمالي ${FormatHelper.formatCurrency(totalPaid)}');
+    buffer.writeln(
+        '\n💰 المدفوعات: إجمالي ${FormatHelper.formatCurrency(totalPaid)}');
     for (final p in paysSorted) {
-      buffer.writeln('• ${DateFormat('yyyy-MM-dd HH:mm').format(p.date)} — ${FormatHelper.formatCurrency(p.amount)}');
+      buffer.writeln(
+          '• ${DateFormat('yyyy-MM-dd HH:mm').format(p.date)} — ${FormatHelper.formatCurrency(p.amount)}');
     }
 
     final settings = Get.find<SettingsController>();
@@ -152,7 +179,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
     }
 
     final phone = normalize(rawPhone, settings.countryDial.value);
-    final uri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(buffer.toString())}');
+    final uri = Uri.parse(
+        'https://wa.me/$phone?text=${Uri.encodeComponent(buffer.toString())}');
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
@@ -162,9 +190,11 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
       context,
       student: s,
       accentColor: _accentColor,
+      groups: _groups,
     );
     if (updated != null && mounted) {
       setState(() => student = updated);
+      _loadGroup();
     }
   }
 
@@ -184,7 +214,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
     final initials = s.name.trim().isNotEmpty ? s.name.trim()[0] : '؟';
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1520) : const Color(0xFFF5F7FA),
+      backgroundColor:
+          isDark ? const Color(0xFF0D1520) : const Color(0xFFF5F7FA),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -205,12 +236,21 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
         ],
       ),
       body: Obx(() {
-        final studentAtts  = attendanceController.attendance.where((a) => a.studentId == s.id).toList();
-        final studentPays  = paymentController.payments.where((p) => p.studentId == s.id).toList();
-        final presentCount = studentAtts.where((a) => a.status == ATTENDANCE_PRESENT).length;
-        final absentCount  = studentAtts.where((a) => a.status == ATTENDANCE_ABSENT).length;
-        final attRate      = studentAtts.isEmpty ? 0.0 : (presentCount / studentAtts.length) * 100;
-        final totalPaid    = studentPays.fold<double>(0.0, (sum, p) => sum + p.amount);
+        final studentAtts = attendanceController.attendance
+            .where((a) => a.studentId == s.id)
+            .toList();
+        final studentPays = paymentController.payments
+            .where((p) => p.studentId == s.id)
+            .toList();
+        final presentCount =
+            studentAtts.where((a) => a.status == ATTENDANCE_PRESENT).length;
+        final absentCount =
+            studentAtts.where((a) => a.status == ATTENDANCE_ABSENT).length;
+        final attRate = studentAtts.isEmpty
+            ? 0.0
+            : (presentCount / studentAtts.length) * 100;
+        final totalPaid =
+            studentPays.fold<double>(0.0, (sum, p) => sum + p.amount);
 
         return NestedScrollView(
           headerSliverBuilder: (_, __) => [
@@ -235,7 +275,10 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                   absentCount: absentCount,
                   attRate: attRate,
                   accentColor: primary),
-              _PaymentsTab(payments: studentPays, totalPaid: totalPaid, accentColor: primary),
+              _PaymentsTab(
+                  payments: studentPays,
+                  totalPaid: totalPaid,
+                  accentColor: primary),
             ],
           ),
         );
@@ -244,8 +287,16 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
   }
 
   // ─── Header ───────────────────────────────────────────────────────────────
-  Widget _buildHeader(BuildContext context, Student s, String initials, Color primary,
-      bool isDark, int presentCount, int absentCount, double attRate, double totalPaid) {
+  Widget _buildHeader(
+      BuildContext context,
+      Student s,
+      String initials,
+      Color primary,
+      bool isDark,
+      int presentCount,
+      int absentCount,
+      double attRate,
+      double totalPaid) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       decoration: BoxDecoration(
@@ -256,7 +307,10 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
-          BoxShadow(color: primary.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6)),
+          BoxShadow(
+              color: primary.withValues(alpha: 0.35),
+              blurRadius: 16,
+              offset: const Offset(0, 6)),
         ],
       ),
       child: Padding(
@@ -267,38 +321,49 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
             // Avatar + اسم
             Row(children: [
               Container(
-                width: 60, height: 60,
+                width: 60,
+                height: 60,
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.25),
                   shape: BoxShape.circle,
                 ),
                 child: Center(
                   child: Text(initials,
-                      style: const TextStyle(color: Colors.white, fontSize: 26,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
                           fontWeight: FontWeight.w900)),
                 ),
               ),
               const SizedBox(width: 14),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(s.name,
-                    style: const TextStyle(color: Colors.white, fontSize: 20,
-                        fontWeight: FontWeight.w900),
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 4),
-                Row(children: [
-                  _HeaderBadge(Icons.qr_code_rounded, s.code),
-                  if (_group != null) ...[
-                    const SizedBox(width: 8),
-                    _HeaderBadge(
-                        _kGroupIconMap[_group!.icon ?? ''] ?? Icons.groups_rounded,
-                        _group!.name),
-                  ],
-                ]),
-              ])),
+              Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    Text(s.name,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      _HeaderBadge(Icons.qr_code_rounded, s.code),
+                      if (_group != null) ...[
+                        const SizedBox(width: 8),
+                        _HeaderBadge(
+                            _kGroupIconMap[_group!.icon ?? ''] ??
+                                Icons.groups_rounded,
+                            _group!.name),
+                      ],
+                    ]),
+                  ])),
             ]),
 
             // معلومات إضافية
-            if ((s.guardianPhone?.isNotEmpty ?? false) || s.birthDate != null ||
+            if ((s.guardianPhone?.isNotEmpty ?? false) ||
+                s.birthDate != null ||
                 s.attendanceStart != null) ...[
               const SizedBox(height: 12),
               Wrap(spacing: 12, runSpacing: 6, children: [
@@ -308,7 +373,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                   _InfoChip(Icons.date_range_rounded,
                       'منذ ${FormatHelper.formatDate(s.attendanceStart)}'),
                 if (s.birthDate != null)
-                  _InfoChip(Icons.cake_rounded, FormatHelper.formatDate(s.birthDate)),
+                  _InfoChip(
+                      Icons.cake_rounded, FormatHelper.formatDate(s.birthDate)),
               ]),
             ],
 
@@ -316,17 +382,25 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
 
             // Stats
             Row(children: [
-              _HeaderStat(label: 'نسبة الحضور',
-                  value: '${attRate.toStringAsFixed(0)}%', icon: Icons.show_chart_rounded),
+              _HeaderStat(
+                  label: 'نسبة الحضور',
+                  value: '${attRate.toStringAsFixed(0)}%',
+                  icon: Icons.show_chart_rounded),
               const SizedBox(width: 8),
-              _HeaderStat(label: 'حضور',
-                  value: '$presentCount', icon: Icons.check_circle_rounded),
+              _HeaderStat(
+                  label: 'حضور',
+                  value: '$presentCount',
+                  icon: Icons.check_circle_rounded),
               const SizedBox(width: 8),
-              _HeaderStat(label: 'غياب',
-                  value: '$absentCount', icon: Icons.cancel_rounded),
+              _HeaderStat(
+                  label: 'غياب',
+                  value: '$absentCount',
+                  icon: Icons.cancel_rounded),
               const SizedBox(width: 8),
-              _HeaderStat(label: 'مدفوع',
-                  value: FormatHelper.formatCurrency(totalPaid), icon: Icons.payments_rounded),
+              _HeaderStat(
+                  label: 'مدفوع',
+                  value: FormatHelper.formatCurrency(totalPaid),
+                  icon: Icons.payments_rounded),
             ]),
           ],
         ),
@@ -351,6 +425,14 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
           label: 'QR Code',
           color: primary,
           onTap: () => _showQRDialog(context, s),
+        ),
+        const SizedBox(width: 8),
+        _ActionChip(
+          icon: Icons.assignment_rounded,
+          label: 'الامتحانات',
+          color: const Color(0xFF8B5CF6),
+          onTap: () => Get.to(() =>
+              StudentExamHistoryPage(studentId: s.id!, studentName: s.name)),
         ),
         if (s.guardianPhone?.isNotEmpty ?? false) ...[
           const SizedBox(width: 8),
@@ -387,7 +469,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
           dividerColor: Colors.transparent,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.grey,
-          labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          labelStyle:
+              const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           tabs: const [
             Tab(text: 'سجل الحضور'),
             Tab(text: 'المدفوعات'),
@@ -407,12 +490,14 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
           width: 280,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Text(s.name,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                style:
+                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 textAlign: TextAlign.center),
             if (_group != null) ...[
               const SizedBox(height: 4),
               Text('المجموعة: ${_group!.name}',
-                  style: const TextStyle(fontSize: 13), textAlign: TextAlign.center),
+                  style: const TextStyle(fontSize: 13),
+                  textAlign: TextAlign.center),
             ],
             const SizedBox(height: 14),
             if (s.code.trim().isEmpty)
@@ -420,26 +505,38 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
             else
               Container(
                 decoration: BoxDecoration(
-                  border: Border.all(color: _accentColor.withValues(alpha: 0.3), width: 2),
+                  border: Border.all(
+                      color: _accentColor.withValues(alpha: 0.3), width: 2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 padding: const EdgeInsets.all(8),
-                child: QrImageView(data: s.code, version: QrVersions.auto,
-                    size: 200, backgroundColor: Colors.white),
+                child: QrImageView(
+                    data: s.code,
+                    version: QrVersions.auto,
+                    size: 200,
+                    backgroundColor: Colors.white),
               ),
             const SizedBox(height: 10),
-            Text(s.code, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+            Text(s.code,
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
           ]),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('إغلاق')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('إغلاق')),
           FilledButton.icon(
-            onPressed: s.code.trim().isEmpty ? null : () async {
-              final ok = await _saveStudentQrImage(s);
-              if (!ctx.mounted) return;
-              if (ok) { ToastHelper.success('تم حفظ صورة QR'); }
-              else    { ToastHelper.error('تعذر حفظ صورة QR'); }
-            },
+            onPressed: s.code.trim().isEmpty
+                ? null
+                : () async {
+                    final ok = await _saveStudentQrImage(s);
+                    if (!ctx.mounted) return;
+                    if (ok) {
+                      ToastHelper.success('تم حفظ صورة QR');
+                    } else {
+                      ToastHelper.error('تعذر حفظ صورة QR');
+                    }
+                  },
             style: FilledButton.styleFrom(backgroundColor: _accentColor),
             icon: const Icon(Icons.download_rounded),
             label: const Text('حفظ'),
@@ -455,32 +552,46 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
       const int qrSize = 700;
       const double padding = 40, spacing = 24;
       final painter = QrPainter(
-        data: s.code, version: QrVersions.auto,
+        data: s.code,
+        version: QrVersions.auto,
         eyeStyle: const QrEyeStyle(color: Color(0xFF000000)),
         dataModuleStyle: const QrDataModuleStyle(color: Color(0xFF000000)),
       );
       final ui.Image qrImage = await painter.toImage(qrSize.toDouble());
 
-      const tsTitle = TextStyle(color: Colors.black, fontSize: 48, fontWeight: FontWeight.w600, fontFamily: 'Cairo');
-      const tsSub   = TextStyle(color: Colors.black, fontSize: 36, fontFamily: 'Cairo');
+      const tsTitle = TextStyle(
+          color: Colors.black,
+          fontSize: 48,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'Cairo');
+      const tsSub =
+          TextStyle(color: Colors.black, fontSize: 36, fontFamily: 'Cairo');
 
       final tpName = TextPainter(
         text: TextSpan(text: s.name, style: tsTitle),
-        textAlign: TextAlign.center, textDirection: ui.TextDirection.rtl,
+        textAlign: TextAlign.center,
+        textDirection: ui.TextDirection.rtl,
       )..layout(maxWidth: qrSize.toDouble());
 
-      final groupLine = (_group?.name.isNotEmpty ?? false) ? 'المجموعة: ${_group!.name}' : null;
-      final TextPainter? tpGroup = groupLine == null ? null
-          : (TextPainter(text: TextSpan(text: groupLine, style: tsSub),
-              textAlign: TextAlign.center, textDirection: ui.TextDirection.rtl)
-              ..layout(maxWidth: qrSize.toDouble()));
+      final groupLine = (_group?.name.isNotEmpty ?? false)
+          ? 'المجموعة: ${_group!.name}'
+          : null;
+      final TextPainter? tpGroup = groupLine == null
+          ? null
+          : (TextPainter(
+              text: TextSpan(text: groupLine, style: tsSub),
+              textAlign: TextAlign.center,
+              textDirection: ui.TextDirection.rtl)
+            ..layout(maxWidth: qrSize.toDouble()));
 
       final tpCode = TextPainter(
         text: TextSpan(text: 'الكود: ${s.code}', style: tsSub),
-        textAlign: TextAlign.center, textDirection: ui.TextDirection.ltr,
+        textAlign: TextAlign.center,
+        textDirection: ui.TextDirection.ltr,
       )..layout(maxWidth: qrSize.toDouble());
 
-      final double textH = tpName.height + (tpGroup?.height ?? 0) + tpCode.height + spacing * 2;
+      final double textH =
+          tpName.height + (tpGroup?.height ?? 0) + tpCode.height + spacing * 2;
       final int w = (qrSize + padding * 2).round();
       final int h = (padding + qrSize + spacing + textH + padding).round();
 
@@ -489,13 +600,19 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
       canvas.drawRect(Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
           Paint()..color = const Color(0xFFFFFFFF));
       final qrL = (w - qrSize) / 2;
-      canvas.drawImageRect(qrImage,
+      canvas.drawImageRect(
+          qrImage,
           Rect.fromLTWH(0, 0, qrSize.toDouble(), qrSize.toDouble()),
-          Rect.fromLTWH(qrL, padding, qrSize.toDouble(), qrSize.toDouble()), Paint());
+          Rect.fromLTWH(qrL, padding, qrSize.toDouble(), qrSize.toDouble()),
+          Paint());
 
       double y = padding + qrSize + spacing;
-      tpName.paint(canvas, Offset((w - tpName.width) / 2, y)); y += tpName.height + 8;
-      if (tpGroup != null) { tpGroup.paint(canvas, Offset((w - tpGroup.width) / 2, y)); y += tpGroup.height + 8; }
+      tpName.paint(canvas, Offset((w - tpName.width) / 2, y));
+      y += tpName.height + 8;
+      if (tpGroup != null) {
+        tpGroup.paint(canvas, Offset((w - tpGroup.width) / 2, y));
+        y += tpGroup.height + 8;
+      }
       tpCode.paint(canvas, Offset((w - tpCode.width) / 2, y));
 
       final byteData = await (await recorder.endRecording().toImage(w, h))
@@ -511,23 +628,30 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
       await tmpFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
 
       var saveInfo = await MediaStore().saveFile(
-          tempFilePath: tmpFile.path, dirType: DirType.photo, dirName: DirType.photo.defaults);
+          tempFilePath: tmpFile.path,
+          dirType: DirType.photo,
+          dirName: DirType.photo.defaults);
       if (saveInfo?.uri == null) {
         saveInfo = await MediaStore().saveFile(
-            tempFilePath: tmpFile.path, dirType: DirType.download, dirName: DirType.download.defaults);
+            tempFilePath: tmpFile.path,
+            dirType: DirType.download,
+            dirName: DirType.download.defaults);
       }
 
       final success = saveInfo?.uri != null;
       if (success) {
         try {
-          final path = await MediaStore().getFilePathFromUri(uriString: saveInfo!.uri.toString());
+          final path = await MediaStore()
+              .getFilePathFromUri(uriString: saveInfo!.uri.toString());
           if (path != null && path.isNotEmpty) {
             await DatabaseService().updateStudent(s.copyWith(qrPath: path));
           }
         } catch (_) {}
       }
       return success;
-    } catch (_) { return false; }
+    } catch (_) {
+      return false;
+    }
   }
 }
 
@@ -552,8 +676,12 @@ class _HeaderBadge extends StatelessWidget {
         const SizedBox(width: 4),
         Flexible(
           child: Text(label,
-              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
-              maxLines: 1, overflow: TextOverflow.ellipsis),
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
         ),
       ]),
     );
@@ -571,7 +699,8 @@ class _InfoChip extends StatelessWidget {
       Icon(icon, color: Colors.white.withValues(alpha: 0.8), size: 13),
       const SizedBox(width: 4),
       Text(label,
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12)),
+          style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.85), fontSize: 12)),
     ]);
   }
 }
@@ -580,7 +709,8 @@ class _HeaderStat extends StatelessWidget {
   final String label;
   final String value;
   final IconData icon;
-  const _HeaderStat({required this.label, required this.value, required this.icon});
+  const _HeaderStat(
+      {required this.label, required this.value, required this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -595,11 +725,17 @@ class _HeaderStat extends StatelessWidget {
           Icon(icon, color: Colors.white, size: 16),
           const SizedBox(height: 3),
           Text(value,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12),
-              maxLines: 1, overflow: TextOverflow.ellipsis),
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
           Text(label,
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 9),
-              maxLines: 1, overflow: TextOverflow.ellipsis),
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.8), fontSize: 9),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
         ]),
       ),
     );
@@ -614,7 +750,11 @@ class _ActionChip extends StatelessWidget {
   final String label;
   final Color color;
   final VoidCallback onTap;
-  const _ActionChip({required this.icon, required this.label, required this.color, required this.onTap});
+  const _ActionChip(
+      {required this.icon,
+      required this.label,
+      required this.color,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -632,8 +772,10 @@ class _ActionChip extends StatelessWidget {
             Icon(icon, color: color, size: 20),
             const SizedBox(height: 3),
             Text(label,
-                style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700),
-                maxLines: 1, overflow: TextOverflow.ellipsis),
+                style: TextStyle(
+                    color: color, fontSize: 11, fontWeight: FontWeight.w700),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
           ]),
         ),
       ),
@@ -662,7 +804,8 @@ class _AttendanceTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sorted = List.of(attendance)..sort((a, b) => b.date.compareTo(a.date));
+    final sorted = List.of(attendance)
+      ..sort((a, b) => b.date.compareTo(a.date));
 
     // تجميع بالشهر
     final Map<String, List<Attendance>> byMonth = {};
@@ -691,14 +834,27 @@ class _AttendanceTab extends StatelessWidget {
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1A2540) : Colors.white,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)],
+            boxShadow: isDark
+                ? []
+                : [
+                    BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 8)
+                  ],
           ),
           child: Column(children: [
             Row(children: [
               Expanded(child: _MiniStat('حضور', '$presentCount', Colors.green)),
               Expanded(child: _MiniStat('غياب', '$absentCount', Colors.red)),
-              Expanded(child: _MiniStat('النسبة', '${attRate.toStringAsFixed(0)}%',
-                  attRate >= 75 ? Colors.green : attRate >= 50 ? Colors.orange : Colors.red)),
+              Expanded(
+                  child: _MiniStat(
+                      'النسبة',
+                      '${attRate.toStringAsFixed(0)}%',
+                      attRate >= 75
+                          ? Colors.green
+                          : attRate >= 50
+                              ? Colors.orange
+                              : Colors.red)),
             ]),
             const SizedBox(height: 12),
             ClipRRect(
@@ -707,8 +863,11 @@ class _AttendanceTab extends StatelessWidget {
                 value: attendance.isEmpty ? 0 : attRate / 100,
                 minHeight: 8,
                 backgroundColor: Colors.red.withValues(alpha: 0.15),
-                valueColor: AlwaysStoppedAnimation(
-                    attRate >= 75 ? Colors.green : attRate >= 50 ? Colors.orange : Colors.red),
+                valueColor: AlwaysStoppedAnimation(attRate >= 75
+                    ? Colors.green
+                    : attRate >= 50
+                        ? Colors.orange
+                        : Colors.red),
               ),
             ),
           ]),
@@ -719,72 +878,93 @@ class _AttendanceTab extends StatelessWidget {
         // قائمة بالشهر
         ...months.map((month) {
           final list = byMonth[month]!;
-          final mPresent = list.where((a) => a.status == ATTENDANCE_PRESENT).length;
-          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8, top: 4),
-              child: Row(children: [
-                Text(month,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text('$mPresent/${list.length}',
-                      style: const TextStyle(color: Colors.green, fontSize: 11,
-                          fontWeight: FontWeight.w700)),
-                ),
-              ]),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1A2540) : Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)],
-              ),
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: list.length,
-                separatorBuilder: (_, __) => const Divider(height: 0, indent: 56),
-                itemBuilder: (_, i) {
-                  final a = list[i];
-                  final isPresent = a.status == ATTENDANCE_PRESENT;
-                  return ListTile(
-                    leading: Container(
-                      width: 36, height: 36,
+          final mPresent =
+              list.where((a) => a.status == ATTENDANCE_PRESENT).length;
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8, top: 4),
+                  child: Row(children: [
+                    Text(month,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 14)),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: (isPresent ? Colors.green : Colors.red).withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        isPresent ? Icons.check_rounded : Icons.close_rounded,
-                        color: isPresent ? Colors.green : Colors.red,
-                        size: 18,
-                      ),
-                    ),
-                    title: Text(FormatHelper.formatFullDate(a.date),
-                        style: const TextStyle(fontSize: 13)),
-                    trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: (isPresent ? Colors.green : Colors.red).withValues(alpha: 0.1),
+                        color: Colors.green.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(a.status,
-                          style: TextStyle(
-                              color: isPresent ? Colors.green : Colors.red,
-                              fontSize: 12, fontWeight: FontWeight.w700)),
+                      child: Text('$mPresent/${list.length}',
+                          style: const TextStyle(
+                              color: Colors.green,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700)),
                     ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-          ]);
+                  ]),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1A2540) : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: isDark
+                        ? []
+                        : [
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 8)
+                          ],
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 0, indent: 56),
+                    itemBuilder: (_, i) {
+                      final a = list[i];
+                      final isPresent = a.status == ATTENDANCE_PRESENT;
+                      return ListTile(
+                        leading: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: (isPresent ? Colors.green : Colors.red)
+                                .withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isPresent
+                                ? Icons.check_rounded
+                                : Icons.close_rounded,
+                            color: isPresent ? Colors.green : Colors.red,
+                            size: 18,
+                          ),
+                        ),
+                        title: Text(FormatHelper.formatFullDate(a.date),
+                            style: const TextStyle(fontSize: 13)),
+                        trailing: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: (isPresent ? Colors.green : Colors.red)
+                                .withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(a.status,
+                              style: TextStyle(
+                                  color: isPresent ? Colors.green : Colors.red,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ]);
         }),
       ],
     );
@@ -801,7 +981,8 @@ class _MiniStat extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(children: [
       Text(value,
-          style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 18)),
+          style: TextStyle(
+              color: color, fontWeight: FontWeight.w900, fontSize: 18)),
       Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
     ]);
   }
@@ -853,23 +1034,33 @@ class _PaymentsTab extends StatelessWidget {
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1A2540) : Colors.white,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)],
+            boxShadow: isDark
+                ? []
+                : [
+                    BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 8)
+                  ],
           ),
           child: Row(children: [
             Container(
-              width: 44, height: 44,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: Colors.green.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.payments_rounded, color: Colors.green, size: 22),
+              child: const Icon(Icons.payments_rounded,
+                  color: Colors.green, size: 22),
             ),
             const SizedBox(width: 14),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('إجمالي المدفوعات',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
               CurrencyText(totalPaid,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900,
+                  style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
                       color: Colors.green)),
             ]),
             const Spacer(),
@@ -884,54 +1075,72 @@ class _PaymentsTab extends StatelessWidget {
         ...months.map((month) {
           final list = byMonth[month]!;
           final mTotal = list.fold<double>(0, (s, p) => s + p.amount);
-          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8, top: 4),
-              child: Row(children: [
-                Text(month,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                const Spacer(),
-                CurrencyText(mTotal,
-                    style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.green,
-                        fontSize: 13)),
-              ]),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1A2540) : Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)],
-              ),
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: list.length,
-                separatorBuilder: (_, __) => const Divider(height: 0, indent: 56),
-                itemBuilder: (_, i) {
-                  final p = list[i];
-                  return ListTile(
-                    leading: Container(
-                      width: 36, height: 36,
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.check_rounded, color: Colors.green, size: 18),
-                    ),
-                    title: Text(FormatHelper.formatPaymentDate(p.date),
-                        style: const TextStyle(fontSize: 13)),
-                    subtitle: p.note != null && p.note!.isNotEmpty
-                        ? Text(p.note!, style: TextStyle(fontSize: 11, color: Colors.grey.shade500))
-                        : null,
-                    trailing: CurrencyText(p.amount,
-                        style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.green,
-                            fontSize: 14)),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-          ]);
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8, top: 4),
+                  child: Row(children: [
+                    Text(month,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 14)),
+                    const Spacer(),
+                    CurrencyText(mTotal,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.green,
+                            fontSize: 13)),
+                  ]),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1A2540) : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: isDark
+                        ? []
+                        : [
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 8)
+                          ],
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 0, indent: 56),
+                    itemBuilder: (_, i) {
+                      final p = list[i];
+                      return ListTile(
+                        leading: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.green.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.check_rounded,
+                              color: Colors.green, size: 18),
+                        ),
+                        title: Text(FormatHelper.formatPaymentDate(p.date),
+                            style: const TextStyle(fontSize: 13)),
+                        subtitle: p.note != null && p.note!.isNotEmpty
+                            ? Text(p.note!,
+                                style: TextStyle(
+                                    fontSize: 11, color: Colors.grey.shade500))
+                            : null,
+                        trailing: CurrencyText(p.amount,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: Colors.green,
+                                fontSize: 14)),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ]);
         }),
       ],
     );

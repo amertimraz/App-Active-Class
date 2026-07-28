@@ -18,13 +18,13 @@ import 'package:active_class/services/database_service.dart';
 class BackupResult {
   final bool success;
   final String? localPath;   // مسار داخل Documents (للاستعادة لاحقاً)
-  final String? downloadsUri; // URI في Downloads (للمشاركة)
+  final String? fileName;    // اسم الملف (لعملية حفظ Downloads اللاحقة)
   final String? error;
   final String? fileSize;
 
   BackupResult.success({
     required this.localPath,
-    this.downloadsUri,
+    required this.fileName,
     this.fileSize,
   })  : success = true,
         error = null;
@@ -32,7 +32,7 @@ class BackupResult {
   BackupResult.failure(this.error)
       : success = false,
         localPath = null,
-        downloadsUri = null,
+        fileName = null,
         fileSize = null;
 }
 
@@ -89,8 +89,9 @@ class BackupService {
   }
 
   // ──────────────────────────────────────────────────────────────
-  //  createBackup — إنشاء نسخة احتياطية
-  //  تُحفظ في Documents (دائمة) + Downloads (للمشاركة)
+  //  createBackup — إنشاء نسخة احتياطية داخل Documents (دائمة)
+  //  عملية نسخ ملف محلي سريعة فقط — الحفظ الإضافي في Downloads
+  //  منفصل في saveToDownloads() عشان ميجمّدش الواجهة (شوف تعليقها).
   // ──────────────────────────────────────────────────────────────
   Future<BackupResult> createBackup() async {
     try {
@@ -103,7 +104,6 @@ class BackupService {
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final fileName  = 'active_class_backup_$timestamp.db';
 
-      // 1️⃣ حفظ دائم في Documents
       final docsDir  = await _backupsDir;
       final localPath = p.join(docsDir.path, fileName);
       await dbFile.copy(localPath);
@@ -111,33 +111,40 @@ class BackupService {
       final sizeBytes = File(localPath).lengthSync();
       final sizeLabel = _sizeLabel(sizeBytes);
 
-      // 2️⃣ محاولة حفظ في Downloads (اختياري — لا يفشل الكل لو فشل هذا)
-      String? downloadsUri;
-      try {
-        final tmpDir  = await _tempDir;
-        final tmpPath = p.join(tmpDir.path, fileName);
-        await File(localPath).copy(tmpPath);
-
-        await MediaStore.ensureInitialized();
-        MediaStore.appFolder = 'ActiveClass';
-        final saveInfo = await MediaStore().saveFile(
-          tempFilePath: tmpPath,
-          dirType: DirType.download,
-          dirName: DirName.download,
-        );
-        downloadsUri = saveInfo?.uri.toString();
-        try { File(tmpPath).deleteSync(); } catch (_) {}
-      } catch (_) {
-        // فشل Downloads لا يُلغي العملية
-      }
-
       return BackupResult.success(
         localPath: localPath,
-        downloadsUri: downloadsUri,
-        fileSize: sizeLabel,
+        fileName:  fileName,
+        fileSize:  sizeLabel,
       );
     } catch (e) {
       return BackupResult.failure('فشل إنشاء النسخة: $e');
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  saveToDownloads — نسخ اختياري لملف Downloads/ActiveClass عبر
+  //  MediaStore. على بعض أجهزة MIUI/Xiaomi، استعلامات MediaStore
+  //  بتاخد ثواني على الـ main thread وتجمّد الواجهة بالكامل (بما
+  //  فيها شاشة "جاري التحميل") — لذلك بننفذها بعد إغلاق شاشة
+  //  التحميل وعرض النجاح، مش جوه createBackup() نفسها.
+  // ──────────────────────────────────────────────────────────────
+  Future<String?> saveToDownloads(String localPath, String fileName) async {
+    try {
+      final tmpDir  = await _tempDir;
+      final tmpPath = p.join(tmpDir.path, fileName);
+      await File(localPath).copy(tmpPath);
+
+      await MediaStore.ensureInitialized();
+      MediaStore.appFolder = 'ActiveClass';
+      final saveInfo = await MediaStore().saveFile(
+        tempFilePath: tmpPath,
+        dirType: DirType.download,
+        dirName: DirName.download,
+      );
+      try { File(tmpPath).deleteSync(); } catch (_) {}
+      return saveInfo?.uri.toString();
+    } catch (_) {
+      return null;
     }
   }
 

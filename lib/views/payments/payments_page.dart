@@ -113,7 +113,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
           final rows = <_StudentMonthRow>[];
           for (final s in scopedStudents) {
             final paid = paidByStudent[s.id!] ?? 0.0;
-            final due = s.price;
+            final due = s.effectivePrice;
             final remaining =
                 (due - paid).clamp(0.0, double.infinity).toDouble();
             final status = due <= 0
@@ -383,17 +383,13 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                     studentController,
                                     preselectedStudentId: r.student.id,
                                     initialDate: safeDate,
-                                    defaultAmount: r.student.price,
+                                    defaultAmount: r.student.effectivePrice,
                                   );
                                 },
-                                onViewHistory: () =>
-                                    _showPaymentHistory(
+                                onViewHistory: () => _showPaymentHistory(
                                   context,
                                   r.student,
-                                  monthlyPayments
-                                      .where((p) =>
-                                          p.studentId == r.student.id)
-                                      .toList(),
+                                  r.month,
                                   controller,
                                 ),
                               );
@@ -471,7 +467,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
   void _showPaymentHistory(
     BuildContext context,
     Student student,
-    List<Payment> payments,
+    DateTime month,
     PaymentController ctrl,
   ) {
     showModalBottomSheet(
@@ -511,38 +507,131 @@ class _PaymentsPageState extends State<PaymentsPage> {
             ),
             const Divider(height: 1),
             Expanded(
-              child: payments.isEmpty
-                  ? const Center(child: Text('لا توجد دفعات هذا الشهر'))
-                  : ListView.builder(
-                      controller: scrollCtrl,
-                      itemCount: payments.length,
-                      itemBuilder: (_, i) {
-                        final p = payments[i];
-                        return ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor:
-                                Colors.green.withValues(alpha: 0.12),
-                            child: const Icon(Icons.payments_rounded,
-                                color: Colors.green, size: 18),
+              child: Obx(() {
+                final payments = ctrl.payments
+                    .where((p) =>
+                        p.studentId == student.id &&
+                        p.date.year == month.year &&
+                        p.date.month == month.month)
+                    .toList()
+                  ..sort((a, b) => b.date.compareTo(a.date));
+                if (payments.isEmpty) {
+                  return const Center(child: Text('لا توجد دفعات هذا الشهر'));
+                }
+                return ListView.builder(
+                  controller: scrollCtrl,
+                  itemCount: payments.length,
+                  itemBuilder: (_, i) {
+                    final p = payments[i];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor:
+                            Colors.green.withValues(alpha: 0.12),
+                        child: const Icon(Icons.payments_rounded,
+                            color: Colors.green, size: 18),
+                      ),
+                      title: CurrencyText(
+                        p.amount,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(FormatHelper.formatPaymentDate(p.date)),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (p.note?.isNotEmpty == true)
+                            Tooltip(
+                              message: p.note!,
+                              child: const Padding(
+                                padding: EdgeInsets.only(left: 4),
+                                child: Icon(Icons.notes_rounded,
+                                    size: 18, color: Colors.grey),
+                              ),
+                            ),
+                          IconButton(
+                            icon: const Icon(Icons.edit_rounded, size: 18),
+                            tooltip: 'تعديل',
+                            onPressed: () =>
+                                _editPayment(context, p, ctrl),
                           ),
-                          title: CurrencyText(
-                            p.amount,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          IconButton(
+                            icon: const Icon(Icons.delete_rounded,
+                                size: 18, color: Colors.red),
+                            tooltip: 'حذف',
+                            onPressed: () =>
+                                _confirmDeletePayment(context, p, ctrl),
                           ),
-                          subtitle: Text(FormatHelper.formatPaymentDate(p.date)),
-                          trailing: (p.note?.isNotEmpty == true)
-                              ? Tooltip(
-                                  message: p.note!,
-                                  child: const Icon(Icons.notes_rounded,
-                                      size: 18, color: Colors.grey),
-                                )
-                              : null,
-                        );
-                      },
-                    ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              }),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _confirmDeletePayment(
+      BuildContext context, Payment p, PaymentController ctrl) {
+    custom_dialogs.ConfirmDeleteDialog.show(
+      context,
+      title: 'حذف الدفعة',
+      message: 'هل تريد حذف دفعة بقيمة ${FormatHelper.formatCurrency(p.amount)}؟',
+      onConfirm: () => ctrl.deletePayment(p.id!),
+    );
+  }
+
+  void _editPayment(
+      BuildContext context, Payment p, PaymentController ctrl) {
+    final amountCtrl = TextEditingController(text: p.amount.toString());
+    final noteCtrl = TextEditingController(text: p.note ?? '');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تعديل الدفعة'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: amountCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'المبلغ'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: noteCtrl,
+              decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final amount = double.tryParse(amountCtrl.text.trim());
+              if (amount == null || amount <= 0) {
+                ToastHelper.error('أدخل مبلغ صحيح');
+                return;
+              }
+              Navigator.pop(ctx);
+              final ok = await ctrl.updatePayment(Payment(
+                id: p.id,
+                studentId: p.studentId,
+                date: p.date,
+                amount: amount,
+                note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+                createdAt: p.createdAt,
+              ));
+              if (ok) ToastHelper.success('تم تعديل الدفعة بنجاح');
+            },
+            child: const Text('حفظ'),
+          ),
+        ],
       ),
     );
   }
@@ -574,7 +663,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
       final student = studentController.students
           .firstWhereOrNull((s) => s.id == preselectedStudentId);
       openSheet(preselectedStudentId,
-          price: defaultAmount ?? student?.price,
+          price: defaultAmount ?? student?.effectivePrice,
           studentName: student?.name);
       return;
     }
@@ -590,7 +679,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
         final student = studentController.students
             .firstWhereOrNull((s) => s.id == studentId);
         openSheet(studentId,
-            price: student?.price, studentName: student?.name);
+            price: student?.effectivePrice, studentName: student?.name);
       },
     );
   }

@@ -223,6 +223,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
       code: _nextCode,
       groupId: g.id!,
       price: price,
+      createdAt: DateTime.now(),
       attendanceStart: _attendanceStart,
       guardianPhone: phone.isEmpty ? null : phone,
       birthDate: _birthDate,
@@ -234,12 +235,20 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
 
     final created = await widget.controller.addStudent(student);
 
-    // ربط الأخ
-    if (created != null && _sibling != null && sibTotal != null) {
+    // فشلت الإضافة (كود مكرر، تجاوز حد الترخيص، ...) — الكنترولر عرض
+    // رسالة الخطأ بالفعل. سيبي الحقول زي ما هي عشان المستخدم يقدر
+    // يصلّح ويحاول تاني، من غير ما نمسح بياناته أو نظهر نجاح وهمي.
+    if (created == null) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+
+    // ربط الأخ (تحديث ذري للاثنين مع بعض)
+    final isExemptSaved = _isExempt;
+    if (_sibling != null && sibTotal != null) {
       final s1 = created.copyWith(siblingId: _sibling!.id, siblingsTotal: sibTotal);
-      await widget.controller.updateStudent(s1);
       final s2 = _sibling!.copyWith(siblingId: created.id, siblingsTotal: sibTotal);
-      await widget.controller.updateStudent(s2);
+      await widget.controller.linkSiblings(s1, s2);
     }
 
     widget.onAdded?.call();
@@ -261,7 +270,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
     if (mounted) {
       setState(() {
         _loading = false;
-        _savedName = name + (_isExempt ? ' • معفى' : '');
+        _savedName = name + (isExemptSaved ? ' • معفى' : '');
       });
       // فوكس على حقل الاسم فوراً (اللوحة تبقى ظاهرة)
       _nameFocus.requestFocus();

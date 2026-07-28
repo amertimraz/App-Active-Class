@@ -636,7 +636,7 @@ extension on _PaymentsReportPageState {
                 final s = unpaid[i];
                 final g = groupById[s.groupId];
                 final paid = paidByStudent[s.id ?? -1] ?? 0.0;
-                final remaining = (s.price - paid).clamp(0.0, double.infinity).toDouble();
+                final remaining = (s.effectivePrice - paid).clamp(0.0, double.infinity).toDouble();
                 return Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(

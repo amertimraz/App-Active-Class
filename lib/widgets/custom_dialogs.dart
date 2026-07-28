@@ -118,6 +118,7 @@ class SuccessDialog {
     required String title,
     required String message,
     VoidCallback? onDismiss,
+    Widget? content,
   }) {
     Get.defaultDialog(
       title: title,
@@ -133,6 +134,10 @@ class SuccessDialog {
             style: Theme.of(context).textTheme.bodyMedium,
             textAlign: TextAlign.center,
           ),
+          if (content != null) ...[
+            const Divider(height: 24),
+            content,
+          ],
         ],
       ),
       onConfirm: () {
@@ -247,7 +252,7 @@ class InputDialog {
           Get.back();
           onConfirm(controller.text);
         } else {
-          ToastHelper.info('يرجى إدخال ');
+          ToastHelper.info('يرجى إدخال $label');
         }
       },
       textConfirm: confirmText,
@@ -280,8 +285,12 @@ class SelectDialog {
             final item = items[index];
             return ListTile(
               title: Text(item[displayField].toString()),
-              onTap: () {
+              onTap: () async {
                 Get.back();
+                // فسحة صغيرة عشان أنيميشن إغلاق الحوار ده يخلص قبل ما
+                // onSelected يفتح حوار/شيت تاني على نفس الـ Navigator
+                // (نفس تعارض التوقيت اللي اتصلح في شاشة الإعدادات).
+                await Future.delayed(const Duration(milliseconds: 80));
                 onSelected(item);
               },
             );

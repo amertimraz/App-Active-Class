@@ -3,6 +3,24 @@ import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:active_class/controllers/settings_controller.dart';
+import 'package:active_class/config/constants.dart';
+
+/// يتحقق من صلاحية الوصول لميزة محدودة بالباقة (نسخ احتياطي/واتساب
+/// جماعي/تصدير). لو ممنوعة، بيعرض SnackBar فيه زر "ترقية" ويرجّع false.
+bool requireLicenseFeature(BuildContext context, bool allowed, String deniedMessage) {
+  if (allowed) return true;
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text(deniedMessage, style: const TextStyle(fontFamily: 'Cairo')),
+    backgroundColor: Colors.red.shade700,
+    duration: const Duration(seconds: 4),
+    action: SnackBarAction(
+      label: 'ترقية',
+      textColor: Colors.white,
+      onPressed: () => Get.toNamed(ROUTE_PLANS),
+    ),
+  ));
+  return false;
+}
 
 /// أدوات تنسيق للنصوص والتواريخ
 class FormatHelper {
@@ -271,23 +289,35 @@ class StorageHelper {
 }
 
 class ToastHelper {
+  // بنستخدم ScaffoldMessenger الأصلي بدل Get.snackbar عمداً: لو أي toast
+  // فشل (مثلاً الـ Overlay مش جاهز أثناء انتقال بين الشاشات)، GetX بيسيب
+  // الـ SnackbarController في حالة تلف لبقية الجلسة، وأي Get.back() بعد
+  // كده في أي حوار بالتطبيق بيعمل crash صامت (تجربة فعلية أثبتت المشكلة
+  // دي). ScaffoldMessenger مالوش نفس المشكلة — كل فشل معزول عن التاني.
   static void _show(String title, String message, {Color bg = Colors.green}) {
-    // نأخر الـ snackbar لـ frame تاني عشان الـ Overlay يكون جاهز
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = Get.context;
+      if (context == null) return;
       try {
-        if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
-        if (Get.context == null) return;
-        Get.snackbar(
-          title,
-          message,
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(SnackBar(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
+              Text(message, style: const TextStyle(color: Colors.white)),
+            ],
+          ),
           backgroundColor: bg,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.TOP,
-          margin: const EdgeInsets.all(12),
-          borderRadius: 8,
           duration: const Duration(milliseconds: 1200),
-          animationDuration: const Duration(milliseconds: 150),
-        );
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ));
       } catch (_) {}
     });
   }

@@ -116,7 +116,35 @@ class AttendanceController extends GetxController {
     }
   }
 
-  // تحضير جميع طلاب المجموعة الغير مسجلين في يوم معين
+  /// يحدّد حالة الحضور مباشرة (بدل الاعتماد على استدعاء toggleAttendance
+  /// مرتين للقفز لحالة معيّنة — لو الاستدعاء التاني فشل، الطالب كان
+  /// بيفضل "حاضر" بالخطأ رغم إن الشاشة بتفترض إنه اتسجّل "غائب").
+  /// بيرمي الخطأ للمتصل (بدل ما يبتلعه) عشان يقدر يتصرف بناءً عليه.
+  Future<void> setAttendanceStatus(
+      int studentId, DateTime day, String status) async {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
+    final existing = attendance.firstWhereOrNull((a) =>
+        a.studentId == studentId &&
+        !a.date.isBefore(dayStart) &&
+        !a.date.isAfter(dayEnd));
+
+    if (existing == null) {
+      await _dbService.insertAttendance(Attendance(
+        studentId: studentId,
+        date: DateTime(day.year, day.month, day.day,
+            DateTime.now().hour, DateTime.now().minute),
+        status: status,
+      ));
+    } else {
+      await _dbService.updateAttendance(existing.copyWith(status: status));
+    }
+    await loadAttendance();
+  }
+
+  // تحضير جميع طلاب المجموعة الغير مسجلين في يوم معين — بيتابع كل
+  // طالب لوحده عشان لو فشل واحد في النص متوقفش الباقي، وبيبلّغ
+  // بعدد الفشل الفعلي بدل رسالة نجاح عامة تخفي الفشل الجزئي.
   Future<void> markGroupAllPresent(
       List<int> studentIds, DateTime day) async {
     final dayStart = DateTime(day.year, day.month, day.day);
@@ -126,21 +154,29 @@ class AttendanceController extends GetxController {
             !a.date.isBefore(dayStart) && !a.date.isAfter(dayEnd))
         .map((a) => a.studentId)
         .toSet();
-    try {
-      for (final id in studentIds) {
-        if (!alreadyRecorded.contains(id)) {
-          await _dbService.insertAttendance(Attendance(
-            studentId: id,
-            date: DateTime(day.year, day.month, day.day,
-                DateTime.now().hour, DateTime.now().minute),
-            status: ATTENDANCE_PRESENT,
-          ));
-        }
+    var succeeded = 0;
+    var failed = 0;
+    for (final id in studentIds) {
+      if (alreadyRecorded.contains(id)) continue;
+      try {
+        await _dbService.insertAttendance(Attendance(
+          studentId: id,
+          date: DateTime(day.year, day.month, day.day,
+              DateTime.now().hour, DateTime.now().minute),
+          status: ATTENDANCE_PRESENT,
+        ));
+        succeeded++;
+      } catch (e) {
+        failed++;
       }
-      await loadAttendance();
+    }
+    await loadAttendance();
+    if (failed == 0) {
       ToastHelper.success('تم تحضير جميع الطلاب');
-    } catch (e) {
-      ToastHelper.error('حدث خطأ');
+    } else if (succeeded == 0) {
+      ToastHelper.error('فشل تحضير الطلاب — حاول تاني');
+    } else {
+      ToastHelper.error('اتحضّر $succeeded طالب — فشل $failed');
     }
   }
 
