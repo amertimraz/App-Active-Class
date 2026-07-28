@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- مطلوبة صراحة لفحص التحديثات عبر GitHub API (كانت متاحة ضمنيًا عبر
+         دمج manifest مكتبات Firebase، لكن أوضح نصرّح بيها بنفسنا). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Storage/media permissions for saving QR images to gallery and PDFs to Downloads -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>

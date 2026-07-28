@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
@@ -21,6 +22,7 @@ import 'package:active_class/services/backup_service.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/views/license/trial_banner.dart';
+import 'package:active_class/widgets/update_dialog.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -57,7 +59,6 @@ class SettingsPage extends StatelessWidget {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                     children: [
-
                       // ── 0. حالة الترخيص ──────────────────────────
                       const LicenseStatusTile(),
                       const SizedBox(height: 14),
@@ -68,13 +69,15 @@ class SettingsPage extends StatelessWidget {
 
                       // ── 2. المظهر والتوقيت ───────────────────────
                       _buildSection(
-                        context, isDark,
+                        context,
+                        isDark,
                         title: 'المظهر والتوقيت',
                         icon: Icons.palette_rounded,
                         color: const Color(0xFF8B5CF6),
                         children: [
                           _buildSwitchTile(
-                            context, isDark,
+                            context,
+                            isDark,
                             icon: Icons.dark_mode_rounded,
                             iconColor: const Color(0xFF8B5CF6),
                             title: 'الوضع الليلي',
@@ -84,24 +87,26 @@ class SettingsPage extends StatelessWidget {
                           ),
                           _buildDivider(isDark),
                           Obx(() => _buildSwitchTile(
-                            context, isDark,
-                            icon: Icons.access_time_rounded,
-                            iconColor: const Color(0xFF06B6D4),
-                            title: 'نظام الساعة 24',
-                            subtitle: settings.use24hFormat.value
-                                ? 'يعرض 14:30'
-                                : 'يعرض 2:30 م',
-                            rxValue: settings.use24hFormat,
-                            onChanged: (v) async =>
-                                await settings.setUse24hFormat(v),
-                          )),
+                                context,
+                                isDark,
+                                icon: Icons.access_time_rounded,
+                                iconColor: const Color(0xFF06B6D4),
+                                title: 'نظام الساعة 24',
+                                subtitle: settings.use24hFormat.value
+                                    ? 'يعرض 14:30'
+                                    : 'يعرض 2:30 م',
+                                rxValue: settings.use24hFormat,
+                                onChanged: (v) async =>
+                                    await settings.setUse24hFormat(v),
+                              )),
                         ],
                       ),
                       const SizedBox(height: 14),
 
                       // ── 3. العملة ورمز الدولة ────────────────────
                       _buildSection(
-                        context, isDark,
+                        context,
+                        isDark,
                         title: 'العملة ورمز الدولة',
                         icon: Icons.language_rounded,
                         color: const Color(0xFF10B981),
@@ -109,15 +114,19 @@ class SettingsPage extends StatelessWidget {
                           Obx(() {
                             final items = SettingsController.supported;
                             return _buildDropdownTile(
-                              context, isDark,
+                              context,
+                              isDark,
                               icon: Icons.attach_money_rounded,
                               iconColor: const Color(0xFF10B981),
                               title: 'العملة',
                               value: settings.currencyCode.value,
-                              items: items.map((c) => DropdownMenuItem(
-                                value: c.code,
-                                child: Text('${c.nameAr} (${c.symbol})'),
-                              )).toList(),
+                              items: items
+                                  .map((c) => DropdownMenuItem(
+                                        value: c.code,
+                                        child:
+                                            Text('${c.nameAr} (${c.symbol})'),
+                                      ))
+                                  .toList(),
                               onChanged: (code) {
                                 if (code != null) {
                                   settings.setCurrency(code);
@@ -133,15 +142,18 @@ class SettingsPage extends StatelessWidget {
                           Obx(() {
                             final items = SettingsController.arabCountryDials;
                             return _buildDropdownTile(
-                              context, isDark,
+                              context,
+                              isDark,
                               icon: Icons.flag_rounded,
                               iconColor: const Color(0xFFF59E0B),
                               title: 'رمز دولة الواتساب',
                               value: settings.countryDial.value,
-                              items: items.map((c) => DropdownMenuItem(
-                                value: c.dial,
-                                child: Text('${c.nameAr} (+${c.dial})'),
-                              )).toList(),
+                              items: items
+                                  .map((c) => DropdownMenuItem(
+                                        value: c.dial,
+                                        child: Text('${c.nameAr} (+${c.dial})'),
+                                      ))
+                                  .toList(),
                               onChanged: (dial) async {
                                 if (dial != null) {
                                   await settings.setCountryDial(dial);
@@ -159,18 +171,21 @@ class SettingsPage extends StatelessWidget {
 
                       // ── 4. الإشعارات ─────────────────────────────
                       _buildSection(
-                        context, isDark,
+                        context,
+                        isDark,
                         title: 'الإشعارات',
                         icon: Icons.notifications_rounded,
                         color: const Color(0xFFEF4444),
                         children: [
                           _buildNavTile(
-                            context, isDark,
+                            context,
+                            isDark,
                             icon: Icons.tune_rounded,
                             iconColor: const Color(0xFFEF4444),
                             title: 'مركز الإشعارات',
                             subtitle: 'إشعارات الميلاد والحصص والدفعات',
-                            onTap: () => Get.toNamed(ROUTE_NOTIFICATION_SETTINGS),
+                            onTap: () =>
+                                Get.toNamed(ROUTE_NOTIFICATION_SETTINGS),
                           ),
                         ],
                       ),
@@ -178,17 +193,20 @@ class SettingsPage extends StatelessWidget {
 
                       // ── 5. الواتساب ──────────────────────────────
                       _buildSection(
-                        context, isDark,
+                        context,
+                        isDark,
                         title: 'الواتساب',
                         icon: Icons.chat_rounded,
                         color: const Color(0xFF25D366),
                         children: [
                           _buildNavTile(
-                            context, isDark,
+                            context,
+                            isDark,
                             icon: Icons.send_rounded,
                             iconColor: const Color(0xFF25D366),
                             title: 'إرسال تقارير الشهر',
-                            subtitle: 'يفتح محادثة واتساب لكل ولي أمر بتقرير مفصل',
+                            subtitle:
+                                'يفتح محادثة واتساب لكل ولي أمر بتقرير مفصل',
                             onTap: () {
                               if (!requireLicenseFeature(
                                   context,
@@ -202,19 +220,20 @@ class SettingsPage extends StatelessWidget {
                           _buildDivider(isDark),
                           // ── إظهار زر الواتساب في المجموعات ──────────
                           Obx(() => _buildSwitchTile(
-                            context, isDark,
-                            icon: Icons.smart_button_rounded,
-                            iconColor: const Color(0xFF25D366),
-                            title: 'زر الواتساب في المجموعات',
-                            subtitle: settings.whatsappEnabled.value
-                                ? (settings.isWhatsappDayReached
-                                    ? 'ظاهر الآن — يبدأ يوم ${settings.whatsappSendDay.value} من الشهر'
-                                    : 'سيظهر يوم ${settings.whatsappSendDay.value} من الشهر')
-                                : 'الزر مخفي في صفحات المجموعات',
-                            rxValue: settings.whatsappEnabled,
-                            onChanged: (v) async =>
-                                await settings.setWhatsappEnabled(v),
-                          )),
+                                context,
+                                isDark,
+                                icon: Icons.smart_button_rounded,
+                                iconColor: const Color(0xFF25D366),
+                                title: 'زر الواتساب في المجموعات',
+                                subtitle: settings.whatsappEnabled.value
+                                    ? (settings.isWhatsappDayReached
+                                        ? 'ظاهر الآن — يبدأ يوم ${settings.whatsappSendDay.value} من الشهر'
+                                        : 'سيظهر يوم ${settings.whatsappSendDay.value} من الشهر')
+                                    : 'الزر مخفي في صفحات المجموعات',
+                                rxValue: settings.whatsappEnabled,
+                                onChanged: (v) async =>
+                                    await settings.setWhatsappEnabled(v),
+                              )),
                           // ── يوم ظهور الزر ──────────────────────────
                           Obx(() {
                             if (!settings.whatsappEnabled.value) {
@@ -223,7 +242,8 @@ class SettingsPage extends StatelessWidget {
                             return Column(children: [
                               _buildDivider(isDark),
                               _buildDropdownTile<int>(
-                                context, isDark,
+                                context,
+                                isDark,
                                 icon: Icons.event_rounded,
                                 iconColor: const Color(0xFFF59E0B),
                                 title: 'يوم ظهور الزر',
@@ -252,7 +272,8 @@ class SettingsPage extends StatelessWidget {
 
                       // ── 6. النسخ الاحتياطي ───────────────────────
                       _buildSection(
-                        context, isDark,
+                        context,
+                        isDark,
                         title: 'النسخ الاحتياطي',
                         icon: Icons.storage_rounded,
                         color: const Color(0xFF4F46E5),
@@ -261,7 +282,8 @@ class SettingsPage extends StatelessWidget {
                           Obx(() {
                             final svc = AutoBackupService();
                             return _buildSwitchTile(
-                              context, isDark,
+                              context,
+                              isDark,
                               icon: Icons.cloud_sync_rounded,
                               iconColor: const Color(0xFF4F46E5),
                               title: 'الحفظ التلقائي',
@@ -276,11 +298,13 @@ class SettingsPage extends StatelessWidget {
                           }),
                           _buildDivider(isDark),
                           _buildNavTile(
-                            context, isDark,
+                            context,
+                            isDark,
                             icon: Icons.backup_rounded,
                             iconColor: const Color(0xFF4F46E5),
                             title: 'إنشاء نسخة احتياطية',
-                            subtitle: 'نسخ كامل لقاعدة البيانات مع خيار المشاركة',
+                            subtitle:
+                                'نسخ كامل لقاعدة البيانات مع خيار المشاركة',
                             onTap: () {
                               if (!requireLicenseFeature(
                                   context,
@@ -293,7 +317,8 @@ class SettingsPage extends StatelessWidget {
                           ),
                           _buildDivider(isDark),
                           _buildNavTile(
-                            context, isDark,
+                            context,
+                            isDark,
                             icon: Icons.restore_rounded,
                             iconColor: const Color(0xFF06B6D4),
                             title: 'استعادة نسخة احتياطية',
@@ -310,7 +335,8 @@ class SettingsPage extends StatelessWidget {
                           ),
                           _buildDivider(isDark),
                           _buildNavTile(
-                            context, isDark,
+                            context,
+                            isDark,
                             icon: Icons.folder_open_rounded,
                             iconColor: const Color(0xFFF59E0B),
                             title: 'إدارة النسخ الاحتياطية',
@@ -319,7 +345,8 @@ class SettingsPage extends StatelessWidget {
                           ),
                           _buildDivider(isDark),
                           _buildNavTile(
-                            context, isDark,
+                            context,
+                            isDark,
                             icon: Icons.delete_forever_rounded,
                             iconColor: const Color(0xFFEF4444),
                             title: 'حذف جميع البيانات',
@@ -497,7 +524,7 @@ class SettingsPage extends StatelessWidget {
           ),
           padding: const EdgeInsets.all(20),
           child: Obx(() {
-            final fullName   = settings.teacherFullName.value.trim();
+            final fullName = settings.teacherFullName.value.trim();
             final avatarPath = settings.teacherAvatarPath.value.trim();
 
             ImageProvider? avatarImage;
@@ -505,7 +532,8 @@ class SettingsPage extends StatelessWidget {
               final f = File(avatarPath);
               if (f.existsSync()) avatarImage = FileImage(f);
             }
-            final initial = fullName.isNotEmpty ? fullName.characters.first : 'م';
+            final initial =
+                fullName.isNotEmpty ? fullName.characters.first : 'م';
 
             return Row(
               children: [
@@ -529,7 +557,8 @@ class SettingsPage extends StatelessWidget {
                       CircleAvatar(
                         radius: 36,
                         backgroundImage: avatarImage,
-                        backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.15),
+                        backgroundColor:
+                            AppTheme.primaryColor.withValues(alpha: 0.15),
                         child: avatarImage == null
                             ? Text(initial,
                                 style: const TextStyle(
@@ -546,7 +575,8 @@ class SettingsPage extends StatelessWidget {
                           color: AppTheme.primaryColor,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: isDark ? const Color(0xFF131D31) : Colors.white,
+                            color:
+                                isDark ? const Color(0xFF131D31) : Colors.white,
                             width: 2,
                           ),
                         ),
@@ -595,7 +625,8 @@ class SettingsPage extends StatelessWidget {
                               label: 'مس',
                               icon: Icons.female_rounded,
                               color: const Color(0xFFE91E8C),
-                              selected: settings.teacherGender.value == 'female',
+                              selected:
+                                  settings.teacherGender.value == 'female',
                               onTap: () async {
                                 settings.setTeacherGender('female');
                                 await settings.saveTeacherInfo();
@@ -625,20 +656,28 @@ class SettingsPage extends StatelessWidget {
       icon: Icons.info_rounded,
       color: const Color(0xFF64748B),
       children: [
-        _buildInfoTile(
-          isDark,
-          icon: Icons.verified_rounded,
-          iconColor: const Color(0xFF4F46E5),
-          title: 'الإصدار',
-          trailing: '1.0.0',
+        FutureBuilder<PackageInfo>(
+          future: PackageInfo.fromPlatform(),
+          builder: (context, snapshot) {
+            final version = snapshot.data?.version ?? '—';
+            return _buildInfoTile(
+              isDark,
+              icon: Icons.verified_rounded,
+              iconColor: const Color(0xFF4F46E5),
+              title: 'الإصدار',
+              trailing: version,
+            );
+          },
         ),
         _buildDivider(isDark),
-        _buildInfoTile(
+        _buildNavTile(
+          context,
           isDark,
-          icon: Icons.update_rounded,
+          icon: Icons.system_update_rounded,
           iconColor: const Color(0xFF10B981),
-          title: 'آخر تحديث',
-          trailing: '2025/06/01',
+          title: 'تحقق من التحديثات',
+          subtitle: 'ابحث عن نسخة أحدث من التطبيق',
+          onTap: () => checkAndShowUpdateDialog(context, silent: false),
         ),
         _buildDivider(isDark),
         _buildNavTile(
@@ -759,9 +798,8 @@ class SettingsPage extends StatelessWidget {
                       style: TextStyle(
                         fontFamily: 'Cairo',
                         fontSize: 12,
-                        color: isDark
-                            ? Colors.grey[400]
-                            : const Color(0xFF64748B),
+                        color:
+                            isDark ? Colors.grey[400] : const Color(0xFF64748B),
                       ),
                     ),
                 ],
@@ -827,9 +865,8 @@ class SettingsPage extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: isDark ? Colors.white : const Color(0xFF111827),
                   ),
-                  dropdownColor: isDark
-                      ? const Color(0xFF1E293B)
-                      : Colors.white,
+                  dropdownColor:
+                      isDark ? const Color(0xFF1E293B) : Colors.white,
                   items: items,
                   onChanged: onChanged,
                 ),
@@ -912,7 +949,8 @@ class SettingsPage extends StatelessWidget {
           fontSize: 13,
           color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
         ),
-        prefixIcon: Icon(icon, size: 18,
+        prefixIcon: Icon(icon,
+            size: 18,
             color: isDark ? Colors.grey[400] : const Color(0xFF9CA3AF)),
         filled: true,
         fillColor: isDark
@@ -1013,7 +1051,8 @@ class SettingsPage extends StatelessWidget {
                 Navigator.of(ctx).pop();
               },
               icon: const Icon(Icons.share_rounded, size: 16),
-              label: const Text('مشاركة', style: TextStyle(fontFamily: 'Cairo')),
+              label:
+                  const Text('مشاركة', style: TextStyle(fontFamily: 'Cairo')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,
                 foregroundColor: Colors.white,
@@ -1057,9 +1096,7 @@ class SettingsPage extends StatelessWidget {
                     child: Text(
                       'سيتم استبدال جميع البيانات الحالية بالنسخة المختارة. هذا الإجراء لا يمكن التراجع عنه.',
                       style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 12,
-                          color: Colors.red),
+                          fontFamily: 'Cairo', fontSize: 12, color: Colors.red),
                     ),
                   ),
                 ],
@@ -1106,7 +1143,8 @@ class SettingsPage extends StatelessWidget {
       LoadingDialog.hide();
 
       if (backups.isEmpty) {
-        ToastHelper.info('لا توجد نسخ احتياطية محفوظة داخل التطبيق.\nجرّب "اختيار ملف من الجهاز"');
+        ToastHelper.info(
+            'لا توجد نسخ احتياطية محفوظة داخل التطبيق.\nجرّب "اختيار ملف من الجهاز"');
         return;
       }
 
@@ -1118,7 +1156,9 @@ class SettingsPage extends StatelessWidget {
       // File picker
       final picked = await svc.pickBackupFile();
       if (picked == 'INVALID_EXT') {
-        if (context.mounted) ToastHelper.error('الملف المختار ليس ملف .db صالح');
+        if (context.mounted) {
+          ToastHelper.error('الملف المختار ليس ملف .db صالح');
+        }
         return;
       }
       selectedPath = picked;
@@ -1193,7 +1233,8 @@ class SettingsPage extends StatelessWidget {
     LoadingDialog.hide();
 
     if (backups.isEmpty) {
-      ToastHelper.info('لا توجد نسخ احتياطية محفوظة\nأنشئ نسخة أولاً من "نسخ احتياطي"');
+      ToastHelper.info(
+          'لا توجد نسخ احتياطية محفوظة\nأنشئ نسخة أولاً من "نسخ احتياطي"');
       return;
     }
 
@@ -1300,15 +1341,12 @@ class SettingsPage extends StatelessWidget {
         final atts = await db.getAttendanceByStudent(s.id!);
         final pays = await db.getPaymentsByStudent(s.id!);
 
-        final monthEnd =
-            DateTime(end.year, end.month, end.day, 23, 59, 59);
+        final monthEnd = DateTime(end.year, end.month, end.day, 23, 59, 59);
         final attsMonth = atts
-            .where((a) =>
-                !a.date.isBefore(start) && !a.date.isAfter(monthEnd))
+            .where((a) => !a.date.isBefore(start) && !a.date.isAfter(monthEnd))
             .toList();
         final paysMonth = pays
-            .where((p) =>
-                !p.date.isBefore(start) && !p.date.isAfter(monthEnd))
+            .where((p) => !p.date.isBefore(start) && !p.date.isAfter(monthEnd))
             .toList();
 
         final present =
@@ -1316,8 +1354,7 @@ class SettingsPage extends StatelessWidget {
         final absent =
             attsMonth.where((a) => a.status == ATTENDANCE_ABSENT).length;
         final total = present + absent;
-        final percent =
-            total == 0 ? 0.0 : (present / total) * 100.0;
+        final percent = total == 0 ? 0.0 : (present / total) * 100.0;
         final totalPaid =
             paysMonth.fold<double>(0.0, (sum, p) => sum + p.amount);
 
@@ -1343,13 +1380,11 @@ class SettingsPage extends StatelessWidget {
             ..writeln('📅 سجلات الحضور:');
           for (final a in attsSorted.take(10)) {
             final d = DateFormat('yyyy-MM-dd').format(a.date);
-            final st =
-                a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب';
+            final st = a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب';
             buffer.writeln('• $d — $st');
           }
           if (attsSorted.length > 10) {
-            buffer
-                .writeln('• … ${attsSorted.length - 10} سجلات إضافية');
+            buffer.writeln('• … ${attsSorted.length - 10} سجلات إضافية');
           }
         }
 
@@ -1360,8 +1395,7 @@ class SettingsPage extends StatelessWidget {
 
         for (final p in paysSorted) {
           final d = DateFormat('yyyy-MM-dd HH:mm').format(p.date);
-          buffer.writeln(
-              '• $d — ${FormatHelper.formatCurrency(p.amount)}');
+          buffer.writeln('• $d — ${FormatHelper.formatCurrency(p.amount)}');
         }
 
         final tName = settings.teacherFullName.value.trim();
@@ -1518,8 +1552,8 @@ Future<List<Student>?> _pickRecipients(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('اختر أولياء الأمور',
-              style: TextStyle(
-                  fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+              style:
+                  TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
           content: SizedBox(
             width: 420,
             child: Column(
@@ -1549,8 +1583,7 @@ Future<List<Student>?> _pickRecipients(
                       final s = items[i];
                       return CheckboxListTile(
                         value: sel[i],
-                        onChanged: (v) =>
-                            setState(() => sel[i] = v ?? false),
+                        onChanged: (v) => setState(() => sel[i] = v ?? false),
                         title: Text(s.name,
                             style: const TextStyle(fontFamily: 'Cairo')),
                         subtitle: Text(s.guardianPhone ?? '-',
@@ -1566,8 +1599,7 @@ Future<List<Student>?> _pickRecipients(
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(null),
-              child: const Text('إلغاء',
-                  style: TextStyle(fontFamily: 'Cairo')),
+              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
             ),
             ElevatedButton(
               onPressed: sel.any((e) => e)
@@ -1666,9 +1698,8 @@ class _DataSummaryList extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: rows
-          .map((r) => _InfoRow(r.$1, AppTheme.primaryColor, r.$2))
-          .toList(),
+      children:
+          rows.map((r) => _InfoRow(r.$1, AppTheme.primaryColor, r.$2)).toList(),
     );
   }
 }
@@ -1773,9 +1804,11 @@ class _BackupListDialog extends StatelessWidget {
                   ),
                   if (isLatest)
                     Positioned(
-                      top: -4, left: -4,
+                      top: -4,
+                      left: -4,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 1),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF59E0B),
                           borderRadius: BorderRadius.circular(6),
@@ -1839,7 +1872,8 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
     ConfirmDeleteDialog.show(
       context,
       title: 'حذف النسخة الاحتياطية',
-      message: 'هل تريد حذف هذه النسخة الاحتياطية نهائياً؟ لا يمكن التراجع عن هذا الإجراء.',
+      message:
+          'هل تريد حذف هذه النسخة الاحتياطية نهائياً؟ لا يمكن التراجع عن هذا الإجراء.',
       onConfirm: () => _deleteOne(b),
     );
   }
@@ -1896,8 +1930,10 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
                   child: ElevatedButton.icon(
                     onPressed: _deleting ? null : _confirmCleanOld,
                     icon: const Icon(Icons.cleaning_services_rounded, size: 16),
-                    label: Text('احتفظ بأحدث 5 فقط (احذف ${_backups.length - 5})',
-                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                    label: Text(
+                        'احتفظ بأحدث 5 فقط (احذف ${_backups.length - 5})',
+                        style:
+                            const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
@@ -1927,9 +1963,11 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
                             size: 20),
                         if (isLatest)
                           Positioned(
-                            top: -6, left: -6,
+                            top: -6,
+                            left: -6,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 3, vertical: 1),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF59E0B),
                                 borderRadius: BorderRadius.circular(5),
@@ -1950,16 +1988,18 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
                             fontSize: 12,
                             color: isLatest ? const Color(0xFFF59E0B) : null)),
                     subtitle: Text(b.sizeLabel,
-                        style: const TextStyle(
-                            fontFamily: 'Cairo', fontSize: 11)),
+                        style:
+                            const TextStyle(fontFamily: 'Cairo', fontSize: 11)),
                     trailing: i == 0
                         ? Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                  color: const Color(0xFFF59E0B)
+                                      .withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Text('أحدث',
@@ -1972,7 +2012,9 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
                               IconButton(
                                 icon: const Icon(Icons.delete_outline_rounded,
                                     color: Colors.red, size: 20),
-                                onPressed: _deleting ? null : () => _confirmDeleteOne(b),
+                                onPressed: _deleting
+                                    ? null
+                                    : () => _confirmDeleteOne(b),
                                 tooltip: 'حذف هذه النسخة',
                               ),
                             ],
@@ -1980,7 +2022,8 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
                         : IconButton(
                             icon: const Icon(Icons.delete_outline_rounded,
                                 color: Colors.red, size: 20),
-                            onPressed: _deleting ? null : () => _confirmDeleteOne(b),
+                            onPressed:
+                                _deleting ? null : () => _confirmDeleteOne(b),
                             tooltip: 'حذف هذه النسخة',
                           ),
                   );
