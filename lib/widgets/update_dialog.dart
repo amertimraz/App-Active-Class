@@ -80,6 +80,36 @@ class _UpdateDialog extends StatelessWidget {
               ] else
                 const Text('نسخة جديدة من التطبيق متاحة للتحميل.',
                     style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border:
+                      Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline_rounded,
+                        size: 18, color: Colors.amber.shade800),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'ممكن يظهر تحذير من "Play Protect" أثناء التثبيت لأن '
+                        'التطبيق مش من متجر Google Play — ده طبيعي، اضغط '
+                        '"التثبيت على أي حال" ثم "حسنًا" عشان تكمل.',
+                        style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 12,
+                            height: 1.5,
+                            color: Colors.amber.shade900),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
