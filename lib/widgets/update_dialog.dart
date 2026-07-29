@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:active_class/config/theme.dart';
+import 'package:active_class/services/install_source_service.dart';
 import 'package:active_class/services/update_service.dart';
 import 'package:active_class/utils/helpers.dart';
 
@@ -15,10 +16,25 @@ const String _kSkippedVersionKey = 'update_skipped_version';
 /// يعرض ديالوج تحديث لو فيه إصدار جديد على GitHub. لو [silent] كانت true
 /// (الفحص التلقائي عند فتح التطبيق)، بيتجاهل الإصدار اللي المعلم اختار
 /// "لاحقًا" عليه قبل كده عشان ميضايقوش كل مرة بنفس التحديث.
+///
+/// بيتجاهل الفحص تمامًا لو التطبيق متثبّت من Google Play — تحديث ذاتي
+/// خارج آلية المتجر مخالف صريح لسياسات Google Play وممكن يعرّض الحساب
+/// للحظر؛ في الحالة دي المتجر نفسه هو اللي بيتولى التحديثات.
 Future<void> checkAndShowUpdateDialog(
   BuildContext context, {
   bool silent = true,
 }) async {
+  if (await InstallSourceService.isInstalledFromPlayStore()) {
+    if (!silent && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('التحديثات بتوصلك تلقائيًا من متجر Google Play',
+            style: TextStyle(fontFamily: 'Cairo')),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+    return;
+  }
+
   final info = await UpdateService().checkForUpdate();
   if (info == null) {
     if (!silent && context.mounted) {
