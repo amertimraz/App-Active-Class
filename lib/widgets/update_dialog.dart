@@ -198,7 +198,11 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
 
     if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
 
-    final result = await OpenFilex.open(path);
+    // بنحدد نوع الملف صراحةً (APK) بدل ما نسيب أندرويد يخمّنه من
+    // الامتداد — لو التخمين فشل (بيحصل على بعض الأجهزة)، أندرويد بيفتح
+    // الملف بأي تطبيق عام زي SHAREit بدل مثبّت النظام.
+    final result = await OpenFilex.open(path,
+        type: 'application/vnd.android.package-archive');
     if (result.type != ResultType.done) {
       ToastHelper.error('تعذر فتح مثبّت التحديث — حاول تاني');
     }
