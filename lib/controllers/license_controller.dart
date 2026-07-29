@@ -13,12 +13,12 @@ import 'package:uuid/uuid.dart';
 
 // ── حالة الترخيص ──────────────────────────────────────────────────────────────
 enum LicenseState {
-  loading,       // جاري التحقق
-  trial,         // تجربة مجانية نشطة
-  trialExpired,  // انتهت التجربة بدون ترخيص
-  active,        // ترخيص ساري
-  suspended,     // ترخيص موقوف
-  expired,       // ترخيص منتهي الصلاحية
+  loading, // جاري التحقق
+  trial, // تجربة مجانية نشطة
+  trialExpired, // انتهت التجربة بدون ترخيص
+  active, // ترخيص ساري
+  suspended, // ترخيص موقوف
+  expired, // ترخيص منتهي الصلاحية
 }
 
 // ── باقات التطبيق ──────────────────────────────────────────────────────────────
@@ -27,23 +27,37 @@ enum AppPlan { trial, basic, pro, lifetime }
 extension AppPlanExt on AppPlan {
   String get nameAr {
     switch (this) {
-      case AppPlan.trial:    return 'تجريبي';
-      case AppPlan.basic:    return 'أساسي';
-      case AppPlan.pro:      return 'احترافي';
-      case AppPlan.lifetime: return 'مدى الحياة';
+      case AppPlan.trial:
+        return 'تجريبي';
+      case AppPlan.basic:
+        return 'أساسي';
+      case AppPlan.pro:
+        return 'احترافي';
+      case AppPlan.lifetime:
+        return 'مدى الحياة';
     }
   }
 
-  int    get maxGroups          => <AppPlan,int>{AppPlan.trial: 2, AppPlan.basic: 5, AppPlan.pro: -1, AppPlan.lifetime: -1}[this]!;
-  int    get maxStudents        => <AppPlan,int>{AppPlan.trial: 15, AppPlan.basic: 30, AppPlan.pro: -1, AppPlan.lifetime: -1}[this]!;
-  bool   get canBackup          => this != AppPlan.trial;
-  bool   get canExport          => this != AppPlan.trial;
-  bool   get canWhatsApp        => this == AppPlan.pro || this == AppPlan.lifetime;
+  int get maxGroups => <AppPlan, int>{
+        AppPlan.trial: 2,
+        AppPlan.basic: 5,
+        AppPlan.pro: -1,
+        AppPlan.lifetime: -1
+      }[this]!;
+  int get maxStudents => <AppPlan, int>{
+        AppPlan.trial: 15,
+        AppPlan.basic: 30,
+        AppPlan.pro: -1,
+        AppPlan.lifetime: -1
+      }[this]!;
+  bool get canBackup => this != AppPlan.trial;
+  bool get canExport => this != AppPlan.trial;
+  bool get canWhatsApp => this == AppPlan.pro || this == AppPlan.lifetime;
 }
 
 // ── الحدود حسب الباقة ─────────────────────────────────────────────────────────
 class _Limits {
-  final int maxGroups;        // -1 = غير محدود
+  final int maxGroups; // -1 = غير محدود
   final int maxStudents;
   final bool canBackup;
   final bool canExport;
@@ -57,10 +71,30 @@ class _Limits {
     required this.canWhatsApp,
   });
 
-  static const trial    = _Limits(maxGroups: 2,  maxStudents: 15, canBackup: false, canExport: false, canWhatsApp: false);
-  static const basic    = _Limits(maxGroups: 5,  maxStudents: 30, canBackup: true,  canExport: true,  canWhatsApp: false);
-  static const pro      = _Limits(maxGroups: -1, maxStudents: -1, canBackup: true,  canExport: true,  canWhatsApp: true);
-  static const lifetime = _Limits(maxGroups: -1, maxStudents: -1, canBackup: true,  canExport: true,  canWhatsApp: true);
+  static const trial = _Limits(
+      maxGroups: 2,
+      maxStudents: 15,
+      canBackup: false,
+      canExport: false,
+      canWhatsApp: false);
+  static const basic = _Limits(
+      maxGroups: 5,
+      maxStudents: 30,
+      canBackup: true,
+      canExport: true,
+      canWhatsApp: false);
+  static const pro = _Limits(
+      maxGroups: -1,
+      maxStudents: -1,
+      canBackup: true,
+      canExport: true,
+      canWhatsApp: true);
+  static const lifetime = _Limits(
+      maxGroups: -1,
+      maxStudents: -1,
+      canBackup: true,
+      canExport: true,
+      canWhatsApp: true);
 }
 
 // ── المتحكم الرئيسي ───────────────────────────────────────────────────────────
@@ -68,31 +102,46 @@ class LicenseController extends GetxController {
   static LicenseController get to => Get.find();
 
   // Observable state
-  final state         = LicenseState.loading.obs;
-  final plan          = AppPlan.trial.obs;
+  final state = LicenseState.loading.obs;
+  final plan = AppPlan.trial.obs;
   final trialDaysLeft = 7.obs;
-  final deviceId      = ''.obs;
-  final licenseCode   = RxnString();
-  final hasRequest    = false.obs; // هل عنده طلب ترقية pending
-  final expiresAt     = Rxn<DateTime>(); // تاريخ انتهاء الترخيص
+  final deviceId = ''.obs;
+  final licenseCode = RxnString();
+  final hasRequest = false.obs; // هل عنده طلب ترقية pending
+  final expiresAt = Rxn<DateTime>(); // تاريخ انتهاء الترخيص
+
+  /// طول الفترة التجريبية الفعلي — يبدأ بالقيمة الافتراضية [kTrialDays]
+  /// وبيتحدّث لو فيه قيمة مختلفة على Firestore (app_config/limits).
+  final trialDaysTotal = kTrialDays.obs;
+
+  /// حدود الباقات — تبدأ بالقيم الافتراضية المدمجة في الكود، وبتتحدّث
+  /// فورًا (بدون إعادة تشغيل التطبيق) لو الإدارة غيّرت المستند على
+  /// Firestore. لو الجهاز أوفلاين أو المستند مش موجود، بتفضل القيم
+  /// الافتراضية شغالة زي ما هي — التحكم المركزي ميزة إضافية مش شرط.
+  final Map<AppPlan, _Limits> _remoteLimits = {
+    AppPlan.trial: _Limits.trial,
+    AppPlan.basic: _Limits.basic,
+    AppPlan.pro: _Limits.pro,
+    AppPlan.lifetime: _Limits.lifetime,
+  };
 
   // Firebase — getters كسولة (مش final fields) عشان ما تتقيّمش عند بناء
   // الكلاس نفسه (Get.put في main.dart)؛ لو Firebase.initializeApp فشل،
   // أول لمسة فعلية بتحصل جوه try/catch في _init() بدل ما تكسر الإقلاع كله.
-  FirebaseFirestore get _db   => FirebaseFirestore.instance;
-  FirebaseAuth      get _auth => FirebaseAuth.instance;
+  FirebaseFirestore get _db => FirebaseFirestore.instance;
+  FirebaseAuth get _auth => FirebaseAuth.instance;
 
   // Real-time listener على الترخيص النشط
   StreamSubscription? _licenseSubscription;
 
   // SharedPreferences keys
-  static const _kDeviceId     = 'lic_device_id';
-  static const _kCode         = 'lic_code';
-  static const _kFirstLaunch  = 'lic_first_launch';
-  static const _kPlan         = 'lic_plan';
-  static const _kHasRequest   = 'lic_has_request';
+  static const _kDeviceId = 'lic_device_id';
+  static const _kCode = 'lic_code';
+  static const _kFirstLaunch = 'lic_first_launch';
+  static const _kPlan = 'lic_plan';
+  static const _kHasRequest = 'lic_has_request';
   static const _kLastVerified = 'lic_last_verified'; // آخر تحقق ناجح من السيرفر
-  static const kTrialDays    = 7;
+  static const kTrialDays = 7;
   static const int _kGraceDays = 3; // مهلة الاستخدام أوفلاين بعد آخر تحقق ناجح
 
   // ── init ──────────────────────────────────────────────────────────────────
@@ -131,9 +180,53 @@ class LicenseController extends GetxController {
       _registerDevice();
       // فحص هل عنده طلب ترقية pending (real-time)
       _checkUpgradeRequest();
+      // تحميل حدود الباقات من مكان مركزي (real-time) — مستقل تمامًا عن
+      // حالة الترخيص، عشان يشتغل حتى في وضع التجربة.
+      _watchRemoteConfig();
     } catch (e) {
       _loadCachedState();
     }
+  }
+
+  // ── Remote Config (حدود الباقات + مدة التجربة) ───────────────────────────
+  StreamSubscription? _configSubscription;
+
+  void _watchRemoteConfig() {
+    _configSubscription?.cancel();
+    _configSubscription =
+        _db.collection('app_config').doc('limits').snapshots().listen((doc) {
+      if (!doc.exists) return;
+      final data = doc.data();
+      if (data == null) return;
+      try {
+        final days = data['trialDays'];
+        if (days is num && days > 0) trialDaysTotal.value = days.toInt();
+
+        for (final entry in {
+          'trial': AppPlan.trial,
+          'basic': AppPlan.basic,
+          'pro': AppPlan.pro,
+          'lifetime': AppPlan.lifetime,
+        }.entries) {
+          final m = data[entry.key];
+          if (m is! Map) continue;
+          final current = _remoteLimits[entry.value]!;
+          _remoteLimits[entry.value] = _Limits(
+            maxGroups: (m['maxGroups'] as num?)?.toInt() ?? current.maxGroups,
+            maxStudents:
+                (m['maxStudents'] as num?)?.toInt() ?? current.maxStudents,
+            canBackup: m['canBackup'] as bool? ?? current.canBackup,
+            canExport: m['canExport'] as bool? ?? current.canExport,
+            canWhatsApp: m['canWhatsApp'] as bool? ?? current.canWhatsApp,
+          );
+        }
+        // أعِد حساب الأيام المتبقية لو لسه في فترة تجريبية، عشان
+        // التغيير في trialDays ينعكس فورًا من غير إعادة تشغيل.
+        if (state.value == LicenseState.trial) {
+          SharedPreferences.getInstance().then((prefs) => _checkTrial(prefs));
+        }
+      } catch (_) {}
+    }, onError: (_) {});
   }
 
   // ── Device ID ─────────────────────────────────────────────────────────────
@@ -167,7 +260,10 @@ class LicenseController extends GetxController {
     if (firstLaunchMs == null) {
       // أول تشغيل — نحاول نجيب التاريخ من Firestore (anti-reset cheat)
       try {
-        final doc = await _db.collection('devices').doc(deviceId.value).get()
+        final doc = await _db
+            .collection('devices')
+            .doc(deviceId.value)
+            .get()
             .timeout(const Duration(seconds: 5));
         if (doc.exists) {
           final ts = doc.data()?['firstLaunchAt'] as Timestamp?;
@@ -181,12 +277,12 @@ class LicenseController extends GetxController {
     }
 
     final firstLaunch = DateTime.fromMillisecondsSinceEpoch(firstLaunchMs);
-    final elapsed   = DateTime.now().difference(firstLaunch).inDays;
-    final daysLeft  = kTrialDays - elapsed;
+    final elapsed = DateTime.now().difference(firstLaunch).inDays;
+    final daysLeft = trialDaysTotal.value - elapsed;
 
     if (daysLeft > 0) {
       trialDaysLeft.value = daysLeft;
-      plan.value  = AppPlan.trial;
+      plan.value = AppPlan.trial;
       state.value = LicenseState.trial;
     } else {
       trialDaysLeft.value = 0;
@@ -203,7 +299,10 @@ class LicenseController extends GetxController {
   Future<void> _validateLicense(String code, SharedPreferences prefs) async {
     _lastValidationOffline = false;
     try {
-      final doc = await _db.collection('licenses').doc(code).get()
+      final doc = await _db
+          .collection('licenses')
+          .doc(code)
+          .get()
           .timeout(const Duration(seconds: 6));
 
       if (!doc.exists) {
@@ -217,11 +316,11 @@ class LicenseController extends GetxController {
       // الناجح ده عشان يبدأ منه حساب مهلة الاستخدام أوفلاين لاحقاً.
       await prefs.setInt(_kLastVerified, DateTime.now().millisecondsSinceEpoch);
 
-      final data      = doc.data()!;
-      final status    = data['status']   as String? ?? 'active';
-      final planStr   = data['plan']     as String? ?? 'basic';
+      final data = doc.data()!;
+      final status = data['status'] as String? ?? 'active';
+      final planStr = data['plan'] as String? ?? 'basic';
       final expiresAt = (data['expiresAt'] as Timestamp?)?.toDate();
-      final boundDev  = data['deviceId'] as String?;
+      final boundDev = data['deviceId'] as String?;
 
       // الجهاز مربوط بجهاز آخر
       if (boundDev != null && boundDev != deviceId.value) {
@@ -234,7 +333,7 @@ class LicenseController extends GetxController {
       if (boundDev == null) {
         try {
           await _db.collection('licenses').doc(code).update({
-            'deviceId':    deviceId.value,
+            'deviceId': deviceId.value,
             'activatedAt': Timestamp.now(),
           });
         } catch (_) {}
@@ -248,29 +347,28 @@ class LicenseController extends GetxController {
       }
 
       if (expiresAt != null && expiresAt.isBefore(DateTime.now())) {
-        plan.value            = _parsePlan(planStr);
-        licenseCode.value     = code;
-        this.expiresAt.value  = expiresAt;
-        state.value           = LicenseState.expired;
+        plan.value = _parsePlan(planStr);
+        licenseCode.value = code;
+        this.expiresAt.value = expiresAt;
+        state.value = LicenseState.expired;
         return;
       }
 
       // ✅ ترخيص سليم
-      plan.value            = _parsePlan(planStr);
-      licenseCode.value     = code;
-      this.expiresAt.value  = expiresAt; // null = مدى الحياة
-      state.value           = LicenseState.active;
+      plan.value = _parsePlan(planStr);
+      licenseCode.value = code;
+      this.expiresAt.value = expiresAt; // null = مدى الحياة
+      state.value = LicenseState.active;
       await prefs.setString(_kPlan, planStr);
 
       // ابدأ الاستماع للتغييرات في real-time
       _watchLicense(code, prefs);
-
     } catch (e) {
       // Offline أو فشل تحقق — نسمح باستخدام محدود (grace period) بدل
       // ثقة دائمة في آخر حالة معروفة، عشان تعليق/إلغاء ترخيص من لوحة
       // الإدارة ينعكس فعلياً حتى لو تعطّلت القراءة لفترة طويلة.
       debugPrint('LicenseController: تحقق الترخيص فشل — $e');
-      final cachedPlan   = prefs.getString(_kPlan) ?? 'basic';
+      final cachedPlan = prefs.getString(_kPlan) ?? 'basic';
       final lastVerified = prefs.getInt(_kLastVerified);
 
       if (lastVerified == null) {
@@ -288,13 +386,13 @@ class LicenseController extends GetxController {
           .inDays;
 
       if (daysSinceVerified <= _kGraceDays) {
-        plan.value        = _parsePlan(cachedPlan);
+        plan.value = _parsePlan(cachedPlan);
         licenseCode.value = code;
-        state.value       = LicenseState.active;
+        state.value = LicenseState.active;
       } else {
         // انتهت مهلة الاستخدام بدون اتصال — لازم يتأكد من السيرفر تاني
         licenseCode.value = code;
-        state.value       = LicenseState.expired;
+        state.value = LicenseState.expired;
       }
     }
   }
@@ -308,46 +406,47 @@ class LicenseController extends GetxController {
         .snapshots()
         .skip(1) // تخطي أول emission (محمّلة بالفعل في _validateLicense)
         .listen((doc) async {
-          if (!doc.exists) {
-            // ✅ الترخيص اتحذف من الـ admin
-            await prefs.remove(_kCode);
-            await prefs.remove(_kPlan);
-            licenseCode.value = null;
-            expiresAt.value   = null;
-            await _checkTrial(prefs);
-            return;
-          }
+      if (!doc.exists) {
+        // ✅ الترخيص اتحذف من الـ admin
+        await prefs.remove(_kCode);
+        await prefs.remove(_kPlan);
+        licenseCode.value = null;
+        expiresAt.value = null;
+        await _checkTrial(prefs);
+        return;
+      }
 
-          // كل رسالة real-time وصلت فعلاً = اتصال شغال بالسيرفر
-          await prefs.setInt(_kLastVerified, DateTime.now().millisecondsSinceEpoch);
+      // كل رسالة real-time وصلت فعلاً = اتصال شغال بالسيرفر
+      await prefs.setInt(_kLastVerified, DateTime.now().millisecondsSinceEpoch);
 
-          final data   = doc.data()!;
-          final status = data['status'] as String? ?? 'active';
-          final planStr = data['plan']   as String? ?? 'basic';
-          final exp     = (data['expiresAt'] as Timestamp?)?.toDate();
+      final data = doc.data()!;
+      final status = data['status'] as String? ?? 'active';
+      final planStr = data['plan'] as String? ?? 'basic';
+      final exp = (data['expiresAt'] as Timestamp?)?.toDate();
 
-          if (status == 'suspended') {
-            state.value = LicenseState.suspended;
-          } else if (exp != null && exp.isBefore(DateTime.now())) {
-            expiresAt.value = exp;
-            state.value     = LicenseState.expired;
-          } else {
-            plan.value           = _parsePlan(planStr);
-            expiresAt.value      = exp;
-            state.value          = LicenseState.active;
-            await prefs.setString(_kPlan, planStr);
-          }
-        }, onError: (e) {
-          // القراءة اتقطعت (مثلاً صلاحيات Firestore اتغيّرت) — سجّل الخطأ
-          // بدل ما يتبلع بصمت؛ الحالة المخزّنة تفضل زي ما هي لحد ما
-          // مهلة الـ grace period تنتهي في المحاولة الجاية لـ _validateLicense.
-          debugPrint('LicenseController: انقطع الاستماع للترخيص — $e');
-        });
+      if (status == 'suspended') {
+        state.value = LicenseState.suspended;
+      } else if (exp != null && exp.isBefore(DateTime.now())) {
+        expiresAt.value = exp;
+        state.value = LicenseState.expired;
+      } else {
+        plan.value = _parsePlan(planStr);
+        expiresAt.value = exp;
+        state.value = LicenseState.active;
+        await prefs.setString(_kPlan, planStr);
+      }
+    }, onError: (e) {
+      // القراءة اتقطعت (مثلاً صلاحيات Firestore اتغيّرت) — سجّل الخطأ
+      // بدل ما يتبلع بصمت؛ الحالة المخزّنة تفضل زي ما هي لحد ما
+      // مهلة الـ grace period تنتهي في المحاولة الجاية لـ _validateLicense.
+      debugPrint('LicenseController: انقطع الاستماع للترخيص — $e');
+    });
   }
 
   @override
   void onClose() {
     _licenseSubscription?.cancel();
+    _configSubscription?.cancel();
     super.onClose();
   }
 
@@ -374,13 +473,13 @@ class LicenseController extends GetxController {
       } catch (_) {}
 
       await _db.collection('devices').doc(deviceId.value).set({
-        'deviceId':       deviceId.value,
-        'deviceName':     deviceName,
-        'platform':       kIsWeb ? 'web' : Platform.operatingSystem,
-        'firstLaunchAt':  FieldValue.serverTimestamp(),
-        'lastSeenAt':     FieldValue.serverTimestamp(),
-        'licenseCode':    licenseCode.value,
-        'licenseState':   state.value.name,
+        'deviceId': deviceId.value,
+        'deviceName': deviceName,
+        'platform': kIsWeb ? 'web' : Platform.operatingSystem,
+        'firstLaunchAt': FieldValue.serverTimestamp(),
+        'lastSeenAt': FieldValue.serverTimestamp(),
+        'licenseCode': licenseCode.value,
+        'licenseState': state.value.name,
       }, SetOptions(merge: true));
     } catch (_) {}
   }
@@ -395,37 +494,37 @@ class LicenseController extends GetxController {
         .limit(1)
         .snapshots()
         .listen((snap) async {
-          final prefs = await SharedPreferences.getInstance();
+      final prefs = await SharedPreferences.getInstance();
 
-          if (snap.docs.isEmpty) {
-            hasRequest.value = false;
-            await prefs.setBool(_kHasRequest, false);
-            return;
-          }
-          final doc    = snap.docs.first;
-          final status = (doc['status'] as String?) ?? '';
+      if (snap.docs.isEmpty) {
+        hasRequest.value = false;
+        await prefs.setBool(_kHasRequest, false);
+        return;
+      }
+      final doc = snap.docs.first;
+      final status = (doc['status'] as String?) ?? '';
 
-          if (status == 'pending') {
-            // طلب قيد المراجعة — احفظ في SharedPreferences
-            hasRequest.value = true;
-            await prefs.setBool(_kHasRequest, true);
-          } else if (status == 'approved') {
-            // ✅ الـ admin وافق — فعّل الترخيص أوتوماتيك
-            final code = (doc['licenseCode'] as String?) ?? '';
-            if (code.isNotEmpty && state.value != LicenseState.active) {
-              hasRequest.value = false;
-              await prefs.setBool(_kHasRequest, false);
-              await prefs.setString(_kCode, code);
-              await _validateLicense(code, prefs);
-            }
-          } else {
-            // مرفوض أو غير معروف
-            hasRequest.value = false;
-            await prefs.setBool(_kHasRequest, false);
-          }
-        }, onError: (e) {
-          debugPrint('LicenseController: فشل متابعة طلب الترقية — $e');
-        });
+      if (status == 'pending') {
+        // طلب قيد المراجعة — احفظ في SharedPreferences
+        hasRequest.value = true;
+        await prefs.setBool(_kHasRequest, true);
+      } else if (status == 'approved') {
+        // ✅ الـ admin وافق — فعّل الترخيص أوتوماتيك
+        final code = (doc['licenseCode'] as String?) ?? '';
+        if (code.isNotEmpty && state.value != LicenseState.active) {
+          hasRequest.value = false;
+          await prefs.setBool(_kHasRequest, false);
+          await prefs.setString(_kCode, code);
+          await _validateLicense(code, prefs);
+        }
+      } else {
+        // مرفوض أو غير معروف
+        hasRequest.value = false;
+        await prefs.setBool(_kHasRequest, false);
+      }
+    }, onError: (e) {
+      debugPrint('LicenseController: فشل متابعة طلب الترقية — $e');
+    });
   }
 
   // ── Public: Activate Code ─────────────────────────────────────────────────
@@ -450,9 +549,9 @@ class LicenseController extends GetxController {
     required String name,
     required String phone,
     required String planId,
-    String?  message,
-    String?  paymentMethod, // نقدي / Vodafone Cash / InstaPay
-    XFile?   receiptImage,  // صورة الإيصال (اختياري)
+    String? message,
+    String? paymentMethod, // نقدي / Vodafone Cash / InstaPay
+    XFile? receiptImage, // صورة الإيصال (اختياري)
   }) async {
     if (name.trim().isEmpty) return 'أدخل اسمك';
     if (phone.trim().isEmpty) return 'أدخل رقم هاتفك';
@@ -483,13 +582,12 @@ class LicenseController extends GetxController {
       String receiptUrl = '';
       if (receiptImage != null) {
         try {
-          final ref = FirebaseStorage.instance
-              .ref()
-              .child('receipts/${deviceId.value}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+          final ref = FirebaseStorage.instance.ref().child(
+              'receipts/${deviceId.value}_${DateTime.now().millisecondsSinceEpoch}.jpg');
           if (kIsWeb) {
             final bytes = await receiptImage.readAsBytes();
-            await ref.putData(bytes,
-                SettableMetadata(contentType: 'image/jpeg'));
+            await ref.putData(
+                bytes, SettableMetadata(contentType: 'image/jpeg'));
           } else {
             await ref.putFile(File(receiptImage.path));
           }
@@ -512,18 +610,18 @@ class LicenseController extends GetxController {
       } catch (_) {}
 
       await _db.collection('upgrade_requests').add({
-        'deviceId':      deviceId.value,
-        'deviceName':    deviceName,
-        'ownerName':     name.trim(),
-        'ownerPhone':    phone.trim(),
+        'deviceId': deviceId.value,
+        'deviceName': deviceName,
+        'ownerName': name.trim(),
+        'ownerPhone': phone.trim(),
         'requestedPlan': planId,
-        'message':       message?.trim() ?? '',
+        'message': message?.trim() ?? '',
         'paymentMethod': paymentMethod ?? '',
-        'receiptUrl':    receiptUrl,
-        'status':        'pending',
-        'createdAt':     Timestamp.now(),
-        'adminNote':     '',
-        'licenseCode':   '',
+        'receiptUrl': receiptUrl,
+        'status': 'pending',
+        'createdAt': Timestamp.now(),
+        'adminNote': '',
+        'licenseCode': '',
       });
 
       hasRequest.value = true;
@@ -534,7 +632,8 @@ class LicenseController extends GetxController {
       return null; // success
     } catch (e) {
       final msg = e.toString();
-      if (msg.contains('permission-denied') || msg.contains('PERMISSION_DENIED')) {
+      if (msg.contains('permission-denied') ||
+          msg.contains('PERMISSION_DENIED')) {
         return 'خطأ: صلاحيات قاعدة البيانات — تأكد من تفعيل Anonymous Auth في Firebase';
       }
       if (msg.contains('network') || msg.contains('unavailable')) {
@@ -545,14 +644,7 @@ class LicenseController extends GetxController {
   }
 
   // ── Feature Gates ─────────────────────────────────────────────────────────
-  _Limits get _limits {
-    switch (plan.value) {
-      case AppPlan.trial:    return _Limits.trial;
-      case AppPlan.basic:    return _Limits.basic;
-      case AppPlan.pro:      return _Limits.pro;
-      case AppPlan.lifetime: return _Limits.lifetime;
-    }
-  }
+  _Limits get _limits => _remoteLimits[plan.value]!;
 
   bool get isActive =>
       state.value == LicenseState.active || state.value == LicenseState.trial;
@@ -580,29 +672,37 @@ class LicenseController extends GetxController {
     return null;
   }
 
-  bool get canBackup    => isActive && _limits.canBackup;
-  bool get canExport    => isActive && _limits.canExport;
-  bool get canWhatsApp  => isActive && _limits.canWhatsApp;
+  bool get canBackup => isActive && _limits.canBackup;
+  bool get canExport => isActive && _limits.canExport;
+  bool get canWhatsApp => isActive && _limits.canWhatsApp;
 
-  int get maxGroupsAllowed   => _limits.maxGroups;
+  int get maxGroupsAllowed => _limits.maxGroups;
   int get maxStudentsAllowed => _limits.maxStudents;
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   AppPlan _parsePlan(String s) {
     switch (s) {
-      case 'basic':    return AppPlan.basic;
-      case 'pro':      return AppPlan.pro;
-      case 'lifetime': return AppPlan.lifetime;
-      default:         return AppPlan.trial;
+      case 'basic':
+        return AppPlan.basic;
+      case 'pro':
+        return AppPlan.pro;
+      case 'lifetime':
+        return AppPlan.lifetime;
+      default:
+        return AppPlan.trial;
     }
   }
 
   String _stateErrorMsg() {
     switch (state.value) {
-      case LicenseState.suspended:     return 'هذا الترخيص موقوف — تواصل مع الدعم';
-      case LicenseState.expired:       return 'انتهت صلاحية الترخيص — قم بالتجديد';
-      case LicenseState.trialExpired:  return 'انتهت التجربة المجانية';
-      default:                         return 'كود غير صالح';
+      case LicenseState.suspended:
+        return 'هذا الترخيص موقوف — تواصل مع الدعم';
+      case LicenseState.expired:
+        return 'انتهت صلاحية الترخيص — قم بالتجديد';
+      case LicenseState.trialExpired:
+        return 'انتهت التجربة المجانية';
+      default:
+        return 'كود غير صالح';
     }
   }
 

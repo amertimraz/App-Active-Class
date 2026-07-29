@@ -18,16 +18,16 @@ class PlansPage extends StatefulWidget {
 
 class _PlansPageState extends State<PlansPage> {
   String _selectedPlan = 'pro';
-  bool   _showForm     = false;
+  bool _showForm = false;
 
-  final _name    = TextEditingController();
-  final _phone   = TextEditingController();
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
   final _message = TextEditingController();
-  String  _paymentMethod = 'نقدي';
-  XFile?  _receiptImage;
-  bool    _loading = false;
+  String _paymentMethod = 'نقدي';
+  XFile? _receiptImage;
+  bool _loading = false;
   String? _error;
-  bool    _sent    = false;
+  bool _sent = false;
 
   static Stream<List<PlanConfigModel>> get _plansStream =>
       FirebaseFirestore.instance
@@ -43,7 +43,9 @@ class _PlansPageState extends State<PlansPage> {
 
   @override
   void dispose() {
-    _name.dispose(); _phone.dispose(); _message.dispose();
+    _name.dispose();
+    _phone.dispose();
+    _message.dispose();
     super.dispose();
   }
 
@@ -54,16 +56,24 @@ class _PlansPageState extends State<PlansPage> {
   }
 
   Future<void> _submit() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     final err = await LicenseController.to.submitUpgradeRequest(
-      name: _name.text, phone: _phone.text,
-      planId: _selectedPlan, message: _message.text,
-      paymentMethod: _paymentMethod, receiptImage: _receiptImage,
+      name: _name.text,
+      phone: _phone.text,
+      planId: _selectedPlan,
+      message: _message.text,
+      paymentMethod: _paymentMethod,
+      receiptImage: _receiptImage,
     );
     if (!mounted) return;
     setState(() => _loading = false);
-    if (err == null) setState(() => _sent = true);
-    else setState(() => _error = err);
+    if (err == null)
+      setState(() => _sent = true);
+    else
+      setState(() => _error = err);
   }
 
   @override
@@ -103,11 +113,15 @@ class _PlansPageState extends State<PlansPage> {
                         if (lc.state.value == LicenseState.trial) {
                           return _TrialBanner(
                               days: lc.trialDaysLeft.value,
+                              total: lc.trialDaysTotal.value,
                               isExpired: false);
                         }
                         if (lc.state.value == LicenseState.trialExpired ||
                             lc.state.value == LicenseState.expired) {
-                          return _TrialBanner(days: 0, isExpired: true);
+                          return _TrialBanner(
+                              days: 0,
+                              total: lc.trialDaysTotal.value,
+                              isExpired: true);
                         }
                         return const SizedBox.shrink();
                       }),
@@ -123,10 +137,10 @@ class _PlansPageState extends State<PlansPage> {
                       ...plans.asMap().entries.map((e) => _AnimatedEntry(
                             delay: e.key * 90,
                             child: _PlanCard(
-                              plan:     e.value,
+                              plan: e.value,
                               selected: _selectedPlan == e.value.id,
-                              onTap: () => setState(
-                                  () => _selectedPlan = e.value.id),
+                              onTap: () =>
+                                  setState(() => _selectedPlan = e.value.id),
                             ),
                           )),
                       const SizedBox(height: 8),
@@ -141,16 +155,14 @@ class _PlansPageState extends State<PlansPage> {
 
                       // ── Pending / Form / Success ────────────────
                       Obx(() {
-                        if (LicenseController.to.hasRequest.value &&
-                            !_sent) {
+                        if (LicenseController.to.hasRequest.value && !_sent) {
                           return _PendingRequestCard();
                         }
                         return const SizedBox.shrink();
                       }),
 
                       if (_sent)
-                        _SuccessCard(
-                            onBack: () => Navigator.of(context).pop())
+                        _SuccessCard(onBack: () => Navigator.of(context).pop())
                       else
                         Obx(() {
                           if (LicenseController.to.hasRequest.value ||
@@ -158,23 +170,21 @@ class _PlansPageState extends State<PlansPage> {
                             return const SizedBox.shrink();
                           }
                           return _RequestForm(
-                            planName: selectedModel?.nameAr ??
-                                _selectedPlan,
-                            nameCtrl:      _name,
-                            phoneCtrl:     _phone,
-                            messageCtrl:   _message,
+                            planName: selectedModel?.nameAr ?? _selectedPlan,
+                            nameCtrl: _name,
+                            phoneCtrl: _phone,
+                            messageCtrl: _message,
                             paymentMethod: _paymentMethod,
-                            receiptImage:  _receiptImage,
-                            loading:       _loading,
-                            error:         _error,
+                            receiptImage: _receiptImage,
+                            loading: _loading,
+                            error: _error,
                             onPaymentChanged: (m) =>
                                 setState(() => _paymentMethod = m),
-                            onPickImage:   _pickImage,
+                            onPickImage: _pickImage,
                             onRemoveImage: () =>
                                 setState(() => _receiptImage = null),
-                            onCancel: () =>
-                                setState(() => _showForm = false),
-                            onSubmit:      _submit,
+                            onCancel: () => setState(() => _showForm = false),
+                            onSubmit: _submit,
                           );
                         }),
                     ],
@@ -192,9 +202,9 @@ class _PlansPageState extends State<PlansPage> {
                     return const SizedBox.shrink();
                   }
                   return _BottomCTABar(
-                    plan:   selectedModel,
+                    plan: selectedModel,
                     isDark: isDark,
-                    onTap:  () => setState(() => _showForm = true),
+                    onTap: () => setState(() => _showForm = true),
                   );
                 }),
         );
@@ -231,28 +241,31 @@ class _PlansPageState extends State<PlansPage> {
             children: [
               // زخارف هندسية
               Positioned(
-                top: -40, right: -40,
+                top: -40,
+                right: -40,
                 child: _circle(150, Colors.white.withValues(alpha: 0.07)),
               ),
               Positioned(
-                top: 60, left: -25,
+                top: 60,
+                left: -25,
                 child: _circle(80, Colors.white.withValues(alpha: 0.05)),
               ),
               Positioned(
-                bottom: -35, right: 60,
+                bottom: -35,
+                right: 60,
                 child: _circle(110, Colors.white.withValues(alpha: 0.06)),
               ),
               Positioned(
-                top: 40, left: 80,
+                top: 40,
+                left: 80,
                 child: Icon(Icons.auto_awesome,
-                    size: 16,
-                    color: Colors.white.withValues(alpha: 0.35)),
+                    size: 16, color: Colors.white.withValues(alpha: 0.35)),
               ),
               Positioned(
-                bottom: 60, left: 40,
+                bottom: 60,
+                left: 40,
                 child: Icon(Icons.auto_awesome,
-                    size: 11,
-                    color: Colors.white.withValues(alpha: 0.25)),
+                    size: 11, color: Colors.white.withValues(alpha: 0.25)),
               ),
 
               // المحتوى
@@ -263,7 +276,8 @@ class _PlansPageState extends State<PlansPage> {
                     const SizedBox(height: 36),
                     // أيقونة التاج في دائرة زجاجية
                     Container(
-                      width: 58, height: 58,
+                      width: 58,
+                      height: 58,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: Colors.white.withValues(alpha: 0.15),
@@ -271,8 +285,7 @@ class _PlansPageState extends State<PlansPage> {
                             color: Colors.white.withValues(alpha: 0.3)),
                       ),
                       child: const Center(
-                          child: Text('👑',
-                              style: TextStyle(fontSize: 26))),
+                          child: Text('👑', style: TextStyle(fontSize: 26))),
                     ),
                     const SizedBox(height: 12),
                     const Text('ارتقِ بتجربتك',
@@ -298,7 +311,8 @@ class _PlansPageState extends State<PlansPage> {
   }
 
   static Widget _circle(double size, Color color) => Container(
-        width: size, height: size,
+        width: size,
+        height: size,
         decoration: BoxDecoration(shape: BoxShape.circle, color: color),
       );
 }
@@ -308,7 +322,7 @@ class _PlansPageState extends State<PlansPage> {
 // ─────────────────────────────────────────────────────────────────────────────
 class _AnimatedEntry extends StatelessWidget {
   final Widget child;
-  final int    delay;
+  final int delay;
   const _AnimatedEntry({required this.child, this.delay = 0});
 
   @override
@@ -319,8 +333,7 @@ class _AnimatedEntry extends StatelessWidget {
       curve: Curves.easeOutCubic,
       builder: (_, v, c) => Opacity(
         opacity: v.clamp(0, 1),
-        child: Transform.translate(
-            offset: Offset(0, 24 * (1 - v)), child: c),
+        child: Transform.translate(offset: Offset(0, 24 * (1 - v)), child: c),
       ),
       child: child,
     );
@@ -340,7 +353,8 @@ class _SectionTitle extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width: 4, height: 34,
+          width: 4,
+          height: 34,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               colors: [Color(0xFF4F46E5), Color(0xFF9333EA)],
@@ -376,20 +390,19 @@ class _SectionTitle extends StatelessWidget {
 // Trial Banner — مع شريط تقدم
 // ─────────────────────────────────────────────────────────────────────────────
 class _TrialBanner extends StatelessWidget {
-  final int  days;
+  final int days;
+  final int total;
   final bool isExpired;
-  const _TrialBanner({required this.days, required this.isExpired});
-
-  static const int _trialTotal = LicenseController.kTrialDays;
+  const _TrialBanner(
+      {required this.days, required this.total, required this.isExpired});
 
   @override
   Widget build(BuildContext context) {
     final color = isExpired ? const Color(0xFFEF4444) : const Color(0xFFF59E0B);
-    final msg   = isExpired
+    final msg = isExpired
         ? 'انتهت فترة التجربة — اشترك للاستمرار'
         : 'باقي لك $days ${days == 1 ? "يوم" : "أيام"} من التجربة المجانية';
-    final progress =
-        isExpired ? 0.0 : (days / _trialTotal).clamp(0.0, 1.0);
+    final progress = isExpired ? 0.0 : (days / total).clamp(0.0, 1.0);
 
     return Container(
       width: double.infinity,
@@ -412,7 +425,8 @@ class _TrialBanner extends StatelessWidget {
         children: [
           Row(children: [
             Container(
-              width: 38, height: 38,
+              width: 38,
+              height: 38,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: color.withValues(alpha: 0.15),
@@ -425,8 +439,10 @@ class _TrialBanner extends StatelessWidget {
             Expanded(
               child: Text(msg,
                   style: TextStyle(
-                      fontFamily: 'Cairo', fontSize: 13,
-                      fontWeight: FontWeight.w800, color: color)),
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: color)),
             ),
           ]),
           if (!isExpired) ...[
@@ -452,8 +468,8 @@ class _TrialBanner extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 class _PlanCard extends StatelessWidget {
   final PlanConfigModel plan;
-  final bool            selected;
-  final VoidCallback    onTap;
+  final bool selected;
+  final VoidCallback onTap;
   const _PlanCard({
     required this.plan,
     required this.selected,
@@ -462,10 +478,10 @@ class _PlanCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark      = Theme.of(context).brightness == Brightness.dark;
-    final color       = Color(plan.colorValue);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = Color(plan.colorValue);
     final hasDiscount = plan.hasDiscount;
-    final isPopular   = plan.recommended;
+    final isPopular = plan.recommended;
 
     return GestureDetector(
       onTap: onTap,
@@ -521,8 +537,7 @@ class _PlanCard extends StatelessWidget {
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.star_rounded,
-                            size: 15, color: Colors.white),
+                        Icon(Icons.star_rounded, size: 15, color: Colors.white),
                         SizedBox(width: 5),
                         Text('الأكثر اختياراً',
                             style: TextStyle(
@@ -544,7 +559,8 @@ class _PlanCard extends StatelessWidget {
                         children: [
                           // أيقونة الخطة
                           Container(
-                            width: 42, height: 42,
+                            width: 42,
+                            height: 42,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(13),
                               gradient: LinearGradient(
@@ -560,14 +576,14 @@ class _PlanCard extends StatelessWidget {
                               isPopular
                                   ? Icons.workspace_premium_rounded
                                   : Icons.layers_rounded,
-                              color: color, size: 22,
+                              color: color,
+                              size: 22,
                             ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(plan.nameAr,
                                     style: TextStyle(
@@ -591,15 +607,15 @@ class _PlanCard extends StatelessWidget {
                           // مؤشر دائري
                           AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
-                            width: 24, height: 24,
+                            width: 24,
+                            height: 24,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: selected ? color : Colors.transparent,
                               border: Border.all(
                                   color: selected
                                       ? color
-                                      : Colors.grey
-                                          .withValues(alpha: 0.35),
+                                      : Colors.grey.withValues(alpha: 0.35),
                                   width: 2),
                             ),
                             child: selected
@@ -652,8 +668,7 @@ class _PlanCard extends StatelessWidget {
                               const Spacer(),
                               if (hasDiscount)
                                 Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.end,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     Text(plan.originalPrice,
                                         style: TextStyle(
@@ -662,22 +677,18 @@ class _PlanCard extends StatelessWidget {
                                             color: isDark
                                                 ? Colors.white30
                                                 : Colors.black26,
-                                            decoration: TextDecoration
-                                                .lineThrough)),
+                                            decoration:
+                                                TextDecoration.lineThrough)),
                                     const SizedBox(height: 2),
                                     Container(
-                                      padding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
                                       decoration: BoxDecoration(
-                                        gradient: const LinearGradient(
-                                            colors: [
-                                              Color(0xFFEF4444),
-                                              Color(0xFFF97316),
-                                            ]),
-                                        borderRadius:
-                                            BorderRadius.circular(7),
+                                        gradient: const LinearGradient(colors: [
+                                          Color(0xFFEF4444),
+                                          Color(0xFFF97316),
+                                        ]),
+                                        borderRadius: BorderRadius.circular(7),
                                       ),
                                       child: Text(
                                         'خصم ${_discountPct(plan)}',
@@ -698,20 +709,17 @@ class _PlanCard extends StatelessWidget {
                       // ── المميزات ──────────────────────────────
                       if (plan.features.isNotEmpty)
                         ...plan.features.map((f) => Padding(
-                              padding:
-                                  const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.only(bottom: 8),
                               child: Row(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Container(
-                                    margin:
-                                        const EdgeInsets.only(top: 2),
-                                    width: 17, height: 17,
+                                    margin: const EdgeInsets.only(top: 2),
+                                    width: 17,
+                                    height: 17,
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      color: color.withValues(
-                                          alpha: 0.13),
+                                      color: color.withValues(alpha: 0.13),
                                     ),
                                     child: Icon(Icons.check_rounded,
                                         size: 11, color: color),
@@ -742,10 +750,9 @@ class _PlanCard extends StatelessWidget {
   }
 
   String _discountPct(PlanConfigModel plan) {
-    final orig = double.tryParse(
-        plan.originalPrice.replaceAll(RegExp(r'[^\d.]'), ''));
-    final curr = double.tryParse(
-        plan.price.replaceAll(RegExp(r'[^\d.]'), ''));
+    final orig =
+        double.tryParse(plan.originalPrice.replaceAll(RegExp(r'[^\d.]'), ''));
+    final curr = double.tryParse(plan.price.replaceAll(RegExp(r'[^\d.]'), ''));
     if (orig == null || curr == null || orig == 0) return '';
     return '${((orig - curr) / orig * 100).round()}%';
   }
@@ -761,9 +768,9 @@ class _TrustRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final items = [
-      (Icons.flash_on_rounded,      'تفعيل فوري',   const Color(0xFFF59E0B)),
-      (Icons.support_agent_rounded, 'دعم واتساب',   const Color(0xFF10B981)),
-      (Icons.verified_user_rounded, 'دفع آمن',      const Color(0xFF3B82F6)),
+      (Icons.flash_on_rounded, 'تفعيل فوري', const Color(0xFFF59E0B)),
+      (Icons.support_agent_rounded, 'دعم واتساب', const Color(0xFF10B981)),
+      (Icons.verified_user_rounded, 'دفع آمن', const Color(0xFF3B82F6)),
     ];
 
     return Row(
@@ -773,12 +780,9 @@ class _TrustRow extends StatelessWidget {
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? const Color(0xFF141B2D)
-                        : Colors.white,
+                    color: isDark ? const Color(0xFF141B2D) : Colors.white,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                        color: i.$3.withValues(alpha: 0.2)),
+                    border: Border.all(color: i.$3.withValues(alpha: 0.2)),
                   ),
                   child: Column(children: [
                     Icon(i.$1, size: 20, color: i.$3),
@@ -788,9 +792,7 @@ class _TrustRow extends StatelessWidget {
                             fontFamily: 'Cairo',
                             fontSize: 10.5,
                             fontWeight: FontWeight.w700,
-                            color: isDark
-                                ? Colors.white60
-                                : Colors.black54)),
+                            color: isDark ? Colors.white60 : Colors.black54)),
                   ]),
                 ),
               ))
@@ -804,8 +806,8 @@ class _TrustRow extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 class _BottomCTABar extends StatelessWidget {
   final PlanConfigModel plan;
-  final bool            isDark;
-  final VoidCallback    onTap;
+  final bool isDark;
+  final VoidCallback onTap;
   const _BottomCTABar({
     required this.plan,
     required this.isDark,
@@ -814,8 +816,7 @@ class _BottomCTABar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final priceNum =
-        plan.price.replaceAll(' جنيه', '').replaceAll(' EGP', '');
+    final priceNum = plan.price.replaceAll(' جنيه', '').replaceAll(' EGP', '');
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -829,8 +830,7 @@ class _BottomCTABar extends StatelessWidget {
             offset: const Offset(0, -6),
           ),
         ],
-        borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Row(
         children: [
@@ -864,9 +864,8 @@ class _BottomCTABar extends StatelessWidget {
                             style: TextStyle(
                                 fontFamily: 'Cairo',
                                 fontSize: 10,
-                                color: isDark
-                                    ? Colors.white38
-                                    : Colors.black38)),
+                                color:
+                                    isDark ? Colors.white38 : Colors.black38)),
                       ),
                     ],
                   ),
@@ -897,8 +896,7 @@ class _BottomCTABar extends StatelessWidget {
                 onTap: onTap,
                 borderRadius: BorderRadius.circular(14),
                 child: const Padding(
-                  padding: EdgeInsets.symmetric(
-                      horizontal: 26, vertical: 14),
+                  padding: EdgeInsets.symmetric(horizontal: 26, vertical: 14),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -941,7 +939,8 @@ class _ActivationCodeCard extends StatelessWidget {
       ),
       child: Row(children: [
         Container(
-          width: 42, height: 42,
+          width: 42,
+          height: 42,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(13),
             gradient: LinearGradient(
@@ -969,8 +968,7 @@ class _ActivationCodeCard extends StatelessWidget {
                   style: TextStyle(
                       fontFamily: 'Cairo',
                       fontSize: 11,
-                      color:
-                          isDark ? Colors.white38 : Colors.black45)),
+                      color: isDark ? Colors.white38 : Colors.black45)),
             ],
           ),
         ),
@@ -978,12 +976,10 @@ class _ActivationCodeCard extends StatelessWidget {
           onPressed: () => Get.to(() => const ActivationPage()),
           style: OutlinedButton.styleFrom(
             foregroundColor: AppTheme.primaryColor,
-            side: const BorderSide(
-                color: AppTheme.primaryColor, width: 1.5),
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 10),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(11)),
+            side: const BorderSide(color: AppTheme.primaryColor, width: 1.5),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
           ),
           child: const Text('أدخل الكود',
               style: TextStyle(
@@ -1002,9 +998,9 @@ class _ActivationCodeCard extends StatelessWidget {
 class _RequestForm extends StatelessWidget {
   final String planName;
   final TextEditingController nameCtrl, phoneCtrl, messageCtrl;
-  final String  paymentMethod;
-  final XFile?  receiptImage;
-  final bool    loading;
+  final String paymentMethod;
+  final XFile? receiptImage;
+  final bool loading;
   final String? error;
   final void Function(String) onPaymentChanged;
   final VoidCallback onPickImage, onRemoveImage, onCancel, onSubmit;
@@ -1026,9 +1022,9 @@ class _RequestForm extends StatelessWidget {
   });
 
   static const _payIcons = {
-    'نقدي':          Icons.payments_rounded,
+    'نقدي': Icons.payments_rounded,
     'Vodafone Cash': Icons.phone_android_rounded,
-    'InstaPay':      Icons.account_balance_rounded,
+    'InstaPay': Icons.account_balance_rounded,
   };
 
   @override
@@ -1046,7 +1042,8 @@ class _RequestForm extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-              blurRadius: 20, offset: const Offset(0, 6),
+              blurRadius: 20,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
@@ -1055,20 +1052,19 @@ class _RequestForm extends StatelessWidget {
             // Header
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 20, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
                   begin: Alignment.centerRight,
                   end: Alignment.centerLeft,
                 ),
-                borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(21)),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(21)),
               ),
               child: Row(children: [
                 Container(
-                  width: 38, height: 38,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: Colors.white.withValues(alpha: 0.18),
@@ -1091,8 +1087,7 @@ class _RequestForm extends StatelessWidget {
                           style: TextStyle(
                               fontFamily: 'Cairo',
                               fontSize: 11,
-                              color: Colors.white
-                                  .withValues(alpha: 0.75))),
+                              color: Colors.white.withValues(alpha: 0.75))),
                     ],
                   ),
                 ),
@@ -1104,51 +1099,49 @@ class _RequestForm extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _FormField(ctrl: nameCtrl,  hint: 'اسمك الكريم',
+                  _FormField(
+                      ctrl: nameCtrl,
+                      hint: 'اسمك الكريم',
                       icon: Icons.person_outline_rounded),
                   const SizedBox(height: 12),
-                  _FormField(ctrl: phoneCtrl, hint: 'رقم واتساب',
+                  _FormField(
+                      ctrl: phoneCtrl,
+                      hint: 'رقم واتساب',
                       icon: Icons.phone_rounded,
                       type: TextInputType.phone),
                   const SizedBox(height: 12),
-                  _FormField(ctrl: messageCtrl,
+                  _FormField(
+                      ctrl: messageCtrl,
                       hint: 'رسالة للمطور (اختياري)',
                       icon: Icons.message_outlined,
                       maxLines: 3),
                   const SizedBox(height: 18),
 
                   // طريقة الدفع
-                  _SectionLabel(label: 'طريقة الدفع',
-                      icon: Icons.payment_rounded),
+                  _SectionLabel(
+                      label: 'طريقة الدفع', icon: Icons.payment_rounded),
                   const SizedBox(height: 10),
                   Row(
-                    children: ['نقدي', 'Vodafone Cash', 'InstaPay']
-                        .map((m) {
+                    children: ['نقدي', 'Vodafone Cash', 'InstaPay'].map((m) {
                       final sel = paymentMethod == m;
                       return Expanded(
                         child: GestureDetector(
                           onTap: () => onPaymentChanged(m),
                           child: AnimatedContainer(
-                            duration:
-                                const Duration(milliseconds: 180),
-                            margin: const EdgeInsets.symmetric(
-                                horizontal: 3),
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 11),
+                            duration: const Duration(milliseconds: 180),
+                            margin: const EdgeInsets.symmetric(horizontal: 3),
+                            padding: const EdgeInsets.symmetric(vertical: 11),
                             decoration: BoxDecoration(
                               color: sel
                                   ? AppTheme.primaryColor
                                   : (isDark
-                                      ? Colors.white
-                                          .withValues(alpha: 0.05)
-                                      : Colors.grey
-                                          .withValues(alpha: 0.06)),
+                                      ? Colors.white.withValues(alpha: 0.05)
+                                      : Colors.grey.withValues(alpha: 0.06)),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: sel
                                     ? AppTheme.primaryColor
-                                    : Colors.grey
-                                        .withValues(alpha: 0.22),
+                                    : Colors.grey.withValues(alpha: 0.22),
                               ),
                             ),
                             child: Column(children: [
@@ -1180,7 +1173,8 @@ class _RequestForm extends StatelessWidget {
                   const SizedBox(height: 18),
 
                   // إيصال الدفع
-                  _SectionLabel(label: 'إيصال الدفع (اختياري)',
+                  _SectionLabel(
+                      label: 'إيصال الدفع (اختياري)',
                       icon: Icons.receipt_long_rounded),
                   const SizedBox(height: 10),
                   GestureDetector(
@@ -1196,14 +1190,12 @@ class _RequestForm extends StatelessWidget {
                         border: Border.all(
                           color: receiptImage != null
                               ? AppTheme.primaryColor
-                              : AppTheme.primaryColor
-                                  .withValues(alpha: 0.25),
+                              : AppTheme.primaryColor.withValues(alpha: 0.25),
                         ),
                       ),
                       child: receiptImage == null
                           ? Row(
-                              mainAxisAlignment:
-                                  MainAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(Icons.cloud_upload_outlined,
                                     color: AppTheme.primaryColor
@@ -1222,30 +1214,25 @@ class _RequestForm extends StatelessWidget {
                               fit: StackFit.expand,
                               children: [
                                 ClipRRect(
-                                  borderRadius:
-                                      BorderRadius.circular(13),
+                                  borderRadius: BorderRadius.circular(13),
                                   child: kIsWeb
-                                      ? Image.network(
-                                          receiptImage!.path,
+                                      ? Image.network(receiptImage!.path,
                                           fit: BoxFit.cover)
-                                      : Image.file(
-                                          File(receiptImage!.path),
+                                      : Image.file(File(receiptImage!.path),
                                           fit: BoxFit.cover),
                                 ),
                                 Positioned(
-                                  top: 6, left: 6,
+                                  top: 6,
+                                  left: 6,
                                   child: GestureDetector(
                                     onTap: onRemoveImage,
                                     child: Container(
-                                      padding:
-                                          const EdgeInsets.all(4),
+                                      padding: const EdgeInsets.all(4),
                                       decoration: const BoxDecoration(
                                           color: Colors.red,
                                           shape: BoxShape.circle),
-                                      child: const Icon(
-                                          Icons.close_rounded,
-                                          size: 13,
-                                          color: Colors.white),
+                                      child: const Icon(Icons.close_rounded,
+                                          size: 13, color: Colors.white),
                                     ),
                                   ),
                                 ),
@@ -1286,19 +1273,15 @@ class _RequestForm extends StatelessWidget {
                       child: OutlinedButton(
                         onPressed: onCancel,
                         style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 14),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(13)),
+                              borderRadius: BorderRadius.circular(13)),
                           side: BorderSide(
-                              color:
-                                  Colors.grey.withValues(alpha: 0.4)),
+                              color: Colors.grey.withValues(alpha: 0.4)),
                         ),
                         child: const Text('إلغاء',
                             style: TextStyle(
-                                fontFamily: 'Cairo',
-                                color: Colors.grey)),
+                                fontFamily: 'Cairo', color: Colors.grey)),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1309,30 +1292,26 @@ class _RequestForm extends StatelessWidget {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryColor,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 14),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(13)),
+                              borderRadius: BorderRadius.circular(13)),
                           elevation: 0,
                         ),
                         child: loading
                             ? const SizedBox(
-                                width: 18, height: 18,
+                                width: 18,
+                                height: 18,
                                 child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2))
+                                    color: Colors.white, strokeWidth: 2))
                             : const Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.center,
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(Icons.send_rounded, size: 16),
                                   SizedBox(width: 8),
                                   Text('إرسال الطلب',
                                       style: TextStyle(
                                           fontFamily: 'Cairo',
-                                          fontWeight:
-                                              FontWeight.w800)),
+                                          fontWeight: FontWeight.w800)),
                                 ],
                               ),
                       ),
@@ -1370,18 +1349,17 @@ class _SuccessCard extends StatelessWidget {
               end: Alignment.bottomCenter,
             ),
             borderRadius: BorderRadius.circular(22),
-            border:
-                Border.all(color: Colors.green.withValues(alpha: 0.35)),
+            border: Border.all(color: Colors.green.withValues(alpha: 0.35)),
           ),
           child: Column(children: [
             Container(
-              width: 76, height: 76,
+              width: 76,
+              height: 76,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.green.withValues(alpha: 0.13),
                 border: Border.all(
-                    color: Colors.green.withValues(alpha: 0.3),
-                    width: 2),
+                    color: Colors.green.withValues(alpha: 0.3), width: 2),
               ),
               child: const Icon(Icons.check_rounded,
                   color: Colors.green, size: 44),
@@ -1409,16 +1387,15 @@ class _SuccessCard extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 28, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
                 elevation: 0,
               ),
               child: const Text('العودة للرئيسية',
                   style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontWeight: FontWeight.w800)),
+                      fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
             ),
           ]),
         ),
@@ -1444,12 +1421,13 @@ class _PendingRequestCard extends StatelessWidget {
             end: Alignment.bottomCenter,
           ),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+          border:
+              Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
         ),
         child: Row(children: [
           Container(
-            width: 48, height: 48,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
@@ -1526,8 +1504,7 @@ class _FormField extends StatelessWidget {
       keyboardType: type,
       maxLines: maxLines,
       style: TextStyle(
-          fontFamily: 'Cairo',
-          color: isDark ? Colors.white : Colors.black87),
+          fontFamily: 'Cairo', color: isDark ? Colors.white : Colors.black87),
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(
@@ -1552,8 +1529,8 @@ class _FormField extends StatelessWidget {
                     : Colors.black.withValues(alpha: 0.08))),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(13),
-            borderSide: const BorderSide(
-                color: AppTheme.primaryColor, width: 1.5)),
+            borderSide:
+                const BorderSide(color: AppTheme.primaryColor, width: 1.5)),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       ),

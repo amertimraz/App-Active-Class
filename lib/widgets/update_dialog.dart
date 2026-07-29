@@ -160,10 +160,19 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
   }
 
   final progress = ValueNotifier<double>(0);
+  final cancelToken = CancelToken();
+  var cancelled = false;
+
   showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => _DownloadProgressDialog(progress: progress),
+    builder: (_) => _DownloadProgressDialog(
+      progress: progress,
+      onCancel: () {
+        cancelled = true;
+        cancelToken.cancel();
+      },
+    ),
   );
   // اضمن إن الحوار اتبنى قبل ما نبدأ التحميل
   await Future.delayed(Duration.zero);
@@ -171,9 +180,17 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
   try {
     final dir = await getTemporaryDirectory();
     final path = '${dir.path}/active_class_${info.version}.apk';
-    await Dio().download(
+    // مهلات صريحة عشان لو الاتصال توقّف فجأة (شبكة ضعيفة/انقطعت)، التحميل
+    // يفشل برسالة واضحة بدل ما يفضل الحوار عالق للأبد بدون أي طريقة
+    // للخروج منه (وده كان بيضطر المعلم يقفل التطبيق بالقوة).
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 20),
+    ));
+    await dio.download(
       info.apkUrl!,
       path,
+      cancelToken: cancelToken,
       onReceiveProgress: (received, total) {
         if (total > 0) progress.value = received / total;
       },
@@ -187,13 +204,17 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
     }
   } catch (_) {
     if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
-    ToastHelper.error('فشل تحميل التحديث — تحقق من الاتصال بالإنترنت');
+    if (!cancelled) {
+      ToastHelper.error('فشل تحميل التحديث — تحقق من الاتصال بالإنترنت');
+    }
   }
 }
 
 class _DownloadProgressDialog extends StatelessWidget {
   final ValueNotifier<double> progress;
-  const _DownloadProgressDialog({required this.progress});
+  final VoidCallback onCancel;
+  const _DownloadProgressDialog(
+      {required this.progress, required this.onCancel});
 
   @override
   Widget build(BuildContext context) {
@@ -243,6 +264,13 @@ class _DownloadProgressDialog extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: onCancel,
+                child: Text('إلغاء',
+                    style: TextStyle(
+                        fontFamily: 'Cairo', color: Colors.grey.shade600)),
               ),
             ],
           ),

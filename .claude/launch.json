@@ -24,6 +24,12 @@
       "runtimeExecutable": "flutter",
       "runtimeArgs": ["run", "-d", "edge", "--web-port", "5001"],
       "port": 5001
+    },
+    {
+      "name": "Admin Panel – Chrome (web)",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/d", "/c", "cd /d C:\\repo\\active_class_admin && flutter run -d chrome --web-port 5055"],
+      "port": 5055
     }
   ]
 }
