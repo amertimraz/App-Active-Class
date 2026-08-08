@@ -46,6 +46,9 @@ dependencies:
   media_store_plus: ^0.1.3
   image_picker: ^1.0.7
 
+  # Pick guardian phone number from device contacts
+  flutter_contacts: ^1.1.9+2
+
   # Backup & Share
   share_plus: ^10.0.0
   file_picker: ^8.1.2

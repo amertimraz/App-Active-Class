@@ -4,6 +4,8 @@ import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/contact_picker_service.dart';
+import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
@@ -504,11 +506,32 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             _Label('رقم ولي الأمر'),
                             const SizedBox(height: 6),
-                            CustomTextField(
-                              controller: _phoneCtrl,
-                              label: '05xxxxxxxx',
-                              keyboardType: TextInputType.phone,
-                            ),
+                            Row(children: [
+                              Expanded(
+                                child: CustomTextField(
+                                  controller: _phoneCtrl,
+                                  label: '01xxxxxxxxx',
+                                  keyboardType: TextInputType.phone,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: primary.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(BORDER_RADIUS_NORMAL),
+                                ),
+                                child: IconButton(
+                                  tooltip: 'اختيار من جهات الاتصال',
+                                  icon: Icon(Icons.contacts_rounded, color: primary),
+                                  onPressed: () async {
+                                    final phone = await ContactPickerService.pickPhoneNumber();
+                                    if (phone != null) {
+                                      setState(() => _phoneCtrl.text = phone);
+                                    }
+                                  },
+                                ),
+                              ),
+                            ]),
                           ])),
                         ]),
 

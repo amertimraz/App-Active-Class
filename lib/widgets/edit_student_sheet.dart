@@ -5,7 +5,9 @@ import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/contact_picker_service.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
+import 'package:active_class/config/constants.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
 
 /// يفتح bottom sheet لتعديل بيانات طالب.
@@ -364,6 +366,23 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                       controller: _phoneCtrl,
                       label: 'ولي الأمر',
                       keyboardType: TextInputType.phone)),
+              const SizedBox(width: 6),
+              Container(
+                decoration: BoxDecoration(
+                  color: widget.accentColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(BORDER_RADIUS_NORMAL),
+                ),
+                child: IconButton(
+                  tooltip: 'اختيار من جهات الاتصال',
+                  icon: Icon(Icons.contacts_rounded, color: widget.accentColor),
+                  onPressed: () async {
+                    final phone = await ContactPickerService.pickPhoneNumber();
+                    if (phone != null) {
+                      setState(() => _phoneCtrl.text = phone);
+                    }
+                  },
+                ),
+              ),
             ]),
             const SizedBox(height: 12),
 
