@@ -687,10 +687,30 @@ class SettingsPage extends StatelessWidget {
           iconColor: const Color(0xFFF59E0B),
           title: 'المساعدة والدعم',
           subtitle: 'تواصل معنا',
-          onTap: () => ToastHelper.info('قريباً — قسم المساعدة تحت التطوير'),
+          onTap: () => _openSupportWhatsApp(),
         ),
       ],
     );
+  }
+
+  Future<void> _openSupportWhatsApp() async {
+    const supportPhone = '201096066818';
+    final settings = Get.find<SettingsController>();
+    final teacherName = settings.teacherFullName.value.trim();
+
+    final message = StringBuffer()
+      ..writeln('مرحبًا، أنا مدرس بستخدم تطبيق Active Class وعايز مساعدة/دعم فني.');
+    if (teacherName.isNotEmpty) {
+      message.writeln('الاسم: $teacherName');
+    }
+
+    final uri = Uri.parse(
+        'https://wa.me/$supportPhone?text=${Uri.encodeComponent(message.toString())}');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      ToastHelper.error('تعذر فتح واتساب');
+    }
   }
 
   // ─── Tile Builders ────────────────────────────────────────────────────────
