@@ -110,6 +110,8 @@ class SettingsPage extends StatelessWidget {
                         title: 'العملة ورمز الدولة',
                         icon: Icons.language_rounded,
                         color: const Color(0xFF10B981),
+                        collapsible: true,
+                        initiallyExpanded: false,
                         children: [
                           Obx(() {
                             final items = SettingsController.supported;
@@ -198,6 +200,8 @@ class SettingsPage extends StatelessWidget {
                         title: 'الواتساب',
                         icon: Icons.chat_rounded,
                         color: const Color(0xFF25D366),
+                        collapsible: true,
+                        initiallyExpanded: false,
                         children: [
                           _buildNavTile(
                             context,
@@ -277,6 +281,8 @@ class SettingsPage extends StatelessWidget {
                         title: 'النسخ الاحتياطي',
                         icon: Icons.storage_rounded,
                         color: const Color(0xFF4F46E5),
+                        collapsible: true,
+                        initiallyExpanded: false,
                         children: [
                           // ── حفظ تلقائي ─────────────────────────────
                           Obx(() {
@@ -409,59 +415,82 @@ class SettingsPage extends StatelessWidget {
     required IconData icon,
     required Color color,
     required List<Widget> children,
+    bool collapsible = false,
+    bool initiallyExpanded = true,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final header = Row(
       children: [
-        Padding(
-          padding: const EdgeInsets.only(right: 4, bottom: 8),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, size: 16, color: color),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: isDark ? Colors.white70 : const Color(0xFF374151),
-                ),
-              ),
-            ],
-          ),
-        ),
         Container(
+          padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: isDark
-                ? const Color(0xFF131D31).withValues(alpha: 0.95)
-                : Colors.white.withValues(alpha: 0.96),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.white.withValues(alpha: 0.9),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.18)
-                    : const Color(0xFFD8E0F0).withValues(alpha: 0.45),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
           ),
-          child: Column(children: children),
+          child: Icon(icon, size: 16, color: color),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: TextStyle(
+            fontFamily: 'Cairo',
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+            color: isDark ? Colors.white70 : const Color(0xFF374151),
+          ),
         ),
       ],
+    );
+
+    final card = Container(
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0xFF131D31).withValues(alpha: 0.95)
+            : Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.06)
+              : Colors.white.withValues(alpha: 0.9),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.18)
+                : const Color(0xFFD8E0F0).withValues(alpha: 0.45),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(children: children),
+    );
+
+    if (!collapsible) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 4, bottom: 8),
+            child: header,
+          ),
+          card,
+        ],
+      );
+    }
+
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        initiallyExpanded: initiallyExpanded,
+        tilePadding: const EdgeInsets.only(right: 4),
+        childrenPadding: EdgeInsets.zero,
+        shape: const Border(),
+        collapsedShape: const Border(),
+        iconColor: color,
+        collapsedIconColor: isDark ? Colors.white38 : const Color(0xFF9CA3AF),
+        title: header,
+        children: [card],
+      ),
     );
   }
 
@@ -655,6 +684,8 @@ class SettingsPage extends StatelessWidget {
       title: 'عن التطبيق',
       icon: Icons.info_rounded,
       color: const Color(0xFF64748B),
+      collapsible: true,
+      initiallyExpanded: false,
       children: [
         FutureBuilder<PackageInfo>(
           future: PackageInfo.fromPlatform(),
