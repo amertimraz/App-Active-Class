@@ -283,10 +283,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             physics: const NeverScrollableScrollPhysics(),
             itemCount: _menuEntries.length,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 1.08,
+              crossAxisCount: 3,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 0.92,
             ),
             itemBuilder: (context, index) {
               final item = _menuEntries[index];
@@ -1809,12 +1809,12 @@ class _MenuGridItem extends StatelessWidget {
         borderRadius: BorderRadius.circular(26),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+          padding: const EdgeInsets.fromLTRB(8, 12, 8, 10),
           decoration: BoxDecoration(
             color: isDark
                 ? const Color(0xFF131D31).withValues(alpha: 0.94)
                 : Colors.white.withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: isDark
                   ? Colors.white.withValues(alpha: 0.06)
@@ -1825,8 +1825,8 @@ class _MenuGridItem extends StatelessWidget {
                 color: isDark
                     ? Colors.black.withValues(alpha: 0.22)
                     : color.withValues(alpha: 0.12),
-                blurRadius: 28,
-                offset: const Offset(0, 16),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
               ),
             ],
           ),
@@ -1834,15 +1834,15 @@ class _MenuGridItem extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 56,
-                height: 56,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: color, size: 26),
+                child: Icon(icon, color: color, size: 21),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 label,
                 textAlign: TextAlign.center,
@@ -1850,7 +1850,7 @@ class _MenuGridItem extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontFamily: 'Cairo',
-                  fontSize: 15,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w800,
                   color: isDark ? Colors.white : const Color(0xFF101828),
                   height: 1.1,
