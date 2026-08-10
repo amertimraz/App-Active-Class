@@ -459,6 +459,85 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
     }
   }
 
+  // ── منتقي اللون (منبثق) ─────────────────────────────────────
+  Future<void> _pickColor() async {
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PickerSheet(
+        title: 'اختر لون المجموعة',
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: _colorOptions.map((c) {
+            final selected = _selectedColor == c;
+            return GestureDetector(
+              onTap: () => Navigator.of(context).pop(c),
+              child: Container(
+                width: 44, height: 44,
+                decoration: BoxDecoration(
+                  color: Color(c),
+                  shape: BoxShape.circle,
+                  border: selected
+                      ? Border.all(color: Colors.white, width: 2.5)
+                      : null,
+                  boxShadow: selected
+                      ? [BoxShadow(
+                          color: Color(c).withValues(alpha: 0.5),
+                          blurRadius: 8, spreadRadius: 1)]
+                      : null,
+                ),
+                child: selected
+                    ? const Icon(Icons.check_rounded,
+                        color: Colors.white, size: 20)
+                    : null,
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+    if (picked != null) setState(() => _selectedColor = picked);
+  }
+
+  // ── منتقي الأيقونة (منبثق) ──────────────────────────────────
+  Future<void> _pickIcon() async {
+    final primary = Color(_selectedColor);
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PickerSheet(
+        title: 'اختر أيقونة المجموعة',
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: _iconOptions.entries.map((e) {
+            final selected = _selectedIcon == e.key;
+            return GestureDetector(
+              onTap: () => Navigator.of(context).pop(e.key),
+              child: Container(
+                width: 52, height: 52,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? primary.withValues(alpha: 0.15)
+                      : Colors.grey.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: selected ? primary : Colors.grey.withValues(alpha: 0.2),
+                    width: selected ? 1.5 : 1,
+                  ),
+                ),
+                child: Icon(e.value,
+                    color: selected ? primary : Colors.grey.shade500, size: 24),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+    if (picked != null) setState(() => _selectedIcon = picked);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -584,73 +663,42 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
                   ),
                   const SizedBox(height: 20),
 
-                  // اختيار اللون
-                  _FormLabel('لون المجموعة'),
+                  // مظهر المجموعة — لون وأيقونة (معاينة مدمجة، تفتح
+                  // منتقي منبثق بدل ما ياخدوا مساحة تابتة في الفورم)
+                  _FormLabel('مظهر المجموعة'),
                   const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: _colorOptions.map((c) {
-                      final selected = _selectedColor == c;
-                      return GestureDetector(
-                        onTap: () => setState(() => _selectedColor = c),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          width: 36, height: 36,
+                  Row(
+                    children: [
+                      _AppearancePreviewTile(
+                        label: 'اللون',
+                        onTap: _pickColor,
+                        child: Container(
+                          width: 34, height: 34,
                           decoration: BoxDecoration(
-                            color: Color(c),
+                            color: primary,
                             shape: BoxShape.circle,
-                            border: selected
-                                ? Border.all(
-                                    color: Colors.white, width: 2.5)
-                                : null,
-                            boxShadow: selected
-                                ? [BoxShadow(
-                                    color: Color(c).withValues(alpha: 0.5),
-                                    blurRadius: 8, spreadRadius: 1)]
-                                : null,
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: [BoxShadow(
+                                color: primary.withValues(alpha: 0.4),
+                                blurRadius: 6)],
                           ),
-                          child: selected
-                              ? const Icon(Icons.check_rounded,
-                                  color: Colors.white, size: 18)
-                              : null,
                         ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // اختيار الأيقونة
-                  _FormLabel('أيقونة المجموعة'),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: _iconOptions.entries.map((e) {
-                      final selected = _selectedIcon == e.key;
-                      return GestureDetector(
-                        onTap: () => setState(() => _selectedIcon = e.key),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          width: 48, height: 48,
+                      ),
+                      const SizedBox(width: 12),
+                      _AppearancePreviewTile(
+                        label: 'الأيقونة',
+                        onTap: _pickIcon,
+                        child: Container(
+                          width: 34, height: 34,
                           decoration: BoxDecoration(
-                            color: selected
-                                ? primary.withValues(alpha: 0.15)
-                                : Colors.grey.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: selected
-                                  ? primary
-                                  : Colors.grey.withValues(alpha: 0.2),
-                              width: selected ? 1.5 : 1,
-                            ),
+                            color: primary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          child: Icon(e.value,
-                              color: selected ? primary : Colors.grey.shade500,
-                              size: 22),
+                          child: Icon(_iconOptions[_selectedIcon]!,
+                              color: primary, size: 18),
                         ),
-                      );
-                    }).toList(),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 20),
 
@@ -705,6 +753,86 @@ class _FormLabel extends StatelessWidget {
     return Text(
       text,
       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+    );
+  }
+}
+
+/// معاينة مدمجة (لون/أيقونة) بتفتح منتقي منبثق بدل ما تاخد مساحة تابتة
+/// في الفورم — الهدف تقصير طول شيت إضافة/تعديل المجموعة.
+class _AppearancePreviewTile extends StatelessWidget {
+  final String label;
+  final Widget child;
+  final VoidCallback onTap;
+  const _AppearancePreviewTile({
+    required this.label,
+    required this.child,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.grey.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            child,
+            const SizedBox(width: 8),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white70 : Colors.grey.shade700)),
+            const SizedBox(width: 4),
+            Icon(Icons.unfold_more_rounded,
+                size: 16, color: Colors.grey.shade400),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// حاوية موحّدة لمنتقيات اللون/الأيقونة المنبثقة.
+class _PickerSheet extends StatelessWidget {
+  final String title;
+  final Widget child;
+  const _PickerSheet({required this.title, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1F2E) : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 16),
+            child,
+          ],
+        ),
+      ),
     );
   }
 }
