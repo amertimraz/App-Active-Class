@@ -47,6 +47,18 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    // الكاميرا لازم توقف لما نبعد عن تاب "مسح QR"، وإلا بتفضل شغالة
+    // في الخلفية وممكن تمسك كود عشوائي أثناء البحث اليدوي وتعمل
+    // تعارض (race) مع اختيار الطالب يدويًا عن طريق قفل isProcessing
+    // بتاع QRController، فبيانات الطالب (الشهور) متظهرش صح.
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) return;
+      if (_tabController.index == 0) {
+        scannerController.start();
+      } else {
+        scannerController.stop();
+      }
+    });
     WidgetsBinding.instance.addObserver(this);
     scannerController = MobileScannerController(autoStart: false);
     controller = Get.isRegistered<QRController>()
