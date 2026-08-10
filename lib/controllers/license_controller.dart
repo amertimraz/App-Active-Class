@@ -319,7 +319,8 @@ class LicenseController extends GetxController {
       final data = doc.data()!;
       final status = data['status'] as String? ?? 'active';
       final planStr = data['plan'] as String? ?? 'basic';
-      final expiresAt = (data['expiresAt'] as Timestamp?)?.toDate();
+      final durationDays = (data['durationDays'] as num?)?.toInt();
+      DateTime? effectiveExpiresAt = (data['expiresAt'] as Timestamp?)?.toDate();
       final boundDev = data['deviceId'] as String?;
 
       // الجهاز مربوط بجهاز آخر
@@ -329,13 +330,21 @@ class LicenseController extends GetxController {
         return;
       }
 
-      // ربط الجهاز إذا لم يكن مرتبطاً
+      // ربط الجهاز إذا لم يكن مرتبطاً — أول تفعيل فعلي للكود.
+      // العداد يبدأ من هنا بالظبط (مش من وقت إنشاء الكود في لوحة
+      // الأدمن)، عشان المدرس ياخد مدة اشتراكه كاملة زي ما هي
+      // (durationDays) بغض النظر عن تأخير التفعيل.
       if (boundDev == null) {
         try {
-          await _db.collection('licenses').doc(code).update({
+          final updateData = <String, dynamic>{
             'deviceId': deviceId.value,
             'activatedAt': Timestamp.now(),
-          });
+          };
+          if (durationDays != null && effectiveExpiresAt == null) {
+            effectiveExpiresAt = DateTime.now().add(Duration(days: durationDays));
+            updateData['expiresAt'] = Timestamp.fromDate(effectiveExpiresAt);
+          }
+          await _db.collection('licenses').doc(code).update(updateData);
         } catch (_) {}
       }
 
@@ -346,10 +355,11 @@ class LicenseController extends GetxController {
         return;
       }
 
-      if (expiresAt != null && expiresAt.isBefore(DateTime.now())) {
+      if (effectiveExpiresAt != null &&
+          effectiveExpiresAt.isBefore(DateTime.now())) {
         plan.value = _parsePlan(planStr);
         licenseCode.value = code;
-        this.expiresAt.value = expiresAt;
+        expiresAt.value = effectiveExpiresAt;
         state.value = LicenseState.expired;
         return;
       }
@@ -357,7 +367,7 @@ class LicenseController extends GetxController {
       // ✅ ترخيص سليم
       plan.value = _parsePlan(planStr);
       licenseCode.value = code;
-      this.expiresAt.value = expiresAt; // null = مدى الحياة
+      expiresAt.value = effectiveExpiresAt; // null = مدى الحياة
       state.value = LicenseState.active;
       await prefs.setString(_kPlan, planStr);
 
