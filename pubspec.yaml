@@ -72,6 +72,8 @@ dependencies:
   device_info_plus: ^10.0.0
   uuid: ^4.5.0
   package_info_plus: ^8.0.0
+  # In-app update prompts for Play Store installs (Google's official API)
+  in_app_update: ^4.2.2
   open_filex: ^4.5.0
 
 dev_dependencies:

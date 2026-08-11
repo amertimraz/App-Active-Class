@@ -12,6 +12,7 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/add_student_sheet.dart';
 import 'package:active_class/widgets/update_dialog.dart';
+import 'package:active_class/services/in_app_update_service.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -37,7 +38,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // التطبيق ولا يظهر أي حاجة لو مفيش تحديث أو لو الفحص فشل.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) checkAndShowUpdateDialog(context);
+        if (!mounted) return;
+        checkAndShowUpdateDialog(context);
+        InAppUpdateService.checkAndPrompt(context);
       });
     });
   }
