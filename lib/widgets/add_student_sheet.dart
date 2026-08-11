@@ -255,12 +255,15 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
 
     widget.onAdded?.call();
 
-    // reset للإضافة التالية
+    // reset للإضافة التالية — بنسيب تاريخ "بداية الحضور" زي ما هو
+    // عمدًا (مش بيترجع لتاريخ النهاردة)، عشان لو المدرس بيسجّل دفعة
+    // طلاب حضروا يوم معيّن، يفضل نفس التاريخ لكل الطلاب اللي بيضيفهم
+    // ورا بعض من غير ما يعيد اختياره كل مرة. بيرجع لتاريخ النهاردة
+    // تلقائي أول ما الشيت يتقفل ويتفتح تاني.
     _nameCtrl.clear();
     _phoneCtrl.clear();
     _sibTotalCtrl.clear();
     _exemptCustomCtrl.clear();
-    _attendanceStart = DateTime.now();
     _birthDate = null;
     _sibling = null;
     _isExempt = false;
