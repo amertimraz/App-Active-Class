@@ -737,9 +737,9 @@ class SettingsPage extends StatelessWidget {
 
     final uri = Uri.parse(
         'https://wa.me/$supportPhone?text=${Uri.encodeComponent(message.toString())}');
-    if (await canLaunchUrl(uri)) {
+    try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
+    } catch (_) {
       ToastHelper.error('تعذر فتح واتساب');
     }
   }

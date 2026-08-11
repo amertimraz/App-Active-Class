@@ -20,14 +20,17 @@ Future<void> showAddStudentSheet(
   Group? preselectedGroup,
   VoidCallback? onAdded,
 }) {
-  return showModalBottomSheet(
+  return showDialog(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => _AddStudentSheet(
-      controller: controller,
-      preselectedGroup: preselectedGroup,
-      onAdded: onAdded,
+    barrierDismissible: true,
+    builder: (_) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+      child: _AddStudentSheet(
+        controller: controller,
+        preselectedGroup: preselectedGroup,
+        onAdded: onAdded,
+      ),
     ),
   );
 }
@@ -303,28 +306,18 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
     final primary = _primary;
     final hasPreselectedGroup = widget.preselectedGroup != null;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF131D31) : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
-      child: DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.88,
-        maxChildSize: 0.97,
-        minChildSize: 0.5,
-        builder: (_, sc) => Column(
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF131D31) : Colors.white,
+          borderRadius: BorderRadius.circular(28),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle
-            const SizedBox(height: 10),
-            Center(child: Container(
-              width: 40, height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade400,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            )),
-
             // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 4, 0),
@@ -365,7 +358,6 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
               child: _loadingGroups
                   ? const Center(child: CircularProgressIndicator())
                   : ListView(
-                      controller: sc,
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                       children: [
                         // ── كود تلقائي ──────────────────────────────────────

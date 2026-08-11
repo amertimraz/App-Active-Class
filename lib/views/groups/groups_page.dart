@@ -273,19 +273,22 @@ class _GroupsPageState extends State<GroupsPage> {
   }
 
   void _showGroupFormDialog(BuildContext context, {Group? group}) {
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _GroupFormSheet(
-        group: group,
-        existingGroups: controller.groups,
-        onSave: (newGroup) => group == null
-            ? controller.addGroup(newGroup)
-            : controller.updateGroup(newGroup),
-        onSaved: (name) {
-          ToastHelper.success('تم حفظ "$name"', title: 'تم');
-        },
+      barrierDismissible: true,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+        child: _GroupFormSheet(
+          group: group,
+          existingGroups: controller.groups,
+          onSave: (newGroup) => group == null
+              ? controller.addGroup(newGroup)
+              : controller.updateGroup(newGroup),
+          onSaved: (name) {
+            ToastHelper.success('تم حفظ "$name"', title: 'تم');
+          },
+        ),
       ),
     );
   }
@@ -544,29 +547,18 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
     final primary = Color(_selectedColor);
     final isEdit = widget.group != null;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF131D31) : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
-      child: DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.92,
-        maxChildSize: 0.97,
-        builder: (_, sc) => Column(
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF131D31) : Colors.white,
+          borderRadius: BorderRadius.circular(28),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // ── Handle ───────────────────────────────────────────
-            const SizedBox(height: 10),
-            Center(
-              child: Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade400,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-
             // ── Header مع أيقونة المجموعة ────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -612,7 +604,6 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
             // ── Form ─────────────────────────────────────────────
             Expanded(
               child: ListView(
-                controller: sc,
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                 children: [
                   // اسم المجموعة
