@@ -757,13 +757,13 @@ class _ManualTab extends StatelessWidget {
             ]),
           ),
           Expanded(
-            child: Obx(() => _AttendancePanel(
-                  student:    manualStudent!,
-                  groupCtrl:  groupCtrl,
-                  attCtrl:    attCtrl,
-                  onConfirm:  () => onConfirm(manualStudent!),
-                  onClear:    onBack,
-                )),
+            child: _AttendancePanel(
+              student:    manualStudent!,
+              groupCtrl:  groupCtrl,
+              attCtrl:    attCtrl,
+              onConfirm:  () => onConfirm(manualStudent!),
+              onClear:    onBack,
+            ),
           ),
         ]),
       );

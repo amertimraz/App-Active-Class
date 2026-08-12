@@ -599,15 +599,15 @@ class _ManualTab extends StatelessWidget {
                     onTap: onShowLog)
                 : const SizedBox.shrink()),
             Expanded(
-              child: Obx(() => _PaymentPanel(
-                    student: manualStudent!,
-                    controller: controller,
-                    db: db,
-                    onConfirm: () => onConfirm(manualStudent!),
-                    onOverride: onOverride,
-                    onClear: onBack,
-                    showBackButton: true,
-                  )),
+              child: _PaymentPanel(
+                student: manualStudent!,
+                controller: controller,
+                db: db,
+                onConfirm: () => onConfirm(manualStudent!),
+                onOverride: onOverride,
+                onClear: onBack,
+                showBackButton: true,
+              ),
             ),
           ],
         ),
