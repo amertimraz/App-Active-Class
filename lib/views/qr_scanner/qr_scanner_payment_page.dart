@@ -54,9 +54,9 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) return;
       if (_tabController.index == 0) {
-        scannerController.start();
+        _safeStartScanner();
       } else {
-        scannerController.stop();
+        _safeStopScanner();
       }
     });
     WidgetsBinding.instance.addObserver(this);
@@ -66,7 +66,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
         : Get.put(QRController());
     controller.mode.value = QRMode.payment;
     _session = Get.find<SessionLogController>();
-    WidgetsBinding.instance.addPostFrameCallback((_) => scannerController.start());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _safeStartScanner());
   }
 
   @override
@@ -78,10 +78,27 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
     super.dispose();
   }
 
+  // ── تشغيل/إيقاف الكاميرا بأمان ─────────────────────────────────
+  // لما start()/stop() يتنادوا فوق بعض (مثلاً lifecycle resume بيحصل
+  // في نفس لحظة تبديل التاب) بيرمي MobileScannerController استثناء
+  // "still initializing" غير ملتقط، وده كان بيكسر الشاشة كلها. بنلف
+  // النداءات دي عشان أي تعارض زمني يتجاهل بهدوء بدل ما يكسر الواجهة.
+  Future<void> _safeStartScanner() async {
+    try {
+      await scannerController.start();
+    } catch (_) {}
+  }
+
+  Future<void> _safeStopScanner() async {
+    try {
+      await scannerController.stop();
+    } catch (_) {}
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) scannerController.stop();
-    if (state == AppLifecycleState.resumed) scannerController.start();
+    if (state == AppLifecycleState.paused) _safeStopScanner();
+    if (state == AppLifecycleState.resumed) _safeStartScanner();
   }
 
   // ── Search ───────────────────────────────────────────────────
@@ -106,13 +123,13 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
         now.difference(_lastScanAt!).inMilliseconds < 1500) return;
     _lastScan = qr;
     _lastScanAt = now;
-    await scannerController.stop();
+    await _safeStopScanner();
     await controller.handleScan(qr);
     if (!mounted) return;
     if (controller.scannedStudent.value == null) {
       // كود مش موجود
       HapticFeedback.vibrate();
-      scannerController.start();
+      _safeStartScanner();
     } else {
       HapticFeedback.selectionClick();
     }
@@ -165,7 +182,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
 
       // Restart camera
       await Future.delayed(const Duration(milliseconds: 300));
-      if (mounted) scannerController.start();
+      if (mounted) _safeStartScanner();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -372,7 +389,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
                         }
                       },
                       errorBuilder: (context, _) =>
-                          _CameraError(onRetry: () => scannerController.start()),
+                          _CameraError(onRetry: () => _safeStartScanner()),
                     ),
                     IgnorePointer(
                       child: CustomPaint(
@@ -428,7 +445,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
                         _lastScan = null;
                         _lastScanAt = null;
                         Future.delayed(const Duration(milliseconds: 300),
-                            () { if (mounted) scannerController.start(); });
+                            () { if (mounted) _safeStartScanner(); });
                       },
                     );
                   }
@@ -440,7 +457,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
                           onOverride: _showOverrideDialog,
                           onClear: () {
                             controller.scannedStudent.value = null;
-                            scannerController.start();
+                            _safeStartScanner();
                           },
                         );
                 }),
