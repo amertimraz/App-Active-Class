@@ -522,7 +522,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                               tooltip: 'اختيار من جهات الاتصال',
                               icon: Icon(Icons.contacts_rounded, color: primary),
                               onPressed: () async {
-                                final phone = await ContactPickerService.pickPhoneNumber();
+                                final phone = await ContactPickerService.pickPhoneNumber(context);
                                 if (phone != null) {
                                   setState(() => _phoneCtrl.text = phone);
                                 }
