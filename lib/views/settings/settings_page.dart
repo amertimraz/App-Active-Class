@@ -761,8 +761,28 @@ class SettingsPage extends StatelessWidget {
           subtitle: 'تواصل معنا',
           onTap: () => _openSupportWhatsApp(),
         ),
+        _buildDivider(isDark),
+        _buildNavTile(
+          context,
+          isDark,
+          icon: Icons.privacy_tip_outlined,
+          iconColor: const Color(0xFF6366F1),
+          title: 'سياسة الخصوصية',
+          subtitle: 'كيف نتعامل مع بياناتك',
+          onTap: () => _openPrivacyPolicy(),
+        ),
       ],
     );
+  }
+
+  Future<void> _openPrivacyPolicy() async {
+    final uri = Uri.parse(
+        'https://amertimraz.github.io/App-Active-Class/privacy-policy.html');
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      ToastHelper.error('تعذر فتح صفحة سياسة الخصوصية');
+    }
   }
 
   Future<void> _openSupportWhatsApp() async {
