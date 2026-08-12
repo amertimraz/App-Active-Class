@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/payment_model.dart';
+import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -22,6 +23,11 @@ class QRController extends GetxController {
   final RxDouble totalAmount = 0.0.obs;
   final Rx<double?> overrideAmount = Rx<double?>(null);
   final RxString overrideNote = ''.obs;
+
+  // للمجموعات المسعّرة بالحصة — لازم بيانات المجموعة والحضور عشان
+  // نحسب المستحق الحقيقي بدل سعر ثابت شهري.
+  Group? _scannedGroup;
+  List<Attendance> _scannedAttendance = [];
 
   Future<void> handleScan(String code) async {
     if (isProcessing.value) return;
@@ -68,6 +74,11 @@ class QRController extends GetxController {
   }
 
   Future<void> _preparePayment(Student student) async {
+    _scannedGroup = await _dbService.getGroup(student.groupId);
+    _scannedAttendance = _scannedGroup != null && _scannedGroup!.isPerSession
+        ? await _dbService.getAttendanceByStudent(student.id!)
+        : [];
+
     final payments = await _dbService.getPaymentsByStudent(student.id!);
     final latest = payments.isNotEmpty ? payments.first : null;
     lastPayment.value = latest;
@@ -255,6 +266,22 @@ class QRController extends GetxController {
       return;
     }
     final price = s?.price ?? 0;
+
+    if (s != null && _scannedGroup != null && _scannedGroup!.isPerSession) {
+      double sum = 0;
+      for (final month in selectedMonths) {
+        final sessionsInMonth = _scannedAttendance
+            .where((a) =>
+                a.status == ATTENDANCE_PRESENT &&
+                a.date.year == month.year &&
+                a.date.month == month.month)
+            .length;
+        sum += price * sessionsInMonth;
+      }
+      totalAmount.value = sum;
+      return;
+    }
+
     totalAmount.value = price * selectedMonths.length;
   }
 
@@ -272,5 +299,7 @@ class QRController extends GetxController {
     totalAmount.value = 0;
     overrideAmount.value = null;
     overrideNote.value = '';
+    _scannedGroup = null;
+    _scannedAttendance = [];
   }
 }

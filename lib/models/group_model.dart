@@ -1,14 +1,23 @@
 ﻿// lib/models/group_model.dart
 
+/// نوع تسعير المجموعة — بيحدد معنى حقل [Group.price]:
+/// شهري = سعر الاشتراك الشهري الثابت.
+/// بالحصة = سعر الحصة الواحدة (المستحق بيتحسب من عدد الحصص المحضورة).
+class GroupPricingType {
+  static const monthly = 'monthly';
+  static const perSession = 'per_session';
+}
+
 class Group {
   final int? id;
   final String name;
   final String? code; // optional unique code
-  final double? price; // optional fee
+  final double? price; // شهري: سعر الاشتراك — بالحصة: سعر الحصة الواحدة
   final int? color; // ARGB int
   final String? icon; // icon name key
   final String? schedule; // optional text/json
   final DateTime? createdAt;
+  final String pricingType; // GroupPricingType.monthly / perSession
 
   Group({
     this.id,
@@ -19,7 +28,10 @@ class Group {
     this.icon,
     this.schedule,
     this.createdAt,
+    this.pricingType = GroupPricingType.monthly,
   });
+
+  bool get isPerSession => pricingType == GroupPricingType.perSession;
 
   Map<String, dynamic> toMap() {
     return {
@@ -31,6 +43,7 @@ class Group {
       'icon': icon,
       'schedule': schedule,
       'created_at': createdAt?.toIso8601String(),
+      'pricing_type': pricingType,
     };
   }
 
@@ -46,6 +59,8 @@ class Group {
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,
+      pricingType:
+          map['pricing_type'] as String? ?? GroupPricingType.monthly,
     );
   }
 
@@ -58,6 +73,7 @@ class Group {
     String? icon,
     String? schedule,
     DateTime? createdAt,
+    String? pricingType,
   }) {
     return Group(
       id: id ?? this.id,
@@ -68,10 +84,11 @@ class Group {
       icon: icon ?? this.icon,
       schedule: schedule ?? this.schedule,
       createdAt: createdAt ?? this.createdAt,
+      pricingType: pricingType ?? this.pricingType,
     );
   }
 
   @override
   String toString() =>
-      'Group(id: $id, name: $name, code: $code, price: $price, color: $color, icon: $icon, schedule: $schedule, createdAt: $createdAt)';
+      'Group(id: $id, name: $name, code: $code, price: $price, color: $color, icon: $icon, schedule: $schedule, createdAt: $createdAt, pricingType: $pricingType)';
 }

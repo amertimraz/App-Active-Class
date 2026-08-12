@@ -327,6 +327,7 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
 
   late String _selectedIcon;
   late int _selectedColor;
+  late String _pricingType;
   bool _saving = false;
 
   // Inline validation errors
@@ -373,6 +374,7 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
     _codeCtrl = TextEditingController(text: g?.code ?? '');
     _priceCtrl = TextEditingController(text: g?.price?.toString() ?? '');
     _scheduleCtrl = TextEditingController(text: g?.schedule ?? '');
+    _pricingType = g?.pricingType ?? GroupPricingType.monthly;
 
     // اختيار أيقونة ولون افتراضيين
     if (g?.icon != null && _iconOptions.containsKey(g!.icon)) {
@@ -452,6 +454,7 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
         icon: _selectedIcon,
         schedule: _scheduleCtrl.text.trim().isEmpty ? null : _scheduleCtrl.text.trim(),
         createdAt: widget.group?.createdAt,
+        pricingType: _pricingType,
       ));
       if (!mounted) return;
       if (success) {
@@ -620,6 +623,30 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
                   if (_nameError != null) _ErrorText(_nameError!),
                   const SizedBox(height: 16),
 
+                  // نوع التسعير — شهري أو بالحصة
+                  _FormLabel('نوع التسعير'),
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Expanded(
+                      child: _PricingTypeChip(
+                        label: 'شهري',
+                        selected: _pricingType == GroupPricingType.monthly,
+                        onTap: () => setState(
+                            () => _pricingType = GroupPricingType.monthly),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _PricingTypeChip(
+                        label: 'بالحصة',
+                        selected: _pricingType == GroupPricingType.perSession,
+                        onTap: () => setState(
+                            () => _pricingType = GroupPricingType.perSession),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 16),
+
                   // بادئة الكود والسعر في صف
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -643,7 +670,9 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _FormLabel('سعر الاشتراك *'),
+                            _FormLabel(_pricingType == GroupPricingType.perSession
+                                ? 'سعر الحصة الواحدة *'
+                                : 'سعر الاشتراك الشهري *'),
                             const SizedBox(height: 6),
                             CustomTextField(
                               controller: _priceCtrl,
@@ -748,6 +777,49 @@ class _FormLabel extends StatelessWidget {
     return Text(
       text,
       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+    );
+  }
+}
+
+class _PricingTypeChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _PricingTypeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).primaryColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected
+              ? primary.withValues(alpha: 0.12)
+              : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? primary : Colors.grey.withValues(alpha: 0.25),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+            color: selected ? primary : null,
+          ),
+        ),
+      ),
     );
   }
 }

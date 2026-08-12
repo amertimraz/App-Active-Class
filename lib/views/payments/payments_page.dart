@@ -6,6 +6,8 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
+import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/models/payment_model.dart' show Payment;
 import 'package:active_class/models/student_model.dart' show Student;
 import 'package:active_class/models/group_model.dart' show Group;
@@ -26,6 +28,10 @@ class _PaymentsPageState extends State<PaymentsPage> {
   final PaymentController controller = Get.put(PaymentController());
   final StudentController studentController = Get.put(StudentController());
   final GroupController groupController = Get.put(GroupController());
+  final AttendanceController attendanceController =
+      Get.isRegistered<AttendanceController>()
+          ? Get.find<AttendanceController>()
+          : Get.put(AttendanceController());
 
   late final TextEditingController _searchController;
 
@@ -35,6 +41,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
     controller.loadPayments();
     studentController.loadAllStudents();
     groupController.loadGroups();
+    attendanceController.loadAttendance();
     final now = DateTime.now();
     controller.selectedMonth.value ??= DateTime(now.year, now.month, 1);
     _searchController =
@@ -64,6 +71,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
               await controller.loadPayments();
               await studentController.loadAllStudents();
               await groupController.loadGroups();
+              await attendanceController.loadAttendance();
             },
           ),
         ],
@@ -113,7 +121,12 @@ class _PaymentsPageState extends State<PaymentsPage> {
           final rows = <_StudentMonthRow>[];
           for (final s in scopedStudents) {
             final paid = paidByStudent[s.id!] ?? 0.0;
-            final due = s.effectivePrice;
+            final due = PricingHelper.monthlyDue(
+              student: s,
+              group: groupById[s.groupId],
+              month: month,
+              allAttendance: attendanceController.attendance,
+            );
             final remaining =
                 (due - paid).clamp(0.0, double.infinity).toDouble();
             final status = due <= 0
@@ -383,7 +396,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                     studentController,
                                     preselectedStudentId: r.student.id,
                                     initialDate: safeDate,
-                                    defaultAmount: r.student.effectivePrice,
+                                    defaultAmount: r.due,
                                   );
                                 },
                                 onViewHistory: () => _showPaymentHistory(
@@ -659,11 +672,24 @@ class _PaymentsPageState extends State<PaymentsPage> {
       );
     }
 
+    final month = controller.selectedMonth.value ?? DateTime.now();
+    double? dueFor(Student? student) {
+      if (student == null) return null;
+      final group = groupController.groups
+          .firstWhereOrNull((g) => g.id == student.groupId);
+      return PricingHelper.monthlyDue(
+        student: student,
+        group: group,
+        month: month,
+        allAttendance: attendanceController.attendance,
+      );
+    }
+
     if (preselectedStudentId != null) {
       final student = studentController.students
           .firstWhereOrNull((s) => s.id == preselectedStudentId);
       openSheet(preselectedStudentId,
-          price: defaultAmount ?? student?.effectivePrice,
+          price: defaultAmount ?? dueFor(student),
           studentName: student?.name);
       return;
     }
@@ -678,8 +704,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
         final studentId = item['id'] as int;
         final student = studentController.students
             .firstWhereOrNull((s) => s.id == studentId);
-        openSheet(studentId,
-            price: student?.effectivePrice, studentName: student?.name);
+        openSheet(studentId, price: dueFor(student), studentName: student?.name);
       },
     );
   }

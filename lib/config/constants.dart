@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 10;
+const int DATABASE_VERSION = 11;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -82,6 +82,7 @@ const String COL_GROUP_COLOR = 'color'; // avatar color (int)
 const String COL_GROUP_ICON = 'icon'; // icon name
 const String COL_GROUP_SCHEDULE = 'schedule'; // optional text/json schedule
 const String COL_GROUP_CREATED_AT = 'created_at';
+const String COL_GROUP_PRICING_TYPE = 'pricing_type'; // monthly / per_session
 
 // Column Names - Students
 const String COL_STUDENT_ID = 'id';

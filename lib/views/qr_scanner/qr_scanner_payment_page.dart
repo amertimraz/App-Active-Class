@@ -1626,7 +1626,7 @@ class _ExemptPanel extends StatelessWidget {
                 border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
               ),
               child: Text(
-                'الرسوم الفعلية بعد الخصم: ${FormatHelper.formatCurrency(student.effectivePrice)} / شهر',
+                'السعر بعد الخصم: ${FormatHelper.formatCurrency(student.effectivePrice)}',
                 style: const TextStyle(
                   color: Colors.orange,
                   fontWeight: FontWeight.w600,

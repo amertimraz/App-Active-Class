@@ -65,7 +65,8 @@ class DatabaseService {
         $COL_GROUP_COLOR INTEGER,
         $COL_GROUP_ICON TEXT,
         $COL_GROUP_SCHEDULE TEXT,
-        $COL_GROUP_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP
+        $COL_GROUP_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
+        $COL_GROUP_PRICING_TYPE TEXT DEFAULT 'monthly'
       )
     ''');
 
@@ -268,6 +269,12 @@ class DatabaseService {
         await db.execute(
             'ALTER TABLE $TABLE_EXAM_GRADES ADD COLUMN $COL_GRADE_IS_ABSENT INTEGER NOT NULL DEFAULT 0');
       } catch (_) {} // قد يكون موجود لو التطبيق أُنشئ من الصفر بنسخة جديدة
+    }
+    if (oldVersion < 11) {
+      try {
+        await db.execute(
+            "ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_PRICING_TYPE TEXT DEFAULT 'monthly'");
+      } catch (_) {}
     }
   }
 
