@@ -57,6 +57,10 @@ class SettingsController extends GetxController {
   static const String _keyWaEnabled = 'wa_button_enabled';
   static const String _keyWaSendDay = 'wa_send_day';
 
+  // إخفاء ماسح QR — للمدرسين اللي مش بيطبعوا أكواد QR للطلاب
+  static const String _keyHideQrPayment = 'hide_qr_payment';
+  static const String _keyHideQrAttendance = 'hide_qr_attendance';
+
   // Teacher info keys
   static const String _keyTeacherFullName = 'teacher_full_name';
   static const String _keyTeacherAvatar = 'teacher_avatar_path';
@@ -73,6 +77,10 @@ class SettingsController extends GetxController {
   // زر إرسال الواتساب للمجموعة
   final RxBool whatsappEnabled = true.obs;   // إظهار/إخفاء الزر
   final RxInt  whatsappSendDay = 1.obs;      // اليوم الذي يظهر فيه الزر (1-28)
+
+  // إخفاء ماسح QR في شاشتي الدفع/الحضور، ويظهر بس البحث اليدوي
+  final RxBool hideQrInPayment = false.obs;
+  final RxBool hideQrInAttendance = false.obs;
 
   /// هل وصل اليوم المحدد للإرسال في الشهر الحالي؟
   bool get isWhatsappDayReached =>
@@ -103,6 +111,7 @@ class SettingsController extends GetxController {
     _loadUse24hFormat();
     _loadTeacherInfo();
     _loadWhatsappSettings();
+    _loadHideQrSettings();
   }
 
   Future<void> _loadWhatsappSettings() async {
@@ -110,6 +119,30 @@ class SettingsController extends GetxController {
       final prefs = await SharedPreferences.getInstance();
       whatsappEnabled.value = prefs.getBool(_keyWaEnabled) ?? true;
       whatsappSendDay.value = prefs.getInt(_keyWaSendDay) ?? 1;
+    } catch (_) {}
+  }
+
+  Future<void> _loadHideQrSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      hideQrInPayment.value = prefs.getBool(_keyHideQrPayment) ?? false;
+      hideQrInAttendance.value = prefs.getBool(_keyHideQrAttendance) ?? false;
+    } catch (_) {}
+  }
+
+  Future<void> setHideQrInPayment(bool v) async {
+    hideQrInPayment.value = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_keyHideQrPayment, v);
+    } catch (_) {}
+  }
+
+  Future<void> setHideQrInAttendance(bool v) async {
+    hideQrInAttendance.value = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_keyHideQrAttendance, v);
     } catch (_) {}
   }
 

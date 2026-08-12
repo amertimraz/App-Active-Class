@@ -274,6 +274,47 @@ class SettingsPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 14),
 
+                      // ── 5ب. ماسح QR ─────────────────────────────
+                      _buildSection(
+                        context,
+                        isDark,
+                        title: 'ماسح QR',
+                        icon: Icons.qr_code_scanner_rounded,
+                        color: const Color(0xFF0EA5E9),
+                        collapsible: true,
+                        initiallyExpanded: false,
+                        children: [
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.payments_rounded,
+                                iconColor: const Color(0xFF0EA5E9),
+                                title: 'إخفاء ماسح QR في الدفع',
+                                subtitle: settings.hideQrInPayment.value
+                                    ? 'شاشة "تسجيل دفع" هتفتح على البحث اليدوي مباشرة'
+                                    : 'مناسب لو مش بتطبع أكواد QR للطلاب',
+                                rxValue: settings.hideQrInPayment,
+                                onChanged: (v) async =>
+                                    await settings.setHideQrInPayment(v),
+                              )),
+                          _buildDivider(isDark),
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.event_available_rounded,
+                                iconColor: const Color(0xFF0EA5E9),
+                                title: 'إخفاء ماسح QR في الحضور',
+                                subtitle: settings.hideQrInAttendance.value
+                                    ? 'شاشة تسجيل الحضور هتفتح على البحث اليدوي مباشرة'
+                                    : 'مناسب لو مش بتطبع أكواد QR للطلاب',
+                                rxValue: settings.hideQrInAttendance,
+                                onChanged: (v) async =>
+                                    await settings.setHideQrInAttendance(v),
+                              )),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
                       // ── 6. النسخ الاحتياطي ───────────────────────
                       _buildSection(
                         context,

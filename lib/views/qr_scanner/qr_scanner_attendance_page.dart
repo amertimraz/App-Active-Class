@@ -11,6 +11,7 @@ import 'package:active_class/controllers/qr_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -43,11 +44,28 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
   Student? _manualStudent;
   String? _lastScan;
   DateTime? _lastScanAt;
+  bool _hideQr = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _hideQr = Get.isRegistered<SettingsController>() &&
+        Get.find<SettingsController>().hideQrInAttendance.value;
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: _hideQr ? 1 : 0,
+    );
+    // نفس منطق شاشة الدفع: نوقف الكاميرا لما نبعد عن تاب "مسح QR"
+    // عشان متفضلش شغالة في الخلفية وتتعارض مع البحث اليدوي.
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) return;
+      if (_tabController.index == 0 && !_hideQr) {
+        _safeStartScanner();
+      } else {
+        _safeStopScanner();
+      }
+    });
     WidgetsBinding.instance.addObserver(this);
     scannerController = MobileScannerController(autoStart: false);
     qrCtrl = Get.isRegistered<QRController>()
@@ -59,7 +77,7 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
       await groupCtrl.loadGroups();
       await attCtrl.loadAttendance();
       attCtrl.buildStudentMaps(stuCtrl.students);
-      scannerController.start();
+      if (!_hideQr) _safeStartScanner();
     });
   }
 
@@ -72,10 +90,23 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
     super.dispose();
   }
 
+  // ── تشغيل/إيقاف الكاميرا بأمان (نفس إصلاح شاشة الدفع) ───────────
+  Future<void> _safeStartScanner() async {
+    try {
+      await scannerController.start();
+    } catch (_) {}
+  }
+
+  Future<void> _safeStopScanner() async {
+    try {
+      await scannerController.stop();
+    } catch (_) {}
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused)  scannerController.stop();
-    if (state == AppLifecycleState.resumed) scannerController.start();
+    if (state == AppLifecycleState.paused) _safeStopScanner();
+    if (state == AppLifecycleState.resumed && !_hideQr) _safeStartScanner();
   }
 
   // ── Search ───────────────────────────────────────────────────────
@@ -100,13 +131,13 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
         now.difference(_lastScanAt!).inMilliseconds < 1500) return;
     _lastScan   = qr;
     _lastScanAt = now;
-    await scannerController.stop();
+    await _safeStopScanner();
     await qrCtrl.handleScan(qr);
     if (!mounted) return;
 
     if (qrCtrl.scannedStudent.value == null) {
       HapticFeedback.vibrate();
-      scannerController.start();
+      _safeStartScanner();
     } else {
       HapticFeedback.selectionClick();
     }
@@ -147,7 +178,7 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
     qrCtrl.scannedStudent.value = null;
     setState(() { _lastScan = null; _lastScanAt = null; });
     await Future.delayed(const Duration(milliseconds: 300));
-    if (mounted) scannerController.start();
+    if (mounted) _safeStartScanner();
 
     if (!mounted) return;
     final isPresent = targetStatus == ATTENDANCE_PRESENT;
@@ -247,19 +278,22 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
             },
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: const Color(0xFF10B981),
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white54,
-          tabs: const [
-            Tab(icon: Icon(Icons.qr_code_scanner_rounded), text: 'مسح QR'),
-            Tab(icon: Icon(Icons.person_search_rounded),   text: 'بحث يدوي'),
-          ],
-        ),
+        bottom: _hideQr
+            ? null
+            : TabBar(
+                controller: _tabController,
+                indicatorColor: const Color(0xFF10B981),
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white54,
+                tabs: const [
+                  Tab(icon: Icon(Icons.qr_code_scanner_rounded), text: 'مسح QR'),
+                  Tab(icon: Icon(Icons.person_search_rounded),   text: 'بحث يدوي'),
+                ],
+              ),
       ),
       body: TabBarView(
         controller: _tabController,
+        physics: _hideQr ? const NeverScrollableScrollPhysics() : null,
         children: [
           // ── QR Tab ─────────────────────────────────────────────
           Column(children: [
@@ -288,7 +322,7 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
                     }
                   },
                   errorBuilder: (_, __) => _CameraError(
-                    onRetry: () => scannerController.start(),
+                    onRetry: () => _safeStartScanner(),
                   ),
                 ),
                 IgnorePointer(
@@ -341,7 +375,7 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
                     _lastScan = null;
                     _lastScanAt = null;
                     Future.delayed(const Duration(milliseconds: 200),
-                        () { if (mounted) scannerController.start(); });
+                        () { if (mounted) _safeStartScanner(); });
                   },
                 );
               }),

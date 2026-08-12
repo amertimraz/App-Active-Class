@@ -11,6 +11,7 @@ import 'package:active_class/controllers/qr_controller.dart';
 import 'package:active_class/controllers/session_log_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
@@ -42,18 +43,25 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
   DateTime? _lastScanAt;
   final DatabaseService _db = DatabaseService();
   late final SessionLogController _session;
+  bool _hideQr = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _hideQr = Get.isRegistered<SettingsController>() &&
+        Get.find<SettingsController>().hideQrInPayment.value;
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: _hideQr ? 1 : 0,
+    );
     // الكاميرا لازم توقف لما نبعد عن تاب "مسح QR"، وإلا بتفضل شغالة
     // في الخلفية وممكن تمسك كود عشوائي أثناء البحث اليدوي وتعمل
     // تعارض (race) مع اختيار الطالب يدويًا عن طريق قفل isProcessing
     // بتاع QRController، فبيانات الطالب (الشهور) متظهرش صح.
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) return;
-      if (_tabController.index == 0) {
+      if (_tabController.index == 0 && !_hideQr) {
         _safeStartScanner();
       } else {
         _safeStopScanner();
@@ -66,7 +74,10 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
         : Get.put(QRController());
     controller.mode.value = QRMode.payment;
     _session = Get.find<SessionLogController>();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _safeStartScanner());
+    // لو ماسح QR مخفي من الإعدادات، متشغّلش الكاميرا خالص.
+    if (!_hideQr) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _safeStartScanner());
+    }
   }
 
   @override
@@ -98,7 +109,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) _safeStopScanner();
-    if (state == AppLifecycleState.resumed) _safeStartScanner();
+    if (state == AppLifecycleState.resumed && !_hideQr) _safeStartScanner();
   }
 
   // ── Search ───────────────────────────────────────────────────
@@ -350,19 +361,22 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
             onPressed: () => Get.to(() => const QrGalleryPage()),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppTheme.accentColor,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white54,
-          tabs: const [
-            Tab(icon: Icon(Icons.qr_code_scanner_rounded), text: 'مسح QR'),
-            Tab(icon: Icon(Icons.person_search_rounded), text: 'بحث يدوي'),
-          ],
-        ),
+        bottom: _hideQr
+            ? null
+            : TabBar(
+                controller: _tabController,
+                indicatorColor: AppTheme.accentColor,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white54,
+                tabs: const [
+                  Tab(icon: Icon(Icons.qr_code_scanner_rounded), text: 'مسح QR'),
+                  Tab(icon: Icon(Icons.person_search_rounded), text: 'بحث يدوي'),
+                ],
+              ),
       ),
       body: TabBarView(
         controller: _tabController,
+        physics: _hideQr ? const NeverScrollableScrollPhysics() : null,
         children: [
           // ── QR Tab ─────────────────────────────────────────
           Column(
