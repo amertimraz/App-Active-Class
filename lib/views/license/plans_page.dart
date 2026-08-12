@@ -400,7 +400,7 @@ class _TrialBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = isExpired ? const Color(0xFFEF4444) : const Color(0xFFF59E0B);
     final msg = isExpired
-        ? 'انتهت فترة التجربة — اشترك للاستمرار'
+        ? 'انتهت فترة التجربة — اطلب ترقية للاستمرار'
         : 'باقي لك $days ${days == 1 ? "يوم" : "أيام"} من التجربة المجانية';
     final progress = isExpired ? 0.0 : (days / total).clamp(0.0, 1.0);
 
@@ -769,8 +769,8 @@ class _TrustRow extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final items = [
       (Icons.flash_on_rounded, 'تفعيل فوري', const Color(0xFFF59E0B)),
-      (Icons.support_agent_rounded, 'دعم واتساب', const Color(0xFF10B981)),
-      (Icons.verified_user_rounded, 'دفع آمن', const Color(0xFF3B82F6)),
+      (Icons.support_agent_rounded, 'دعم مباشر', const Color(0xFF10B981)),
+      (Icons.verified_user_rounded, 'تفعيل موثوق', const Color(0xFF3B82F6)),
     ];
 
     return Row(
@@ -900,7 +900,7 @@ class _BottomCTABar extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('اشترك الآن',
+                      Text('اطلب الترقية',
                           style: TextStyle(
                               fontFamily: 'Cairo',
                               fontSize: 14,
@@ -1117,9 +1117,9 @@ class _RequestForm extends StatelessWidget {
                       maxLines: 3),
                   const SizedBox(height: 18),
 
-                  // طريقة الدفع
+                  // طريقة التحويل
                   _SectionLabel(
-                      label: 'طريقة الدفع', icon: Icons.payment_rounded),
+                      label: 'طريقة التحويل', icon: Icons.payment_rounded),
                   const SizedBox(height: 10),
                   Row(
                     children: ['نقدي', 'Vodafone Cash', 'InstaPay'].map((m) {
@@ -1172,9 +1172,9 @@ class _RequestForm extends StatelessWidget {
                   ),
                   const SizedBox(height: 18),
 
-                  // إيصال الدفع
+                  // إثبات التحويل
                   _SectionLabel(
-                      label: 'إيصال الدفع (اختياري)',
+                      label: 'إثبات التحويل (اختياري)',
                       icon: Icons.receipt_long_rounded),
                   const SizedBox(height: 10),
                   GestureDetector(
@@ -1202,7 +1202,7 @@ class _RequestForm extends StatelessWidget {
                                         .withValues(alpha: 0.7),
                                     size: 22),
                                 const SizedBox(width: 8),
-                                Text('ارفع صورة الإيصال',
+                                Text('ارفع صورة إثبات التحويل',
                                     style: TextStyle(
                                         fontFamily: 'Cairo',
                                         fontSize: 13,
