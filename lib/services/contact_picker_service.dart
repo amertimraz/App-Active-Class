@@ -2,18 +2,26 @@
 import 'package:flutter_contacts/flutter_contacts.dart';
 
 /// يفتح منتقي جهات الاتصال الأصلي لأندرويد ويرجّع رقم الهاتف المختار
-/// بصيغة محلية مصرية (01xxxxxxxxx). بيستخدم "External Pick" اللي
-/// نظام التشغيل نفسه بيتولاها، وده معناه إن التطبيق مش محتاج إذن
-/// قراءة جهات الاتصال خالص.
+/// بصيغة محلية مصرية (01xxxxxxxxx).
 class ContactPickerService {
   static Future<String?> pickPhoneNumber() async {
-    final picked = await FlutterContacts.openExternalPick();
-    if (picked == null) return null;
+    try {
+      final picked = await FlutterContacts.openExternalPick();
+      if (picked == null) return null;
 
-    final full = await FlutterContacts.getContact(picked.id, withProperties: true);
-    if (full == null || full.phones.isEmpty) return null;
+      // قراءة تفاصيل جهة الاتصال (الأرقام) محتاجة إذن قراءة جهات
+      // الاتصال حتى بعد اختيارها من المنتقي الخارجي — نطلبه هنا
+      // فقط، لحظة الاستخدام الفعلي.
+      final hasPermission = await FlutterContacts.requestPermission(readonly: true);
+      if (!hasPermission) return null;
 
-    return _normalize(full.phones.first.number);
+      final full = await FlutterContacts.getContact(picked.id, withProperties: true);
+      if (full == null || full.phones.isEmpty) return null;
+
+      return _normalize(full.phones.first.number);
+    } catch (_) {
+      return null;
+    }
   }
 
   static String _normalize(String raw) {

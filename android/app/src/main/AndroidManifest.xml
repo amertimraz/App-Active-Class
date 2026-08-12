@@ -3,11 +3,11 @@
     <!-- مطلوبة صراحة لفحص التحديثات عبر GitHub API (كانت متاحة ضمنيًا عبر
          دمج manifest مكتبات Firebase، لكن أوضح نصرّح بيها بنفسنا). -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- نستخدم منتقي جهات الاتصال الأصلي لأندرويد (external pick) فقط، وده
-         ما بيحتاجش إذن قراءة جهات الاتصال. نلغي الإذن اللي بتضيفه مكتبة
-         flutter_contacts تلقائيًا في الـ manifest بتاعتها عشان مانطلبش
-         صلاحية حساسة إحنا مش محتاجينها فعليًا. -->
-    <uses-permission android:name="android.permission.READ_CONTACTS" tools:node="remove"/>
+    <!-- مطلوبة لقراءة رقم الهاتف بعد اختيار جهة اتصال من منتقي جهات
+         الاتصال (خانة "رقم ولي الأمر"). جرّبنا نستغني عنها بالاعتماد
+         على "External Pick" بس ده سبب كراش عند قراءة تفاصيل جهة
+         الاتصال المختارة، فرجّعناها ونطلبها وقت الاستخدام فقط. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
     <uses-permission android:name="android.permission.WRITE_CONTACTS" tools:node="remove"/>
     <!-- Storage/media permissions for saving QR images to gallery and PDFs to Downloads -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>
