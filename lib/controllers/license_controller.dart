@@ -482,15 +482,29 @@ class LicenseController extends GetxController {
         }
       } catch (_) {}
 
-      await _db.collection('devices').doc(deviceId.value).set({
+      // مهم: firstLaunchAt لازم يتكتب مرة واحدة بس (أول تسجيل للجهاز)،
+      // وإلا كل فتح عادي للتطبيق كان بيدهسه بالوقت الحالي — يعني وقت
+      // ما المستخدم يمسح التطبيق ويعيد تثبيته، القيمة المحفوظة على
+      // Firestore (اللي المفروض تحمي من تصفير التجربة) تبقى "دلوقتي"
+      // مش تاريخ أول تشغيل الحقيقي، فالتجربة كانت بترجع تتجدد فعليًا.
+      final docRef = _db.collection('devices').doc(deviceId.value);
+      final existing = await docRef.get();
+      final hasFirstLaunch =
+          existing.exists && existing.data()?['firstLaunchAt'] != null;
+
+      final payload = <String, dynamic>{
         'deviceId': deviceId.value,
         'deviceName': deviceName,
         'platform': kIsWeb ? 'web' : Platform.operatingSystem,
-        'firstLaunchAt': FieldValue.serverTimestamp(),
         'lastSeenAt': FieldValue.serverTimestamp(),
         'licenseCode': licenseCode.value,
         'licenseState': state.value.name,
-      }, SetOptions(merge: true));
+      };
+      if (!hasFirstLaunch) {
+        payload['firstLaunchAt'] = FieldValue.serverTimestamp();
+      }
+
+      await docRef.set(payload, SetOptions(merge: true));
     } catch (_) {}
   }
 
