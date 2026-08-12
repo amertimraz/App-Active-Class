@@ -5,6 +5,7 @@ import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/contact_picker_service.dart';
+import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
@@ -257,6 +258,9 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
     }
 
     widget.onAdded?.call();
+    if (created.birthDate != null) {
+      NotificationService().syncAllScheduledNotifications();
+    }
 
     // reset للإضافة التالية — بنسيب تاريخ "بداية الحضور" زي ما هو
     // عمدًا (مش بيترجع لتاريخ النهاردة)، عشان لو المدرس بيسجّل دفعة

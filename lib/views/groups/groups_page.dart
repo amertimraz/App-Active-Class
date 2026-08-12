@@ -12,6 +12,7 @@ import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
+import 'package:active_class/services/notification_service.dart';
 import 'package:intl/intl.dart';
 
 /// يتحقق من وجود مواعيد متداخلة في نفس اليوم داخل نص الجدول
@@ -287,6 +288,9 @@ class _GroupsPageState extends State<GroupsPage> {
               : controller.updateGroup(newGroup),
           onSaved: (name) {
             ToastHelper.success('تم حفظ "$name"', title: 'تم');
+            // إعادة مزامنة إشعارات مواعيد الحصص عشان تعكس الجدول
+            // الجديد/المعدَّل فورًا من غير ما المدرس يعمل أي حاجة.
+            NotificationService().syncAllScheduledNotifications();
           },
         ),
       ),

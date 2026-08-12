@@ -2,7 +2,9 @@
 
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:active_class/services/database_service.dart';
@@ -19,18 +21,38 @@ class NotificationService {
 
   bool _initialized = false;
 
+  // فرق ثابت بين مساحات الـ ID لكل نوع إشعار عشان محدش يصطدم بالتاني:
+  // أعياد الميلاد = studentId*2 / studentId*2+1 (أرقام صغيرة).
+  // إشعارات الحصص بعيدة تمامًا في مساحة أعلى.
+  static const int _classNotificationIdBase = 900000000;
+
+  static const Map<String, int> _dayNameToWeekday = {
+    'السبت': DateTime.saturday,
+    'الأحد': DateTime.sunday,
+    'الاثنين': DateTime.monday,
+    'الثلاثاء': DateTime.tuesday,
+    'الأربعاء': DateTime.wednesday,
+    'الخميس': DateTime.thursday,
+    'الجمعة': DateTime.friday,
+  };
+
   Future<void> initialize() async {
     if (_initialized) return;
 
-    // Initialize timezone
     tz_data.initializeTimeZones();
-    tz.setLocalLocation(tz.getLocation('Asia/Riyadh'));
+    try {
+      final deviceTimezone = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(deviceTimezone));
+    } catch (e) {
+      // فشل التعرف على توقيت الجهاز (نادر) — نفضّل استخدام UTC بدل
+      // توقيت دولة تانية عشوائي يبعد ساعات عن المستخدم الفعلي.
+      debugPrint('NotificationService: تعذر تحديد توقيت الجهاز — $e');
+      tz.setLocalLocation(tz.UTC);
+    }
 
-    // Android settings
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    // iOS settings
     final DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -76,7 +98,6 @@ class NotificationService {
   }
 
   void _onNotificationTap(NotificationResponse response) {
-    // Handle notification tap
     debugPrint('Notification tapped: ${response.payload}');
   }
 
@@ -108,118 +129,118 @@ class NotificationService {
     );
   }
 
-  // Schedule notification for a specific time
-  Future<void> scheduleNotification({
-    required String title,
-    required String body,
-    required DateTime scheduledTime,
-    String? payload,
-  }) async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
-        AndroidNotificationDetails(
-      'active_class_channel',
-      'Active Class Notifications',
-      channelDescription: 'Notifications for Active Class app',
-      importance: Importance.high,
-      priority: Priority.high,
-      showWhen: true,
-    );
-
-    const NotificationDetails platformChannelSpecifics =
-        NotificationDetails(android: androidPlatformChannelSpecifics);
-
-    await _notificationsPlugin.zonedSchedule(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title,
-      body,
-      tz.TZDateTime.from(scheduledTime, tz.local),
-      platformChannelSpecifics,
-      payload: payload,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-    );
-  }
-
-  // Check for upcoming birthdays
-  Future<void> checkUpcomingBirthdays() async {
+  // ─────────────────────────────────────────────────────────────────
+  //  مزامنة شاملة — بتلغي كل الإشعارات المجدولة القديمة وتعيد جدولة
+  //  كل شيء من الصفر بناءً على البيانات الحالية (مجموعات + طلاب).
+  //  بتتنادى تلقائيًا عند تشغيل التطبيق، وبعد أي إضافة/تعديل/حذف
+  //  لمجموعة أو طالب، عشان الإشعارات تفضل متزامنة مع البيانات
+  //  الفعلية من غير ما المدرس يعمل أي خطوة يدوية.
+  // ─────────────────────────────────────────────────────────────────
+  Future<void> syncAllScheduledNotifications() async {
     try {
-      final allStudents = await _dbService.getAllStudents();
-      final now = DateTime.now();
-      final upcomingBirthdays = <Student>[];
+      await cancelAllNotifications();
 
-      for (final student in allStudents) {
-        if (student.birthDate == null) continue;
+      final groups = await _dbService.getAllGroups();
+      for (final g in groups) {
+        await scheduleGroupClassNotifications(g);
+      }
 
-        final birthDate = student.birthDate!;
-        final nextBirthday = DateTime(
-          now.year,
-          birthDate.month,
-          birthDate.day,
-        );
-
-        // If birthday already passed this year, check next year
-        if (nextBirthday.isBefore(now)) {
-          final nextYearBirthday = DateTime(
-            now.year + 1,
-            birthDate.month,
-            birthDate.day,
-          );
-          final daysUntil = nextYearBirthday.difference(now).inDays;
-          if (daysUntil <= 7 && daysUntil >= 0) {
-            upcomingBirthdays.add(student);
-          }
-        } else {
-          final daysUntil = nextBirthday.difference(now).inDays;
-          if (daysUntil <= 7 && daysUntil >= 0) {
-            upcomingBirthdays.add(student);
-          }
+      final students = await _dbService.getAllStudents();
+      for (final s in students) {
+        if (s.birthDate != null) {
+          await scheduleBirthdayNotifications(s);
         }
       }
-
-      // Show notification for upcoming birthdays
-      if (upcomingBirthdays.isNotEmpty) {
-        final names = upcomingBirthdays.map((s) => s.name).join('، ');
-        await showNotification(
-          title: 'أعياد ميلاد قريبة',
-          body: 'لديك ${upcomingBirthdays.length} طلاب أعياد ميلادهم قريبة: $names',
-        );
-      }
     } catch (e) {
-      debugPrint('Error checking birthdays: $e');
+      debugPrint('NotificationService: فشلت مزامنة الإشعارات — $e');
     }
   }
 
-  // Check for upcoming classes
-  Future<void> checkUpcomingClasses() async {
-    try {
-      final allGroups = await _dbService.getAllGroups();
-      final now = DateTime.now();
-      final currentDay = now.weekday; // 1 = Monday, 7 = Sunday
+  // ─────────────────────────────────────────────────────────────────
+  //  إشعارات مواعيد الحصص — تذكير قبل كل حصة بـ 15 دقيقة، متكرر
+  //  أسبوعيًا بناءً على جدول المجموعة (نص بصيغة "اليوم HH:MM-HH:MM"
+  //  مفصول بفواصل، نفس الصيغة اللي بيكتبها _ScheduleEditor).
+  // ─────────────────────────────────────────────────────────────────
+  Future<void> scheduleGroupClassNotifications(Group group) async {
+    if (group.id == null || group.schedule == null || group.schedule!.trim().isEmpty) {
+      return;
+    }
 
-      final upcomingClasses = <Group>[];
+    final entries = _parseScheduleEntries(group.schedule!);
+    for (var i = 0; i < entries.length; i++) {
+      final (weekday, time) = entries[i];
+      final reminderTime = _subtractMinutes(time, 15);
+      final scheduled = _nextInstanceOfWeekdayTime(weekday, reminderTime);
+      final id = _classNotificationIdBase + (group.id! * 10) + i;
 
-      for (final group in allGroups) {
-        if (group.schedule == null) continue;
+      await _scheduleById(
+        id: id,
+        title: '🔔 حصة ${group.name} بعد 15 دقيقة',
+        body: 'الحصة الساعة ${_fmt(time)}',
+        scheduledTime: scheduled,
+        payload: 'class_${group.id}_$i',
+        channelId: 'class_channel',
+        channelName: 'مواعيد الحصص',
+        channelDescription: 'تذكير قبل موعد كل حصة',
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+      );
+    }
+  }
 
-        // Parse schedule (e.g., "1,3,5" for Monday, Wednesday, Friday)
-        final scheduleDays = group.schedule!.split(',').map((e) => int.tryParse(e.trim())).whereType<int>().toList();
+  /// يحلّل نص الجدول لقائمة (يوم الأسبوع، وقت البداية).
+  List<(int, TimeOfDay)> _parseScheduleEntries(String schedule) {
+    final result = <(int, TimeOfDay)>[];
+    for (final raw in schedule.split(',')) {
+      final s = raw.trim();
+      if (s.isEmpty) continue;
 
-        if (scheduleDays.contains(currentDay)) {
-          upcomingClasses.add(group);
+      String? matchedDay;
+      for (final day in _dayNameToWeekday.keys) {
+        if (s.startsWith(day)) {
+          matchedDay = day;
+          break;
         }
       }
+      if (matchedDay == null) continue;
 
-      // Show notification for upcoming classes today
-      if (upcomingClasses.isNotEmpty) {
-        final groupNames = upcomingClasses.map((g) => g.name).join('، ');
-        await showNotification(
-          title: 'حصص اليوم',
-          body: 'لديك ${upcomingClasses.length} حصص اليوم: $groupNames',
-        );
-      }
-    } catch (e) {
-      debugPrint('Error checking classes: $e');
+      final timesPart = s.replaceFirst(matchedDay, '').trim();
+      final times = timesPart.split('-');
+      if (times.isEmpty) continue;
+
+      final from = _parseTime(times[0].trim());
+      if (from == null) continue;
+
+      result.add((_dayNameToWeekday[matchedDay]!, from));
     }
+    return result;
+  }
+
+  TimeOfDay? _parseTime(String v) {
+    final p = v.split(':');
+    if (p.length != 2) return null;
+    final h = int.tryParse(p[0]);
+    final m = int.tryParse(p[1]);
+    if (h == null || m == null) return null;
+    return TimeOfDay(hour: h, minute: m);
+  }
+
+  TimeOfDay _subtractMinutes(TimeOfDay t, int minutes) {
+    final total = (t.hour * 60 + t.minute - minutes) % (24 * 60);
+    final normalized = total < 0 ? total + 24 * 60 : total;
+    return TimeOfDay(hour: normalized ~/ 60, minute: normalized % 60);
+  }
+
+  String _pad(int n) => n.toString().padLeft(2, '0');
+  String _fmt(TimeOfDay t) => '${_pad(t.hour)}:${_pad(t.minute)}';
+
+  tz.TZDateTime _nextInstanceOfWeekdayTime(int targetWeekday, TimeOfDay time) {
+    final now = tz.TZDateTime.now(tz.local);
+    var scheduled = tz.TZDateTime(
+        tz.local, now.year, now.month, now.day, time.hour, time.minute);
+    while (scheduled.weekday != targetWeekday || scheduled.isBefore(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+    return scheduled;
   }
 
   // Schedule birthday notification (legacy - single notification)
@@ -237,17 +258,14 @@ class NotificationService {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    // احسب تاريخ عيد الميلاد القادم
     var nextBirthday = DateTime(now.year, b.month, b.day);
     if (nextBirthday.isBefore(today)) {
       nextBirthday = DateTime(now.year + 1, b.month, b.day);
     }
 
-    // ID فريد لكل طالب (يوم قبل = id*2، يوم العيد = id*2+1)
     final idDayBefore = (student.id! * 2) % 2147483647;
     final idOnDay     = (student.id! * 2 + 1) % 2147483647;
 
-    // ─── إشعار قبل يوم ───────────────────────────────────────
     final dayBefore = DateTime(
       nextBirthday.year, nextBirthday.month, nextBirthday.day - 1, 8, 0,
     );
@@ -258,10 +276,12 @@ class NotificationService {
         body: 'لا تنسَ تهنئة ${student.name} بعيد ميلاده غداً!',
         scheduledTime: dayBefore,
         payload: 'birthday_before_${student.id}',
+        channelId: 'birthday_channel',
+        channelName: 'أعياد الميلاد',
+        channelDescription: 'إشعارات أعياد ميلاد الطلاب',
       );
     }
 
-    // ─── إشعار يوم العيد ─────────────────────────────────────
     final onDay = DateTime(
       nextBirthday.year, nextBirthday.month, nextBirthday.day, 8, 0,
     );
@@ -272,6 +292,9 @@ class NotificationService {
         body: 'اليوم عيد ميلاد ${student.name} — لا تنسَ تهنئته! 🎂',
         scheduledTime: onDay,
         payload: 'birthday_on_${student.id}',
+        channelId: 'birthday_channel',
+        channelName: 'أعياد الميلاد',
+        channelDescription: 'إشعارات أعياد ميلاد الطلاب',
       );
     }
   }
@@ -281,19 +304,21 @@ class NotificationService {
     required int id,
     required String title,
     required String body,
-    required DateTime scheduledTime,
+    required DateTime scheduledTime, // DateTime عادي أو tz.TZDateTime (فرعي منه)
     String? payload,
+    required String channelId,
+    required String channelName,
+    required String channelDescription,
+    DateTimeComponents? matchDateTimeComponents,
   }) async {
-    const AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails(
-      'birthday_channel',
-      'أعياد الميلاد',
-      channelDescription: 'إشعارات أعياد ميلاد الطلاب',
+    final androidDetails = AndroidNotificationDetails(
+      channelId,
+      channelName,
+      channelDescription: channelDescription,
       importance: Importance.high,
       priority: Priority.high,
     );
-    const NotificationDetails details =
-        NotificationDetails(android: androidDetails);
+    final details = NotificationDetails(android: androidDetails);
 
     await _notificationsPlugin.zonedSchedule(
       id,
@@ -304,6 +329,7 @@ class NotificationService {
       payload: payload,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: matchDateTimeComponents,
     );
   }
 

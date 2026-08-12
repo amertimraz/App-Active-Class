@@ -13,6 +13,7 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/notification_service.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/controllers/settings_controller.dart';
@@ -548,7 +549,10 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         Get.back(); // close dialog
         await Future.delayed(const Duration(milliseconds: 80));
         final ok = await Get.find<GroupController>().deleteGroup(g.id!);
-        if (ok) Get.back(); // back to groups list — الخطأ (لو حصل) اتعرض بالفعل
+        if (ok) {
+          NotificationService().syncAllScheduledNotifications();
+          Get.back(); // back to groups list — الخطأ (لو حصل) اتعرض بالفعل
+        }
       },
     );
   }
@@ -566,6 +570,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         try {
           await DatabaseService().deleteStudentsByGroup(g.id!);
           await studentController.loadStudentsByGroup(g.id!);
+          NotificationService().syncAllScheduledNotifications();
           ToastHelper.success('تم حذف الطلاب وتصفير الأكواد');
         } catch (e) {
           ToastHelper.error('فشل تصفير الطلاب — حاول تاني');
@@ -589,7 +594,10 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         if (student.id == null) return;
         await Future.delayed(const Duration(milliseconds: 80));
         final ok = await studentController.deleteStudent(student.id!);
-        if (ok) ToastHelper.success('تم حذف الطالب');
+        if (ok) {
+          NotificationService().syncAllScheduledNotifications();
+          ToastHelper.success('تم حذف الطالب');
+        }
       },
     );
   }

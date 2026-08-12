@@ -6,6 +6,7 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/contact_picker_service.dart';
+import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
@@ -260,6 +261,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
       );
 
       await _sc.updateStudent(updated);
+      NotificationService().syncAllScheduledNotifications();
 
       final db = DatabaseService();
       // Clear old sibling link

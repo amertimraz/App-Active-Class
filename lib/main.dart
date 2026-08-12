@@ -1,4 +1,5 @@
 // lib/main.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:active_class/config/theme.dart';
@@ -101,9 +102,11 @@ void main() async {
     await initializeDateFormatting('ar');
   }
 
-  // تهيئة نظام الإشعارات
+  // تهيئة نظام الإشعارات — ومزامنة إشعارات الحصص وأعياد الميلاد
+  // تلقائيًا مع البيانات الحالية (بدون أي خطوة يدوية من المدرس).
   if (!kIsWeb) {
     await NotificationService().initialize();
+    unawaited(NotificationService().syncAllScheduledNotifications());
   }
 
   // تهيئة الحفظ التلقائي
