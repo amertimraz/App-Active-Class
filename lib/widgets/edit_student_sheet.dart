@@ -354,19 +354,18 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
             const SizedBox(height: 16),
             CustomTextField(controller: _nameCtrl, label: 'اسم الطالب'),
             const SizedBox(height: 12),
+            CustomTextField(
+                controller: _priceCtrl,
+                label: 'الرسوم',
+                keyboardType: TextInputType.number),
+            const SizedBox(height: 12),
             Row(children: [
-              Expanded(
-                  child: CustomTextField(
-                      controller: _priceCtrl,
-                      label: 'الرسوم',
-                      keyboardType: TextInputType.number)),
-              const SizedBox(width: 12),
               Expanded(
                   child: CustomTextField(
                       controller: _phoneCtrl,
                       label: 'ولي الأمر',
                       keyboardType: TextInputType.phone)),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Container(
                 decoration: BoxDecoration(
                   color: widget.accentColor.withValues(alpha: 0.1),

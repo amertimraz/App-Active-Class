@@ -486,48 +486,45 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                           const SizedBox(height: 14),
                         ],
 
-                        // ── الرسوم + رقم ولي الأمر ─────────────────────────
+                        // ── الرسوم الشهرية ───────────────────────────────────
+                        _Label('الرسوم الشهرية'),
+                        const SizedBox(height: 6),
+                        CustomTextField(
+                          controller: _priceCtrl,
+                          label: '0',
+                          keyboardType: TextInputType.number,
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        // ── رقم ولي الأمر ─────────────────────────────────────
+                        _Label('رقم ولي الأمر'),
+                        const SizedBox(height: 6),
                         Row(children: [
-                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            _Label('الرسوم الشهرية'),
-                            const SizedBox(height: 6),
-                            CustomTextField(
-                              controller: _priceCtrl,
-                              label: '0',
-                              keyboardType: TextInputType.number,
+                          Expanded(
+                            child: CustomTextField(
+                              controller: _phoneCtrl,
+                              label: '01xxxxxxxxx',
+                              keyboardType: TextInputType.phone,
                             ),
-                          ])),
-                          const SizedBox(width: 12),
-                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            _Label('رقم ولي الأمر'),
-                            const SizedBox(height: 6),
-                            Row(children: [
-                              Expanded(
-                                child: CustomTextField(
-                                  controller: _phoneCtrl,
-                                  label: '01xxxxxxxxx',
-                                  keyboardType: TextInputType.phone,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: primary.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(BORDER_RADIUS_NORMAL),
-                                ),
-                                child: IconButton(
-                                  tooltip: 'اختيار من جهات الاتصال',
-                                  icon: Icon(Icons.contacts_rounded, color: primary),
-                                  onPressed: () async {
-                                    final phone = await ContactPickerService.pickPhoneNumber();
-                                    if (phone != null) {
-                                      setState(() => _phoneCtrl.text = phone);
-                                    }
-                                  },
-                                ),
-                              ),
-                            ]),
-                          ])),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(BORDER_RADIUS_NORMAL),
+                            ),
+                            child: IconButton(
+                              tooltip: 'اختيار من جهات الاتصال',
+                              icon: Icon(Icons.contacts_rounded, color: primary),
+                              onPressed: () async {
+                                final phone = await ContactPickerService.pickPhoneNumber();
+                                if (phone != null) {
+                                  setState(() => _phoneCtrl.text = phone);
+                                }
+                              },
+                            ),
+                          ),
                         ]),
 
                         const SizedBox(height: 14),
