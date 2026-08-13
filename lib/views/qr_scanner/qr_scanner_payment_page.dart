@@ -1138,7 +1138,9 @@ class _PaymentPanel extends StatelessWidget {
                             ? controller.isPerSessionGroup
                                 ? 'تأكيد الدفع  (${controller.selectedSessionsCount} حصة)'
                                 : 'تأكيد الدفع  ($selectedCount شهر)'
-                            : 'اختر شهراً للدفع',
+                            : controller.isPerSessionGroup
+                                ? 'اضغط دفع حصة اليوم'
+                                : 'اختر شهراً للدفع',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                 ),

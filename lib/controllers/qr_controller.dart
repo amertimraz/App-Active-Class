@@ -9,6 +9,7 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/utils/pricing_helper.dart';
 
 enum QRMode { attendance, payment }
 
@@ -281,27 +282,21 @@ class QRController extends GetxController {
   }
 
   // المستحق الأساسي (بدون تعديل يدوي/إخوة): شهري ثابت، أو بالحصة على حسب
-  // عدد الحصص المحضورة فعليًا في الشهور المختارة. مستخدمة في المعاينة
-  // (_recalculateTotal) وفي تسجيل الدفع الفعلي (confirmPayment) عشان
-  // القيمتين متطابقين دايمًا.
+  // عدد الحصص المحضورة فعليًا في الشهور المختارة، مع تطبيق نسبة الإعفاء.
+  // بيستخدم PricingHelper (نفس مصدر الحساب في شاشة المدفوعات) عشان
+  // القيمتين متطابقين دايمًا ومتشملين خصم الإعفاء الجزئي.
   double _computeBaseAmount(Student? s) {
-    final price = s?.price ?? 0;
-
-    if (s != null && isPerSessionGroup) {
-      double sum = 0;
-      for (final month in selectedMonths) {
-        final sessionsInMonth = _scannedAttendance
-            .where((a) =>
-                a.status == ATTENDANCE_PRESENT &&
-                a.date.year == month.year &&
-                a.date.month == month.month)
-            .length;
-        sum += price * sessionsInMonth;
-      }
-      return sum;
+    if (s == null) return 0;
+    double sum = 0;
+    for (final month in selectedMonths) {
+      sum += PricingHelper.monthlyDue(
+        student: s,
+        group: _scannedGroup.value,
+        month: month,
+        allAttendance: _scannedAttendance,
+      );
     }
-
-    return price * selectedMonths.length;
+    return sum;
   }
 
   // هل الطالب الممسوح/المختار من مجموعة مسعّرة بالحصة؟ تُستخدم في الواجهة
@@ -332,7 +327,7 @@ class QRController extends GetxController {
     if (selectedMonths.isEmpty && upcomingMonths.isNotEmpty) {
       selectedMonths.assignAll([upcomingMonths.first]);
     }
-    setOverride(amount: s.price, note: 'دفع حصة واحدة');
+    setOverride(amount: s.effectivePrice, note: 'دفع حصة واحدة');
   }
 
   void setOverride({double? amount, String? note}) {

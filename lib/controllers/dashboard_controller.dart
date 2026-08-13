@@ -7,6 +7,7 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/utils/pricing_helper.dart';
 
 enum ActivityType { attendance, payment }
 
@@ -104,6 +105,13 @@ class DashboardController extends GetxController {
 
     final students = await _db.getAllStudents();
     final payments = await _db.getAllPayments();
+    final groups   = await _db.getAllGroups();
+    final groupById = {for (final g in groups) g.id: g};
+
+    final att = Get.isRegistered<AttendanceController>()
+        ? Get.find<AttendanceController>()
+        : Get.put(AttendanceController());
+    if (att.attendance.isEmpty) await att.loadAttendance();
 
     final activeStudents = students.where((s) => !s.isFullyExempt).toList();
 
@@ -116,8 +124,12 @@ class DashboardController extends GetxController {
     double expected = 0;
     double paid     = 0;
     for (final s in activeStudents) {
-      if (s.isFullyExempt) continue; // معفى كلياً — لا يُحسب
-      expected += s.price;
+      expected += PricingHelper.monthlyDue(
+        student: s,
+        group: groupById[s.groupId],
+        month: monthStart,
+        allAttendance: att.attendance,
+      );
     }
     for (final p in monthPayments) {
       paid += p.amount;
@@ -196,7 +208,7 @@ class DashboardController extends GetxController {
         for (final s in students) {
           if (!scheduledTodayIds.contains(s.groupId)) continue;
           if (s.isFullyExempt) continue;
-          expectedRevenue += s.price * (1 - s.exemptPercent / 100);
+          expectedRevenue += s.effectivePrice;
           expectedCount += 1;
         }
       }

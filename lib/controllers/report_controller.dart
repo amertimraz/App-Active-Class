@@ -181,6 +181,7 @@ class ReportController extends GetxController {
         students: allStudents,
         payments: allPayments,
         groups: allGroups,
+        attendance: allAttendance,
       );
       if (result.success && result.path != null) {
         ToastHelper.success('تم إنشاء التقرير بنجاح');

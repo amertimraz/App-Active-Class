@@ -16,6 +16,7 @@ import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/utils/pricing_helper.dart';
 
 // ═══════════════════════════════════════════════════════════════════════
 //  ExportResult
@@ -77,6 +78,7 @@ class ExportService {
     required List<Student> students,
     required List<Payment> payments,
     required List<Group> groups,
+    required List<Attendance> attendance,
   }) async {
     try {
       await _loadFonts();
@@ -102,8 +104,13 @@ class ExportService {
       double totalPaid     = 0;
       for (final s in sorted) {
         if (!s.isFullyExempt) {
-          totalExpected += s.effectivePrice;
-          totalPaid     += paidMap[s.id] ?? 0;
+          totalExpected += PricingHelper.monthlyDue(
+            student: s,
+            group: groupById[s.groupId],
+            month: month,
+            allAttendance: attendance,
+          );
+          totalPaid += paidMap[s.id] ?? 0;
         }
       }
 
@@ -118,7 +125,7 @@ class ExportService {
         build: (ctx) => [
           _summaryRow(totalExpected, totalPaid, sorted.length, monthLabel),
           pw.SizedBox(height: 16),
-          _paymentsTable(sorted, paidMap, groupById),
+          _paymentsTable(sorted, paidMap, groupById, month, attendance),
         ],
       ));
 
@@ -340,7 +347,9 @@ class ExportService {
   pw.Widget _paymentsTable(
       List<Student> students,
       Map<int, double> paidMap,
-      Map<int?, Group> groupById) {
+      Map<int?, Group> groupById,
+      DateTime month,
+      List<Attendance> attendance) {
     const headers = ['#', 'الاسم', 'الكود', 'المجموعة', 'المطلوب', 'المدفوع', 'المتبقي', 'الحالة'];
     final colWidths = [
       pw.FixedColumnWidth(25),
@@ -363,7 +372,12 @@ class ExportService {
       final s         = students[i];
       final group     = groupById[s.groupId];
       final paid      = paidMap[s.id] ?? 0;
-      final due       = s.isFullyExempt ? 0.0 : s.effectivePrice;
+      final due       = PricingHelper.monthlyDue(
+        student: s,
+        group: group,
+        month: month,
+        allAttendance: attendance,
+      );
       final remaining = (due - paid).clamp(0.0, double.infinity);
       final isEven    = i % 2 == 0;
 
