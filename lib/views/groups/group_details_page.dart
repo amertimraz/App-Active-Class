@@ -1120,9 +1120,17 @@ class _GDScheduleEditorState extends State<_GDScheduleEditor> {
   }
 
   Future<void> _pickTime(int i, bool isFrom) async {
+    // بنفرض تنسيق 12/24 ساعة اللي مختاره المستخدم من إعدادات التطبيق —
+    // وإلا الـpicker بيتبع إعداد نظام الجهاز نفسه بغض النظر عن اختيار
+    // المستخدم جوه التطبيق.
+    final use24h = Get.find<SettingsController>().use24hFormat.value;
     final t = await showTimePicker(
       context: context,
       initialTime: (isFrom ? _slots[i].from : _slots[i].to) ?? TimeOfDay.now(),
+      builder: (ctx, child) => MediaQuery(
+        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: use24h),
+        child: child!,
+      ),
     );
     if (t == null) return;
     setState(() {

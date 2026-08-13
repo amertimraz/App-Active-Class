@@ -1293,7 +1293,18 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
 
   Future<void> _pickTime(int index, bool isFrom) async {
     final cur = isFrom ? _entries[index].from : _entries[index].to;
-    final picked = await showTimePicker(context: context, initialTime: cur);
+    // بنفرض تنسيق 12/24 ساعة اللي مختاره المستخدم من إعدادات التطبيق —
+    // وإلا الـpicker بيتبع إعداد نظام الجهاز نفسه بغض النظر عن اختيار
+    // المستخدم جوه التطبيق.
+    final use24h = Get.find<SettingsController>().use24hFormat.value;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: cur,
+      builder: (ctx, child) => MediaQuery(
+        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: use24h),
+        child: child!,
+      ),
+    );
     if (picked != null) {
       if (isFrom) {
         // بنحافظ على مدة الحصة الحالية بدل ما نفرض ساعة تابتة — لو
