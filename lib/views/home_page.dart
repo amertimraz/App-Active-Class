@@ -538,6 +538,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             final absent = _dashboardController.todayAbsent.value;
             final todayExpected = _dashboardController.todayExpected.value;
             final attRate = _dashboardController.todayAttendanceRate.value;
+            final sessionRevenue = _dashboardController.todaySessionRevenue.value;
+            final sessionRevenueCount = _dashboardController.todaySessionRevenueCount.value;
+            final sessionRevenueExpected = _dashboardController.todaySessionRevenueExpected.value;
+            final sessionRevenueExpectedCount = _dashboardController.todaySessionRevenueExpectedCount.value;
 
             String fmtMoney(double v) => v >= 1000
                 ? '${(v / 1000).toStringAsFixed(1)}k $currency'
@@ -602,6 +606,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   rate: attRate,
                   visible: _statsVisible,
                 ),
+                if (sessionRevenue > 0 || sessionRevenueExpected > 0) ...[
+                  const SizedBox(height: 8),
+                  // ── هنت: إيراد اليوم من المجموعات بالحصة (فعلي + متوقع) ──
+                  _SessionRevenueHint(
+                    actualLabel: _statsVisible ? fmtMoney(sessionRevenue) : '••••',
+                    actualCount: sessionRevenueCount,
+                    expectedLabel: _statsVisible ? fmtMoney(sessionRevenueExpected) : '••••',
+                    expectedCount: sessionRevenueExpectedCount,
+                  ),
+                ],
               ],
             );
           }),
@@ -1369,6 +1383,112 @@ class _LiveClockState extends State<_LiveClock> {
 
 //  _AttendanceCard — بطاقة حضور اليوم
 // ══════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+//  _SessionRevenueHint — هنت إيراد اليوم من المجموعات المسعّرة بالحصة
+// ══════════════════════════════════════════════════════════════════
+class _SessionRevenueHint extends StatelessWidget {
+  final String actualLabel;
+  final int actualCount;
+  final String expectedLabel;
+  final int expectedCount;
+
+  const _SessionRevenueHint({
+    required this.actualLabel,
+    required this.actualCount,
+    required this.expectedLabel,
+    required this.expectedCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    const color = Color(0xFF10B981);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.12 : 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.payments_rounded, size: 16, color: color),
+              const SizedBox(width: 8),
+              Text(
+                'إيراد اليوم من المجموعات بالحصة',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white70 : const Color(0xFF111827),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _RevenueMiniStat(
+                  label: 'محصّل فعليًا ($actualCount دفعة)',
+                  value: actualLabel,
+                  color: color,
+                ),
+              ),
+              if (expectedCount > 0) ...[
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _RevenueMiniStat(
+                    label: 'متوقع اليوم ($expectedCount طالب)',
+                    value: expectedLabel,
+                    color: isDark ? Colors.white54 : Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RevenueMiniStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _RevenueMiniStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.85)),
+        ),
+      ],
+    );
+  }
+}
+
 class _AttendanceCard extends StatelessWidget {
   final int present;
   final int absent;

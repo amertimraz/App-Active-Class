@@ -25,8 +25,10 @@ class QRController extends GetxController {
   final RxString overrideNote = ''.obs;
 
   // للمجموعات المسعّرة بالحصة — لازم بيانات المجموعة والحضور عشان
-  // نحسب المستحق الحقيقي بدل سعر ثابت شهري.
-  Group? _scannedGroup;
+  // نحسب المستحق الحقيقي بدل سعر ثابت شهري. Rx عشان الواجهة (اختيار
+  // شهر مقابل دفع حصة) تتحدّث فورًا أول ما بيانات المجموعة توصل، مش
+  // تفضل واقفة على قيمة الطالب اللي قبله.
+  final Rx<Group?> _scannedGroup = Rx<Group?>(null);
   List<Attendance> _scannedAttendance = [];
 
   Future<void> handleScan(String code) async {
@@ -74,8 +76,8 @@ class QRController extends GetxController {
   }
 
   Future<void> _preparePayment(Student student) async {
-    _scannedGroup = await _dbService.getGroup(student.groupId);
-    _scannedAttendance = _scannedGroup != null && _scannedGroup!.isPerSession
+    _scannedGroup.value = await _dbService.getGroup(student.groupId);
+    _scannedAttendance = _scannedGroup.value != null && _scannedGroup.value!.isPerSession
         ? await _dbService.getAttendanceByStudent(student.id!)
         : [];
 
@@ -170,9 +172,12 @@ class QRController extends GetxController {
   String get lastPaidMonthText {
     final payment = lastPayment.value;
     if (payment == null) return 'لا توجد مدفوعات سابقة';
+    final paymentDateText = DateFormat('yyyy-MM-dd HH:mm').format(payment.date);
+    // بالحصة: مفيش معنى لاسم "الشهر" هنا — الدفعة كانت لحصة/حصص، مش
+    // لاشتراك شهر بعينه. نعرض التاريخ والوقت بس.
+    if (isPerSessionGroup) return paymentDateText;
     final month = _extractLastPaidMonth(payment);
     final monthText = month == null ? formatMonth(payment.date) : formatMonth(month);
-    final paymentDateText = DateFormat('yyyy-MM-dd HH:mm').format(payment.date);
     return '$monthText - $paymentDateText';
   }
 
@@ -193,6 +198,13 @@ class QRController extends GetxController {
       final keys = selectedMonths.map(_encodeMonth).toList();
       final custom = overrideAmount.value;
       final customNote = overrideNote.value.trim();
+      // للمجموعات بالحصة بيبقى النص "تم دفع X حصة" مش اسم الشهر — عشان
+      // ميوهمش المدرس إنه دافع اشتراك الشهر كله وهو أصلاً دافع حصة أو حصص.
+      final paymentLabel = isPerSessionGroup
+          ? (customNote == 'دفع حصة واحدة'
+              ? 'حصة اليوم'
+              : '$selectedSessionsCount حصة')
+          : _successMessage(labels);
 
       if (student.siblingId != null && student.siblingsTotal != null) {
         final sibling = await _dbService.getStudent(student.siblingId!);
@@ -209,13 +221,13 @@ class QRController extends GetxController {
           final p2 = Payment(studentId: sibling.id!, date: now, amount: each, note: note, createdAt: now);
           await _dbService.insertPayment(p1);
           await _dbService.insertPayment(p2);
-          ToastHelper.success('عرض الإخوة: ${student.name} و ${sibling.name} • ${_successMessage(labels)} ✅', title: 'تم الدفع');
+          ToastHelper.success('عرض الإخوة: ${student.name} و ${sibling.name} • $paymentLabel ✅', title: 'تم الدفع');
           _clearPaymentState();
           return true;
         }
       }
 
-      final base = student.price * selectedMonths.length;
+      final base = _computeBaseAmount(student);
       final amount = custom ?? base;
       final extra = [
         if (custom != null) 'custom=1',
@@ -230,7 +242,7 @@ class QRController extends GetxController {
         createdAt: now,
       );
       await _dbService.insertPayment(payment);
-      ToastHelper.success('تم دفع ${_successMessage(labels)} ✅', title: 'تم الدفع');
+      ToastHelper.success('تم دفع $paymentLabel ✅', title: 'تم الدفع');
       _clearPaymentState();
       return true;
     } catch (_) {
@@ -265,9 +277,17 @@ class QRController extends GetxController {
       totalAmount.value = (s.siblingsTotal!) * selectedMonths.length;
       return;
     }
+    totalAmount.value = _computeBaseAmount(s);
+  }
+
+  // المستحق الأساسي (بدون تعديل يدوي/إخوة): شهري ثابت، أو بالحصة على حسب
+  // عدد الحصص المحضورة فعليًا في الشهور المختارة. مستخدمة في المعاينة
+  // (_recalculateTotal) وفي تسجيل الدفع الفعلي (confirmPayment) عشان
+  // القيمتين متطابقين دايمًا.
+  double _computeBaseAmount(Student? s) {
     final price = s?.price ?? 0;
 
-    if (s != null && _scannedGroup != null && _scannedGroup!.isPerSession) {
+    if (s != null && isPerSessionGroup) {
       double sum = 0;
       for (final month in selectedMonths) {
         final sessionsInMonth = _scannedAttendance
@@ -278,11 +298,41 @@ class QRController extends GetxController {
             .length;
         sum += price * sessionsInMonth;
       }
-      totalAmount.value = sum;
-      return;
+      return sum;
     }
 
-    totalAmount.value = price * selectedMonths.length;
+    return price * selectedMonths.length;
+  }
+
+  // هل الطالب الممسوح/المختار من مجموعة مسعّرة بالحصة؟ تُستخدم في الواجهة
+  // عشان تبدّل نصوص "شهر" بـ"حصة" في ملخص الدفع وزر التأكيد.
+  bool get isPerSessionGroup => _scannedGroup.value?.isPerSession == true;
+
+  // عدد الحصص المحضورة فعليًا ضمن الشهور المختارة — بديل selectedMonths.length
+  // في عرض الملخص للمجموعات بالحصة (0 لو المجموعة شهرية).
+  int get selectedSessionsCount {
+    if (!isPerSessionGroup) return 0;
+    int count = 0;
+    for (final month in selectedMonths) {
+      count += _scannedAttendance
+          .where((a) =>
+              a.status == ATTENDANCE_PRESENT &&
+              a.date.year == month.year &&
+              a.date.month == month.month)
+          .length;
+    }
+    return count;
+  }
+
+  // دفع سريع لحصة واحدة بس (سعر الحصة الواحدة) — لطلاب المجموعات بالحصة
+  // اللي بيدفعوا أول بأول بعد كل حصة، بدل ما المدرس يحسب المبلغ يدويًا.
+  void quickPayOneSession() {
+    final s = scannedStudent.value;
+    if (s == null || !isPerSessionGroup) return;
+    if (selectedMonths.isEmpty && upcomingMonths.isNotEmpty) {
+      selectedMonths.assignAll([upcomingMonths.first]);
+    }
+    setOverride(amount: s.price, note: 'دفع حصة واحدة');
   }
 
   void setOverride({double? amount, String? note}) {
@@ -299,7 +349,7 @@ class QRController extends GetxController {
     totalAmount.value = 0;
     overrideAmount.value = null;
     overrideNote.value = '';
-    _scannedGroup = null;
+    _scannedGroup.value = null;
     _scannedAttendance = [];
   }
 }

@@ -783,7 +783,7 @@ class _PaymentPanel extends StatelessWidget {
                                       fontSize: 14,
                                       color: onSurface)),
                               Text(
-                                '${group?.name ?? "—"}  •  ${FormatHelper.formatCurrency(price)} / شهر',
+                                '${group?.name ?? "—"}  •  ${FormatHelper.formatCurrency(price)} / ${group?.isPerSession == true ? "الحصة" : "شهر"}',
                                 style: TextStyle(
                                     fontSize: 11,
                                     color: onSurface.withValues(alpha: 0.55)),
@@ -851,109 +851,142 @@ class _PaymentPanel extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            // ── Month chips + Quick pay ────────────────────────
-            Obx(() {
-              final months = controller.upcomingMonths;
-              final selected = controller.selectedMonths;
-
-              if (months.isEmpty) {
-                return Container(
-                  padding: const EdgeInsets.all(10),
+            // ── مجموعة بالحصة: مفيش "اختيار شهور" خالص — دفع حصة مباشرة ──
+            // (Obx عشان تتحدّث فور ما بيانات المجموعة توصل من قاعدة
+            // البيانات — مش قيمة المجموعة القديمة لطالب سابق).
+            Obx(() => controller.isPerSessionGroup
+              ? GestureDetector(
+                onTap: controller.quickPayOneSession,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+                    color: Colors.teal.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
+                    border:
+                        Border.all(color: Colors.teal.withValues(alpha: 0.3)),
                   ),
-                  child: const Row(children: [
-                    Icon(Icons.check_circle_rounded, color: Colors.blue, size: 16),
-                    SizedBox(width: 8),
-                    Text('مدفوع بالكامل لهذا الشهر',
-                        style: TextStyle(color: Colors.blue, fontSize: 13)),
-                  ]),
-                );
-              }
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header row with Quick Pay button
-                  Row(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('اختر الشهور',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                              color: onSurface)),
-                      const Spacer(),
-                      // Quick Pay — الشهر الحالي فوراً
-                      GestureDetector(
-                        onTap: () {
-                          controller.selectFirstMonth();
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                                color: Colors.green.withValues(alpha: 0.3)),
-                          ),
-                          child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                            Icon(Icons.bolt_rounded, size: 14, color: Colors.green),
-                            SizedBox(width: 4),
-                            Text('هذا الشهر فقط',
-                                style: TextStyle(
-                                    color: Colors.green,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold)),
-                          ]),
-                        ),
-                      ),
+                      const Icon(Icons.flash_on_rounded,
+                          size: 16, color: Colors.teal),
                       const SizedBox(width: 6),
-                      // Select all
-                      GestureDetector(
-                        onTap: () => controller.selectAllUpcoming(),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryColor.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                                color: AppTheme.primaryColor.withValues(alpha: 0.2)),
-                          ),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Icon(Icons.done_all_rounded,
-                                size: 14, color: AppTheme.primaryColor),
-                            const SizedBox(width: 4),
-                            Text('الكل',
-                                style: TextStyle(
-                                    color: AppTheme.primaryColor,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold)),
-                          ]),
-                        ),
+                      Text(
+                        'دفع حصة اليوم (${FormatHelper.formatCurrency(student.price)})',
+                        style: const TextStyle(
+                            color: Colors.teal,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 7,
-                    children: months.map((m) {
-                      final isSel = selected.any(
-                          (s) => s.year == m.year && s.month == m.month);
-                      final label = DateFormat('MMM yyyy', 'ar').format(m);
-                      return _MonthChip(
-                          label: label,
-                          selected: isSel,
-                          onTap: () => controller.toggleMonth(m));
-                    }).toList(),
-                  ),
-                ],
-              );
-            }),
+                ),
+              )
+            : Obx(() {
+                final months = controller.upcomingMonths;
+                final selected = controller.selectedMonths;
+
+                if (months.isEmpty) {
+                  return Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+                    ),
+                    child: const Row(children: [
+                      Icon(Icons.check_circle_rounded, color: Colors.blue, size: 16),
+                      SizedBox(width: 8),
+                      Text('مدفوع بالكامل لهذا الشهر',
+                          style: TextStyle(color: Colors.blue, fontSize: 13)),
+                    ]),
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header row with Quick Pay button
+                    Row(
+                      children: [
+                        Text('اختر الشهور',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: onSurface)),
+                        const Spacer(),
+                        // Quick Pay — الشهر الحالي فوراً
+                        GestureDetector(
+                          onTap: () {
+                            controller.selectFirstMonth();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: Colors.green.withValues(alpha: 0.3)),
+                            ),
+                            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.bolt_rounded, size: 14, color: Colors.green),
+                              SizedBox(width: 4),
+                              Text('هذا الشهر فقط',
+                                  style: TextStyle(
+                                      color: Colors.green,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold)),
+                            ]),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        // Select all
+                        GestureDetector(
+                          onTap: () => controller.selectAllUpcoming(),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: AppTheme.primaryColor.withValues(alpha: 0.2)),
+                            ),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.done_all_rounded,
+                                  size: 14, color: AppTheme.primaryColor),
+                              const SizedBox(width: 4),
+                              Text('الكل',
+                                  style: TextStyle(
+                                      color: AppTheme.primaryColor,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold)),
+                            ]),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 7,
+                      children: months.map((m) {
+                        final isSel = selected.any(
+                            (s) => s.year == m.year && s.month == m.month);
+                        final label = DateFormat('MMM yyyy', 'ar').format(m);
+                        return _MonthChip(
+                            label: label,
+                            selected: isSel,
+                            onTap: () => controller.toggleMonth(m));
+                      }).toList(),
+                    ),
+                  ],
+                );
+              }),
+            ),
 
             const SizedBox(height: 10),
 
@@ -1019,7 +1052,10 @@ class _PaymentPanel extends StatelessWidget {
                               color: AppTheme.primaryColor),
                         ),
                         if (selectedCount > 0)
-                          Text('$selectedCount شهر',
+                          Text(
+                              controller.isPerSessionGroup
+                                  ? '${controller.selectedSessionsCount} حصة'
+                                  : '$selectedCount شهر',
                               style: TextStyle(
                                   fontSize: 10,
                                   color: onSurface.withValues(alpha: 0.4))),
@@ -1099,7 +1135,9 @@ class _PaymentPanel extends StatelessWidget {
                     processing
                         ? 'جاري التسجيل...'
                         : selectedCount > 0
-                            ? 'تأكيد الدفع  ($selectedCount شهر)'
+                            ? controller.isPerSessionGroup
+                                ? 'تأكيد الدفع  (${controller.selectedSessionsCount} حصة)'
+                                : 'تأكيد الدفع  ($selectedCount شهر)'
                             : 'اختر شهراً للدفع',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                   ),

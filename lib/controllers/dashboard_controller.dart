@@ -6,6 +6,7 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/controllers/attendance_controller.dart';
 
 enum ActivityType { attendance, payment }
 
@@ -30,6 +31,15 @@ class DashboardController extends GetxController {
   final RxInt    todayAbsent         = 0.obs;
   final RxInt    todayExpected       = 0.obs;
   final RxDouble todayAttendanceRate = 0.0.obs;
+
+  // ── إيراد اليوم من المجموعات المسعّرة بالحصة ────────────────────────────
+  // فعلي: من سجلات الحضور "حاضر" اللي اتسجلت النهاردة بالفعل.
+  final RxDouble todaySessionRevenue      = 0.0.obs;
+  final RxInt    todaySessionRevenueCount = 0.obs;
+  // متوقع: كل طلاب المجموعات المسعّرة بالحصة اللي ليها حصة مجدولة النهاردة
+  // (حسب جدول المجموعة الأسبوعي)، بغض النظر عن تسجيل الحضور من عدمه.
+  final RxDouble todaySessionRevenueExpected      = 0.0.obs;
+  final RxInt    todaySessionRevenueExpectedCount = 0.obs;
 
   // ── حالة ─────────────────────────────────────────────────────────────────
   final RxBool isLoading = false.obs;
@@ -150,6 +160,52 @@ class DashboardController extends GetxController {
     todayAbsent.value         = absent;
     todayExpected.value       = total;
     todayAttendanceRate.value = total > 0 ? present / total : 0;
+
+    // إيراد اليوم من المجموعات بالحصة — فعلي (من الدفعات المحصّلة فعلاً
+    // النهاردة) ومتوقع (من كل طلاب المجموعات اللي ليها حصة مجدولة النهاردة).
+    final groups = await _db.getAllGroups();
+    final perSessionGroups = groups.where((g) => g.isPerSession).toList();
+    final perSessionGroupIds = perSessionGroups.map((g) => g.id).toSet();
+
+    double actualRevenue = 0;
+    int actualCount = 0;
+    double expectedRevenue = 0;
+    int expectedCount = 0;
+
+    if (perSessionGroupIds.isNotEmpty) {
+      final students = await _db.getAllStudents();
+      final studentsById = {for (final s in students) s.id: s};
+
+      // فعلي: مجموع الدفعات المسجَّلة النهاردة لطلاب المجموعات بالحصة —
+      // ده "المحصّل" الحقيقي (كاش دخل)، مش استحقاق نظري من الحضور بس.
+      final payments = await _db.getAllPayments();
+      for (final p in payments) {
+        if (p.date.isBefore(todayStart) || p.date.isAfter(todayEnd)) continue;
+        final s = studentsById[p.studentId];
+        if (s == null || !perSessionGroupIds.contains(s.groupId)) continue;
+        actualRevenue += p.amount;
+        actualCount += 1;
+      }
+
+      final att = Get.isRegistered<AttendanceController>()
+          ? Get.find<AttendanceController>()
+          : Get.put(AttendanceController());
+      final scheduledTodayIds =
+          att.groupsForDay(perSessionGroups, now).map((g) => g.id).toSet();
+      if (scheduledTodayIds.isNotEmpty) {
+        for (final s in students) {
+          if (!scheduledTodayIds.contains(s.groupId)) continue;
+          if (s.isFullyExempt) continue;
+          expectedRevenue += s.price * (1 - s.exemptPercent / 100);
+          expectedCount += 1;
+        }
+      }
+    }
+
+    todaySessionRevenue.value              = actualRevenue;
+    todaySessionRevenueCount.value         = actualCount;
+    todaySessionRevenueExpected.value      = expectedRevenue;
+    todaySessionRevenueExpectedCount.value = expectedCount;
   }
 
   // ── تحميل النشاط الأخير ─────────────────────────────────────────────────

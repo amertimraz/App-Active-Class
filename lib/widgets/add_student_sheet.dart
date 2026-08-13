@@ -490,8 +490,10 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                           const SizedBox(height: 14),
                         ],
 
-                        // ── الرسوم الشهرية ───────────────────────────────────
-                        _Label('الرسوم الشهرية'),
+                        // ── الرسوم (شهرية أو بالحصة حسب نوع تسعير المجموعة) ──
+                        _Label(_selectedGroup?.isPerSession == true
+                            ? 'سعر الحصة الواحدة'
+                            : 'الرسوم الشهرية'),
                         const SizedBox(height: 6),
                         CustomTextField(
                           controller: _priceCtrl,
