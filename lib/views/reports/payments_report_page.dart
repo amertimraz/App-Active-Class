@@ -295,6 +295,9 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
 
   Widget _buildDailyReport() {
     return Obx(() {
+      // قراءة مباشرة هنا عشان القائمة تتحدّث لما نظام الساعة 12/24 يتغيّر
+      // من الإعدادات — القراءة جوه itemBuilder بس مش بتتسجل كـ dependency.
+      Get.find<SettingsController>().use24hFormat.value;
       final payments = paymentController.payments
           .where((p) => p.date.year == _selectedDay.year && p.date.month == _selectedDay.month && p.date.day == _selectedDay.day)
           .toList()

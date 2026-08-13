@@ -8,6 +8,7 @@ import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/qr_controller.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/export_service.dart';
@@ -306,6 +307,13 @@ class _DayNavigator extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
             child: Row(children: [
+              if (!isToday)
+                IconButton(
+                  icon: const Icon(Icons.today_rounded),
+                  color: AppTheme.primaryColor,
+                  onPressed: () => onDayChanged(DateTime.now()),
+                  tooltip: 'وصول سريع لليوم',
+                ),
               IconButton(
                 icon: const Icon(Icons.chevron_right_rounded),
                 onPressed: () => onDayChanged(selectedDay.subtract(const Duration(days: 1))),
@@ -1379,6 +1387,10 @@ class _QRScanTabState extends State<_QRScanTab> {
       // ── قائمة الحاضرين اليوم ────────────────────────────────────────────────
       Expanded(
         child: Obx(() {
+          // قراءة مباشرة هنا عشان القائمة تتحدّث لما نظام الساعة 12/24
+          // يتغيّر من الإعدادات — لو القراءة جوه itemBuilder بس، GetX
+          // مش هيسجّلها كـ dependency.
+          Get.find<SettingsController>().use24hFormat.value;
           final presentToday = widget.controller.attendance
               .where((a) =>
                   a.status == ATTENDANCE_PRESENT &&

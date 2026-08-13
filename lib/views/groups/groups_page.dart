@@ -165,6 +165,10 @@ class _GroupsPageState extends State<GroupsPage> {
           }).toList();
 
           final totalStudents = studentController.students.length;
+          // بنقرأ القيمة هنا (جوه الـ Obx) بدل جوه الـ closure اللي بتتنفذ
+          // لاحقًا داخل بناء كل بطاقة — لو قريناها هناك، GetX مش هيسجلها
+          // كـ dependency وبالتالي القائمة مش هتتحدّث لما نظام الساعة يتغيّر.
+          final use24h = Get.find<SettingsController>().use24hFormat.value;
 
           return Column(
             children: [
@@ -238,8 +242,8 @@ class _GroupsPageState extends State<GroupsPage> {
                                   onDelete: () {
                                     if (items[i].id != null) controller.deleteGroup(items[i].id!);
                                   },
-                                  displaySchedule: (raw) => _displaySchedule(
-                                      raw, Get.find<SettingsController>().use24hFormat.value),
+                                  displaySchedule: (raw) =>
+                                      _displaySchedule(raw, use24h),
                                   parseSlots: _parseScheduleSlots,
                                 ),
                           ),

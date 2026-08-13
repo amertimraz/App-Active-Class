@@ -1025,6 +1025,17 @@ class _PaymentsTab extends StatelessWidget {
       );
     }
 
+    // Obx هنا عشان تواريخ الدفعات تتحدث تلقائيًا لما نظام الساعة 12/24
+    // يتغيّر من الإعدادات — الويدجت دي بتتبني مرة واحدة جوه TabBarView
+    // ومكانتش بتتحدّث تلقائيًا من غير ده.
+    return Obx(() {
+      Get.find<SettingsController>().use24hFormat.value;
+      return _buildList(isDark, months, byMonth);
+    });
+  }
+
+  Widget _buildList(
+      bool isDark, List<String> months, Map<String, List<Payment>> byMonth) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [

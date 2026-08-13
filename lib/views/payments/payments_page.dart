@@ -7,6 +7,7 @@ import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/models/payment_model.dart' show Payment;
 import 'package:active_class/models/student_model.dart' show Student;
@@ -396,7 +397,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                     studentController,
                                     preselectedStudentId: r.student.id,
                                     initialDate: safeDate,
-                                    defaultAmount: r.due,
+                                    defaultAmount: r.remaining,
                                   );
                                 },
                                 onViewHistory: () => _showPaymentHistory(
@@ -521,6 +522,10 @@ class _PaymentsPageState extends State<PaymentsPage> {
             const Divider(height: 1),
             Expanded(
               child: Obx(() {
+                // قراءة مباشرة هنا (مش جوه itemBuilder) عشان GetX يسجّلها
+                // كـ dependency — لو قريناها بس جوه itemBuilder، القائمة مش
+                // هتتحدّث لما نظام الساعة 12/24 يتغيّر من الإعدادات.
+                Get.find<SettingsController>().use24hFormat.value;
                 final payments = ctrl.payments
                     .where((p) =>
                         p.studentId == student.id &&
@@ -673,16 +678,25 @@ class _PaymentsPageState extends State<PaymentsPage> {
     }
 
     final month = controller.selectedMonth.value ?? DateTime.now();
+    // المتبقي فعليًا بعد خصم أي دفعات سابقة هذا الشهر — مش المستحق الكامل،
+    // عشان مانعبّيش الحقل بمبلغ زيادة لطالب دفع جزء بالفعل.
     double? dueFor(Student? student) {
       if (student == null) return null;
       final group = groupController.groups
           .firstWhereOrNull((g) => g.id == student.groupId);
-      return PricingHelper.monthlyDue(
+      final due = PricingHelper.monthlyDue(
         student: student,
         group: group,
         month: month,
         allAttendance: attendanceController.attendance,
       );
+      final paidThisMonth = controller.payments
+          .where((p) =>
+              p.studentId == student.id &&
+              p.date.year == month.year &&
+              p.date.month == month.month)
+          .fold<double>(0.0, (sum, p) => sum + p.amount);
+      return (due - paidThisMonth).clamp(0.0, double.infinity);
     }
 
     if (preselectedStudentId != null) {

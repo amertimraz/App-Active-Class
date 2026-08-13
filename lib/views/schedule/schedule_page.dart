@@ -202,24 +202,31 @@ class _SchedulePageState extends State<SchedulePage> {
                   child: daySlots.isEmpty
                       ? _EmptyDay(
                           day: _kDays[_selectedDay], isDark: isDark, cs: cs)
-                      : ListView.builder(
-                          padding:
-                              const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                          itemCount: daySlots.length,
-                          itemBuilder: (_, i) {
-                            final s = daySlots[i];
-                            return _ClassCard(
-                              slot:      s,
-                              isNow:     _isNow(s),
-                              isPast:    _isPast(s),
-                              isLast:    i == daySlots.length - 1,
-                              timeFrom:  _fmtTime(s.from),
-                              timeTo:    _fmtTime(s.to),
-                              onTap: () => Get.toNamed(
-                                  ROUTE_GROUP_DETAILS, arguments: s.group),
-                            );
-                          },
-                        ),
+                      : Obx(() {
+                          // قراءة مباشرة هنا عشان القائمة تتحدّث لما نظام
+                          // الساعة 12/24 يتغيّر من الإعدادات — الصفحة دي
+                          // مش GetX-reactive أصلًا فمن غير ده الأوقات
+                          // مبتتحدثش غير لو الصفحة اتفتحت من جديد.
+                          Get.find<SettingsController>().use24hFormat.value;
+                          return ListView.builder(
+                            padding:
+                                const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            itemCount: daySlots.length,
+                            itemBuilder: (_, i) {
+                              final s = daySlots[i];
+                              return _ClassCard(
+                                slot:      s,
+                                isNow:     _isNow(s),
+                                isPast:    _isPast(s),
+                                isLast:    i == daySlots.length - 1,
+                                timeFrom:  _fmtTime(s.from),
+                                timeTo:    _fmtTime(s.to),
+                                onTap: () => Get.toNamed(
+                                    ROUTE_GROUP_DETAILS, arguments: s.group),
+                              );
+                            },
+                          );
+                        }),
                 ),
               ],
             ),
