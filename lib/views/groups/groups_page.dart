@@ -1252,8 +1252,9 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
       final times = s.replaceFirst(day, '').trim().split('-');
       if (times.length == 2) {
         final from = _parseTime(times[0].trim());
+        final to = _parseTime(times[1].trim());
         if (from != null) {
-          _entries.add(_ScheduleEntry(day: day, from: from, to: _addHour(from)));
+          _entries.add(_ScheduleEntry(day: day, from: from, to: to ?? _addHour(from)));
         }
       }
     }
@@ -1289,16 +1290,26 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
   }
 
   TimeOfDay _addHour(TimeOfDay t) => TimeOfDay(hour: (t.hour + 1) % 24, minute: t.minute);
-  TimeOfDay _subHour(TimeOfDay t) => TimeOfDay(hour: (t.hour + 23) % 24, minute: t.minute);
 
   Future<void> _pickTime(int index, bool isFrom) async {
     final cur = isFrom ? _entries[index].from : _entries[index].to;
     final picked = await showTimePicker(context: context, initialTime: cur);
     if (picked != null) {
       if (isFrom) {
-        _entries[index] = _entries[index].copyWith(from: picked, to: _addHour(picked));
+        // بنحافظ على مدة الحصة الحالية بدل ما نفرض ساعة تابتة — لو
+        // الموعد كان ساعة ونص مثلاً، لسه هيفضل ساعة ونص بعد تحريك البداية.
+        final e = _entries[index];
+        final oldDur = (e.to.hour * 60 + e.to.minute) - (e.from.hour * 60 + e.from.minute);
+        final durMins = oldDur > 0 ? oldDur : 60;
+        final endTotal = (picked.hour * 60 + picked.minute + durMins) % (24 * 60);
+        _entries[index] = e.copyWith(
+          from: picked,
+          to: TimeOfDay(hour: endTotal ~/ 60, minute: endTotal % 60),
+        );
       } else {
-        _entries[index] = _entries[index].copyWith(from: _subHour(picked), to: picked);
+        // تعديل النهاية فقط — البداية لا تتغير، عشان تقدر تخلي الحصة
+        // ساعة ونص بدل ساعة (أو أي مدة تانية) من غير ما تحرك وقت البداية.
+        _entries[index] = _entries[index].copyWith(to: picked);
       }
       _syncToText();
     }
