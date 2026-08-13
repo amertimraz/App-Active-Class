@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/excel_import_service.dart';
 import 'package:active_class/widgets/app_toast.dart';
 
@@ -164,10 +165,23 @@ class _ImportStudentsDialogState extends State<_ImportStudentsDialog> {
       if (!mounted) return;
       setState(() => _busyMessage = 'جاري إضافة الطالب ${i + 1} من ${validRows.length}');
 
-      final code = await widget.controller.generateNextStudentCode(
-        groupPrefix: group.code ?? '',
-        groupId: group.id!,
-      );
+      String code;
+      final customCode = row.code;
+      if (customCode != null && customCode.isNotEmpty) {
+        final existing = await DatabaseService().getStudentByCode(customCode);
+        if (existing != null) {
+          // كود مكرر (سواء مع طالب موجود، أو مع طالب اتضاف لتوه من نفس
+          // الملف) — نتخطى الصف ده بس، ونكمل باقي الاستيراد.
+          _failures.add('${row.name}: الكود "$customCode" مستخدم بالفعل');
+          continue;
+        }
+        code = customCode;
+      } else {
+        code = await widget.controller.generateNextStudentCode(
+          groupPrefix: group.code ?? '',
+          groupId: group.id!,
+        );
+      }
 
       final student = Student(
         name: row.name,
@@ -337,6 +351,7 @@ class _ImportStudentsDialogState extends State<_ImportStudentsDialog> {
             _ColRow(label: 'الرسوم (تُستخدم رسوم المجموعة لو فاضية)', required: false),
             _ColRow(label: 'تاريخ الميلاد (يوم/شهر/سنة)', required: false),
             _ColRow(label: 'تاريخ بداية الحضور (افتراضي: اليوم)', required: false),
+            _ColRow(label: 'الكود (لو عندك كروت QR مطبوعة مسبقاً — وإلا يتولد تلقائياً)', required: false),
           ]),
         ),
         const SizedBox(height: 16),
@@ -428,7 +443,8 @@ class _ImportStudentsDialogState extends State<_ImportStudentsDialog> {
                     if (row.isValid)
                       Text(
                         'الرسوم: ${row.price?.toStringAsFixed(0) ?? "رسوم المجموعة"}'
-                        '${row.phone != null ? " • ${row.phone}" : ""}',
+                        '${row.phone != null ? " • ${row.phone}" : ""}'
+                        '${row.code != null ? " • كود: ${row.code}" : ""}',
                         style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                       )
                     else

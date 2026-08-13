@@ -18,6 +18,7 @@ class ImportRowResult {
   final String? phone;
   final DateTime? birthDate;
   final DateTime? attendanceStart;
+  final String? code; // null = يتولد تلقائياً — أو كود جاهز (من كرت مطبوع مسبقاً مثلاً)
   final String? error; // null = الصف صالح
 
   ImportRowResult({
@@ -27,6 +28,7 @@ class ImportRowResult {
     this.phone,
     this.birthDate,
     this.attendanceStart,
+    this.code,
     this.error,
   });
 
@@ -45,6 +47,7 @@ class ExcelImportService {
     'الرسوم',
     'تاريخ الميلاد',
     'تاريخ بداية الحضور',
+    'الكود (اختياري)',
   ];
 
   // ── بناء ملف القالب ────────────────────────────────────────────────
@@ -65,6 +68,7 @@ class ExcelImportService {
       xl.TextCellValue('01012345678'),
       xl.TextCellValue(examplePrice),
       xl.TextCellValue('15/9/2012'),
+      xl.TextCellValue(''),
       xl.TextCellValue(''),
     ]);
 
@@ -140,6 +144,7 @@ class ExcelImportService {
       final price = double.tryParse(priceRaw.replaceAll(',', ''));
       final birthDate = _cellDate(row, 3);
       final attendanceStart = _cellDate(row, 4);
+      final codeRaw = _cellText(row, 5).trim();
 
       results.add(ImportRowResult(
         rowNumber: rowNumber,
@@ -148,6 +153,7 @@ class ExcelImportService {
         phone: phoneRaw.isEmpty ? null : phoneRaw,
         birthDate: birthDate,
         attendanceStart: attendanceStart,
+        code: codeRaw.isEmpty ? null : codeRaw,
       ));
     }
 
