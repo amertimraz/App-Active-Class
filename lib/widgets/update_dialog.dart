@@ -1,5 +1,6 @@
 // lib/widgets/update_dialog.dart
 import 'dart:async';
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
@@ -193,6 +194,7 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
   // اضمن إن الحوار اتبنى قبل ما نبدأ التحميل
   await Future.delayed(Duration.zero);
 
+  var expectedBytes = -1;
   try {
     final dir = await getTemporaryDirectory();
     final path = '${dir.path}/active_class_${info.version}.apk';
@@ -208,9 +210,23 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
       path,
       cancelToken: cancelToken,
       onReceiveProgress: (received, total) {
-        if (total > 0) progress.value = received / total;
+        if (total > 0) {
+          expectedBytes = total;
+          progress.value = received / total;
+        }
       },
     );
+
+    // تأكيد إن الملف اتحمّل كامل قبل ما نفتح المثبّت — لو الاتصال اتقطع في
+    // آخر لحظة من غير ما Dio يرمي استثناء، بيفضل ملف ناقص على الجهاز
+    // وأندرويد بيديه بالظبط خطأ "حدثت مشكلة أثناء تحليل الحزمة" لو حاولنا
+    // نفتحه، فبنكتشف النقص هنا ونطلب من المعلم يعيد المحاولة بدل كده.
+    final downloadedBytes = await File(path).length();
+    if (expectedBytes > 0 && downloadedBytes < expectedBytes) {
+      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      ToastHelper.error('التحميل لم يكتمل — تحقق من الاتصال وحاول تاني');
+      return;
+    }
 
     if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
 
