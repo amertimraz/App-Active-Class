@@ -1,6 +1,7 @@
 // lib/widgets/add_student_sheet.dart
 import 'package:flutter/material.dart';
 import 'package:active_class/controllers/student_controller.dart';
+import 'package:active_class/widgets/code_scanner_page.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
@@ -63,6 +64,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   List<Group> _groups = [];
   Group? _selectedGroup;
   String _nextCode = '';
+  bool _codeIsManual = false;
   DateTime? _attendanceStart = DateTime.now();
   DateTime? _birthDate;
   Student? _sibling;
@@ -102,6 +104,9 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   }
 
   Future<void> _refreshCode() async {
+    // كود مخصص من كرت مطبوع (ماسحناه بالكاميرا) — منسيبوش التوليد
+    // التلقائي يدوس فوقه.
+    if (_codeIsManual) return;
     final g = _selectedGroup;
     if (g == null || g.id == null || (g.code?.isEmpty ?? true)) {
       _nextCode = '';
@@ -118,9 +123,38 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   }
 
   Future<void> _onGroupChanged(Group? g) async {
-    setState(() { _selectedGroup = g; _nextCode = ''; });
+    setState(() {
+      _selectedGroup = g;
+      if (!_codeIsManual) _nextCode = '';
+    });
     _prefillPrice();
     await _refreshCode();
+  }
+
+  // ── مسح QR من كرت مطبوع مسبقاً واستخدامه ككود الطالب ────────────
+  Future<void> _scanPrintedCode() async {
+    final scanned = await Navigator.of(context)
+        .push<String>(MaterialPageRoute(builder: (_) => const CodeScannerPage()));
+    if (scanned == null) return;
+    final trimmed = scanned.trim();
+    if (trimmed.isEmpty) {
+      _toast('كود QR غير صالح', isError: true);
+      return;
+    }
+    final existing = await DatabaseService().getStudentByCode(trimmed);
+    if (existing != null) {
+      _toast('هذا الكود مستخدم بالفعل للطالب: ${existing.name}', isError: true);
+      return;
+    }
+    setState(() {
+      _nextCode = trimmed;
+      _codeIsManual = true;
+    });
+  }
+
+  void _resetToAutoCode() {
+    setState(() => _codeIsManual = false);
+    _refreshCode();
   }
 
   Future<void> _pickSibling() async {
@@ -277,6 +311,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
     _isExempt = false;
     _exemptPercent = 100;
     _exemptReasonPreset = null;
+    _codeIsManual = false;
     _prefillPrice();
     await _refreshCode();
 
@@ -372,20 +407,22 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                           decoration: BoxDecoration(
                             color: _nextCode.isEmpty
                                 ? Colors.orange.withValues(alpha: 0.08)
-                                : primary.withValues(alpha: 0.08),
+                                : (_codeIsManual ? Colors.purple : primary).withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: _nextCode.isEmpty
                                   ? Colors.orange.withValues(alpha: 0.3)
-                                  : primary.withValues(alpha: 0.25),
+                                  : (_codeIsManual ? Colors.purple : primary).withValues(alpha: 0.25),
                             ),
                           ),
                           child: Row(children: [
                             Icon(
                               _nextCode.isEmpty
                                   ? Icons.warning_amber_rounded
-                                  : Icons.qr_code_rounded,
-                              color: _nextCode.isEmpty ? Colors.orange : primary,
+                                  : (_codeIsManual ? Icons.qr_code_2_rounded : Icons.qr_code_rounded),
+                              color: _nextCode.isEmpty
+                                  ? Colors.orange
+                                  : (_codeIsManual ? Colors.purple : primary),
                               size: 18,
                             ),
                             const SizedBox(width: 10),
@@ -393,13 +430,29 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                               child: Text(
                                 _nextCode.isEmpty
                                     ? 'اختر مجموعة لتوليد الكود تلقائياً'
-                                    : 'الكود التلقائي: $_nextCode',
+                                    : (_codeIsManual
+                                        ? 'كود من كرت مطبوع: $_nextCode'
+                                        : 'الكود التلقائي: $_nextCode'),
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 13,
-                                  color: _nextCode.isEmpty ? Colors.orange : primary,
+                                  color: _nextCode.isEmpty
+                                      ? Colors.orange
+                                      : (_codeIsManual ? Colors.purple : primary),
                                 ),
                               ),
+                            ),
+                            if (_codeIsManual)
+                              IconButton(
+                                tooltip: 'رجوع للكود التلقائي',
+                                icon: const Icon(Icons.refresh_rounded, size: 20, color: Colors.purple),
+                                onPressed: _resetToAutoCode,
+                              ),
+                            IconButton(
+                              tooltip: 'مسح QR من كرت مطبوع مسبقاً',
+                              icon: Icon(Icons.qr_code_scanner_rounded,
+                                  size: 20, color: _codeIsManual ? Colors.purple : primary),
+                              onPressed: _scanPrintedCode,
                             ),
                           ]),
                         ),

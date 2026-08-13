@@ -10,6 +10,7 @@ import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
+import 'package:active_class/widgets/code_scanner_page.dart';
 
 /// يفتح bottom sheet لتعديل بيانات طالب.
 /// يرجع الطالب المُحدَّث عند الحفظ، أو null لو اتلغى.
@@ -63,6 +64,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   DateTime? _attendanceStart;
   DateTime? _birthDate;
   bool      _saving = false;
+  late String _code;
 
   Group?   _selectedGroup;
   Student? _sibling;
@@ -88,6 +90,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     _sibTotalCtrl = TextEditingController(text: s.siblingsTotal?.toString() ?? '');
     _attendanceStart = s.attendanceStart ?? DateTime.now();
     _birthDate = s.birthDate;
+    _code = s.code;
 
     if (widget.groups != null) {
       _selectedGroup = widget.groups!.where((g) => g.id == s.groupId).firstOrNull;
@@ -207,6 +210,32 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     }
   }
 
+  // ── مسح QR من كرت مطبوع مسبقاً واستبدال كود الطالب بيه ───────────
+  Future<void> _scanPrintedCode() async {
+    final scanned = await Navigator.of(context)
+        .push<String>(MaterialPageRoute(builder: (_) => const CodeScannerPage()));
+    if (scanned == null || !mounted) return;
+    final trimmed = scanned.trim();
+    if (trimmed.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('كود QR غير صالح')),
+      );
+      return;
+    }
+    if (trimmed == _code) return;
+    final existing = await DatabaseService().getStudentByCode(trimmed);
+    if (!mounted) return;
+    if (existing != null && existing.id != widget.student.id) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('هذا الكود مستخدم بالفعل للطالب: ${existing.name}')),
+      );
+      return;
+    }
+    setState(() => _code = trimmed);
+  }
+
+  void _resetCode() => setState(() => _code = widget.student.code);
+
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
@@ -246,6 +275,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
 
       final updated = widget.student.copyWith(
         name:            name,
+        code:            _code,
         price:           price,
         groupId:         _selectedGroup?.id ?? widget.student.groupId,
         siblingId:       _sibling?.id,
@@ -344,9 +374,6 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                     const Text('تعديل بيانات الطالب',
                         style: TextStyle(
                             fontSize: 17, fontWeight: FontWeight.w900)),
-                    Text(widget.student.code,
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade500)),
                   ])),
               IconButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -354,6 +381,52 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
             ]),
 
             const SizedBox(height: 16),
+
+            // ── كود الطالب (QR) ────────────────────────────────────
+            Builder(builder: (context) {
+              final changed = _code != widget.student.code;
+              final boxColor = changed ? Colors.purple : primary;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: boxColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: boxColor.withValues(alpha: 0.25)),
+                ),
+                child: Row(children: [
+                  Icon(
+                    changed ? Icons.qr_code_2_rounded : Icons.qr_code_rounded,
+                    color: boxColor,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      changed ? 'كود من كرت مطبوع: $_code' : 'الكود: $_code',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: boxColor,
+                      ),
+                    ),
+                  ),
+                  if (changed)
+                    IconButton(
+                      tooltip: 'رجوع للكود الأصلي',
+                      icon: const Icon(Icons.refresh_rounded, size: 20, color: Colors.purple),
+                      onPressed: _resetCode,
+                    ),
+                  IconButton(
+                    tooltip: 'مسح QR من كرت مطبوع مسبقاً',
+                    icon: Icon(Icons.qr_code_scanner_rounded, size: 20, color: boxColor),
+                    onPressed: _scanPrintedCode,
+                  ),
+                ]),
+              );
+            }),
+
+            const SizedBox(height: 12),
             CustomTextField(controller: _nameCtrl, label: 'اسم الطالب'),
             const SizedBox(height: 12),
             CustomTextField(
