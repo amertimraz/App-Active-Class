@@ -98,7 +98,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
 
   Future<void> _scheduleAllBirthdayNotifications() async {
     setState(() => _schedulingAll = true);
-    final granted = await _notificationService.requestPermission();
+    final granted =
+        await _notificationService.requestPermission(requestExactAlarm: true);
     if (!granted) {
       if (mounted) {
         ToastHelper.error('صلاحية الإشعارات غير مفعلة', title: 'تنبيه');

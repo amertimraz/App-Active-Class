@@ -25,6 +25,8 @@ class NotificationService {
   // أعياد الميلاد = studentId*2 / studentId*2+1 (أرقام صغيرة).
   // إشعارات الحصص بعيدة تمامًا في مساحة أعلى.
   static const int _classNotificationIdBase = 900000000;
+  // إشعار ملخص "حصص اليوم" — واحد لكل يوم أسبوع، بمساحة IDs منفصلة.
+  static const int _digestNotificationIdBase = 950000000;
 
   static const Map<String, int> _dayNameToWeekday = {
     'السبت': DateTime.saturday,
@@ -75,13 +77,26 @@ class NotificationService {
     _initialized = true;
   }
 
-  Future<bool> requestPermission() async {
+  /// [requestExactAlarm] بيفتح شاشة إعدادات النظام على أندرويد 12+ (مش
+  /// حوار عادي) — لازم يتطلب بس من فعل مستخدم صريح (زرار في شاشة
+  /// الإعدادات)، مش تلقائيًا عند فتح التطبيق، عشان مايخطفش شاشة البداية
+  /// بشاشة إعدادات بدل الداشبورد.
+  Future<bool> requestPermission({bool requestExactAlarm = false}) async {
     if (kIsWeb) return false;
     if (Platform.isAndroid) {
       final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
           _notificationsPlugin.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
       final bool? granted = await androidImplementation?.requestNotificationsPermission();
+      if (requestExactAlarm) {
+        // بدون الصلاحية دي، جدولة الإشعارات (zonedSchedule) بتفشل بصمت على
+        // أندرويد 12+ ومفيش أي تذكير بيوصل للمستخدم رغم إن الجدولة "نجحت".
+        try {
+          await androidImplementation?.requestExactAlarmsPermission();
+        } catch (e) {
+          debugPrint('NotificationService: تعذر طلب صلاحية الجدولة الدقيقة — $e');
+        }
+      }
       return granted ?? false;
     } else if (Platform.isIOS) {
       final bool? granted = await _notificationsPlugin
@@ -142,13 +157,29 @@ class NotificationService {
 
       final groups = await _dbService.getAllGroups();
       for (final g in groups) {
-        await scheduleGroupClassNotifications(g);
+        // نلف كل مجموعة في try/catch مستقل عشان فشل جدولة مجموعة واحدة
+        // (بيانات جدول غير سليمة مثلاً) ما يوقفش جدولة باقي المجموعات.
+        try {
+          await scheduleGroupClassNotifications(g);
+        } catch (e) {
+          debugPrint('NotificationService: فشلت جدولة حصص "${g.name}" — $e');
+        }
+      }
+
+      try {
+        await scheduleDailyDigestNotifications(groups);
+      } catch (e) {
+        debugPrint('NotificationService: فشلت جدولة ملخص حصص اليوم — $e');
       }
 
       final students = await _dbService.getAllStudents();
       for (final s in students) {
         if (s.birthDate != null) {
-          await scheduleBirthdayNotifications(s);
+          try {
+            await scheduleBirthdayNotifications(s);
+          } catch (e) {
+            debugPrint('NotificationService: فشلت جدولة عيد ميلاد "${s.name}" — $e');
+          }
         }
       }
     } catch (e) {
@@ -182,6 +213,44 @@ class NotificationService {
         channelId: 'class_channel',
         channelName: 'مواعيد الحصص',
         channelDescription: 'تذكير قبل موعد كل حصة',
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  إشعار ملخص يومي الساعة 12 ص — بيعرض كل مجموعات وأوقات حصص
+  //  اليوم ده في إشعار واحد. بيتجدول إشعار مستقل لكل يوم أسبوع فيه
+  //  حصص، متكرر أسبوعيًا، عشان المحتوى (أسماء المجموعات) يفضل ثابت
+  //  ومحدّث مع كل مزامنة بدل ما يتحسب وقت الإطلاق.
+  // ─────────────────────────────────────────────────────────────────
+  Future<void> scheduleDailyDigestNotifications(List<Group> groups) async {
+    final Map<int, List<String>> byWeekday = {};
+    for (final g in groups) {
+      if (g.schedule == null || g.schedule!.trim().isEmpty) continue;
+      for (final (weekday, time) in _parseScheduleEntries(g.schedule!)) {
+        byWeekday.putIfAbsent(weekday, () => []).add('${g.name} الساعة ${_fmt(time)}');
+      }
+    }
+
+    for (final weekday in _dayNameToWeekday.values) {
+      final id = _digestNotificationIdBase + weekday;
+      final items = byWeekday[weekday];
+      // ملحوظة: المستدعي الوحيد الحالي (syncAllScheduledNotifications) بينادي
+      // cancelAllNotifications() قبل الدالة دي مباشرة، فمفيش داعي نلغي id
+      // فاضي هنا تاني — لو الدالة اتنادت من مكان تاني مستقبلاً لازم يُعاد النظر.
+      if (items == null || items.isEmpty) continue;
+
+      final scheduled = _nextInstanceOfWeekdayTime(weekday, const TimeOfDay(hour: 0, minute: 0));
+      await _scheduleById(
+        id: id,
+        title: '📅 حصص اليوم',
+        body: items.join('\n'),
+        scheduledTime: scheduled,
+        payload: 'digest_$weekday',
+        channelId: 'digest_channel',
+        channelName: 'ملخص حصص اليوم',
+        channelDescription: 'إشعار الساعة 12 صباحاً بكل حصص اليوم',
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
       );
     }

@@ -14,6 +14,11 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- مطلوبة عشان تذكيرات الحصص وأعياد الميلاد تُطلق في وقتها بالظبط
+         (Android 12+ بيمنع الجدولة الدقيقة من غير هذه الصلاحية). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- عشان الإشعارات المجدولة تترجع تلقائيًا بعد إعادة تشغيل الجهاز. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <!-- مطلوبة عشان التطبيق يقدر يشغّل مثبّت الـ APK بعد تحميل التحديث
          مباشرة من جوّه التطبيق (بدل ما المعلم يروح المتصفح ويرجع). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
