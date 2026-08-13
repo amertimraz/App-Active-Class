@@ -1328,6 +1328,12 @@ class SettingsPage extends StatelessWidget {
 
     if (success) {
       ToastHelper.success('تم استعادة النسخة الاحتياطية بنجاح');
+      // إعادة تحميل الإعدادات (اسم المعلم، العملة، ...) من القاعدة
+      // المستعادة قبل ما نرجع للرئيسية — الكنترولر لسه فاكر القيم
+      // القديمة في الذاكرة غير كده.
+      if (Get.isRegistered<SettingsController>()) {
+        await Get.find<SettingsController>().reloadFromDatabase();
+      }
       // إعادة تهيئة كاملة للتطبيق
       await Future.delayed(const Duration(milliseconds: 500));
       Get.offAllNamed(ROUTE_HOME);

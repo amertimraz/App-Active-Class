@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 11;
+const int DATABASE_VERSION = 12;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -50,6 +50,11 @@ const String TABLE_REPORT_LOGS  = 'report_logs';
 const String TABLE_EXAMS        = 'exams';
 const String TABLE_EXAM_GROUPS  = 'exam_groups';
 const String TABLE_EXAM_GRADES  = 'exam_grades';
+// إعدادات التطبيق (اسم المعلم، العملة، ...) كجدول key/value — عشان
+// تتضمن تلقائيًا في أي نسخة احتياطية (اللي بتنسخ ملف قاعدة البيانات فقط).
+const String TABLE_APP_SETTINGS = 'app_settings';
+const String COL_SETTING_KEY   = 'key';
+const String COL_SETTING_VALUE = 'value';
 
 // Column Names - Exams
 const String COL_EXAM_ID            = 'id';

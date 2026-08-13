@@ -106,51 +106,103 @@ class SettingsController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _loadCurrency();
-    _loadCountryDial();
-    _loadUse24hFormat();
-    _loadTeacherInfo();
-    _loadWhatsappSettings();
-    _loadHideQrSettings();
+    reloadFromDatabase();
+  }
+
+  /// يعيد تحميل كل الإعدادات من القاعدة — لازم بعد استعادة نسخة
+  /// احتياطية (قاعدة البيانات اتستبدلت بالكامل، والقيم في الذاكرة
+  /// لسه القديمة لحد ما نعيد تحميلها).
+  Future<void> reloadFromDatabase() async {
+    await Future.wait([
+      _loadCurrency(),
+      _loadCountryDial(),
+      _loadUse24hFormat(),
+      _loadTeacherInfo(),
+      _loadWhatsappSettings(),
+      _loadHideQrSettings(),
+    ]);
+  }
+
+  // ── تخزين الإعدادات في قاعدة البيانات (جدول app_settings) بدل
+  // SharedPreferences — عشان تتضمن تلقائيًا في أي نسخة احتياطية (النسخ
+  // الاحتياطي بينسخ ملف قاعدة البيانات فقط). بنقرأ من SharedPreferences
+  // كخطوة ترحيل لمرة واحدة فقط لو المفتاح مش موجود لسه في القاعدة،
+  // عشان مستخدمين النسخة القديمة ميفقدوش إعداداتهم المحفوظة.
+  Future<String?> _dbGet(String key) => DatabaseService().getSetting(key);
+  Future<void> _dbSet(String key, String value) =>
+      DatabaseService().setSetting(key, value);
+
+  Future<String?> _migrateString(String key) async {
+    final v = await _dbGet(key);
+    if (v != null) return v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final legacy = prefs.getString(key);
+      if (legacy != null) await _dbSet(key, legacy);
+      return legacy;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool?> _migrateBool(String key) async {
+    final v = await _dbGet(key);
+    if (v != null) return v == '1';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final legacy = prefs.getBool(key);
+      if (legacy != null) await _dbSet(key, legacy ? '1' : '0');
+      return legacy;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<int?> _migrateInt(String key) async {
+    final v = await _dbGet(key);
+    if (v != null) return int.tryParse(v);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final legacy = prefs.getInt(key);
+      if (legacy != null) await _dbSet(key, legacy.toString());
+      return legacy;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _loadWhatsappSettings() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      whatsappEnabled.value = prefs.getBool(_keyWaEnabled) ?? true;
-      whatsappSendDay.value = prefs.getInt(_keyWaSendDay) ?? 1;
+      whatsappEnabled.value = await _migrateBool(_keyWaEnabled) ?? true;
+      whatsappSendDay.value = await _migrateInt(_keyWaSendDay) ?? 1;
     } catch (_) {}
   }
 
   Future<void> _loadHideQrSettings() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      hideQrInPayment.value = prefs.getBool(_keyHideQrPayment) ?? false;
-      hideQrInAttendance.value = prefs.getBool(_keyHideQrAttendance) ?? false;
+      hideQrInPayment.value = await _migrateBool(_keyHideQrPayment) ?? false;
+      hideQrInAttendance.value = await _migrateBool(_keyHideQrAttendance) ?? false;
     } catch (_) {}
   }
 
   Future<void> setHideQrInPayment(bool v) async {
     hideQrInPayment.value = v;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_keyHideQrPayment, v);
+      await _dbSet(_keyHideQrPayment, v ? '1' : '0');
     } catch (_) {}
   }
 
   Future<void> setHideQrInAttendance(bool v) async {
     hideQrInAttendance.value = v;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_keyHideQrAttendance, v);
+      await _dbSet(_keyHideQrAttendance, v ? '1' : '0');
     } catch (_) {}
   }
 
   Future<void> setWhatsappEnabled(bool v) async {
     whatsappEnabled.value = v;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_keyWaEnabled, v);
+      await _dbSet(_keyWaEnabled, v ? '1' : '0');
     } catch (_) {}
   }
 
@@ -158,15 +210,13 @@ class SettingsController extends GetxController {
     final d = day.clamp(1, 28);
     whatsappSendDay.value = d;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_keyWaSendDay, d);
+      await _dbSet(_keyWaSendDay, d.toString());
     } catch (_) {}
   }
 
   Future<void> _loadCurrency() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final saved = prefs.getString(_keyCurrency);
+      final saved = await _migrateString(_keyCurrency);
       if (saved != null && supported.any((c) => c.code == saved)) {
         currencyCode.value = saved;
       }
@@ -175,8 +225,7 @@ class SettingsController extends GetxController {
 
   Future<void> _loadCountryDial() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final saved = prefs.getString(_keyCountryDial);
+      final saved = await _migrateString(_keyCountryDial);
       if (saved != null && saved.isNotEmpty) {
         countryDial.value = saved;
       }
@@ -185,21 +234,19 @@ class SettingsController extends GetxController {
 
   Future<void> _loadUse24hFormat() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      use24hFormat.value = prefs.getBool(_keyUse24h) ?? true;
+      use24hFormat.value = await _migrateBool(_keyUse24h) ?? true;
     } catch (_) {}
   }
 
   Future<void> _loadTeacherInfo() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      teacherFullName.value = prefs.getString(_keyTeacherFullName) ?? '';
-      teacherAvatarPath.value = prefs.getString(_keyTeacherAvatar) ?? '';
-      teacherSpecialization.value = prefs.getString(_keyTeacherSpecialization) ?? '';
-      teacherPhone.value = prefs.getString(_keyTeacherPhone) ?? '';
-      teacherEmail.value = prefs.getString(_keyTeacherEmail) ?? '';
-      teacherSchool.value = prefs.getString(_keyTeacherSchool) ?? '';
-      teacherGender.value = prefs.getString(_keyTeacherGender) ?? 'male';
+      teacherFullName.value = await _migrateString(_keyTeacherFullName) ?? '';
+      teacherAvatarPath.value = await _migrateString(_keyTeacherAvatar) ?? '';
+      teacherSpecialization.value = await _migrateString(_keyTeacherSpecialization) ?? '';
+      teacherPhone.value = await _migrateString(_keyTeacherPhone) ?? '';
+      teacherEmail.value = await _migrateString(_keyTeacherEmail) ?? '';
+      teacherSchool.value = await _migrateString(_keyTeacherSchool) ?? '';
+      teacherGender.value = await _migrateString(_keyTeacherGender) ?? 'male';
     } catch (_) {}
   }
 
@@ -216,8 +263,7 @@ class SettingsController extends GetxController {
     if (supported.any((c) => c.code == code)) {
       currencyCode.value = code;
       try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_keyCurrency, code);
+        await _dbSet(_keyCurrency, code);
       } catch (_) {}
     }
   }
@@ -251,16 +297,14 @@ class SettingsController extends GetxController {
   Future<void> setCountryDial(String dial) async {
     countryDial.value = dial;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_keyCountryDial, dial);
+      await _dbSet(_keyCountryDial, dial);
     } catch (_) {}
   }
 
   Future<void> setUse24hFormat(bool v) async {
     use24hFormat.value = v;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_keyUse24h, v);
+      await _dbSet(_keyUse24h, v ? '1' : '0');
     } catch (_) {}
   }
 
@@ -275,14 +319,13 @@ class SettingsController extends GetxController {
 
   Future<void> saveTeacherInfo() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_keyTeacherFullName, teacherFullName.value);
-      await prefs.setString(_keyTeacherAvatar, teacherAvatarPath.value);
-      await prefs.setString(_keyTeacherSpecialization, teacherSpecialization.value);
-      await prefs.setString(_keyTeacherPhone, teacherPhone.value);
-      await prefs.setString(_keyTeacherEmail, teacherEmail.value);
-      await prefs.setString(_keyTeacherSchool, teacherSchool.value);
-      await prefs.setString(_keyTeacherGender, teacherGender.value);
+      await _dbSet(_keyTeacherFullName, teacherFullName.value);
+      await _dbSet(_keyTeacherAvatar, teacherAvatarPath.value);
+      await _dbSet(_keyTeacherSpecialization, teacherSpecialization.value);
+      await _dbSet(_keyTeacherPhone, teacherPhone.value);
+      await _dbSet(_keyTeacherEmail, teacherEmail.value);
+      await _dbSet(_keyTeacherSchool, teacherSchool.value);
+      await _dbSet(_keyTeacherGender, teacherGender.value);
     } catch (_) {}
   }
 

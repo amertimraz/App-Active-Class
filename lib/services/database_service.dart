@@ -170,6 +170,14 @@ class DatabaseService {
       )
     ''');
 
+    // App settings (key/value) — اسم المعلم، العملة، تفضيلات الواجهة...
+    await db.execute('''
+      CREATE TABLE $TABLE_APP_SETTINGS (
+        $COL_SETTING_KEY TEXT PRIMARY KEY,
+        $COL_SETTING_VALUE TEXT
+      )
+    ''');
+
     // Create indexes for performance optimization
     await _createIndexes(db);
   }
@@ -275,6 +283,14 @@ class DatabaseService {
         await db.execute(
             "ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_PRICING_TYPE TEXT DEFAULT 'monthly'");
       } catch (_) {}
+    }
+    if (oldVersion < 12) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $TABLE_APP_SETTINGS (
+          $COL_SETTING_KEY TEXT PRIMARY KEY,
+          $COL_SETTING_VALUE TEXT
+        )
+      ''');
     }
   }
 
@@ -662,6 +678,27 @@ class DatabaseService {
       await txn.delete(TABLE_GROUPS);
     });
     // لا نُشعر الحفظ التلقائي هنا — البيانات محذوفة
+  }
+
+  // ========== APP SETTINGS (key/value) ==========
+  Future<String?> getSetting(String key) async {
+    final db = await database;
+    final result = await db.query(
+      TABLE_APP_SETTINGS,
+      where: '$COL_SETTING_KEY = ?',
+      whereArgs: [key],
+    );
+    if (result.isEmpty) return null;
+    return result.first[COL_SETTING_VALUE] as String?;
+  }
+
+  Future<void> setSetting(String key, String value) async {
+    final db = await database;
+    await db.insert(
+      TABLE_APP_SETTINGS,
+      {COL_SETTING_KEY: key, COL_SETTING_VALUE: value},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<double> getTotalPaymentsByStudent(int studentId) async {
