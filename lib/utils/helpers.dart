@@ -9,7 +9,9 @@ import 'package:active_class/config/constants.dart';
 /// جماعي/تصدير). لو ممنوعة، بيعرض SnackBar فيه زر "ترقية" ويرجّع false.
 bool requireLicenseFeature(BuildContext context, bool allowed, String deniedMessage) {
   if (allowed) return true;
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.clearSnackBars();
+  messenger.showSnackBar(SnackBar(
     content: Text(deniedMessage, style: const TextStyle(fontFamily: 'Cairo')),
     backgroundColor: Colors.red.shade700,
     duration: const Duration(seconds: 4),

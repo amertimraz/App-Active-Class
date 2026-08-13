@@ -114,14 +114,15 @@ class _PlansPageState extends State<PlansPage> {
                           return _TrialBanner(
                               days: lc.trialDaysLeft.value,
                               total: lc.trialDaysTotal.value,
-                              isExpired: false);
+                              state: lc.state.value);
                         }
                         if (lc.state.value == LicenseState.trialExpired ||
-                            lc.state.value == LicenseState.expired) {
+                            lc.state.value == LicenseState.expired ||
+                            lc.state.value == LicenseState.suspended) {
                           return _TrialBanner(
                               days: 0,
                               total: lc.trialDaysTotal.value,
-                              isExpired: true);
+                              state: lc.state.value);
                         }
                         return const SizedBox.shrink();
                       }),
@@ -392,16 +393,21 @@ class _SectionTitle extends StatelessWidget {
 class _TrialBanner extends StatelessWidget {
   final int days;
   final int total;
-  final bool isExpired;
+  final LicenseState state;
   const _TrialBanner(
-      {required this.days, required this.total, required this.isExpired});
+      {required this.days, required this.total, required this.state});
 
   @override
   Widget build(BuildContext context) {
+    final isExpired = state != LicenseState.trial;
     final color = isExpired ? const Color(0xFFEF4444) : const Color(0xFFF59E0B);
-    final msg = isExpired
-        ? 'انتهت فترة التجربة — اطلب ترقية للاستمرار'
-        : 'باقي لك $days ${days == 1 ? "يوم" : "أيام"} من التجربة المجانية';
+    final msg = switch (state) {
+      LicenseState.trialExpired => 'انتهت فترة التجربة المجانية — اطلب ترقية للاستمرار',
+      LicenseState.expired      => 'انتهت صلاحية اشتراكك — جدد الآن للاستمرار في استخدام التطبيق',
+      LicenseState.suspended    => 'تم إيقاف ترخيصك — تواصل مع الدعم لمعرفة السبب',
+      _                         => 'باقي لك $days ${days == 1 ? "يوم" : "أيام"} من التجربة المجانية',
+    };
+    final icon = state == LicenseState.suspended ? '🚫' : '🔒';
     final progress = isExpired ? 0.0 : (days / total).clamp(0.0, 1.0);
 
     return Container(
@@ -432,7 +438,7 @@ class _TrialBanner extends StatelessWidget {
                 color: color.withValues(alpha: 0.15),
               ),
               child: Center(
-                  child: Text(isExpired ? '🔒' : '⏳',
+                  child: Text(isExpired ? icon : '⏳',
                       style: const TextStyle(fontSize: 18))),
             ),
             const SizedBox(width: 12),
@@ -817,10 +823,14 @@ class _BottomCTABar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final priceNum = plan.price.replaceAll(' جنيه', '').replaceAll(' EGP', '');
+    // بعض التابلت الرخيصة ما بتبلّغش المساحة الحقيقية لشريط التنقل السفلي
+    // (MediaQuery.padding.bottom بيرجع صفر أو رقم أقل من الحقيقي)، فبنضمن
+    // حد أدنى للـ padding عشان الزر ميتقطعش تحت الشريط.
+    final bottomInset =
+        MediaQuery.of(context).padding.bottom.clamp(16.0, double.infinity);
 
     return Container(
-      padding: EdgeInsets.fromLTRB(
-          16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottomInset),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF101729) : Colors.white,
         boxShadow: [

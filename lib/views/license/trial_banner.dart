@@ -2,8 +2,31 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/views/license/plans_page.dart';
+
+const String _kSupportPhone = '201096066818';
+
+/// يفتح واتساب مباشرة على رقم الدعم — لطلب تجديد الاشتراك أو أي مساعدة
+Future<void> openRenewalWhatsApp({bool isRenewal = true}) async {
+  final message = StringBuffer();
+  if (isRenewal) {
+    message.writeln('مرحبًا، أنا مدرس بستخدم تطبيق Active Class وعايز أجدد اشتراكي.');
+  } else {
+    message.writeln('مرحبًا، أنا مدرس بستخدم تطبيق Active Class وعايز مساعدة/دعم فني.');
+  }
+  final lc = LicenseController.to;
+  final code = lc.licenseCode.value;
+  if (code != null && code.isNotEmpty) {
+    message.writeln('كود الترخيص: $code');
+  }
+  final uri = Uri.parse(
+      'https://wa.me/$_kSupportPhone?text=${Uri.encodeComponent(message.toString())}');
+  try {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {}
+}
 
 /// Banner يظهر في أعلى الصفحة الرئيسية
 class TrialBanner extends StatelessWidget {
@@ -27,6 +50,8 @@ class TrialBanner extends StatelessWidget {
               msg: daysLeft == 0
                   ? '⚠️ ترخيصك ينتهي اليوم — جدد الآن'
                   : '⚠️ ترخيصك ينتهي خلال $daysLeft ${daysLeft == 1 ? "يوم" : "أيام"}',
+              onTap: openRenewalWhatsApp,
+              ctaLabel: 'واتساب',
             );
           }
         }
@@ -37,6 +62,8 @@ class TrialBanner extends StatelessWidget {
       String msg;
       Color color;
       IconData icon;
+      VoidCallback onTap;
+      String ctaLabel;
 
       switch (lc.state.value) {
         case LicenseState.trial:
@@ -46,27 +73,37 @@ class TrialBanner extends StatelessWidget {
               : 'التجربة المجانية: باقي $days ${days == 1 ? "يوم" : "أيام"}';
           color = days <= 2 ? const Color(0xFFDC2626) : const Color(0xFFF59E0B);
           icon  = days <= 2 ? Icons.warning_rounded : Icons.timer_outlined;
+          onTap = () => Get.to(() => const PlansPage());
+          ctaLabel = 'ترقية';
           break;
         case LicenseState.trialExpired:
           msg   = 'انتهت فترة التجربة — فعّل ترخيصك للاستمرار';
           color = const Color(0xFFDC2626);
           icon  = Icons.lock_rounded;
+          onTap = openRenewalWhatsApp;
+          ctaLabel = 'واتساب';
           break;
         case LicenseState.expired:
           msg   = 'انتهت صلاحية ترخيصك — قم بالتجديد';
           color = const Color(0xFFDC2626);
           icon  = Icons.timer_off_rounded;
+          onTap = openRenewalWhatsApp;
+          ctaLabel = 'واتساب';
           break;
         case LicenseState.suspended:
           msg   = 'ترخيصك موقوف — تواصل مع الدعم';
           color = const Color(0xFFDC2626);
           icon  = Icons.block_rounded;
+          onTap = () => openRenewalWhatsApp(isRenewal: false);
+          ctaLabel = 'واتساب';
           break;
         default:
           return const SizedBox.shrink();
       }
 
-      return _buildBanner(context: context, icon: icon, color: color, msg: msg);
+      return _buildBanner(
+          context: context, icon: icon, color: color, msg: msg,
+          onTap: onTap, ctaLabel: ctaLabel);
     });
   }
 
@@ -75,9 +112,11 @@ class TrialBanner extends StatelessWidget {
     required IconData icon,
     required Color color,
     required String msg,
+    required VoidCallback onTap,
+    required String ctaLabel,
   }) {
     return GestureDetector(
-      onTap: () => Get.to(() => const PlansPage()),
+      onTap: onTap,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -103,8 +142,8 @@ class TrialBanner extends StatelessWidget {
                 color: color,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text('ترقية',
-                  style: TextStyle(
+              child: Text(ctaLabel,
+                  style: const TextStyle(
                       fontFamily: 'Cairo',
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
@@ -127,25 +166,31 @@ class LicenseStatusTile extends StatelessWidget {
       final lc  = LicenseController.to;
       final exp = lc.expiresAt.value;
 
-      // نص تاريخ الانتهاء
+      // نص تاريخ الانتهاء + عدد الأيام المتبقية (لو الترخيص نشط وليس مدى الحياة)
       String expText = '';
       if (exp != null) {
-        expText = ' · ينتهي ${DateFormat('yyyy/MM/dd').format(exp)}';
+        final daysLeft = exp.difference(DateTime.now()).inDays;
+        final daysText = daysLeft >= 0
+            ? 'باقي $daysLeft ${daysLeft == 1 ? "يوم" : "أيام"}'
+            : 'منتهي منذ ${-daysLeft} يوم';
+        expText = ' — $daysText (ينتهي ${DateFormat('yyyy/MM/dd').format(exp)})';
+      } else if (lc.state.value == LicenseState.active) {
+        expText = ' — مدى الحياة ♾️';
       }
 
       final (icon, label, color) = switch (lc.state.value) {
         LicenseState.active       => (Icons.verified_rounded,
-            '${lc.plan.value.nameAr} — نشط$expText',
+            '${lc.plan.value.nameAr}$expText',
             const Color(0xFF10B981)),
         LicenseState.trial        => (Icons.hourglass_top_rounded,
             'تجريبي — باقي ${lc.trialDaysLeft.value} أيام',
             const Color(0xFFF59E0B)),
         LicenseState.trialExpired => (Icons.lock_rounded,
-            'انتهت التجربة', const Color(0xFFEF4444)),
+            'انتهت التجربة المجانية — فعّل ترخيصك للاستمرار', const Color(0xFFEF4444)),
         LicenseState.expired      => (Icons.timer_off_rounded,
-            'منتهي الصلاحية$expText', const Color(0xFFEF4444)),
+            'انتهت صلاحية اشتراكك$expText — جدد للاستمرار', const Color(0xFFEF4444)),
         LicenseState.suspended    => (Icons.block_rounded,
-            'موقوف', const Color(0xFFEF4444)),
+            'الترخيص موقوف — تواصل مع الدعم', const Color(0xFFEF4444)),
         _                         => (Icons.hourglass_empty_rounded,
             'جاري التحقق...', Colors.grey),
       };
@@ -163,14 +208,23 @@ class LicenseStatusTile extends StatelessWidget {
             style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
         subtitle: Text(label,
             style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: color)),
-        trailing: lc.state.value != LicenseState.active
-            ? TextButton(
-                onPressed: () => Get.to(() => const PlansPage()),
-                child: const Text('ترقية',
-                    style: TextStyle(
-                        fontFamily: 'Cairo', color: Color(0xFF4F46E5))),
-              )
-            : null,
+        trailing: switch (lc.state.value) {
+          LicenseState.trial => TextButton(
+              onPressed: () => Get.to(() => const PlansPage()),
+              child: const Text('ترقية',
+                  style: TextStyle(fontFamily: 'Cairo', color: Color(0xFF4F46E5))),
+            ),
+          LicenseState.trialExpired ||
+          LicenseState.expired ||
+          LicenseState.suspended =>
+            TextButton(
+              onPressed: () =>
+                  openRenewalWhatsApp(isRenewal: lc.state.value != LicenseState.suspended),
+              child: const Text('واتساب',
+                  style: TextStyle(fontFamily: 'Cairo', color: Color(0xFF25D366))),
+            ),
+          _ => null,
+        },
       );
     });
   }

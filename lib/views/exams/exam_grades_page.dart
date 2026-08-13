@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -38,6 +39,8 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
 
   final Map<int, TextEditingController> _ctrls = {};
   final Map<int, TextEditingController> _notes = {};
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
   // طابور بدل قفل: لو فيه حفظ شغال لنفس الطالب، الطلب الجديد بينتظره
   // يخلص الأول بدل ما يتجاهَل (منع فقدان تعديلات لو المستخدم كان سريع).
   final Map<int, Future<void>> _pending = {};
@@ -53,6 +56,7 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
   @override
   void dispose() {
     _statsTimer?.cancel();
+    _searchCtrl.dispose();
     for (final c in _ctrls.values) {
       c.dispose();
     }
@@ -60,6 +64,14 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
       c.dispose();
     }
     super.dispose();
+  }
+
+  List<ExamGrade> get _filteredGrades {
+    final q = _searchQuery.trim();
+    if (q.isEmpty) return _grades;
+    return _grades
+        .where((g) => (g.studentName ?? '').contains(q))
+        .toList();
   }
 
   // ── تحديث الإحصائيات بعد 1.5 ثانية من آخر حفظ (debounce) ─────────────────
@@ -207,15 +219,15 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
     final pdf = pw.Document();
 
     // جلب الخط
-    final font = await PdfGoogleFonts.cairoRegular();
-    final fontBold = await PdfGoogleFonts.cairoBold();
+    final font = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/Cairo-Regular.ttf'));
+    final fontBold = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/Cairo-Bold.ttf'));
 
-    pdf.addPage(pw.Page(
+    pdf.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       textDirection: pw.TextDirection.rtl,
-      build: (ctx) => pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
+      build: (ctx) => [
           // Header
           pw.Container(
             width: double.infinity,
@@ -332,7 +344,6 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
             ],
           ),
         ],
-      ),
     ));
 
     final bytes = await pdf.save();
@@ -398,6 +409,34 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
               children: [
                 if (_stats != null)
                   _StatsPanel(stats: _stats!, maxGrade: widget.exam.maxGrade),
+                if (_grades.length > 6)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    child: TextField(
+                      controller: _searchCtrl,
+                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'ابحث عن طالب...',
+                        hintStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear_rounded, size: 18),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : null,
+                        isDense: true,
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                    ),
+                  ),
                 Expanded(
                   child: _grades.isEmpty
                       ? Center(
@@ -405,11 +444,17 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
                               style: TextStyle(
                                   fontFamily: 'Cairo',
                                   color: cs.onSurface.withValues(alpha: 0.4))))
+                      : _filteredGrades.isEmpty
+                      ? Center(
+                          child: Text('لا يوجد نتائج',
+                              style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  color: cs.onSurface.withValues(alpha: 0.4))))
                       : ListView.builder(
                           padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                          itemCount: _grades.length,
+                          itemCount: _filteredGrades.length,
                           itemBuilder: (_, i) {
-                            final g = _grades[i];
+                            final g = _filteredGrades[i];
                             return _GradeRow(
                               grade: g,
                               ctrl: _ctrls[g.studentId]!,

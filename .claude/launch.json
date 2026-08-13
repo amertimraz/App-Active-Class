@@ -30,6 +30,12 @@
       "runtimeExecutable": "cmd.exe",
       "runtimeArgs": ["/d", "/c", "cd /d C:\\repo\\active_class_admin && flutter run -d chrome --web-port 5055"],
       "port": 5055
+    },
+    {
+      "name": "Admin Panel (static, fast)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5056", "-d", "C:\\repo\\active_class_admin\\build\\web"],
+      "port": 5056
     }
   ]
 }

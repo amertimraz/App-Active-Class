@@ -527,15 +527,16 @@ class _GroupAttendanceCard extends StatelessWidget {
           // الطلاب
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            child: Column(
               children: students.map((s) {
                 final status = statusMap[s.id];
-                return _StudentAttendanceChip(
-                  student: s,
-                  status: status,
-                  onTap: () => controller.toggleAttendance(s.id!, selectedDay),
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _StudentAttendanceChip(
+                    student: s,
+                    status: status,
+                    onTap: () => controller.toggleAttendance(s.id!, selectedDay),
+                  ),
                 );
               }).toList(),
             ),
@@ -587,7 +588,7 @@ class _StudentAttendanceChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        width: (MediaQuery.of(context).size.width - 72) / 2,
+        width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: bgColor,
@@ -907,6 +908,8 @@ class _RecordsTabState extends State<_RecordsTab> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(s?.name ?? 'طالب',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                       fontFamily: 'Cairo',
                                       fontWeight: FontWeight.w700,
@@ -916,10 +919,14 @@ class _RecordsTabState extends State<_RecordsTab> {
                                   Icon(Icons.groups_outlined,
                                       size: 11, color: Colors.grey.shade400),
                                   const SizedBox(width: 3),
-                                  Text(groupName,
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey.shade500)),
+                                  Flexible(
+                                    child: Text(groupName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey.shade500)),
+                                  ),
                                   Text('  •  ',
                                       style: TextStyle(color: Colors.grey.shade400)),
                                 ],

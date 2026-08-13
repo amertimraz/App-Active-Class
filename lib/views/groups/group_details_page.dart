@@ -1,5 +1,6 @@
 // lib/views/groups/group_details_page.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'dart:ui' as ui;
 import 'dart:io';
 import 'package:get/get.dart';
@@ -1378,17 +1379,17 @@ Future<bool> _gdSaveStudentQrImage(Student student) async {
 // ─────────────────────────────────────────────────────────────────────────────
 Future<void> _exportGroupRosterPdf(Group g, List<Student> students) async {
   final pdf = pw.Document();
-  final font = await PdfGoogleFonts.cairoRegular();
-  final fontBold = await PdfGoogleFonts.cairoBold();
+  final font = pw.Font.ttf(
+      await rootBundle.load('assets/fonts/Cairo-Regular.ttf'));
+  final fontBold = pw.Font.ttf(
+      await rootBundle.load('assets/fonts/Cairo-Bold.ttf'));
   final sorted = List<Student>.from(students)
-    ..sort((a, b) => a.name.compareTo(b.name));
+    ..sort((a, b) => a.code.compareTo(b.code));
 
-  pdf.addPage(pw.Page(
+  pdf.addPage(pw.MultiPage(
     pageFormat: PdfPageFormat.a4,
     textDirection: pw.TextDirection.rtl,
-    build: (ctx) => pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
+    build: (ctx) => [
         pw.Container(
           width: double.infinity,
           padding: const pw.EdgeInsets.all(16),
@@ -1472,7 +1473,6 @@ Future<void> _exportGroupRosterPdf(Group g, List<Student> students) async {
           ],
         ),
       ],
-    ),
   ));
 
   await Printing.sharePdf(

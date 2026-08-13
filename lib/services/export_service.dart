@@ -373,7 +373,7 @@ class ExportService {
         status      = 'معفى';
         statusColor = _success;
       } else if (paid >= due && due > 0) {
-        status      = 'مكتمل ✓';
+        status      = 'مكتمل';
         statusColor = _success;
       } else if (paid > 0) {
         status      = 'جزئي';
@@ -427,8 +427,8 @@ class ExportService {
       final weekday  = _weekdayShort(date.weekday);
       headerCells.add(_thSmall('$d\n$weekday'));
     }
-    headerCells.add(_th('✓', size: 8));
-    headerCells.add(_th('✗', size: 8));
+    headerCells.add(_th('ح', size: 8));
+    headerCells.add(_th('غ', size: 8));
     rows.add(pw.TableRow(children: headerCells));
 
     // Data rows
@@ -446,12 +446,12 @@ class ExportService {
         final status = sAtt[d];
         if (status == ATTENDANCE_PRESENT) {
           presentCount++;
-          cells.add(_attCell('●', _success, isEven));
+          cells.add(_attCell(true, isEven));
         } else if (status == ATTENDANCE_ABSENT) {
           absentCount++;
-          cells.add(_attCell('○', _error, isEven));
+          cells.add(_attCell(false, isEven));
         } else {
-          cells.add(_attCell('', _grey, isEven));
+          cells.add(_attCell(null, isEven));
         }
       }
       cells.add(_td('$presentCount', isEven: isEven, color: _success, size: 9));
@@ -639,16 +639,25 @@ class ExportService {
         ),
       );
 
-  pw.Widget _attCell(String sym, PdfColor color, bool isEven) =>
-      pw.Container(
+  // نرسم علامة الحضور/الغياب كشكل هندسي بدل رموز يونيكود (✓/●) — دي
+  // مش مضمونة موجودة في خط Cairo المرفق، وبتطلع مربعات فاضية في الـPDF.
+  pw.Widget _attCell(bool? present, bool isEven) => pw.Container(
         color: isEven ? _white : _lightGrey,
         alignment: pw.Alignment.center,
         padding: const pw.EdgeInsets.all(1),
-        child: sym.isEmpty
+        child: present == null
             ? pw.SizedBox()
-            : pw.Text(sym,
-                style: _style(size: 8, color: color),
-                textAlign: pw.TextAlign.center),
+            : pw.Container(
+                width: 7,
+                height: 7,
+                decoration: pw.BoxDecoration(
+                  shape: pw.BoxShape.circle,
+                  color: present ? _success : null,
+                  border: present
+                      ? null
+                      : pw.Border.all(color: _error, width: 1),
+                ),
+              ),
       );
 
   // ══════════════════════════════════════════════════════════════════
