@@ -11,6 +11,7 @@ import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
@@ -1672,6 +1673,26 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all, SettingsContr
                   for (final p in (List.of(paysMonth)..sort((a, b) => b.date.compareTo(a.date)))) {
                     buffer.writeln('• ${DateFormat('yyyy-MM-dd HH:mm').format(p.date)} — ${FormatHelper.formatCurrency(p.amount)}');
                   }
+
+                  final examRecords = await db.getStudentExamHistory(s.id!);
+                  final examsMonth = examRecords
+                      .where((r) => !r.examDate.isBefore(start) && !r.examDate.isAfter(end))
+                      .toList()
+                    ..sort((a, b) => b.examDate.compareTo(a.examDate));
+                  if (examsMonth.isNotEmpty) {
+                    buffer.writeln('\n📝 الامتحانات:');
+                    for (final r in examsMonth) {
+                      final dateStr = DateFormat('yyyy-MM-dd').format(r.examDate);
+                      if (r.isAbsent) {
+                        buffer.writeln('• $dateStr — ${r.examName}: غائب');
+                      } else if (r.grade != null) {
+                        buffer.writeln('• $dateStr — ${r.examName}: ${r.grade!.toStringAsFixed(1)}/${r.maxGrade.toStringAsFixed(0)} (${r.category.label})');
+                      } else {
+                        buffer.writeln('• $dateStr — ${r.examName}: لم تُدخل الدرجة بعد');
+                      }
+                    }
+                  }
+
                   final tName = settings.teacherFullName.value.trim();
                   final tSpec = settings.teacherSpecialization.value.trim();
                   if (tName.isNotEmpty || tSpec.isNotEmpty) {

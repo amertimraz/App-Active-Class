@@ -11,6 +11,7 @@ import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -157,6 +158,26 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
     for (final p in paysSorted) {
       buffer.writeln(
           '• ${DateFormat('yyyy-MM-dd HH:mm').format(p.date)} — ${FormatHelper.formatCurrency(p.amount)}');
+    }
+
+    final examRecords = await DatabaseService().getStudentExamHistory(s.id!);
+    final examsMonth = examRecords
+        .where((r) => !r.examDate.isBefore(start) && !r.examDate.isAfter(end))
+        .toList()
+      ..sort((a, b) => b.examDate.compareTo(a.examDate));
+    if (examsMonth.isNotEmpty) {
+      buffer.writeln('\n📝 الامتحانات:');
+      for (final r in examsMonth) {
+        final dateStr = DateFormat('yyyy-MM-dd').format(r.examDate);
+        if (r.isAbsent) {
+          buffer.writeln('• $dateStr — ${r.examName}: غائب');
+        } else if (r.grade != null) {
+          buffer.writeln(
+              '• $dateStr — ${r.examName}: ${r.grade!.toStringAsFixed(1)}/${r.maxGrade.toStringAsFixed(0)} (${r.category.label})');
+        } else {
+          buffer.writeln('• $dateStr — ${r.examName}: لم تُدخل الدرجة بعد');
+        }
+      }
     }
 
     final settings = Get.find<SettingsController>();
