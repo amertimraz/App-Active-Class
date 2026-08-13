@@ -15,6 +15,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/widgets/add_student_sheet.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
+import 'package:active_class/widgets/import_students_dialog.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:path_provider/path_provider.dart';
@@ -86,6 +87,16 @@ class _StudentsPageState extends State<StudentsPage>
       appBar: buildGradientAppBar(
         title: 'الطلاب',
         actions: [
+          IconButton(
+            tooltip: 'استيراد من إكسل',
+            icon: const Icon(Icons.upload_file_rounded),
+            onPressed: () => showImportStudentsDialog(
+              context,
+              controller: controller,
+              groups: _groups,
+              onImported: () => controller.loadAllStudents(),
+            ),
+          ),
           IconButton(
             tooltip: _gridMode ? 'عرض قائمة' : 'عرض شبكة',
             icon: Icon(_gridMode ? Icons.view_list_rounded : Icons.grid_view_rounded),

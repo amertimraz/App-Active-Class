@@ -11,6 +11,7 @@ import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
 import 'package:active_class/widgets/app_toast.dart';
+import 'package:active_class/widgets/import_students_dialog.dart';
 
 /// يفتح bottom sheet لإضافة طالب.
 /// [preselectedGroup] : لو جاي من صفحة تفاصيل المجموعة — المجموعة محددة مسبقاً.
@@ -406,7 +407,33 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                         const SizedBox(height: 16),
 
                         // ── اسم الطالب ──────────────────────────────────────
-                        _Label('اسم الطالب *'),
+                        Row(children: [
+                          Expanded(child: _Label('اسم الطالب *')),
+                          if (_selectedGroup != null)
+                            InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () => showImportStudentsDialog(
+                                context,
+                                controller: widget.controller,
+                                groups: _groups,
+                                preselectedGroup: _selectedGroup,
+                                onImported: () {
+                                  widget.onAdded?.call();
+                                  widget.controller.loadAllStudents();
+                                  _refreshCode();
+                                },
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                  Icon(Icons.upload_file_rounded, size: 14, color: primary),
+                                  const SizedBox(width: 4),
+                                  Text('استيراد من إكسل',
+                                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: primary)),
+                                ]),
+                              ),
+                            ),
+                        ]),
                         const SizedBox(height: 6),
                         CustomTextField(
                           controller: _nameCtrl,
