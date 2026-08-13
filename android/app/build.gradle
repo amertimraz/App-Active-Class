@@ -65,9 +65,12 @@ android {
     // على كل المعماريات مع بعض. ده بيقلل حجم التحميل لحوالي الربع، وبالتالي
     // بيقلل احتمال انقطاع التحميل على نت الموبايل اللي كان بيسبب خطأ
     // "حدثت مشكلة أثناء تحليل الحزمة" عند التحديث من جوّه التطبيق.
+    // enable بس لمهام الإصدار (assembleRelease/bundleRelease) — لو فعّال
+    // في التشغيل التجريبي (assembleDebug) بيتعارض مع ndk.abiFilters اللي
+    // فلاتر بيحطه تلقائي وقت `flutter run` على جهاز حقيقي.
     splits {
         abi {
-            enable true
+            enable gradle.startParameter.taskNames.any { it.contains("Release") }
             reset()
             include "armeabi-v7a", "arm64-v8a", "x86_64"
             universalApk false
