@@ -1,6 +1,7 @@
 // lib/controllers/license_controller.dart
 import 'dart:async';
 import 'dart:io';
+import 'package:android_id/android_id.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -248,8 +249,10 @@ class LicenseController extends GetxController {
           final info = await plugin.windowsInfo;
           id = info.deviceId;
         } else if (!kIsWeb && Platform.isAndroid) {
-          final info = await plugin.androidInfo;
-          id = info.id;
+          // ملحوظة: info.id (Build.ID) رقم إصدار الفيرموير مش معرّف فريد
+          // للجهاز — أي جهازين بنفس الموديل والتحديث بياخدوا نفس القيمة.
+          // ANDROID_ID (عبر حزمة android_id) فريد فعليًا لكل جهاز/تثبيت.
+          id = await const AndroidId().getId() ?? const Uuid().v4();
         } else {
           id = const Uuid().v4();
         }

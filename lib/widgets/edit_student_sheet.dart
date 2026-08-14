@@ -65,6 +65,8 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   DateTime? _birthDate;
   bool      _saving = false;
   late String _code;
+  late final TextEditingController _codeCtrl;
+  bool _codeIsManual = false;
 
   Group?   _selectedGroup;
   Student? _sibling;
@@ -91,6 +93,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     _attendanceStart = s.attendanceStart ?? DateTime.now();
     _birthDate = s.birthDate;
     _code = s.code;
+    _codeCtrl = TextEditingController(text: _code);
 
     if (widget.groups != null) {
       _selectedGroup = widget.groups!.where((g) => g.id == s.groupId).firstOrNull;
@@ -135,6 +138,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     _phoneCtrl.dispose();
     _exemptCustomCtrl.dispose();
     _sibTotalCtrl.dispose();
+    _codeCtrl.dispose();
     super.dispose();
   }
 
@@ -231,10 +235,23 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
       );
       return;
     }
-    setState(() => _code = trimmed);
+    setState(() {
+      _code = trimmed;
+      _codeCtrl.text = trimmed;
+    });
   }
 
-  void _resetCode() => setState(() => _code = widget.student.code);
+  void _resetCode() => setState(() {
+        _code = widget.student.code;
+        _codeCtrl.text = _code;
+      });
+
+  void _onManualSwitchChanged(bool value) {
+    setState(() {
+      _codeIsManual = value;
+      _codeCtrl.text = _code;
+    });
+  }
 
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
@@ -402,14 +419,30 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      changed ? 'كود من كرت مطبوع: $_code' : 'الكود: $_code',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: boxColor,
-                      ),
-                    ),
+                    child: _codeIsManual
+                        ? TextField(
+                            controller: _codeCtrl,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: boxColor,
+                            ),
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              isCollapsed: true,
+                              border: InputBorder.none,
+                              hintText: 'اكتب كود الطالب',
+                            ),
+                            onChanged: (v) => setState(() => _code = v.trim()),
+                          )
+                        : Text(
+                            changed ? 'كود من كرت مطبوع: $_code' : 'الكود: $_code',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: boxColor,
+                            ),
+                          ),
                   ),
                   if (changed)
                     IconButton(
@@ -417,6 +450,11 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                       icon: const Icon(Icons.refresh_rounded, size: 20, color: Colors.purple),
                       onPressed: _resetCode,
                     ),
+                  Switch.adaptive(
+                    value: _codeIsManual,
+                    activeThumbColor: Colors.purple,
+                    onChanged: _onManualSwitchChanged,
+                  ),
                   IconButton(
                     tooltip: 'مسح QR من كرت مطبوع مسبقاً',
                     icon: Icon(Icons.qr_code_scanner_rounded, size: 20, color: boxColor),

@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "upgrade_requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deviceId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

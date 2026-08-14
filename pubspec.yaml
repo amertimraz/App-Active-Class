@@ -2,7 +2,7 @@ name: active_class
 description: "تطبيق إدارة الفصول الدراسية - Active Class Application"
 publish_to: 'none'
 
-version: 1.2.7+17
+version: 1.2.8+18
 
 environment:
   sdk: ^3.5.4
@@ -79,6 +79,7 @@ dependencies:
   # In-app update prompts for Play Store installs (Google's official API)
   in_app_update: ^4.2.2
   open_filex: ^4.5.0
+  android_id: ^0.5.2+1
 
 dev_dependencies:
   flutter_test:

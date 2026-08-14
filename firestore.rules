@@ -25,7 +25,7 @@ service cloud.firestore {
       // بالترخيص — ممنوع يلمس plan/status، وممنوع يعدّل ترخيص مربوط
       // بجهاز تاني أصلاً.
       allow update: if request.auth != null
-                    && resource.data.deviceId == null
+                    && !('deviceId' in resource.data)
                     && request.resource.data.deviceId is string
                     && request.resource.data.deviceId.size() > 0
                     && request.resource.data.plan == resource.data.plan
@@ -49,9 +49,14 @@ service cloud.firestore {
                     && request.resource.data.status == 'pending'
                     && request.resource.data.licenseCode == '';
 
+      // مستندات قديمة اتعملت قبل إضافة ownerUid (مفيهاش الحقل خالص) —
+      // نسمح بقراءتها لأي مستخدم مسجّل دخول عشان مانكسرش فحص "هل عندي
+      // طلب pending قبلي" للمستخدمين اللي عندهم طلبات قديمة. الحماية
+      // الكاملة (ownerUid) شغالة على أي طلب جديد يتعمل من دلوقتي.
       allow read: if request.auth != null
                   && (resource.data.ownerUid == request.auth.uid
-                      || request.auth.token.email != null);
+                      || request.auth.token.email != null
+                      || !('ownerUid' in resource.data));
 
       allow update, delete: if request.auth != null && request.auth.token.email != null;
     }

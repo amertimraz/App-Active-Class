@@ -10,6 +10,11 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 /// try/catch في Dart). القائمة الداخلية دي أبطأ شوية في تحميل جهات
 /// الاتصال أول مرة لكنها مستقرة وموثوقة أكتر، فالشيت بيتفتح فورًا
 /// بمؤشر تحميل بدل ما نستنى قبل ما نوري أي حاجة للمستخدم.
+///
+/// التحميل الأولي بيجيب الأسماء بس (من غير أرقام/صور) عشان يبقى سريع
+/// حتى مع آلاف جهات الاتصال — رقم الهاتف بيتجاب بس وقت ما المستخدم
+/// يدوس على جهة اتصال معيّنة (lookup واحد بسيط بدل تحميل كل التفاصيل
+/// لكل جهات الاتصال مقدمًا).
 class ContactPickerService {
   static Future<String?> pickPhoneNumber(BuildContext context) async {
     try {
@@ -17,15 +22,12 @@ class ContactPickerService {
       if (!granted) return null;
       if (!context.mounted) return null;
 
-      final selected = await showModalBottomSheet<Contact>(
+      return await showModalBottomSheet<String>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (_) => const _ContactPickerSheet(),
       );
-
-      if (selected == null || selected.phones.isEmpty) return null;
-      return _normalize(selected.phones.first.number);
     } catch (_) {
       return null;
     }
@@ -58,6 +60,7 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
   List<Contact> _contacts = [];
   List<Contact> _filtered = [];
   bool _loading = true;
+  String? _resolvingId; // id الجهة اللي بنجيب رقمها دلوقتي
 
   @override
   void initState() {
@@ -66,17 +69,39 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
   }
 
   Future<void> _loadContacts() async {
-    final contacts = await FlutterContacts.getContacts(withProperties: true);
-    final withPhones = contacts.where((c) => c.phones.isNotEmpty).toList()
-      ..sort((a, b) =>
-          a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
+    // من غير withProperties عشان التحميل يبقى فوري — الأرقام بتتجاب
+    // بس وقت الاختيار (في _selectContact).
+    final contacts = await FlutterContacts.getContacts();
+    contacts.sort((a, b) =>
+        a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
 
     if (!mounted) return;
     setState(() {
-      _contacts = withPhones;
-      _filtered = withPhones;
+      _contacts = contacts;
+      _filtered = contacts;
       _loading = false;
     });
+  }
+
+  Future<void> _selectContact(Contact c) async {
+    if (_resolvingId != null) return;
+    setState(() => _resolvingId = c.id);
+    final full = await FlutterContacts.getContact(
+      c.id,
+      withPhoto: false,
+      withThumbnail: false,
+    );
+    if (!mounted) return;
+    setState(() => _resolvingId = null);
+
+    if (full == null || full.phones.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يوجد رقم هاتف محفوظ لجهة الاتصال دي')),
+      );
+      return;
+    }
+    Navigator.of(context)
+        .pop(ContactPickerService._normalize(full.phones.first.number));
   }
 
   @override
@@ -159,6 +184,7 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
                       itemCount: _filtered.length,
                       itemBuilder: (_, i) {
                         final c = _filtered[i];
+                        final resolving = _resolvingId == c.id;
                         return ListTile(
                           leading: CircleAvatar(
                             child: Text(c.displayName.isNotEmpty
@@ -166,8 +192,13 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
                                 : '؟'),
                           ),
                           title: Text(c.displayName),
-                          subtitle: Text(c.phones.first.number),
-                          onTap: () => Navigator.of(context).pop(c),
+                          trailing: resolving
+                              ? const SizedBox(
+                                  width: 18, height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : null,
+                          onTap: () => _selectContact(c),
                         );
                       },
                     ),
