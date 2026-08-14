@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title id="pageTitle">احجز مكانك</title>
+<link id="favicon" rel="icon" href="data:," />
+<meta name="robots" content="noindex" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#4F46E5;
+    --primary-dark:#3730A3;
+    --accent:#0EA5E9;
+    --bg-top:#EEF2FF;
+    --bg-bottom:#F7F8FF;
+    --card-bg:#FFFFFF;
+    --text:#111827;
+    --text-muted:#6B7280;
+    --border:#E5E7EB;
+    --danger:#EF4444;
+    --success:#16A34A;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Cairo', sans-serif;
+    background:var(--bg-bottom);
+    min-height:100vh;
+    color:var(--text);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:0 14px 60px;
+  }
+
+  /* ── cover / hero banner ──────────────────── */
+  .hero{
+    width:100%;
+    max-width:900px;
+    height:196px;
+    background:linear-gradient(135deg,var(--primary) 0%,var(--accent) 100%);
+    position:relative;
+    overflow:hidden;
+    border-radius:0 0 32px 32px;
+    box-shadow:0 12px 30px rgba(79,70,229,.22);
+    flex-shrink:0;
+  }
+  .hero-blob{position:absolute;border-radius:50%;filter:blur(38px);}
+  .hero-blob.b1{width:200px;height:200px;background:#fff;opacity:.16;top:-70px;left:-50px;}
+  .hero-blob.b2{width:240px;height:240px;background:#000;opacity:.10;top:50px;right:-90px;}
+  .hero-blob.b3{width:140px;height:140px;background:#fff;opacity:.10;bottom:-60px;left:35%;}
+  .hero-pattern{
+    position:absolute;inset:0;
+    background-image:radial-gradient(rgba(255,255,255,.14) 1.4px, transparent 1.4px);
+    background-size:18px 18px;
+    opacity:.6;
+  }
+  .hero-brand{
+    position:absolute;top:18px;right:20px;
+    display:flex;align-items:center;
+    width:44px;height:44px;
+    border-radius:50%;
+    box-shadow:0 4px 12px rgba(17,24,39,.22);
+    z-index:2;
+  }
+  .hero-brand img{width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;}
+  .hero.has-cover{background-size:cover;background-position:center;}
+  .hero.has-cover .hero-cover-overlay{
+    position:absolute;inset:0;
+    background:linear-gradient(180deg, rgba(17,24,39,.15) 0%, rgba(17,24,39,.45) 100%);
+  }
+
+  .wrap{width:100%;max-width:480px;margin-top:-72px;position:relative;z-index:2;}
+
+  /* ── header card ─────────────────────────── */
+  .profile-card{
+    background:var(--card-bg);
+    border-radius:var(--radius);
+    padding:22px 20px 24px;
+    text-align:center;
+    box-shadow:0 14px 34px rgba(17,24,39,.14);
+    margin-bottom:18px;
+  }
+  .avatar{
+    width:104px;height:104px;border-radius:50%;
+    object-fit:cover;
+    margin:0 auto 14px;
+    display:block;
+    border:4px solid #fff;
+    box-shadow:0 6px 18px rgba(17,24,39,.16);
+    background:linear-gradient(135deg,var(--primary),var(--accent));
+  }
+  .avatar-fallback{
+    width:104px;height:104px;border-radius:50%;
+    margin:0 auto 14px;
+    display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,var(--primary),var(--accent));
+    color:#fff;font-size:38px;font-weight:800;
+    border:4px solid #fff;
+    box-shadow:0 6px 18px rgba(17,24,39,.16);
+  }
+  .teacher-name{font-size:21px;font-weight:800;margin:0 0 4px;}
+  .teacher-subject{color:var(--text-muted);font-size:14px;margin:0;}
+  .badge{
+    display:inline-block;margin-top:12px;
+    background:#EEF2FF;color:var(--primary-dark);
+    font-size:12px;font-weight:700;
+    padding:6px 14px;border-radius:999px;
+  }
+  .teacher-bio{
+    margin:14px 0 0;
+    padding-top:14px;
+    border-top:1px solid var(--border);
+    color:var(--text-muted);
+    font-size:13.5px;
+    line-height:1.7;
+    text-align:right;
+  }
+
+  /* ── form card ────────────────────────────── */
+  .form-card{
+    background:var(--card-bg);
+    border-radius:var(--radius);
+    padding:22px 20px 26px;
+    box-shadow:0 10px 30px rgba(17,24,39,.06);
+  }
+  .form-title{font-size:16px;font-weight:800;margin:0 0 16px;}
+  label{
+    display:block;font-size:13px;font-weight:700;
+    margin-bottom:6px;color:var(--text);
+  }
+  label .opt{font-weight:400;color:var(--text-muted);}
+  .field{margin-bottom:16px;}
+  input, textarea, select{
+    width:100%;
+    font-family:'Cairo', sans-serif;
+    font-size:15px;
+    padding:12px 14px;
+    border:1.5px solid var(--border);
+    border-radius:12px;
+    background:#FAFAFB;
+    color:var(--text);
+    outline:none;
+    transition:border-color .15s;
+  }
+  input:focus, textarea:focus, select:focus{
+    border-color:var(--primary);
+    background:#fff;
+  }
+  textarea{resize:vertical;min-height:80px;}
+
+  .submit-btn{
+    width:100%;
+    background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+    color:#fff;
+    font-family:'Cairo', sans-serif;
+    font-weight:800;
+    font-size:16px;
+    border:none;
+    border-radius:14px;
+    padding:15px;
+    cursor:pointer;
+    margin-top:6px;
+    box-shadow:0 8px 20px rgba(79,70,229,.28);
+    transition:opacity .15s, transform .1s;
+  }
+  .submit-btn:active{transform:scale(.98);}
+  .submit-btn:disabled{opacity:.6;cursor:not-allowed;}
+
+  .error-text{color:var(--danger);font-size:12px;margin-top:6px;display:none;}
+  .field.invalid input, .field.invalid textarea{border-color:var(--danger);}
+  .field.invalid .error-text{display:block;}
+
+  /* ── state screens ────────────────────────── */
+  .state-screen{
+    background:var(--card-bg);
+    border-radius:var(--radius);
+    padding:44px 24px;
+    text-align:center;
+    box-shadow:0 10px 30px rgba(17,24,39,.06);
+  }
+  .state-icon{font-size:44px;margin-bottom:14px;}
+  .state-title{font-size:18px;font-weight:800;margin:0 0 8px;}
+  .state-sub{color:var(--text-muted);font-size:14px;margin:0;line-height:1.6;}
+
+  .spinner{
+    width:34px;height:34px;
+    border:3.5px solid #E0E7FF;
+    border-top-color:var(--primary);
+    border-radius:50%;
+    margin:0 auto 16px;
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .hp{position:absolute;left:-9999px;top:-9999px;} /* honeypot */
+
+  @media (min-width:600px){
+    body{padding-bottom:60px;}
+    .hero{height:230px;}
+    .wrap{margin-top:-88px;}
+    .profile-card{padding:34px 28px 28px;}
+    .form-card{padding:28px 28px 32px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-pattern"></div>
+  <div class="hero-blob b1"></div>
+  <div class="hero-blob b2"></div>
+  <div class="hero-blob b3"></div>
+  <a class="hero-brand" href="/"><img src="/icon.png" alt="Active Class" /></a>
+</div>
+
+<div class="wrap" id="app">
+  <div class="state-screen" id="loadingScreen">
+    <div class="spinner"></div>
+    <p class="state-sub">جاري تحميل بيانات المعلم...</p>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import {
+    getFirestore, doc, getDoc, collection, addDoc, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAqFLZ4kHEgPLVgLgDGbbIjxnZheBqMjMc",
+    authDomain: "active-class-72e0f.firebaseapp.com",
+    projectId: "active-class-72e0f",
+    storageBucket: "active-class-72e0f.firebasestorage.app",
+    messagingSenderId: "822461821604",
+    appId: "1:822461821604:web:3bd266a9833ce045916c31",
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  const root = document.getElementById('app');
+
+  function getSlug() {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    // يدعم /book/{slug} و /{slug} (لو الاستضافة اتغيرت لاحقًا)
+    const bookIdx = parts.indexOf('book');
+    if (bookIdx !== -1 && parts[bookIdx + 1]) return parts[bookIdx + 1];
+    return parts[parts.length - 1] || '';
+  }
+
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.innerText = str ?? '';
+    return d.innerHTML;
+  }
+
+  function escapeMultiline(str){
+    return escapeHtml(str).replace(/\n/g, '<br>');
+  }
+
+  function renderNotFound(){
+    root.innerHTML = `
+      <div class="state-screen">
+        <div class="state-icon">🔗</div>
+        <p class="state-title">الرابط غير متاح</p>
+        <p class="state-sub">تأكد إنك فتحت الرابط الصحيح، أو اطلب من المعلم يبعتهولك تاني.</p>
+      </div>`;
+  }
+
+  function renderSuccess(){
+    root.innerHTML = `
+      <div class="state-screen">
+        <div class="state-icon">✅</div>
+        <p class="state-title">تم إرسال طلبك بنجاح</p>
+        <p class="state-sub">المعلم هيراجع بياناتك ويتواصل معاك قريبًا إن شاء الله.</p>
+      </div>`;
+  }
+
+  function fieldConfig(profile, key, fallbackShow=true){
+    const f = (profile.fields && profile.fields[key]) || {};
+    return {
+      show: f.show === undefined ? fallbackShow : !!f.show,
+      required: !!f.required,
+    };
+  }
+
+  function makeCircularFavicon(url){
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const size = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(img, 0, 0, size, size);
+        document.getElementById('favicon').href = canvas.toDataURL('image/png');
+      } catch (e) {
+        // فشل الرسم على الـ canvas (مثلاً CORS) — نرجع للصورة الأصلية كما هي
+        document.getElementById('favicon').href = url;
+      }
+    };
+    img.onerror = () => {};
+    img.src = url;
+  }
+
+  function applyHeroAndMeta(name, title, photoUrl, coverUrl){
+    const displayName = title ? `${title} ${name}` : name;
+    document.getElementById('pageTitle').textContent = `احجز مع ${displayName}`;
+    if (photoUrl) {
+      makeCircularFavicon(photoUrl);
+    }
+
+    const hero = document.querySelector('.hero');
+    if (coverUrl) {
+      hero.classList.add('has-cover');
+      hero.style.backgroundImage = `url("${coverUrl}")`;
+      if (!hero.querySelector('.hero-cover-overlay')) {
+        const overlay = document.createElement('div');
+        overlay.className = 'hero-cover-overlay';
+        hero.appendChild(overlay);
+      }
+    }
+  }
+
+  function renderForm(slug, profile){
+    const rawName = profile.name || 'المعلم';
+    const title = escapeHtml(profile.title || '');
+    const name = escapeHtml(title ? `${title} ${rawName}` : rawName);
+    const subject = escapeHtml(profile.subject || '');
+    const bio = escapeMultiline(profile.bio || '');
+    const initial = rawName.trim().charAt(0);
+    const photoUrl = profile.photoUrl;
+
+    applyHeroAndMeta(rawName, profile.title, photoUrl, profile.coverUrl);
+
+    const grade = fieldConfig(profile, 'grade');
+    const classSection = fieldConfig(profile, 'classSection');
+    const preferredTime = fieldConfig(profile, 'preferredTime');
+    const notes = fieldConfig(profile, 'notes');
+
+    root.innerHTML = `
+      <div class="profile-card">
+        ${photoUrl
+          ? `<img class="avatar" src="${escapeHtml(photoUrl)}" alt="${name}" />`
+          : `<div class="avatar-fallback">${escapeHtml(initial)}</div>`}
+        <p class="teacher-name">${name}</p>
+        ${subject ? `<p class="teacher-subject">${subject}</p>` : ''}
+        <span class="badge">استمارة حجز مكان</span>
+        ${bio ? `<p class="teacher-bio">${bio}</p>` : ''}
+      </div>
+
+      <div class="form-card">
+        <p class="form-title">بيانات الطالب</p>
+        <form id="bookingForm" novalidate>
+          <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off" />
+
+          <div class="field" data-field="studentName">
+            <label>اسم الطالب</label>
+            <input type="text" name="studentName" placeholder="اسم الطالب بالكامل" required maxlength="150" />
+            <p class="error-text">من فضلك اكتب اسم الطالب</p>
+          </div>
+
+          <div class="field" data-field="guardianPhone">
+            <label>رقم هاتف ولي الأمر</label>
+            <input type="tel" name="guardianPhone" placeholder="01xxxxxxxxx" required maxlength="30" />
+            <p class="error-text">من فضلك اكتب رقم هاتف صحيح</p>
+          </div>
+
+          ${grade.show ? `
+          <div class="field" data-field="gradeLevel">
+            <label>المرحلة الدراسية ${grade.required ? '' : '<span class="opt">(اختياري)</span>'}</label>
+            <input type="text" name="gradeLevel" placeholder="مثال: الصف الثالث الإعدادي" ${grade.required ? 'required' : ''} maxlength="100" />
+            <p class="error-text">من فضلك اكتب المرحلة الدراسية</p>
+          </div>` : ''}
+
+          ${classSection.show ? `
+          <div class="field" data-field="classSection">
+            <label>الصف / الفصل ${classSection.required ? '' : '<span class="opt">(اختياري)</span>'}</label>
+            <input type="text" name="classSection" placeholder="مثال: 3/A" ${classSection.required ? 'required' : ''} maxlength="100" />
+            <p class="error-text">من فضلك اكتب الصف/الفصل</p>
+          </div>` : ''}
+
+          ${preferredTime.show ? `
+          <div class="field" data-field="preferredTime">
+            <label>الوقت المفضل ${preferredTime.required ? '' : '<span class="opt">(اختياري)</span>'}</label>
+            <input type="text" name="preferredTime" placeholder="مثال: بعد العصر - أيام السبت والاثنين" ${preferredTime.required ? 'required' : ''} maxlength="150" />
+            <p class="error-text">من فضلك اكتب الوقت المفضل</p>
+          </div>` : ''}
+
+          ${notes.show ? `
+          <div class="field" data-field="notes">
+            <label>ملاحظات ${notes.required ? '' : '<span class="opt">(اختياري)</span>'}</label>
+            <textarea name="notes" placeholder="أي ملاحظات إضافية..." ${notes.required ? 'required' : ''} maxlength="500"></textarea>
+            <p class="error-text">من فضلك اكتب ملاحظاتك</p>
+          </div>` : ''}
+
+          ${(profile.customFields || []).map(f => `
+          <div class="field" data-custom-key="${escapeHtml(f.key || '')}">
+            <label>${escapeHtml(f.label || '')} ${f.required ? '' : '<span class="opt">(اختياري)</span>'}</label>
+            <input type="text" name="custom_${escapeHtml(f.key || '')}" ${f.required ? 'required' : ''} maxlength="200" />
+            <p class="error-text">الحقل ده مطلوب</p>
+          </div>`).join('')}
+
+          <button type="submit" class="submit-btn" id="submitBtn">إرسال طلب الحجز</button>
+        </form>
+      </div>
+    `;
+
+    const form = document.getElementById('bookingForm');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      // honeypot — لو اتملى يبقى بوت
+      if (form.website.value) return;
+
+      let valid = true;
+      const data = {};
+      form.querySelectorAll('.field').forEach(fieldEl => {
+        const input = fieldEl.querySelector('input, textarea');
+        if (!input) return;
+        const value = input.value.trim();
+        const isRequired = input.hasAttribute('required');
+        if (isRequired && !value) {
+          fieldEl.classList.add('invalid');
+          valid = false;
+        } else {
+          fieldEl.classList.remove('invalid');
+        }
+        data[input.name] = value;
+      });
+
+      if (!valid) return;
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = 'جاري الإرسال...';
+
+      try {
+        if (!auth.currentUser) {
+          await signInAnonymously(auth);
+        }
+        const customAnswers = (profile.customFields || [])
+          .map(f => ({ label: f.label || '', value: (data['custom_' + f.key] || '').trim() }))
+          .filter(a => a.value);
+
+        await addDoc(collection(db, 'booking_requests', slug, 'requests'), {
+          studentName: data.studentName || '',
+          guardianPhone: data.guardianPhone || '',
+          gradeLevel: data.gradeLevel || '',
+          classSection: data.classSection || '',
+          preferredTime: data.preferredTime || '',
+          notes: data.notes || '',
+          customAnswers: customAnswers,
+          createdAt: serverTimestamp(),
+        });
+        renderSuccess();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'إرسال طلب الحجز';
+        alert('حصل خطأ أثناء الإرسال، تأكد من الاتصال بالإنترنت وحاول تاني.');
+      }
+    });
+  }
+
+  async function init(){
+    const slug = getSlug();
+    if (!slug) { renderNotFound(); return; }
+
+    try {
+      if (!auth.currentUser) {
+        await signInAnonymously(auth);
+      }
+      const snap = await getDoc(doc(db, 'teacher_profiles', slug));
+      if (!snap.exists() || snap.data().active !== true) {
+        renderNotFound();
+        return;
+      }
+      renderForm(slug, snap.data());
+    } catch (err) {
+      renderNotFound();
+    }
+  }
+
+  init();
+</script>
+
+</body>
+</html>

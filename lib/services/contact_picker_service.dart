@@ -7,27 +7,21 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 ///
 /// كنا بنستخدم منتقي جهات الاتصال الخارجي بتاع أندرويد (openExternalPick)،
 /// لكنه سبب كراش فوري على بعض الأجهزة (كراش أصلي/native بيتخطى أي
-/// try/catch في Dart). القائمة الداخلية دي أبطأ شوية في الفتح (بتحمّل
-/// كل جهات الاتصال أول مرة) لكنها مستقرة وموثوقة أكتر.
+/// try/catch في Dart). القائمة الداخلية دي أبطأ شوية في تحميل جهات
+/// الاتصال أول مرة لكنها مستقرة وموثوقة أكتر، فالشيت بيتفتح فورًا
+/// بمؤشر تحميل بدل ما نستنى قبل ما نوري أي حاجة للمستخدم.
 class ContactPickerService {
   static Future<String?> pickPhoneNumber(BuildContext context) async {
     try {
       final granted = await FlutterContacts.requestPermission(readonly: true);
       if (!granted) return null;
-
-      final contacts = await FlutterContacts.getContacts(withProperties: true);
-      final withPhones = contacts.where((c) => c.phones.isNotEmpty).toList()
-        ..sort((a, b) =>
-            a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
-
-      if (withPhones.isEmpty) return null;
       if (!context.mounted) return null;
 
       final selected = await showModalBottomSheet<Contact>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (_) => _ContactPickerSheet(contacts: withPhones),
+        builder: (_) => const _ContactPickerSheet(),
       );
 
       if (selected == null || selected.phones.isEmpty) return null;
@@ -53,8 +47,7 @@ class ContactPickerService {
 }
 
 class _ContactPickerSheet extends StatefulWidget {
-  final List<Contact> contacts;
-  const _ContactPickerSheet({required this.contacts});
+  const _ContactPickerSheet();
 
   @override
   State<_ContactPickerSheet> createState() => _ContactPickerSheetState();
@@ -62,12 +55,28 @@ class _ContactPickerSheet extends StatefulWidget {
 
 class _ContactPickerSheetState extends State<_ContactPickerSheet> {
   final _searchCtrl = TextEditingController();
-  late List<Contact> _filtered;
+  List<Contact> _contacts = [];
+  List<Contact> _filtered = [];
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _filtered = widget.contacts;
+    _loadContacts();
+  }
+
+  Future<void> _loadContacts() async {
+    final contacts = await FlutterContacts.getContacts(withProperties: true);
+    final withPhones = contacts.where((c) => c.phones.isNotEmpty).toList()
+      ..sort((a, b) =>
+          a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
+
+    if (!mounted) return;
+    setState(() {
+      _contacts = withPhones;
+      _filtered = withPhones;
+      _loading = false;
+    });
   }
 
   @override
@@ -80,8 +89,8 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
     final query = q.trim().toLowerCase();
     setState(() {
       _filtered = query.isEmpty
-          ? widget.contacts
-          : widget.contacts
+          ? _contacts
+          : _contacts
               .where((c) => c.displayName.toLowerCase().contains(query))
               .toList();
     });
@@ -141,7 +150,9 @@ class _ContactPickerSheetState extends State<_ContactPickerSheet> {
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: _filtered.isEmpty
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filtered.isEmpty
                   ? const Center(child: Text('مفيش نتائج'))
                   : ListView.builder(
                       controller: scrollController,

@@ -80,3 +80,7 @@ Thumbs.db
 # Sensitive files (auto-detected)
 build
 
+# نسخ APK/AAB مبنية يدويًا — بتترفع للسيرفر مباشرة، مش لازم في الـ git
+/*.apk
+/*.aab
+

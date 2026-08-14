@@ -27,6 +27,8 @@ import 'package:active_class/views/license/plans_page.dart';
 import 'package:active_class/views/exams/exams_page.dart';
 import 'package:active_class/views/exams/student_exam_history_page.dart';
 import 'package:active_class/views/schedule/schedule_page.dart';
+import 'package:active_class/views/bookings/bookings_page.dart';
+import 'package:active_class/views/bookings/booking_settings_page.dart';
 import 'package:active_class/controllers/exam_controller.dart';
 
 import 'package:intl/intl.dart';
@@ -204,6 +206,10 @@ class MyApp extends StatelessWidget {
             GetPage(name: ROUTE_PLANS,     page: () => const PlansPage()),
             GetPage(name: ROUTE_EXAMS,     page: () => const ExamsPage()),
             GetPage(name: ROUTE_SCHEDULE,  page: () => const SchedulePage()),
+            GetPage(name: ROUTE_BOOKINGS,  page: () => const BookingsPage()),
+            GetPage(
+                name: ROUTE_BOOKING_SETTINGS,
+                page: () => const BookingSettingsPage()),
             GetPage(
               name: ROUTE_STUDENT_EXAM_HISTORY,
               page: () {

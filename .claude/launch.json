@@ -36,6 +36,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "5056", "-d", "C:\\repo\\active_class_admin\\build\\web"],
       "port": 5056
+    },
+    {
+      "name": "Booking Site (static)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5057", "-d", "C:\\repo\\active_class\\booking_site"],
+      "port": 5057
     }
   ]
 }

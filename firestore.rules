@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // الخطط والأسعار — يقرأها أي حد (حتى anonymous)
+    match /plans_config/{planId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.email != null;
+    }
+    // حدود الباقات ومدة التجربة — يقرأها أي حد (حتى anonymous)
+    match /app_config/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.email != null;
+    }
+
+    // التراخيص
+    match /licenses/{code} {
+      allow read: if request.auth != null;
+      allow create, delete: if request.auth != null && request.auth.token.email != null;
+
+      // الأدمن (حساب بإيميل) يقدر يعدّل أي حقل — ترقية، تعليق، تجديد...
+      allow update: if request.auth != null && request.auth.token.email != null;
+
+      // أي مستخدم تاني (anonymous من التطبيق) يقدر بس يربط جهازه أول مرة
+      // بالترخيص — ممنوع يلمس plan/status، وممنوع يعدّل ترخيص مربوط
+      // بجهاز تاني أصلاً.
+      allow update: if request.auth != null
+                    && resource.data.deviceId == null
+                    && request.resource.data.deviceId is string
+                    && request.resource.data.deviceId.size() > 0
+                    && request.resource.data.plan == resource.data.plan
+                    && request.resource.data.status == resource.data.status
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['deviceId', 'activatedAt', 'expiresAt']);
+
+      // سجل عمليات الترخيص
+      match /logs/{logId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    // طلبات الترقية — كل مستخدم يشوف/ينشئ طلبه هو بس (ownerUid = uid
+    // المستخدم المجهول من التطبيق)، والموافقة/الرفض (تعديل status
+    // وlicenseCode) مقصورة على الأدمن (حساب بإيميل) عشان محدش يقدر
+    // يوافق لنفسه على طلبه.
+    match /upgrade_requests/{docId} {
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid == request.auth.uid
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.licenseCode == '';
+
+      allow read: if request.auth != null
+                  && (resource.data.ownerUid == request.auth.uid
+                      || request.auth.token.email != null);
+
+      allow update, delete: if request.auth != null && request.auth.token.email != null;
+    }
+
+    // الأجهزة
+    match /devices/{deviceId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+
+      // ممنوع تعديل/مسح firstLaunchAt لو اتسجّل قبل كده — دي الحماية
+      // الوحيدة ضد تصفير التجربة (anti-reset)، فمينفعش تتلمس من الكلاينت.
+      allow update: if request.auth != null
+                    && (!('firstLaunchAt' in resource.data)
+                        || request.resource.data.firstLaunchAt == resource.data.firstLaunchAt);
+
+      // الحذف مقصور على الأدمن — عشان محدش يمسح المستند بالكامل
+      // ويعمل بيه create جديد من غير firstLaunchAt.
+      allow delete: if request.auth != null && request.auth.token.email != null;
+    }
+
+    // ── الحجوزات ───────────────────────────────────────────────────
+
+    // بيانات المعلم العامة (اسم، صورة، تخصص، الحقول المفعّلة) — لازم تكون
+    // قابلة للقراءة من أي حد (صفحة الحجز العامة على الموقع مش مسجّلة دخول
+    // بالضرورة)، لكن الكتابة مقصورة على صاحب الملف (ownerUid = uid المعلم
+    // نفسه من تسجيل الدخول المجهول جوه التطبيق).
+    match /teacher_profiles/{slug} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.ownerUid == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // طلبات الحجز — أي حد (ولي أمر/طالب من الصفحة العامة) يقدر يضيف طلب
+    // جديد، لكن القراءة/الحذف مقصورة على صاحب رابط الحجز (نتحقق منه عن
+    // طريق مطابقة ownerUid المخزّن في teacher_profiles/{slug}).
+    match /booking_requests/{slug}/requests/{requestId} {
+      allow create: if request.resource.data.studentName is string
+                    && request.resource.data.studentName.size() > 0
+                    && request.resource.data.studentName.size() < 200
+                    && request.resource.data.guardianPhone is string
+                    && request.resource.data.guardianPhone.size() < 50
+                    && request.resource.data.createdAt == request.time;
+
+      allow read, delete: if request.auth != null
+                          && get(/databases/$(database)/documents/teacher_profiles/$(slug)).data.ownerUid
+                             == request.auth.uid;
+
+      allow update: if false;
+    }
+  }
+}

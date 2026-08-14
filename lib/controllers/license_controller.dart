@@ -53,6 +53,7 @@ extension AppPlanExt on AppPlan {
   bool get canBackup => this != AppPlan.trial;
   bool get canExport => this != AppPlan.trial;
   bool get canWhatsApp => this == AppPlan.pro || this == AppPlan.lifetime;
+  bool get canBooking => this == AppPlan.pro || this == AppPlan.lifetime;
 }
 
 // ── الحدود حسب الباقة ─────────────────────────────────────────────────────────
@@ -62,6 +63,7 @@ class _Limits {
   final bool canBackup;
   final bool canExport;
   final bool canWhatsApp;
+  final bool canBooking;
 
   const _Limits({
     required this.maxGroups,
@@ -69,6 +71,7 @@ class _Limits {
     required this.canBackup,
     required this.canExport,
     required this.canWhatsApp,
+    required this.canBooking,
   });
 
   static const trial = _Limits(
@@ -76,25 +79,29 @@ class _Limits {
       maxStudents: 15,
       canBackup: false,
       canExport: false,
-      canWhatsApp: false);
+      canWhatsApp: false,
+      canBooking: false);
   static const basic = _Limits(
       maxGroups: 5,
       maxStudents: 30,
       canBackup: true,
       canExport: true,
-      canWhatsApp: false);
+      canWhatsApp: false,
+      canBooking: false);
   static const pro = _Limits(
       maxGroups: -1,
       maxStudents: -1,
       canBackup: true,
       canExport: true,
-      canWhatsApp: true);
+      canWhatsApp: true,
+      canBooking: true);
   static const lifetime = _Limits(
       maxGroups: -1,
       maxStudents: -1,
       canBackup: true,
       canExport: true,
-      canWhatsApp: true);
+      canWhatsApp: true,
+      canBooking: true);
 }
 
 // ── المتحكم الرئيسي ───────────────────────────────────────────────────────────
@@ -218,6 +225,7 @@ class LicenseController extends GetxController {
             canBackup: m['canBackup'] as bool? ?? current.canBackup,
             canExport: m['canExport'] as bool? ?? current.canExport,
             canWhatsApp: m['canWhatsApp'] as bool? ?? current.canWhatsApp,
+            canBooking: m['canBooking'] as bool? ?? current.canBooking,
           );
         }
         // أعِد حساب الأيام المتبقية لو لسه في فترة تجريبية، عشان
@@ -634,6 +642,7 @@ class LicenseController extends GetxController {
       } catch (_) {}
 
       await _db.collection('upgrade_requests').add({
+        'ownerUid': _auth.currentUser!.uid,
         'deviceId': deviceId.value,
         'deviceName': deviceName,
         'ownerName': name.trim(),
@@ -699,6 +708,7 @@ class LicenseController extends GetxController {
   bool get canBackup => isActive && _limits.canBackup;
   bool get canExport => isActive && _limits.canExport;
   bool get canWhatsApp => isActive && _limits.canWhatsApp;
+  bool get canBooking => isActive && _limits.canBooking;
 
   int get maxGroupsAllowed => _limits.maxGroups;
   int get maxStudentsAllowed => _limits.maxStudents;

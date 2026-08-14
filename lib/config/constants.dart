@@ -165,3 +165,5 @@ const String ROUTE_EXAM_GRADES         = '/exam_grades';
 const String ROUTE_LEADERBOARD         = '/leaderboard';
 const String ROUTE_STUDENT_EXAM_HISTORY = '/student_exam_history';
 const String ROUTE_SCHEDULE            = '/schedule';
+const String ROUTE_BOOKINGS            = '/bookings';
+const String ROUTE_BOOKING_SETTINGS    = '/booking_settings';

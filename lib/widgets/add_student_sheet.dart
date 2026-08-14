@@ -22,6 +22,8 @@ Future<void> showAddStudentSheet(
   required StudentController controller,
   Group? preselectedGroup,
   VoidCallback? onAdded,
+  String? initialName,
+  String? initialPhone,
 }) {
   return showDialog(
     context: context,
@@ -33,6 +35,8 @@ Future<void> showAddStudentSheet(
         controller: controller,
         preselectedGroup: preselectedGroup,
         onAdded: onAdded,
+        initialName: initialName,
+        initialPhone: initialPhone,
       ),
     ),
   );
@@ -42,11 +46,15 @@ class _AddStudentSheet extends StatefulWidget {
   final StudentController controller;
   final Group? preselectedGroup;
   final VoidCallback? onAdded;
+  final String? initialName;
+  final String? initialPhone;
 
   const _AddStudentSheet({
     required this.controller,
     this.preselectedGroup,
     this.onAdded,
+    this.initialName,
+    this.initialPhone,
   });
 
   @override
@@ -59,6 +67,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   final _phoneCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _sibTotalCtrl = TextEditingController();
+  final _codeCtrl = TextEditingController();
 
   // State
   List<Group> _groups = [];
@@ -92,6 +101,8 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialName != null) _nameCtrl.text = widget.initialName!;
+    if (widget.initialPhone != null) _phoneCtrl.text = widget.initialPhone!;
     _init();
   }
 
@@ -104,8 +115,8 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   }
 
   Future<void> _refreshCode() async {
-    // كود مخصص من كرت مطبوع (ماسحناه بالكاميرا) — منسيبوش التوليد
-    // التلقائي يدوس فوقه.
+    // في وضع الكود اليدوي (كتابة أو مسح QR) منسيبوش التوليد التلقائي
+    // يدوس فوق الكود اللي المستخدم دخّله.
     if (_codeIsManual) return;
     final g = _selectedGroup;
     if (g == null || g.id == null || (g.code?.isEmpty ?? true)) {
@@ -148,13 +159,22 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
     }
     setState(() {
       _nextCode = trimmed;
+      _codeCtrl.text = trimmed;
       _codeIsManual = true;
     });
   }
 
-  void _resetToAutoCode() {
-    setState(() => _codeIsManual = false);
-    _refreshCode();
+  // ── سويتش الكود اليدوي/التلقائي ──────────────────────────────────
+  void _onManualSwitchChanged(bool value) {
+    setState(() {
+      _codeIsManual = value;
+      if (value) {
+        _codeCtrl.text = _nextCode;
+      } else {
+        _codeCtrl.clear();
+      }
+    });
+    if (!value) _refreshCode();
   }
 
   Future<void> _pickSibling() async {
@@ -235,7 +255,10 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
 
     if (name.isEmpty)  { _toast('أدخل اسم الطالب', isError: true); return; }
     if (g == null || g.id == null) { _toast('اختر المجموعة أولاً', isError: true); return; }
-    if (_nextCode.isEmpty) { _toast('لم يتم توليد الكود', isError: true); return; }
+    if (_nextCode.isEmpty) {
+      _toast(_codeIsManual ? 'أدخل كود الطالب' : 'لم يتم توليد الكود', isError: true);
+      return;
+    }
     if (price == null) { _toast('أدخل رسوم صحيحة', isError: true); return; }
 
     final sibTotal = _sibling != null
@@ -311,9 +334,16 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
     _isExempt = false;
     _exemptPercent = 100;
     _exemptReasonPreset = null;
-    _codeIsManual = false;
     _prefillPrice();
-    await _refreshCode();
+    // الكود اليدوي بيفضل مفعّل للطالب الجاي لو المدرس مسيّبهوش، لكن
+    // لازم يكتب كود جديد (الكود اللي فات اتحفظ فعلاً). لو تلقائي،
+    // بنولّد التسلسل الجاي زي العادة.
+    if (_codeIsManual) {
+      _nextCode = '';
+      _codeCtrl.clear();
+    } else {
+      await _refreshCode();
+    }
 
     if (mounted) {
       setState(() {
@@ -335,6 +365,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
     _phoneCtrl.dispose();
     _priceCtrl.dispose();
     _sibTotalCtrl.dispose();
+    _codeCtrl.dispose();
     _exemptCustomCtrl.dispose();
     _nameFocus.dispose();
     super.dispose();
@@ -427,27 +458,38 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                             ),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: Text(
-                                _nextCode.isEmpty
-                                    ? 'اختر مجموعة لتوليد الكود تلقائياً'
-                                    : (_codeIsManual
-                                        ? 'كود من كرت مطبوع: $_nextCode'
-                                        : 'الكود التلقائي: $_nextCode'),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13,
-                                  color: _nextCode.isEmpty
-                                      ? Colors.orange
-                                      : (_codeIsManual ? Colors.purple : primary),
-                                ),
-                              ),
+                              child: _codeIsManual
+                                  ? TextField(
+                                      controller: _codeCtrl,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w700, fontSize: 13),
+                                      decoration: const InputDecoration(
+                                        isDense: true,
+                                        isCollapsed: true,
+                                        border: InputBorder.none,
+                                        hintText: 'اكتب كود الطالب يدوياً',
+                                      ),
+                                      onChanged: (v) =>
+                                          setState(() => _nextCode = v.trim()),
+                                    )
+                                  : Text(
+                                      _nextCode.isEmpty
+                                          ? 'اختر مجموعة لتوليد الكود تلقائياً'
+                                          : 'الكود التلقائي: $_nextCode',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                        color: _nextCode.isEmpty
+                                            ? Colors.orange
+                                            : primary,
+                                      ),
+                                    ),
                             ),
-                            if (_codeIsManual)
-                              IconButton(
-                                tooltip: 'رجوع للكود التلقائي',
-                                icon: const Icon(Icons.refresh_rounded, size: 20, color: Colors.purple),
-                                onPressed: _resetToAutoCode,
-                              ),
+                            Switch.adaptive(
+                              value: _codeIsManual,
+                              activeThumbColor: Colors.purple,
+                              onChanged: _onManualSwitchChanged,
+                            ),
                             IconButton(
                               tooltip: 'مسح QR من كرت مطبوع مسبقاً',
                               icon: Icon(Icons.qr_code_scanner_rounded,

@@ -108,6 +108,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           color: const Color(0xFFEF4444),
           onTap: () => Get.toNamed(ROUTE_EXAMS),
         ),
+        _DashboardMenuItem(
+          icon: Icons.event_available_rounded,
+          label: 'الحجوزات',
+          color: const Color(0xFF0EA5E9),
+          onTap: () => Get.toNamed(ROUTE_BOOKINGS),
+        ),
       ];
 
   @override
@@ -966,6 +972,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   onTap: () {
                     Navigator.pop(context);
                     Get.toNamed(ROUTE_QR_GALLERY);
+                  },
+                ),
+                _DrawerItem(
+                  icon: Icons.event_available_rounded,
+                  title: 'الحجوزات',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Get.toNamed(ROUTE_BOOKINGS);
                   },
                 ),
                 const Padding(
