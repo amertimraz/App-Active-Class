@@ -3,11 +3,13 @@ import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:active_class/config/theme.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/services/install_source_service.dart';
 import 'package:active_class/services/update_service.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -169,6 +171,18 @@ class _UpdateDialog extends StatelessWidget {
 // ── تحميل وتثبيت داخل التطبيق مباشرة ───────────────────────────────────────
 
 Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
+  // نسخة احتياطية تلقائية قبل أي تحديث — بعض تحديثات Android (خصوصًا لو
+  // اختلف رقم الإصدار بشكل غير متوقع) بتضطر النظام يعمل uninstall/reinstall
+  // بدل ترقية عادية، وده بيمسح بيانات التطبيق المحلية بالكامل. النسخة دي
+  // بتضمن إن البيانات موجودة كملف مستقل حتى لو حصل كده.
+  try {
+    final path = await Get.find<SettingsController>().backupData();
+    debugPrint('Auto-backup before update saved to: $path');
+  } catch (e) {
+    debugPrint('Auto-backup before update failed: $e');
+  }
+  if (!context.mounted) return;
+
   if (info.apkUrl == null) {
     // مفيش ملف APK مرفق بالإصدار — نفتح صفحة الإصدار في المتصفح كحل بديل
     await launchUrl(Uri.parse(info.htmlUrl),
