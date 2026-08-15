@@ -11,6 +11,22 @@ import 'package:active_class/utils/pricing_helper.dart';
 
 enum ActivityType { attendance, payment }
 
+class TodayPaymentEntry {
+  final String studentName;
+  final String studentCode;
+  final String groupName;
+  final double amount;
+  final DateTime date;
+
+  const TodayPaymentEntry({
+    required this.studentName,
+    required this.studentCode,
+    required this.groupName,
+    required this.amount,
+    required this.date,
+  });
+}
+
 class DashboardController extends GetxController {
   final DatabaseService _db = DatabaseService();
 
@@ -32,6 +48,12 @@ class DashboardController extends GetxController {
   final RxInt    todayAbsent         = 0.obs;
   final RxInt    todayExpected       = 0.obs;
   final RxDouble todayAttendanceRate = 0.0.obs;
+
+  // ── مدفوعات اليوم (كل الدفعات، أي مجموعة) ───────────────────────────────
+  final RxDouble todayPaymentsTotal = 0.0.obs;
+  final RxInt    todayPaymentsCount = 0.obs;
+  RxList<TodayPaymentEntry> get todayPaymentsList => _todayPaymentsList;
+  final RxList<TodayPaymentEntry> _todayPaymentsList = <TodayPaymentEntry>[].obs;
 
   // ── إيراد اليوم من المجموعات المسعّرة بالحصة ────────────────────────────
   // فعلي: من سجلات الحضور "حاضر" اللي اتسجلت النهاردة بالفعل.
@@ -166,16 +188,53 @@ class DashboardController extends GetxController {
     final absent  = todayRecords
         .where((a) => a.status != ATTENDANCE_PRESENT)
         .length;
-    final total   = present + absent;
+
+    // المتوقع = كل طلاب المجموعات اللي ليها حصة مجدولة النهاردة (بصرف النظر
+    // عن سجلات الحضور اللي اتسجلت لحد دلوقتي)، مش عدد السجلات المُدخَلة.
+    // ملحوظة: الإعفاء (isFullyExempt) خاص بالرسوم بس ومالوش دعوة بالحضور.
+    final groups   = await _db.getAllGroups();
+    final students = await _db.getAllStudents();
+    final att = Get.isRegistered<AttendanceController>()
+        ? Get.find<AttendanceController>()
+        : Get.put(AttendanceController());
+    final scheduledTodayIds =
+        att.groupsForDay(groups, now).map((g) => g.id).toSet();
+    final total = scheduledTodayIds.isEmpty
+        ? 0
+        : students.where((s) => scheduledTodayIds.contains(s.groupId)).length;
 
     todayPresent.value        = present;
     todayAbsent.value         = absent;
     todayExpected.value       = total;
     todayAttendanceRate.value = total > 0 ? present / total : 0;
 
+    // مدفوعات اليوم — كل الدفعات المسجَّلة النهاردة بصرف النظر عن نوع
+    // تسعير مجموعة الطالب (شهري أو بالحصة).
+    final payments = await _db.getAllPayments();
+    final todayPayments = payments
+        .where((p) => !p.date.isBefore(todayStart) && !p.date.isAfter(todayEnd))
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    todayPaymentsTotal.value = todayPayments.fold(0.0, (sum, p) => sum + p.amount);
+    todayPaymentsCount.value = todayPayments.length;
+
+    final studentsById = {for (final s in students) s.id: s};
+    final groupById = {for (final g in groups) g.id: g};
+    _todayPaymentsList.assignAll(todayPayments.map((p) {
+      final s = studentsById[p.studentId];
+      final g = s != null ? groupById[s.groupId] : null;
+      return TodayPaymentEntry(
+        studentName: s?.name ?? 'طالب محذوف',
+        studentCode: s?.code ?? '-',
+        groupName: g?.name ?? '-',
+        amount: p.amount,
+        date: p.date,
+      );
+    }));
+
     // إيراد اليوم من المجموعات بالحصة — فعلي (من الدفعات المحصّلة فعلاً
     // النهاردة) ومتوقع (من كل طلاب المجموعات اللي ليها حصة مجدولة النهاردة).
-    final groups = await _db.getAllGroups();
     final perSessionGroups = groups.where((g) => g.isPerSession).toList();
     final perSessionGroupIds = perSessionGroups.map((g) => g.id).toSet();
 
@@ -185,28 +244,20 @@ class DashboardController extends GetxController {
     int expectedCount = 0;
 
     if (perSessionGroupIds.isNotEmpty) {
-      final students = await _db.getAllStudents();
-      final studentsById = {for (final s in students) s.id: s};
-
       // فعلي: مجموع الدفعات المسجَّلة النهاردة لطلاب المجموعات بالحصة —
       // ده "المحصّل" الحقيقي (كاش دخل)، مش استحقاق نظري من الحضور بس.
-      final payments = await _db.getAllPayments();
-      for (final p in payments) {
-        if (p.date.isBefore(todayStart) || p.date.isAfter(todayEnd)) continue;
+      for (final p in todayPayments) {
         final s = studentsById[p.studentId];
         if (s == null || !perSessionGroupIds.contains(s.groupId)) continue;
         actualRevenue += p.amount;
         actualCount += 1;
       }
 
-      final att = Get.isRegistered<AttendanceController>()
-          ? Get.find<AttendanceController>()
-          : Get.put(AttendanceController());
-      final scheduledTodayIds =
-          att.groupsForDay(perSessionGroups, now).map((g) => g.id).toSet();
-      if (scheduledTodayIds.isNotEmpty) {
+      final scheduledTodayPerSessionIds = scheduledTodayIds
+          .intersection(perSessionGroupIds);
+      if (scheduledTodayPerSessionIds.isNotEmpty) {
         for (final s in students) {
-          if (!scheduledTodayIds.contains(s.groupId)) continue;
+          if (!scheduledTodayPerSessionIds.contains(s.groupId)) continue;
           if (s.isFullyExempt) continue;
           expectedRevenue += s.effectivePrice;
           expectedCount += 1;

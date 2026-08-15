@@ -145,19 +145,52 @@ class AttendanceController extends GetxController {
   // تحضير جميع طلاب المجموعة الغير مسجلين في يوم معين — بيتابع كل
   // طالب لوحده عشان لو فشل واحد في النص متوقفش الباقي، وبيبلّغ
   // بعدد الفشل الفعلي بدل رسالة نجاح عامة تخفي الفشل الجزئي.
+  //
+  // لو كل الطلاب متحضّرين بالفعل، الضغطة دي بتتعامل كـ"تراجع" وبتمسح
+  // سجلات الحضور بتاعتهم (رجوع لحالة "لم يُسجَّل") بدل ما تفضل عالقة
+  // على "حاضر" ومفيش وسيلة تلغيها غير واحد واحد.
   Future<void> markGroupAllPresent(
       List<int> studentIds, DateTime day) async {
+    if (studentIds.isEmpty) return;
     final dayStart = DateTime(day.year, day.month, day.day);
     final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
-    final alreadyRecorded = attendance
-        .where((a) =>
-            !a.date.isBefore(dayStart) && !a.date.isAfter(dayEnd))
-        .map((a) => a.studentId)
-        .toSet();
+    final recordsByStudent = <int, Attendance>{
+      for (final a in attendance)
+        if (!a.date.isBefore(dayStart) && !a.date.isAfter(dayEnd))
+          a.studentId: a,
+    };
+
+    final allAlreadyPresent = studentIds.every((id) =>
+        recordsByStudent[id]?.status == ATTENDANCE_PRESENT);
+
+    if (allAlreadyPresent) {
+      var succeeded = 0;
+      var failed = 0;
+      for (final id in studentIds) {
+        final record = recordsByStudent[id];
+        if (record == null) continue;
+        try {
+          await _dbService.deleteAttendance(record.id!);
+          succeeded++;
+        } catch (e) {
+          failed++;
+        }
+      }
+      await loadAttendance();
+      if (failed == 0) {
+        ToastHelper.success('تم إلغاء تحضير جميع الطلاب');
+      } else if (succeeded == 0) {
+        ToastHelper.error('فشل إلغاء التحضير — حاول تاني');
+      } else {
+        ToastHelper.error('اتلغى تحضير $succeeded طالب — فشل $failed');
+      }
+      return;
+    }
+
     var succeeded = 0;
     var failed = 0;
     for (final id in studentIds) {
-      if (alreadyRecorded.contains(id)) continue;
+      if (recordsByStudent.containsKey(id)) continue;
       try {
         await _dbService.insertAttendance(Attendance(
           studentId: id,
@@ -420,6 +453,25 @@ class AttendanceController extends GetxController {
     return null;
   }
 
+  // ملخص حضور طالب واحد لشهر معيّن: عدد أيام الحضور وتواريخ الغياب
+  StudentMonthAttendance getStudentMonthAttendance(int studentId, DateTime month) {
+    final start = DateTime(month.year, month.month, 1);
+    final end = DateTime(month.year, month.month + 1, 0, 23, 59, 59);
+    int present = 0;
+    final absentDates = <DateTime>[];
+    for (final a in attendance) {
+      if (a.studentId != studentId) continue;
+      if (a.date.isBefore(start) || a.date.isAfter(end)) continue;
+      if (a.status == ATTENDANCE_PRESENT) {
+        present++;
+      } else if (a.status == ATTENDANCE_ABSENT) {
+        absentDates.add(a.date);
+      }
+    }
+    absentDates.sort();
+    return StudentMonthAttendance(presentCount: present, absentDates: absentDates);
+  }
+
   // إحصاء ملخص شامل للنطاق: إجمالي حاضر/متوقع ونسبة الحضور
   AttendanceSummary getSummary({required List<Student> students, required List<Group> groups, DateTimeRange? range}) {
     final r = range ?? dateRange.value;
@@ -439,6 +491,12 @@ class AttendanceController extends GetxController {
 
     return AttendanceSummary(totalPresent: totalPresent, totalExpected: totalExpected);
   }
+}
+
+class StudentMonthAttendance {
+  final int presentCount;
+  final List<DateTime> absentDates;
+  const StudentMonthAttendance({required this.presentCount, required this.absentDates});
 }
 
 class AttendanceSummary {

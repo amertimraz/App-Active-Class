@@ -575,15 +575,19 @@ class _ClassCard extends StatelessWidget {
                                 ]),
                                 const SizedBox(height: 6),
                                 Row(children: [
-                                  _miniInfo(
-                                      Icons.access_time_rounded,
-                                      '$timeFrom - $timeTo',
-                                      color, cs),
+                                  Flexible(
+                                    child: _miniInfo(
+                                        Icons.access_time_rounded,
+                                        '$timeFrom - $timeTo',
+                                        color, cs),
+                                  ),
                                   const SizedBox(width: 10),
-                                  _miniInfo(
-                                      Icons.hourglass_bottom_rounded,
-                                      _durationLabel(slot.durationMin),
-                                      color, cs),
+                                  Flexible(
+                                    child: _miniInfo(
+                                        Icons.hourglass_bottom_rounded,
+                                        _durationLabel(slot.durationMin),
+                                        color, cs),
+                                  ),
                                 ]),
                                 if (slot.studentCount > 0) ...[
                                   const SizedBox(height: 6),
@@ -615,11 +619,14 @@ class _ClassCard extends StatelessWidget {
       Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 13, color: color.withValues(alpha: 0.8)),
         const SizedBox(width: 3),
-        Text(text,
-            style: TextStyle(
-                fontFamily: 'Cairo', fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurface.withValues(alpha: 0.6))),
+        Flexible(
+          child: Text(text,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontFamily: 'Cairo', fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface.withValues(alpha: 0.6))),
+        ),
       ]);
 
   String _durationLabel(int min) {

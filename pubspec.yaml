@@ -22,6 +22,9 @@ dependencies:
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.1.3
 
+  # Scan beep sound (زي أجهزة الكاشير)
+  audioplayers: ^6.1.0
+
   # PDF & Printing
   pdf: ^3.10.0
   printing: ^5.11.0
@@ -107,6 +110,7 @@ flutter:
     - assets/
     - assets/fonts/
     - assets/icon/
+    - assets/sounds/
 
   fonts:
     - family: Cairo

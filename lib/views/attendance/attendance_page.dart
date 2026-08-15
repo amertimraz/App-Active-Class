@@ -19,6 +19,7 @@ import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AttendancePage extends StatefulWidget {
   const AttendancePage({super.key});
@@ -38,7 +39,7 @@ class _AttendancePageState extends State<AttendancePage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _reload();
   }
 
@@ -68,6 +69,7 @@ class _AttendancePageState extends State<AttendancePage>
             Tab(text: 'تسجيل'),
             Tab(text: 'السجل'),
             Tab(text: 'الإحصائيات'),
+            Tab(text: 'غياب اليوم'),
             Tab(text: 'QR Scan'),
           ],
         ),
@@ -106,6 +108,11 @@ class _AttendancePageState extends State<AttendancePage>
                 groupCtrl: groupCtrl,
               ),
               _StatisticsTab(
+                controller: controller,
+                studentCtrl: studentCtrl,
+                groupCtrl: groupCtrl,
+              ),
+              _AbsentTodayTab(
                 controller: controller,
                 studentCtrl: studentCtrl,
                 groupCtrl: groupCtrl,
@@ -498,23 +505,34 @@ class _GroupAttendanceCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              // الكل حاضر
-              TextButton.icon(
-                onPressed: () => controller.markGroupAllPresent(
-                  students.map((s) => s.id!).toList(),
-                  selectedDay,
-                ),
-                icon: const Icon(Icons.done_all_rounded, size: 15),
-                label: const Text('حاضر'),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  foregroundColor: const Color(0xFF10B981),
-                  textStyle: const TextStyle(
-                      fontFamily: 'Cairo',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12),
-                ),
-              ),
+              // الكل حاضر ← لو كله متحضّر بالفعل، الضغطة بتلغي التحضير
+              Builder(builder: (context) {
+                final allPresent = totalCount > 0 &&
+                    students.every(
+                        (s) => statusMap[s.id] == ATTENDANCE_PRESENT);
+                return TextButton.icon(
+                  onPressed: () => controller.markGroupAllPresent(
+                    students.map((s) => s.id!).toList(),
+                    selectedDay,
+                  ),
+                  icon: Icon(
+                      allPresent
+                          ? Icons.remove_done_rounded
+                          : Icons.done_all_rounded,
+                      size: 15),
+                  label: Text(allPresent ? 'إلغاء الكل' : 'حاضر'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: allPresent
+                        ? Colors.grey.shade600
+                        : const Color(0xFF10B981),
+                    textStyle: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12),
+                  ),
+                );
+              }),
             ]),
           ),
           // Progress bar للمجموعة
@@ -1805,3 +1823,289 @@ DateTimeRange _asFullDayRange(DateTimeRange r) => DateTimeRange(
   start: DateTime(r.start.year, r.start.month, r.start.day),
   end:   DateTime(r.end.year, r.end.month, r.end.day, 23, 59, 59),
 );
+
+// ══════════════════════════════════════════════════════════════════
+//  _AbsentTodayTab — غائبو اليوم مع إرسال رسالة واتساب لأولياء الأمور
+// ══════════════════════════════════════════════════════════════════
+class _AbsentEntry {
+  final Student student;
+  final String groupName;
+  const _AbsentEntry({required this.student, required this.groupName});
+}
+
+class _AbsentTodayTab extends StatefulWidget {
+  final AttendanceController controller;
+  final StudentController studentCtrl;
+  final GroupController groupCtrl;
+
+  const _AbsentTodayTab({
+    required this.controller,
+    required this.studentCtrl,
+    required this.groupCtrl,
+  });
+
+  @override
+  State<_AbsentTodayTab> createState() => _AbsentTodayTabState();
+}
+
+class _AbsentTodayTabState extends State<_AbsentTodayTab> {
+  final Set<int> _selected = {};
+
+  String _normalizePhone(String input, String defaultDial) {
+    var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (p.startsWith('+')) p = p.substring(1);
+    if (p.startsWith('00')) p = p.substring(2);
+    if (p.startsWith(defaultDial)) return p;
+    if (RegExp(r'^[1-9][0-9]{6,}$').hasMatch(p)) return p;
+    return defaultDial + p.replaceFirst(RegExp(r'^0+'), '');
+  }
+
+  String _buildMessage(Student s, String groupName, String teacherName) {
+    final dateStr = DateFormat('yyyy-MM-dd', 'ar').format(DateTime.now());
+    final buffer = StringBuffer()
+      ..writeln('⚠️ *تنبيه غياب*')
+      ..writeln('👤 ${s.name} (${s.code})')
+      ..writeln('👥 $groupName')
+      ..writeln('📅 $dateStr');
+    if (teacherName.isNotEmpty) {
+      buffer.writeln('👨‍🏫 $teacherName');
+    }
+    return buffer.toString().trimRight();
+  }
+
+  Future<void> _sendWhatsapp(Student s, String groupName) async {
+    final rawPhone = s.guardianPhone?.trim() ?? '';
+    if (rawPhone.isEmpty) {
+      AppToast.warning(context, 'لا يوجد رقم ولي أمر لـ ${s.name}');
+      return;
+    }
+    final settings = Get.find<SettingsController>();
+    final phone = _normalizePhone(rawPhone, settings.countryDial.value);
+    final msg = _buildMessage(s, groupName, settings.teacherFullName.value.trim());
+    final uri =
+        Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<bool?> _confirmSendDialog(_AbsentEntry entry, int index, int total) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('إرسال $index من $total'),
+        content: Text(
+            'إرسال رسالة غياب لولي أمر ${entry.student.name} (${entry.groupName})؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('إلغاء الكل'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('تخطي'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('إرسال'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sendToSelected(List<_AbsentEntry> entries) async {
+    final queue =
+        entries.where((e) => _selected.contains(e.student.id)).toList();
+    if (queue.isEmpty) return;
+
+    final withPhone = queue
+        .where((e) => (e.student.guardianPhone ?? '').trim().isNotEmpty)
+        .toList();
+    final withoutPhoneCount = queue.length - withPhone.length;
+
+    if (withPhone.isEmpty) {
+      AppToast.warning(context, 'لا يوجد أرقام أولياء أمور للطلاب المحددين');
+      return;
+    }
+
+    for (var i = 0; i < withPhone.length; i++) {
+      final entry = withPhone[i];
+      final proceed = await _confirmSendDialog(entry, i + 1, withPhone.length);
+      if (proceed == null) break;
+      if (proceed) await _sendWhatsapp(entry.student, entry.groupName);
+      if (!mounted) return;
+    }
+
+    if (!mounted) return;
+    setState(_selected.clear);
+    AppToast.success(
+      context,
+      'تم الإرسال',
+      subtitle: withoutPhoneCount > 0
+          ? '$withoutPhoneCount طالب بدون رقم ولي أمر تم تخطيه'
+          : null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Obx(() {
+      final students = widget.studentCtrl.students;
+      final groups   = widget.groupCtrl.groups;
+      final groupById = {
+        for (final g in groups)
+          if (g.id != null) g.id!: g,
+      };
+
+      final now       = DateTime.now();
+      final dayStart  = DateTime(now.year, now.month, now.day);
+      final dayEnd    = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+      final absentIds = widget.controller.attendance
+          .where((a) =>
+              a.status == ATTENDANCE_ABSENT &&
+              !a.date.isBefore(dayStart) &&
+              !a.date.isAfter(dayEnd))
+          .map((a) => a.studentId)
+          .toSet();
+
+      final entries = students
+          .where((s) => s.id != null && absentIds.contains(s.id))
+          .map((s) => _AbsentEntry(
+              student: s, groupName: groupById[s.groupId]?.name ?? '-'))
+          .toList()
+        ..sort((a, b) {
+          final byGroup = a.groupName.compareTo(b.groupName);
+          return byGroup != 0
+              ? byGroup
+              : a.student.name.compareTo(b.student.name);
+        });
+
+      // نظّف أي تحديد لطالب مبقاش غايب بعد إعادة تحميل الحضور
+      final validIds = entries.map((e) => e.student.id!).toSet();
+      _selected.removeWhere((id) => !validIds.contains(id));
+
+      if (entries.isEmpty) {
+        return const EmptyState(
+          icon: Icons.emoji_people_rounded,
+          title: 'مفيش غياب النهاردة',
+          subtitle: 'كل الطلاب اللي اتسجل حضورهم النهاردة حاضرين',
+        );
+      }
+
+      final selectedCount =
+          entries.where((e) => _selected.contains(e.student.id)).length;
+      final allSelected = selectedCount == entries.length;
+
+      return Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(children: [
+            Text(
+              'غياب اليوم (${entries.length})',
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                color: isDark ? Colors.white : const Color(0xFF111827),
+              ),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () => setState(() {
+                if (allSelected) {
+                  _selected.clear();
+                } else {
+                  _selected
+                    ..clear()
+                    ..addAll(entries.map((e) => e.student.id!));
+                }
+              }),
+              icon: Icon(
+                allSelected
+                    ? Icons.deselect_rounded
+                    : Icons.select_all_rounded,
+                size: 18,
+              ),
+              label: Text(allSelected ? 'إلغاء التحديد' : 'تحديد الكل'),
+            ),
+          ]),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 90),
+            itemCount: entries.length,
+            itemBuilder: (ctx, i) {
+              final entry    = entries[i];
+              final s        = entry.student;
+              final hasPhone = (s.guardianPhone ?? '').trim().isNotEmpty;
+              final checked  = _selected.contains(s.id);
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF131D31) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: checked
+                        ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+                        : (isDark
+                            ? Colors.white.withValues(alpha: 0.06)
+                            : Colors.grey.shade200),
+                  ),
+                ),
+                child: CheckboxListTile(
+                  value: checked,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  onChanged: (v) => setState(() {
+                    if (v == true) {
+                      _selected.add(s.id!);
+                    } else {
+                      _selected.remove(s.id);
+                    }
+                  }),
+                  title: Text(
+                    s.name,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 13.5),
+                  ),
+                  subtitle: Text(
+                    'الكود: ${s.code} • المجموعة: ${entry.groupName}'
+                    '${hasPhone ? '' : ' • لا يوجد رقم ولي أمر'}',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: hasPhone
+                          ? (isDark ? Colors.white60 : Colors.grey.shade600)
+                          : const Color(0xFFEF4444),
+                    ),
+                  ),
+                  secondary: IconButton(
+                    tooltip: hasPhone ? 'إرسال واتساب' : 'لا يوجد رقم ولي أمر',
+                    icon: const Icon(Icons.chat, color: Colors.green),
+                    onPressed:
+                        !hasPhone ? null : () => _sendWhatsapp(s, entry.groupName),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        if (selectedCount > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _sendToSelected(entries),
+                icon: const Icon(Icons.chat_rounded),
+                label: Text('إرسال واتساب للمحددين ($selectedCount)'),
+                style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981)),
+              ),
+            ),
+          ),
+      ]);
+    });
+  }
+}

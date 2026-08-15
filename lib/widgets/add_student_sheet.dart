@@ -28,17 +28,27 @@ Future<void> showAddStudentSheet(
   return showDialog(
     context: context,
     barrierDismissible: true,
-    builder: (_) => Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
-      child: _AddStudentSheet(
-        controller: controller,
-        preselectedGroup: preselectedGroup,
-        onAdded: onAdded,
-        initialName: initialName,
-        initialPhone: initialPhone,
-      ),
-    ),
+    builder: (ctx) {
+      final size = MediaQuery.of(ctx).size;
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.symmetric(
+          horizontal: size.width * 0.04,
+          vertical: size.height * 0.075,
+        ),
+        child: SizedBox(
+          width: size.width * 0.92,
+          height: size.height * 0.85,
+          child: _AddStudentSheet(
+            controller: controller,
+            preselectedGroup: preselectedGroup,
+            onAdded: onAdded,
+            initialName: initialName,
+            initialPhone: initialPhone,
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -377,11 +387,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
     final primary = _primary;
     final hasPreselectedGroup = widget.preselectedGroup != null;
 
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.85,
-      ),
-      child: Container(
+    return Container(
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF131D31) : Colors.white,
           borderRadius: BorderRadius.circular(28),
@@ -830,8 +836,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                 ),
               ]),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

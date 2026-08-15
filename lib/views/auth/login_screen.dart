@@ -1,11 +1,13 @@
 // lib/views/auth/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/auth_controller.dart';
 import 'package:active_class/views/auth/register_screen.dart';
+import 'package:active_class/utils/helpers.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -42,6 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
       Get.offNamed(ROUTE_ACCOUNT);
     } else {
       setState(() => _error = err);
+      ToastHelper.error(err);
     }
   }
 
@@ -165,6 +168,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                       fontWeight: FontWeight.w800)),
                         ),
                       ),
+                      const SizedBox(height: 10),
+                      Center(
+                        child: TextButton(
+                          onPressed: _openForgotPasswordSupport,
+                          child: Text('نسيت الباسورد؟',
+                              style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 12,
+                                  color: isDark ? Colors.white60 : Colors.black45)),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -183,6 +197,30 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
+  }
+
+  // مفيش إيميل حقيقي ولا SMS في نظام الدخول ده (عشان نتجنب أي تكلفة
+  // لكل رسالة) — يعني مفيش "استرجاع ذاتي" ممكن. البديل: طلب إعادة
+  // تعيين عن طريق الدعم بالواتساب (نفس رقم الدعم المستخدم في باقي
+  // التطبيق)، وبعد ما الأدمن يتأكد من هوية المدرس بيعيّن باسورد جديد
+  // له من لوحة الإدارة.
+  Future<void> _openForgotPasswordSupport() async {
+    const supportPhone = '201096066818';
+    final phone = _phoneCtrl.text.trim();
+    final message = StringBuffer()
+      ..writeln('مرحبًا، أنا مدرس ناسي باسورد حسابي في تطبيق Active Class.');
+    if (phone.isNotEmpty) {
+      message.writeln('رقم التليفون المسجل بيه: $phone');
+    }
+    message.writeln('برجاء إعادة تعيين الباسورد.');
+
+    final uri = Uri.parse(
+        'https://wa.me/$supportPhone?text=${Uri.encodeComponent(message.toString())}');
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) ToastHelper.error('تعذر فتح واتساب');
+    }
   }
 
   Widget _label(String text, bool isDark) => Text(text,

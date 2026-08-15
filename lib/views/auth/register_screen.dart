@@ -6,6 +6,7 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/auth_controller.dart';
 import 'package:active_class/views/auth/login_screen.dart';
+import 'package:active_class/utils/helpers.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -51,6 +52,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       Get.offNamed(ROUTE_ACCOUNT);
     } else {
       setState(() => _error = err);
+      ToastHelper.error(err);
     }
   }
 

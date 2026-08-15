@@ -140,9 +140,11 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
     if (controller.scannedStudent.value == null) {
       // كود مش موجود
       HapticFeedback.vibrate();
+      SoundHelper.scanError();
       _safeStartScanner();
     } else {
       HapticFeedback.selectionClick();
+      SoundHelper.scanSuccess();
     }
   }
 

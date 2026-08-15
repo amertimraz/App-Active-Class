@@ -2,6 +2,7 @@
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/config/constants.dart';
 
@@ -335,4 +336,21 @@ class ToastHelper {
   static void info(String message, {String title = 'تنبيه'}) {
     _show(title, message, bg: Colors.teal);
   }
+}
+
+/// نغمات صوتية لماسح QR (زي أجهزة الكاشير في السوبر ماركت) — بيب حاد
+/// لما الكود يتقرأ صح، ونغمة منخفضة لما الكود يكون غلط/مش موجود.
+class SoundHelper {
+  static final AudioPlayer _player = AudioPlayer()
+    ..setPlayerMode(PlayerMode.lowLatency);
+
+  static Future<void> _play(String asset) async {
+    try {
+      await _player.stop();
+      await _player.play(AssetSource(asset));
+    } catch (_) {}
+  }
+
+  static void scanSuccess() => _play('sounds/scan_beep.wav');
+  static void scanError() => _play('sounds/scan_error.wav');
 }

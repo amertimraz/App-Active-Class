@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:get/get.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -341,53 +342,27 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
     );
 
     try {
-      final pdf = pw.Document();
-      final perPage = perRow * perCol;
-
-      for (int i = 0; i < _filtered.length; i += perPage) {
-        final chunk = _filtered.skip(i).take(perPage).toList();
-        final images = <String, pw.MemoryImage>{};
-        for (final s in chunk) {
-          final bytes = await _composeCardPng(s);
-          if (bytes != null) images[s.code] = pw.MemoryImage(bytes);
-        }
-        pdf.addPage(pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          margin: pw.EdgeInsets.all(pageMargin),
-          build: (ctx) {
-            const cardSpacing = 8.0;
-            final availableWidth = PdfPageFormat.a4.width - pageMargin * 2;
-            final cellWidth =
-                (availableWidth - cardSpacing * (perRow - 1)) /
-                    perRow;
-            final cardHeight = cellWidth * 1.5;
-            return pw.Wrap(
-              spacing: cardSpacing,
-              runSpacing: cardSpacing,
-              children: [
-                for (final s in chunk)
-                  pw.Container(
-                    width: cellWidth,
-                    height: cardHeight,
-                    padding: const pw.EdgeInsets.all(4),
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(
-                          color: PdfColors.grey400, width: 0.8),
-                      borderRadius: pw.BorderRadius.circular(6),
-                    ),
-                    child: images[s.code] == null
-                        ? pw.SizedBox.shrink()
-                        : pw.Center(
-                            child: pw.Image(images[s.code]!,
-                                fit: pw.BoxFit.contain)),
-                  ),
-              ],
-            );
-          },
-        ));
+      // المرحلة الأولى: نرسم صور الـ QR على الـ UI isolate (لازم dart:ui)
+      // مع yield بين كل طالب حتى تبقى الواجهة مستجيبة.
+      final images = <String, Uint8List>{};
+      for (final s in _filtered) {
+        final bytes = await _composeCardPng(s);
+        if (bytes != null) images[s.code] = bytes;
       }
 
-      final bytes = await pdf.save();
+      // المرحلة الثانية: بناء وتجميع الـ PDF عملية Dart خالصة (بدون dart:ui)
+      // ننفذها في isolate منفصل حتى لا تجمّد الواجهة أثناء save().
+      final bytes = await compute(
+        _buildQrPdfBytes,
+        _QrPdfBuildArgs(
+          codes: _filtered.map((s) => s.code).toList(),
+          images: images,
+          perRow: perRow,
+          perCol: perCol,
+          pageMargin: pageMargin,
+        ),
+      );
+
       if (!mounted) return;
       Get.back(); // close progress
 
@@ -471,8 +446,7 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
         archive.addFile(ArchiveFile('${s.code}.png', bytes.length, bytes));
       }
 
-      final zipBytes = ZipEncoder().encode(archive);
-      if (zipBytes == null) throw Exception('فشل إنشاء ZIP');
+      final zipBytes = await compute(_encodeZipBytes, archive);
 
       if (!mounted) return;
       Get.back(); // close progress
@@ -1992,4 +1966,79 @@ class _ShareResultSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Background-isolate helpers (pure Dart — لا يعتمدان على dart:ui)
+//
+// pdf.save() و ZipEncoder().encode() عمليتان synchronous ثقيلتان بدون أي
+// yield داخلي؛ تنفيذهما على الـ UI isolate هو سبب تجمّد الواجهة لعشرات
+// الثواني مع أعداد كبيرة من الطلاب (وما يبدو بعدها كأن زر المشاركة
+// "لا يستجيب"). ننقلهما إلى isolate منفصل عبر compute().
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _QrPdfBuildArgs {
+  final List<String> codes;
+  final Map<String, Uint8List> images;
+  final int perRow;
+  final int perCol;
+  final double pageMargin;
+
+  const _QrPdfBuildArgs({
+    required this.codes,
+    required this.images,
+    required this.perRow,
+    required this.perCol,
+    required this.pageMargin,
+  });
+}
+
+Future<Uint8List> _buildQrPdfBytes(_QrPdfBuildArgs args) async {
+  final pdf = pw.Document();
+  final perPage = args.perRow * args.perCol;
+
+  for (int i = 0; i < args.codes.length; i += perPage) {
+    final chunkCodes = args.codes.skip(i).take(perPage).toList();
+    pdf.addPage(pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      margin: pw.EdgeInsets.all(args.pageMargin),
+      build: (ctx) {
+        const cardSpacing = 8.0;
+        final availableWidth = PdfPageFormat.a4.width - args.pageMargin * 2;
+        final cellWidth =
+            (availableWidth - cardSpacing * (args.perRow - 1)) / args.perRow;
+        final cardHeight = cellWidth * 1.5;
+        return pw.Wrap(
+          spacing: cardSpacing,
+          runSpacing: cardSpacing,
+          children: [
+            for (final code in chunkCodes)
+              pw.Container(
+                width: cellWidth,
+                height: cardHeight,
+                padding: const pw.EdgeInsets.all(4),
+                decoration: pw.BoxDecoration(
+                  border:
+                      pw.Border.all(color: PdfColors.grey400, width: 0.8),
+                  borderRadius: pw.BorderRadius.circular(6),
+                ),
+                child: args.images[code] == null
+                    ? pw.SizedBox.shrink()
+                    : pw.Center(
+                        child: pw.Image(pw.MemoryImage(args.images[code]!),
+                            fit: pw.BoxFit.contain)),
+              ),
+          ],
+        );
+      },
+    ));
+  }
+
+  return pdf.save();
+}
+
+Uint8List _encodeZipBytes(Archive archive) {
+  final bytes = ZipEncoder().encode(archive);
+  if (bytes == null) throw Exception('فشل إنشاء ZIP');
+  return Uint8List.fromList(bytes);
 }

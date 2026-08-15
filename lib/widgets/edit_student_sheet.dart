@@ -23,16 +23,29 @@ Future<Student?> showEditStudentSheet(
   StudentController? controller,
   List<Group>? groups,
 }) {
-  return showModalBottomSheet<Student>(
+  return showDialog<Student>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => EditStudentSheet(
-      student: student,
-      accentColor: accentColor,
-      controller: controller,
-      groups: groups,
-    ),
+    barrierDismissible: true,
+    builder: (ctx) {
+      final size = MediaQuery.of(ctx).size;
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.symmetric(
+          horizontal: size.width * 0.04,
+          vertical: size.height * 0.075,
+        ),
+        child: SizedBox(
+          width: size.width * 0.92,
+          height: size.height * 0.85,
+          child: EditStudentSheet(
+            student: student,
+            accentColor: accentColor,
+            controller: controller,
+            groups: groups,
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -356,7 +369,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF131D31) : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.circular(28),
       ),
       padding: EdgeInsets.fromLTRB(
           20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 24),
@@ -365,14 +378,6 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-                child: Container(
-                    width: 40, height: 4,
-                    decoration: BoxDecoration(
-                        color: Colors.grey.shade400,
-                        borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 14),
-
             // Header
             Row(children: [
               Container(

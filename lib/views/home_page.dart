@@ -548,6 +548,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             final sessionRevenueCount = _dashboardController.todaySessionRevenueCount.value;
             final sessionRevenueExpected = _dashboardController.todaySessionRevenueExpected.value;
             final sessionRevenueExpectedCount = _dashboardController.todaySessionRevenueExpectedCount.value;
+            final todayPaymentsTotal = _dashboardController.todayPaymentsTotal.value;
+            final todayPaymentsCount = _dashboardController.todayPaymentsCount.value;
 
             String fmtMoney(double v) => v >= 1000
                 ? '${(v / 1000).toStringAsFixed(1)}k $currency'
@@ -604,13 +606,35 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   onTapUnpaid: () => _showUnpaidSheet(context),
                 ),
                 const SizedBox(height: 8),
-                // ── صف 3: حضور اليوم ──
-                _AttendanceCard(
-                  present: present,
-                  absent: absent,
-                  expected: todayExpected,
-                  rate: attRate,
-                  visible: _statsVisible,
+                // ── صف 3: حضور اليوم + مدفوعات اليوم جنب بعض ──
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _AttendanceCard(
+                          present: present,
+                          absent: absent,
+                          expected: todayExpected,
+                          rate: attRate,
+                          visible: _statsVisible,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _TodayPaymentsCard(
+                          total: todayPaymentsTotal,
+                          count: todayPaymentsCount,
+                          fmtTotal: _statsVisible
+                              ? fmtMoney(todayPaymentsTotal)
+                              : '••••',
+                          onTap: todayPaymentsCount == 0
+                              ? null
+                              : () => _showTodayPaymentsSheet(context),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 if (sessionRevenue > 0 || sessionRevenueExpected > 0) ...[
                   const SizedBox(height: 8),
@@ -1133,6 +1157,89 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
+  void _showTodayPaymentsSheet(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final currency = _settingsController.currencyCode.value;
+    final entries = _dashboardController.todayPaymentsList;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF131D31) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 6),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade400,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.payments_rounded,
+                      color: Color(0xFF10B981), size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'مدفوعات اليوم (${entries.length})',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: entries.length,
+                itemBuilder: (_, i) {
+                  final e = entries[i];
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor:
+                          const Color(0xFF10B981).withValues(alpha: 0.1),
+                      child: Text(
+                        e.studentName.trim().isNotEmpty
+                            ? e.studentName.trim()[0]
+                            : '?',
+                        style: const TextStyle(
+                          color: Color(0xFF10B981),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    title: Text(e.studentName,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text('${e.studentCode} • ${e.groupName}'),
+                    trailing: Text(
+                      '${e.amount.toStringAsFixed(0)} $currency',
+                      style: const TextStyle(
+                        color: Color(0xFF10B981),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildBackgroundGlow({
     double? top,
     double? right,
@@ -1594,40 +1701,122 @@ class _AttendanceCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Row(
+          Wrap(
+            spacing: 14,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _AttStat(
                 icon: Icons.check_circle_outline_rounded,
                 color: const Color(0xFF10B981),
                 label: visible ? '$present حضر' : '••',
               ),
-              const SizedBox(width: 16),
               _AttStat(
                 icon: Icons.cancel_outlined,
                 color: const Color(0xFFEF4444),
                 label: visible ? '$absent غاب' : '••',
               ),
-              const Spacer(),
-              if (expected == 0)
-                Text(
-                  'لا توجد مجموعات اليوم',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isDark ? Colors.white38 : Colors.grey.shade500,
-                  ),
-                )
-              else
-                Text(
-                  visible ? 'من $expected طالب' : '••',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white38 : Colors.grey.shade500,
-                  ),
+              Text(
+                expected == 0
+                    ? 'لا مجموعات اليوم'
+                    : (visible ? 'من $expected طالب' : '••'),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white38 : Colors.grey.shade500,
                 ),
+              ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TodayPaymentsCard extends StatelessWidget {
+  final double total;
+  final int count;
+  final String fmtTotal;
+  final VoidCallback? onTap;
+
+  const _TodayPaymentsCard({
+    required this.total,
+    required this.count,
+    required this.fmtTotal,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    const color = Color(0xFF10B981);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF131D31) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.grey.shade200,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.payments_rounded, size: 16, color: color),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'مدفوعات اليوم',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: isDark ? Colors.white : const Color(0xFF111827),
+                    ),
+                  ),
+                ),
+                if (onTap != null)
+                  Icon(Icons.chevron_left_rounded,
+                      size: 18,
+                      color: isDark ? Colors.white38 : Colors.grey.shade400),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              fmtTotal,
+              style: const TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              count == 0 ? 'لا يوجد مدفوعات بعد' : '$count دفعة اليوم',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white38 : Colors.grey.shade500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -137,9 +137,11 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
 
     if (qrCtrl.scannedStudent.value == null) {
       HapticFeedback.vibrate();
+      SoundHelper.scanError();
       _safeStartScanner();
     } else {
       HapticFeedback.selectionClick();
+      SoundHelper.scanSuccess();
     }
   }
 

@@ -72,7 +72,7 @@ class NotificationService {
       onDidReceiveNotificationResponse: _onNotificationTap,
     );
 
-    await requestPermission();
+    await requestPermission(requestExactAlarm: true);
 
     _initialized = true;
   }

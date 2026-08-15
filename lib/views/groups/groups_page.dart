@@ -281,23 +281,33 @@ class _GroupsPageState extends State<GroupsPage> {
     showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
-        child: _GroupFormSheet(
-          group: group,
-          existingGroups: controller.groups,
-          onSave: (newGroup) => group == null
-              ? controller.addGroup(newGroup)
-              : controller.updateGroup(newGroup),
-          onSaved: (name) {
-            ToastHelper.success('تم حفظ "$name"', title: 'تم');
-            // إعادة مزامنة إشعارات مواعيد الحصص عشان تعكس الجدول
-            // الجديد/المعدَّل فورًا من غير ما المدرس يعمل أي حاجة.
-            NotificationService().syncAllScheduledNotifications();
-          },
-        ),
-      ),
+      builder: (ctx) {
+        final size = MediaQuery.of(ctx).size;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.symmetric(
+            horizontal: size.width * 0.04,
+            vertical: size.height * 0.075,
+          ),
+          child: SizedBox(
+            width: size.width * 0.92,
+            height: size.height * 0.85,
+            child: _GroupFormSheet(
+              group: group,
+              existingGroups: controller.groups,
+              onSave: (newGroup) => group == null
+                  ? controller.addGroup(newGroup)
+                  : controller.updateGroup(newGroup),
+              onSaved: (name) {
+                ToastHelper.success('تم حفظ "$name"', title: 'تم');
+                // إعادة مزامنة إشعارات مواعيد الحصص عشان تعكس الجدول
+                // الجديد/المعدَّل فورًا من غير ما المدرس يعمل أي حاجة.
+                NotificationService().syncAllScheduledNotifications();
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -558,11 +568,7 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
     final primary = Color(_selectedColor);
     final isEdit = widget.group != null;
 
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.85,
-      ),
-      child: Container(
+    return Container(
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF131D31) : Colors.white,
           borderRadius: BorderRadius.circular(28),
@@ -765,8 +771,7 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
                 ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

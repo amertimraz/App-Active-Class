@@ -673,6 +673,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
           initialDate: initialDate ?? DateTime.now(),
           defaultAmount: price ?? defaultAmount,
           controller: controller,
+          attendanceController: attendanceController,
         ),
       );
     }
@@ -702,6 +703,10 @@ class _PaymentsPageState extends State<PaymentsPage> {
     if (preselectedStudentId != null) {
       final student = studentController.students
           .firstWhereOrNull((s) => s.id == preselectedStudentId);
+      if (student != null && student.isFullyExempt) {
+        ToastHelper.error('${student.name} معفي بالكامل من الرسوم — لا داعي لتسجيل دفعة');
+        return;
+      }
       openSheet(preselectedStudentId,
           price: defaultAmount ?? dueFor(student),
           studentName: student?.name);
@@ -718,6 +723,10 @@ class _PaymentsPageState extends State<PaymentsPage> {
         final studentId = item['id'] as int;
         final student = studentController.students
             .firstWhereOrNull((s) => s.id == studentId);
+        if (student != null && student.isFullyExempt) {
+          ToastHelper.error('${student.name} معفي بالكامل من الرسوم — لا داعي لتسجيل دفعة');
+          return;
+        }
         openSheet(studentId, price: dueFor(student), studentName: student?.name);
       },
     );
@@ -1097,6 +1106,129 @@ class _StudentMonthRow {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  _AttendanceHintChip — ملخص حضور/غياب الطالب هذا الشهر
+// ══════════════════════════════════════════════════════════════════
+class _AttendanceHintChip extends StatelessWidget {
+  final int presentCount;
+  final List<DateTime> absentDates;
+  final String studentName;
+
+  const _AttendanceHintChip({
+    required this.presentCount,
+    required this.absentDates,
+    required this.studentName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasAbsences = absentDates.isNotEmpty;
+    final color = hasAbsences ? Colors.orange : Colors.green;
+    final icon = hasAbsences
+        ? Icons.event_busy_rounded
+        : Icons.event_available_rounded;
+    final text = hasAbsences
+        ? 'غائب ${absentDates.length} يوم هذا الشهر'
+        : (presentCount > 0
+            ? 'حضر $presentCount يوم — بدون غياب'
+            : 'لا يوجد سجل حضور هذا الشهر');
+
+    return Material(
+      color: color.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: hasAbsences
+            ? () => _showAbsenceDatesSheet(context, studentName, absentDates)
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  text,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: color),
+                ),
+              ),
+              if (hasAbsences)
+                Icon(Icons.chevron_left_rounded,
+                    size: 18, color: color.withValues(alpha: 0.7)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+void _showAbsenceDatesSheet(
+    BuildContext context, String studentName, List<DateTime> absentDates) {
+  showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (_) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 8),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+                color: Colors.grey.shade400,
+                borderRadius: BorderRadius.circular(2)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.event_busy_rounded, color: Colors.orange.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    studentName.isEmpty
+                        ? 'أيام الغياب هذا الشهر'
+                        : 'أيام غياب $studentName هذا الشهر',
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 320),
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              itemCount: absentDates.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, i) {
+                final d = absentDates[i];
+                return ListTile(
+                  dense: true,
+                  leading: Icon(Icons.close_rounded,
+                      color: Colors.orange.shade700, size: 18),
+                  title: Text(FormatHelper.formatDate(d)),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  _AddPaymentSheet — bottom sheet لتسجيل دفعة
 // ══════════════════════════════════════════════════════════════════
 class _AddPaymentSheet extends StatefulWidget {
@@ -1105,6 +1237,7 @@ class _AddPaymentSheet extends StatefulWidget {
     required this.studentName,
     required this.initialDate,
     required this.controller,
+    required this.attendanceController,
     this.defaultAmount,
   });
 
@@ -1113,6 +1246,7 @@ class _AddPaymentSheet extends StatefulWidget {
   final DateTime initialDate;
   final double? defaultAmount;
   final PaymentController controller;
+  final AttendanceController attendanceController;
 
   @override
   State<_AddPaymentSheet> createState() => _AddPaymentSheetState();
@@ -1248,6 +1382,19 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // ملخص الحضور هذا الشهر
+                  Obx(() {
+                    final summary = widget.attendanceController
+                        .getStudentMonthAttendance(
+                            widget.studentId, widget.initialDate);
+                    return _AttendanceHintChip(
+                      presentCount: summary.presentCount,
+                      absentDates: summary.absentDates,
+                      studentName: widget.studentName,
+                    );
+                  }),
+                  const SizedBox(height: 12),
+
                   // Date picker
                   GestureDetector(
                     onTap: () async {
