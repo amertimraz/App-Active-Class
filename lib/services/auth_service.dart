@@ -68,6 +68,11 @@ class AuthService {
 
   Stream<AuthState>? get authStateChanges => _client?.auth.onAuthStateChange;
 
+  /// عميل Supabase — بيُستخدم برضه من TeamModeService/SyncEngine بعد
+  /// ما يكون فيه جلسة دخول شغالة بالفعل. لسه كسول (بينادي نفس
+  /// _ensureClient) عشان مفيش تهيئة إضافية.
+  Future<SupabaseClient?> ensureClient() => _ensureClient();
+
   String _phoneToSyntheticEmail(String phone) {
     final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
     return '$digits@app.local';
@@ -115,10 +120,8 @@ class AuthService {
       if (res.user == null) return 'تعذر إنشاء الحساب — حاول مرة أخرى';
       await _markLoggedIn();
       return null;
-    } on AuthException catch (e) {
-      return _mapAuthError(e);
     } catch (e) {
-      return 'تعذر الاتصال بسيرفر الحسابات — تأكد من الإنترنت';
+      return _mapAnyError(e);
     }
   }
 
@@ -142,10 +145,8 @@ class AuthService {
       if (res.user == null) return 'رقم التليفون أو الباسورد غير صحيح';
       await _markLoggedIn();
       return null;
-    } on AuthException catch (e) {
-      return _mapAuthError(e);
     } catch (e) {
-      return 'تعذر الاتصال بسيرفر الحسابات — تأكد من الإنترنت';
+      return _mapAnyError(e);
     }
   }
 
@@ -157,18 +158,29 @@ class AuthService {
     await DatabaseService().setSetting(SETTING_HAS_LOGGED_IN_BEFORE, 'true');
   }
 
-  String _mapAuthError(AuthException e) {
-    final msg = e.message.toLowerCase();
+  /// بيحاول يفهم رسالة الخطأ الحقيقية من أي نوع استثناء (مش بس
+  /// AuthException) — على الويب تحديدًا Supabase أحيانًا بيرمي نوع
+  /// استثناء تاني (مش AuthException) حتى لو السيرفر رد برسالة واضحة،
+  /// فبنعتمد على نص الرسالة نفسه بدل ما نفترض النوع.
+  String _mapAnyError(Object e) {
+    final msg = e.toString().toLowerCase();
     if (msg.contains('invalid login credentials') ||
         msg.contains('invalid_credentials')) {
       return 'رقم التليفون أو الباسورد غير صحيح';
     }
-    if (msg.contains('already registered') || msg.contains('already exists')) {
+    if (msg.contains('already registered') ||
+        msg.contains('already exists') ||
+        msg.contains('user_already_exists')) {
       return 'رقم التليفون ده مسجّل بحساب بالفعل';
     }
     if (msg.contains('password')) {
       return 'الباسورد لازم يكون 6 أحرف على الأقل';
     }
-    return 'حدث خطأ: ${e.message}';
+    if (e is AuthException) {
+      return 'حدث خطأ: ${e.message}';
+    }
+    // لو مش قادرين نحدد سبب واضح من نص الرسالة، نفترض إنها مشكلة اتصال
+    // (أقرب احتمال لأي استثناء غير معروف الشكل).
+    return 'تعذر الاتصال بسيرفر الحسابات — تأكد من الإنترنت';
   }
 }

@@ -47,40 +47,61 @@ class PlanConfigModel {
   // القيم الافتراضية (fallback)
   static List<PlanConfigModel> get defaults => [
     const PlanConfigModel(
-      id: 'basic', nameAr: 'الباقة الأساسية',
-      price: '99 جنيه', originalPrice: '149 جنيه',
+      id: 'monthly', nameAr: 'الباقة الشهرية',
+      price: '99 جنيه', originalPrice: '',
       period: 'شهرياً',
       features: [
-        '✅ حتى 5 مجموعات',
-        '✅ حتى 30 طالب/مجموعة',
+        '✅ مجموعات وطلاب غير محدودين',
         '✅ نسخ احتياطي وتصدير',
-        '❌ إرسال واتساب',
+        '✅ إرسال واتساب',
       ],
       colorValue: 0xFF10B981, recommended: false, order: 0, isVisible: true,
     ),
     const PlanConfigModel(
-      id: 'pro', nameAr: 'الباقة الاحترافية',
-      price: '179 جنيه', originalPrice: '249 جنيه',
-      period: 'شهرياً',
+      id: 'four_months', nameAr: 'باقة 4 شهور',
+      price: '349 جنيه', originalPrice: '396 جنيه',
+      period: '4 شهور',
       features: [
-        '✅ مجموعات غير محدودة',
-        '✅ طلاب غير محدودين',
+        '✅ مجموعات وطلاب غير محدودين',
         '✅ نسخ احتياطي وتصدير',
         '✅ إرسال واتساب',
       ],
       colorValue: 0xFF4F46E5, recommended: true, order: 1, isVisible: true,
     ),
     const PlanConfigModel(
-      id: 'lifetime', nameAr: 'مدى الحياة',
-      price: '799 جنيه', originalPrice: '1199 جنيه',
-      period: 'مرة واحدة',
+      id: 'nine_months', nameAr: 'باقة 9 شهور',
+      price: '649 جنيه', originalPrice: '891 جنيه',
+      period: '9 شهور',
       features: [
-        '✅ كل مزايا الاحترافية',
-        '✅ لا تجديد شهري',
-        '✅ كل التحديثات القادمة',
-        '⭐ الأفضل قيمة',
+        '✅ مجموعات وطلاب غير محدودين',
+        '✅ نسخ احتياطي وتصدير',
+        '✅ إرسال واتساب',
       ],
       colorValue: 0xFFF59E0B, recommended: false, order: 2, isVisible: true,
+    ),
+    const PlanConfigModel(
+      id: 'yearly', nameAr: 'الباقة السنوية',
+      price: '799 جنيه', originalPrice: '1188 جنيه',
+      period: '12 شهر',
+      features: [
+        '✅ مجموعات وطلاب غير محدودين',
+        '✅ نسخ احتياطي وتصدير',
+        '✅ إرسال واتساب',
+        '⭐ أفضل قيمة',
+      ],
+      colorValue: 0xFFEC4899, recommended: false, order: 3, isVisible: true,
+    ),
+    const PlanConfigModel(
+      id: 'lifetime', nameAr: 'مدى الحياة',
+      price: '', originalPrice: '',
+      period: 'مرة واحدة',
+      features: [
+        '✅ كل المميزات مدى الحياة',
+        '✅ لا تجديد أبداً',
+        '✅ كل التحديثات القادمة',
+        '📞 السعر بالتواصل مع الدعم',
+      ],
+      colorValue: 0xFF8B5CF6, recommended: false, order: 4, isVisible: true,
     ),
   ];
 }

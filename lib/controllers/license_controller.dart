@@ -685,9 +685,16 @@ class LicenseController extends GetxController {
   bool get isActive =>
       state.value == LicenseState.active || state.value == LicenseState.trial;
 
+  /// بتتحدد من TeamModeService لحظة تفعيل/الانضمام لوضع الفريق —
+  /// الترخيص وقتها اتحقق منه خلاص على مستوى المدرس (صاحب الفريق)،
+  /// فمساعد لسه في التجربة المجانية على جهازه مايتقفلش عن استخدام
+  /// بيانات فريق أكبر من حدود تجربته الشخصية.
+  bool teamModeBypassLimits = false;
+
   /// تحقق من إمكانية إنشاء مجموعة جديدة
   /// يُرجع رسالة الخطأ أو null إذا مسموح
   String? checkCanCreateGroup(int currentCount) {
+    if (teamModeBypassLimits) return null;
     if (!isActive) return 'يجب تفعيل الترخيص أولاً';
     final max = _limits.maxGroups;
     if (max == -1) return null;
@@ -699,6 +706,7 @@ class LicenseController extends GetxController {
 
   /// تحقق من إمكانية إضافة طالب جديد في مجموعة
   String? checkCanAddStudent(int currentStudentCount) {
+    if (teamModeBypassLimits) return null;
     if (!isActive) return 'يجب تفعيل الترخيص أولاً';
     final max = _limits.maxStudents;
     if (max == -1) return null;

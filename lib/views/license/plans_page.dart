@@ -5,10 +5,23 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/models/plan_config_model.dart';
 import 'package:active_class/views/license/activation_page.dart';
+
+const String _kSupportPhone = '201096066818';
+
+Future<void> _openPlanWhatsApp(PlanConfigModel plan) async {
+  final message =
+      'مرحبًا، أنا مدرس بستخدم تطبيق Active Class وعايز أستفسر عن باقة ${plan.nameAr}.';
+  final uri = Uri.parse(
+      'https://wa.me/$_kSupportPhone?text=${Uri.encodeComponent(message)}');
+  try {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {}
+}
 
 class PlansPage extends StatefulWidget {
   const PlansPage({super.key});
@@ -205,7 +218,9 @@ class _PlansPageState extends State<PlansPage> {
                   return _BottomCTABar(
                     plan: selectedModel,
                     isDark: isDark,
-                    onTap: () => setState(() => _showForm = true),
+                    onTap: selectedModel.price.isEmpty
+                        ? () => _openPlanWhatsApp(selectedModel)
+                        : () => setState(() => _showForm = true),
                   );
                 }),
         );
@@ -634,7 +649,29 @@ class _PlanCard extends StatelessWidget {
                       const SizedBox(height: 16),
 
                       // ── السعر ─────────────────────────────────
-                      if (plan.price.isNotEmpty)
+                      if (plan.price.isEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: isDark ? 0.12 : 0.08),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.chat_rounded, size: 18, color: color),
+                              const SizedBox(width: 8),
+                              Text('السعر بالتواصل مع الدعم على واتساب',
+                                  style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: color)),
+                            ],
+                          ),
+                        )
+                      else
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(
@@ -878,53 +915,70 @@ class _BottomCTABar extends StatelessWidget {
                                     isDark ? Colors.white38 : Colors.black38)),
                       ),
                     ],
-                  ),
+                  )
+                else
+                  Text('السعر بالتواصل مع الدعم',
+                      style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 11,
+                          color: isDark ? Colors.white38 : Colors.black38)),
               ],
             ),
           ),
-          // زر الاشتراك
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: const LinearGradient(
-                colors: [Color(0xFF4F46E5), Color(0xFF9333EA)],
-                begin: Alignment.centerRight,
-                end: Alignment.centerLeft,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF4F46E5).withValues(alpha: 0.35),
-                  blurRadius: 14,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Material(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(14),
-              child: InkWell(
-                onTap: onTap,
+          // زر الاشتراك / التواصل
+          Builder(builder: (context) {
+            final isContact = plan.price.isEmpty;
+            final colors = isContact
+                ? const [Color(0xFF25D366), Color(0xFF128C7E)]
+                : const [Color(0xFF4F46E5), Color(0xFF9333EA)];
+            return Container(
+              decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 26, vertical: 14),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('اطلب الترقية',
-                          style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white)),
-                      SizedBox(width: 8),
-                      Icon(Icons.arrow_back_rounded,
-                          color: Colors.white, size: 18),
-                    ],
+                gradient: LinearGradient(
+                  colors: colors,
+                  begin: Alignment.centerRight,
+                  end: Alignment.centerLeft,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: colors.first.withValues(alpha: 0.35),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 26, vertical: 14),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(isContact ? 'تواصل واتساب' : 'اطلب الترقية',
+                            style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white)),
+                        const SizedBox(width: 8),
+                        Icon(
+                            isContact
+                                ? Icons.chat_rounded
+                                : Icons.arrow_back_rounded,
+                            color: Colors.white,
+                            size: 18),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
+            );
+          }),
         ],
       ),
     );

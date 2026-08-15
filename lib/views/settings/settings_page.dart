@@ -17,6 +17,7 @@ import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/controllers/auth_controller.dart';
 import 'package:active_class/views/auth/login_screen.dart';
 import 'package:active_class/views/auth/account_screen.dart';
+import 'package:active_class/views/team/team_mode_screen.dart';
 import 'package:active_class/widgets/custom_dialogs.dart';
 import 'package:active_class/widgets/progress_dialog.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -104,6 +105,16 @@ class SettingsPage extends StatelessWidget {
                               onTap: () => Get.to(() => const LoginScreen()),
                             );
                           }),
+                          _buildDivider(isDark),
+                          _buildNavTile(
+                            context,
+                            isDark,
+                            icon: Icons.groups_rounded,
+                            iconColor: const Color(0xFF10B981),
+                            title: 'وضع الفريق',
+                            subtitle: 'مشاركة البيانات مع مساعدين (باقة احترافية)',
+                            onTap: () => Get.to(() => const TeamModeScreen()),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 14),

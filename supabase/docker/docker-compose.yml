@@ -1,9 +1,9 @@
 # supabase/docker/docker-compose.yml
 #
-# Supabase مستضاف ذاتيًا — نسخة مُختصرة على قدر الحاجة الفعلية لنظام
-# تسجيل الدخول المستقل (Postgres + Auth + Kong كبوابة API). مفيش
-# Realtime/PostgREST/Storage هنا لأنهم مش مستخدمين حاليًا — راجع
-# ../../docs/auth_deployment.md لو حبيت تضيفهم لاحقًا.
+# Supabase مستضاف ذاتيًا — Postgres + Auth + PostgREST (REST) +
+# Realtime + Kong كبوابة API. تُستخدم من نظام تسجيل الدخول المستقل
+# ومن "وضع الفريق" (مزامنة بيانات المدرس/المساعدين). Storage مش
+# مستخدمة حاليًا.
 #
 # الاستخدام:
 #   cp .env.example .env   # واملأ القيم (راجع دليل النشر لتوليدها)
@@ -63,6 +63,48 @@ services:
       # مش بنستخدم تسجيل دخول بالتليفون عبر SMS/OTP فعليًا — رقم
       # التليفون بيتحوّل لبريد صناعي جوه التطبيق نفسه (auth_service.dart).
       GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+
+  rest:
+    image: postgrest/postgrest:v12.2.3
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+
+  # اسم الخدمة لازم يكون "realtime-dev" بالظبط — Realtime بيحدّد الـ
+  # tenant من الـ Host header اللي Kong بيبعته للـ upstream (بيساوي
+  # اسم الخدمة افتراضيًا)، والـ seed التلقائي (SEED_SELF_HOST) بيعمل
+  # الـ tenant باسم "realtime-dev" ثابت — أي اسم تاني هيسبب "Tenant
+  # not found" دايمًا.
+  realtime-dev:
+    image: supabase/realtime:v2.34.7
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB:-postgres}
+      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
+      DB_ENC_KEY: ${DB_ENC_KEY}
+      API_JWT_SECRET: ${JWT_SECRET}
+      SECRET_KEY_BASE: ${JWT_SECRET}${JWT_SECRET}
+      ERL_AFLAGS: "-proto_dist inet_tcp"
+      DNS_NODES: "''"
+      RLIMIT_NOFILE: "10000"
+      APP_NAME: realtime
+      SEED_SELF_HOST: "true"
+      RUN_JANITOR: "true"
 
   kong:
     image: kong:3.6

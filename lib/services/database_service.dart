@@ -1,5 +1,6 @@
 // lib/services/database_service.dart
 
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:active_class/config/constants.dart';
@@ -66,7 +67,9 @@ class DatabaseService {
         $COL_GROUP_ICON TEXT,
         $COL_GROUP_SCHEDULE TEXT,
         $COL_GROUP_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
-        $COL_GROUP_PRICING_TYPE TEXT DEFAULT 'monthly'
+        $COL_GROUP_PRICING_TYPE TEXT DEFAULT 'monthly',
+        $COL_SYNC_UPDATED_AT TEXT,
+        $COL_SYNC_REMOTE_ID TEXT
       )
     ''');
 
@@ -87,6 +90,8 @@ class DatabaseService {
         $COL_STUDENT_BIRTH_DATE TEXT,
         $COL_STUDENT_EXEMPT_PERCENT REAL DEFAULT 0,
         $COL_STUDENT_EXEMPT_REASON TEXT,
+        $COL_SYNC_UPDATED_AT TEXT,
+        $COL_SYNC_REMOTE_ID TEXT,
         FOREIGN KEY($COL_STUDENT_GROUP_ID) REFERENCES $TABLE_GROUPS($COL_GROUP_ID) ON DELETE CASCADE
       )
     ''');
@@ -100,6 +105,8 @@ class DatabaseService {
         $COL_ATTENDANCE_STATUS TEXT NOT NULL CHECK($COL_ATTENDANCE_STATUS IN ('$ATTENDANCE_PRESENT', '$ATTENDANCE_ABSENT')),
         $COL_ATTENDANCE_NOTES TEXT,
         $COL_ATTENDANCE_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
+        $COL_SYNC_UPDATED_AT TEXT,
+        $COL_SYNC_REMOTE_ID TEXT,
         UNIQUE($COL_ATTENDANCE_STUDENT_ID, $COL_ATTENDANCE_DATE),
         FOREIGN KEY($COL_ATTENDANCE_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
       )
@@ -114,6 +121,8 @@ class DatabaseService {
         $COL_PAYMENT_AMOUNT REAL NOT NULL CHECK($COL_PAYMENT_AMOUNT > 0),
         $COL_PAYMENT_NOTE TEXT,
         $COL_PAYMENT_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
+        $COL_SYNC_UPDATED_AT TEXT,
+        $COL_SYNC_REMOTE_ID TEXT,
         FOREIGN KEY($COL_PAYMENT_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
       )
     ''');
@@ -178,8 +187,26 @@ class DatabaseService {
       )
     ''');
 
+    // "وضع الفريق" — طابور التغييرات المحلية اللي محتاجة تتبعت
+    // لسيرفر Supabase. الجدول ده فاضل دايمًا لغير مستخدمي وضع الفريق.
+    await _createSyncOutboxTable(db);
+
     // Create indexes for performance optimization
     await _createIndexes(db);
+  }
+
+  Future<void> _createSyncOutboxTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $TABLE_SYNC_OUTBOX (
+        $COL_OUTBOX_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+        $COL_OUTBOX_TABLE TEXT NOT NULL,
+        $COL_OUTBOX_ROW_ID INTEGER NOT NULL,
+        $COL_OUTBOX_OP TEXT NOT NULL,
+        $COL_OUTBOX_PAYLOAD TEXT,
+        $COL_OUTBOX_CREATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        $COL_OUTBOX_SYNCED INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -292,16 +319,65 @@ class DatabaseService {
         )
       ''');
     }
+    if (oldVersion < 13) {
+      // "وضع الفريق" — أعمدة مزامنة إضافية على الجداول القابلة
+      // للمشاركة، وجدول طابور التغييرات. لا تأثير على أي حد لسه
+      // مفعّلش الميزة دي — الأعمدة بتفضل null والجدول فاضي.
+      for (final table in [
+        TABLE_GROUPS,
+        TABLE_STUDENTS,
+        TABLE_ATTENDANCE,
+        TABLE_PAYMENTS,
+      ]) {
+        try {
+          await db
+              .execute('ALTER TABLE $table ADD COLUMN $COL_SYNC_UPDATED_AT TEXT');
+        } catch (_) {}
+        try {
+          await db
+              .execute('ALTER TABLE $table ADD COLUMN $COL_SYNC_REMOTE_ID TEXT');
+        } catch (_) {}
+      }
+      await _createSyncOutboxTable(db);
+    }
   }
 
   // ─── إشعار الحفظ التلقائي ──────────────────────────────────────
   void _notifyChanged() => AutoBackupService().onDataChanged();
 
+  // ─── "وضع الفريق" — طابور المزامنة ───────────────────────────────
+  // بيتفعّل من TeamModeService لحظة تشغيل وضع الفريق بس — تكلفة صفر
+  // (فحص bool واحد) لأي حد الميزة دي مش مفعّلة عنده.
+  static bool teamModeEnabled = false;
+
+  Future<void> _queueSync(
+    String table,
+    int rowId,
+    String op, {
+    Map<String, dynamic>? payload,
+  }) async {
+    if (!teamModeEnabled) return;
+    final db = await database;
+    await db.insert(TABLE_SYNC_OUTBOX, {
+      COL_OUTBOX_TABLE: table,
+      COL_OUTBOX_ROW_ID: rowId,
+      COL_OUTBOX_OP: op,
+      COL_OUTBOX_PAYLOAD: payload != null ? jsonEncode(payload) : null,
+      COL_OUTBOX_CREATED_AT: DateTime.now().toIso8601String(),
+      COL_OUTBOX_SYNCED: 0,
+    });
+  }
+
   // ========== GROUPS ==========
   Future<int> insertGroup(Group group) async {
     final db = await database;
-    final id = await db.insert(TABLE_GROUPS, group.toMap());
+    final map = {
+      ...group.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
+    final id = await db.insert(TABLE_GROUPS, map);
     _notifyChanged();
+    await _queueSync(TABLE_GROUPS, id, 'insert', payload: {...map, COL_GROUP_ID: id});
     return id;
   }
 
@@ -324,13 +400,18 @@ class DatabaseService {
 
   Future<int> updateGroup(Group group) async {
     final db = await database;
+    final map = {
+      ...group.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
     final n = await db.update(
       TABLE_GROUPS,
-      group.toMap(),
+      map,
       where: '$COL_GROUP_ID = ?',
       whereArgs: [group.id],
     );
     _notifyChanged();
+    await _queueSync(TABLE_GROUPS, group.id!, 'update', payload: map);
     return n;
   }
 
@@ -342,6 +423,7 @@ class DatabaseService {
       whereArgs: [id],
     );
     _notifyChanged();
+    await _queueSync(TABLE_GROUPS, id, 'delete');
     return n;
   }
 
@@ -408,8 +490,14 @@ class DatabaseService {
   // ========== STUDENTS ==========
   Future<int> insertStudent(Student student) async {
     final db = await database;
-    final id = await db.insert(TABLE_STUDENTS, student.toMap());
+    final map = {
+      ...student.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
+    final id = await db.insert(TABLE_STUDENTS, map);
     _notifyChanged();
+    await _queueSync(TABLE_STUDENTS, id, 'insert',
+        payload: {...map, COL_STUDENT_ID: id});
     return id;
   }
 
@@ -454,13 +542,18 @@ class DatabaseService {
 
   Future<int> updateStudent(Student student) async {
     final db = await database;
+    final map = {
+      ...student.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
     final n = await db.update(
       TABLE_STUDENTS,
-      student.toMap(),
+      map,
       where: '$COL_STUDENT_ID = ?',
       whereArgs: [student.id],
     );
     _notifyChanged();
+    await _queueSync(TABLE_STUDENTS, student.id!, 'update', payload: map);
     return n;
   }
 
@@ -486,6 +579,7 @@ class DatabaseService {
       whereArgs: [id],
     );
     _notifyChanged();
+    await _queueSync(TABLE_STUDENTS, id, 'delete');
     return n;
   }
 
@@ -501,8 +595,14 @@ class DatabaseService {
   // ========== ATTENDANCE ==========
   Future<int> insertAttendance(Attendance attendance) async {
     final db = await database;
-    final id = await db.insert(TABLE_ATTENDANCE, attendance.toMap());
+    final map = {
+      ...attendance.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
+    final id = await db.insert(TABLE_ATTENDANCE, map);
     _notifyChanged();
+    await _queueSync(TABLE_ATTENDANCE, id, 'insert',
+        payload: {...map, COL_ATTENDANCE_ID: id});
     return id;
   }
 
@@ -539,13 +639,18 @@ class DatabaseService {
 
   Future<int> updateAttendance(Attendance attendance) async {
     final db = await database;
+    final map = {
+      ...attendance.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
     final n = await db.update(
       TABLE_ATTENDANCE,
-      attendance.toMap(),
+      map,
       where: '$COL_ATTENDANCE_ID = ?',
       whereArgs: [attendance.id],
     );
     _notifyChanged();
+    await _queueSync(TABLE_ATTENDANCE, attendance.id!, 'update', payload: map);
     return n;
   }
 
@@ -557,14 +662,21 @@ class DatabaseService {
       whereArgs: [id],
     );
     _notifyChanged();
+    await _queueSync(TABLE_ATTENDANCE, id, 'delete');
     return n;
   }
 
   // ========== PAYMENTS ==========
   Future<int> insertPayment(Payment payment) async {
     final db = await database;
-    final id = await db.insert(TABLE_PAYMENTS, payment.toMap());
+    final map = {
+      ...payment.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
+    final id = await db.insert(TABLE_PAYMENTS, map);
     _notifyChanged();
+    await _queueSync(TABLE_PAYMENTS, id, 'insert',
+        payload: {...map, COL_PAYMENT_ID: id});
     return id;
   }
 
@@ -617,13 +729,18 @@ class DatabaseService {
 
   Future<int> updatePayment(Payment payment) async {
     final db = await database;
+    final map = {
+      ...payment.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
     final n = await db.update(
       TABLE_PAYMENTS,
-      payment.toMap(),
+      map,
       where: '$COL_PAYMENT_ID = ?',
       whereArgs: [payment.id],
     );
     _notifyChanged();
+    await _queueSync(TABLE_PAYMENTS, payment.id!, 'update', payload: map);
     return n;
   }
 
@@ -635,6 +752,7 @@ class DatabaseService {
       whereArgs: [id],
     );
     _notifyChanged();
+    await _queueSync(TABLE_PAYMENTS, id, 'delete');
     return n;
   }
 

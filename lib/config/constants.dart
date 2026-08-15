@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 12;
+const int DATABASE_VERSION = 13;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -170,6 +170,28 @@ const String ROUTE_BOOKING_SETTINGS    = '/booking_settings';
 const String ROUTE_LOGIN               = '/login';
 const String ROUTE_REGISTER            = '/register';
 const String ROUTE_ACCOUNT             = '/account';
+const String ROUTE_TEAM_MODE           = '/team_mode';
+const String ROUTE_TEAM_JOIN           = '/team_join';
+const String ROUTE_TEAM_MEMBERS        = '/team_members';
 
 // Standalone login system (self-hosted Supabase) — app_settings keys
 const String SETTING_HAS_LOGGED_IN_BEFORE = 'auth_has_logged_in_before';
+
+// "وضع الفريق" — أعمدة المزامنة المضافة على groups/students/attendance/payments،
+// وجدول الطابور المحلي (sync_outbox) اللي بيتفرّغ لسيرفر Supabase.
+const String COL_SYNC_UPDATED_AT = 'updated_at';
+const String COL_SYNC_REMOTE_ID = 'remote_id';
+
+const String TABLE_SYNC_OUTBOX = 'sync_outbox';
+const String COL_OUTBOX_ID = 'id';
+const String COL_OUTBOX_TABLE = 'table_name';
+const String COL_OUTBOX_ROW_ID = 'row_id';
+const String COL_OUTBOX_OP = 'op'; // insert | update | delete
+const String COL_OUTBOX_PAYLOAD = 'payload'; // JSON، null لو delete
+const String COL_OUTBOX_CREATED_AT = 'created_at';
+const String COL_OUTBOX_SYNCED = 'synced'; // 0/1
+
+// app_settings key — حالة وضع الفريق (مفعّل/لأ) محفوظة محليًا عشان
+// نعرف نستعيدها بصمت عند فتح التطبيق من غير ما نجبر أي حد يمر بيها.
+const String SETTING_TEAM_MODE_ENABLED = 'team_mode_enabled';
+const String SETTING_TEAM_ID = 'team_mode_team_id';

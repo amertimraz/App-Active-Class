@@ -115,49 +115,57 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
   void _showGroupSheet() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: Colors.grey.shade400,
-                  borderRadius: BorderRadius.circular(2)),
-            ),
-            const SizedBox(height: 8),
-            ListTile(
-              leading: Icon(
-                _selectedGroup == null
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_off,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.55,
+        maxChildSize: 0.9,
+        builder: (_, scrollCtrl) => SafeArea(
+          child: ListView(
+            controller: scrollCtrl,
+            children: [
+              const SizedBox(height: 8),
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(2)),
+                ),
               ),
-              title: const Text('كل المجموعات'),
-              onTap: () {
-                setState(() => _selectedGroup = null);
-                _applyFilters();
-                Get.back();
-              },
-            ),
-            ..._groups.map((g) => ListTile(
-                  leading: Icon(
-                    _selectedGroup?.id == g.id
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                  ),
-                  title: Text(g.name),
-                  onTap: () {
-                    setState(() => _selectedGroup = g);
-                    _applyFilters();
-                    Get.back();
-                  },
-                )),
-            const SizedBox(height: 8),
-          ],
+              const SizedBox(height: 8),
+              ListTile(
+                leading: Icon(
+                  _selectedGroup == null
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                ),
+                title: const Text('كل المجموعات'),
+                onTap: () {
+                  setState(() => _selectedGroup = null);
+                  _applyFilters();
+                  Get.back();
+                },
+              ),
+              ..._groups.map((g) => ListTile(
+                    leading: Icon(
+                      _selectedGroup?.id == g.id
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_off,
+                    ),
+                    title: Text(g.name),
+                    onTap: () {
+                      setState(() => _selectedGroup = g);
+                      _applyFilters();
+                      Get.back();
+                    },
+                  )),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
