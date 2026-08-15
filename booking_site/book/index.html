@@ -25,11 +25,12 @@
     --radius:18px;
   }
   *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
+  html,body{margin:0;padding:0;overflow-x:hidden;max-width:100%;}
   body{
     font-family:'Cairo', sans-serif;
     background:var(--bg-bottom);
     min-height:100vh;
+    width:100%;
     color:var(--text);
     display:flex;
     flex-direction:column;
@@ -103,8 +104,8 @@
     border:4px solid #fff;
     box-shadow:0 6px 18px rgba(17,24,39,.16);
   }
-  .teacher-name{font-size:21px;font-weight:800;margin:0 0 4px;}
-  .teacher-subject{color:var(--text-muted);font-size:14px;margin:0;}
+  .teacher-name{font-size:21px;font-weight:800;margin:0 0 4px;overflow-wrap:break-word;}
+  .teacher-subject{color:var(--text-muted);font-size:14px;margin:0;overflow-wrap:break-word;}
   .badge{
     display:inline-block;margin-top:12px;
     background:#EEF2FF;color:var(--primary-dark);
@@ -119,6 +120,8 @@
     font-size:13.5px;
     line-height:1.7;
     text-align:right;
+    overflow-wrap:break-word;
+    word-break:break-word;
   }
 
   /* ── form card ────────────────────────────── */
