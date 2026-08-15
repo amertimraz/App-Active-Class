@@ -38,6 +38,7 @@ class BookingController extends GetxController {
   static const maxCustomFields = 6;
 
   final RxList<BookingRequest> requests = <BookingRequest>[].obs;
+  final RxBool syncError = false.obs;
   StreamSubscription? _sub;
 
   String get bookingUrl =>
@@ -67,6 +68,8 @@ class BookingController extends GetxController {
     return v == '1';
   }
 
+  Future<void> retry() => _load();
+
   Future<void> _load() async {
     try {
       enabled.value = await _flag(_kEnabled, fallback: false);
@@ -87,6 +90,12 @@ class BookingController extends GetxController {
         } catch (_) {}
       }
       if (enabled.value && slug.value.isNotEmpty) {
+        // نعيد ربط ownerUid بالـ uid الحالي قبل السماع — لو الجهاز عدّى
+        // بإعادة تثبيت غيّرت anonymous auth uid، هيك بنمنع رفض القراءة
+        // الصامت من security rules (راجع BookingService.refreshOwnerUid).
+        try {
+          await _service.refreshOwnerUid(slug.value);
+        } catch (_) {}
         _listen();
         await _loadRemoteExtras();
       }
@@ -106,10 +115,16 @@ class BookingController extends GetxController {
   void _listen() {
     _sub?.cancel();
     _sub = _service.watchRequests(slug.value).listen((snap) {
+      syncError.value = false;
       requests.value = snap.docs
           .map((d) => BookingRequest.fromMap(d.id, d.data()))
           .toList();
-    }, onError: (_) {});
+    }, onError: (_) {
+      // لو رفضت security rules القراءة (مثلاً ownerUid قديم بعد إعادة
+      // تثبيت التطبيق) لازم يبان ده للمعلم بدل ما تفضل القائمة فاضية
+      // بصمت وهو يفتكر إنه مفيش طلبات حجز جديدة.
+      syncError.value = true;
+    });
   }
 
   Map<String, dynamic> _fieldsMap() => {

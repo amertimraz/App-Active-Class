@@ -76,6 +76,17 @@ class BookingsPage extends StatelessWidget {
                         onAction: () => Get.toNamed(ROUTE_BOOKING_SETTINGS),
                       );
                     }
+                    if (booking.syncError.value) {
+                      return _EmptyState(
+                        isDark: isDark,
+                        icon: Icons.sync_problem_rounded,
+                        title: 'تعذر تحميل طلبات الحجز',
+                        subtitle:
+                            'تأكد من الاتصال بالإنترنت وحاول تاني. لو المشكلة استمرت، جرّب توقف رابط الحجز وتفعّله تاني من الإعدادات.',
+                        actionLabel: 'إعادة المحاولة',
+                        onAction: booking.retry,
+                      );
+                    }
                     if (booking.requests.isEmpty) {
                       return _EmptyState(
                         isDark: isDark,

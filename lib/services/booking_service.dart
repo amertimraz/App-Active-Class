@@ -62,6 +62,21 @@ class BookingService {
     }, SetOptions(merge: true));
   }
 
+  /// يعيد ربط `ownerUid` بالـ uid الحالي لجلسة anonymous auth على الجهاز.
+  /// لازم نستدعيها عند كل تشغيل للتطبيق (مش بس لما المعلم يفتح الإعدادات)
+  /// لأن إعادة تثبيت التطبيق (مثلاً بعد تحديث بيمسح البيانات) بتولّد uid
+  /// جديد، فلو الـ uid القديم فضل مخزّن في Firestore هتترفض كل قراءات
+  /// طلبات الحجز بصمت بسبب security rules.
+  Future<void> refreshOwnerUid(String slug) async {
+    await _ensureAuth();
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    await _db
+        .collection('teacher_profiles')
+        .doc(slug)
+        .set({'ownerUid': uid}, SetOptions(merge: true));
+  }
+
   Future<void> setActive(String slug, bool active) async {
     await _ensureAuth();
     await _db
