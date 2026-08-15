@@ -167,3 +167,9 @@ const String ROUTE_STUDENT_EXAM_HISTORY = '/student_exam_history';
 const String ROUTE_SCHEDULE            = '/schedule';
 const String ROUTE_BOOKINGS            = '/bookings';
 const String ROUTE_BOOKING_SETTINGS    = '/booking_settings';
+const String ROUTE_LOGIN               = '/login';
+const String ROUTE_REGISTER            = '/register';
+const String ROUTE_ACCOUNT             = '/account';
+
+// Standalone login system (self-hosted Supabase) — app_settings keys
+const String SETTING_HAS_LOGGED_IN_BEFORE = 'auth_has_logged_in_before';

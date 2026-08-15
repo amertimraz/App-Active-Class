@@ -30,6 +30,10 @@ import 'package:active_class/views/schedule/schedule_page.dart';
 import 'package:active_class/views/bookings/bookings_page.dart';
 import 'package:active_class/views/bookings/booking_settings_page.dart';
 import 'package:active_class/controllers/exam_controller.dart';
+import 'package:active_class/controllers/auth_controller.dart';
+import 'package:active_class/views/auth/login_screen.dart';
+import 'package:active_class/views/auth/register_screen.dart';
+import 'package:active_class/views/auth/account_screen.dart';
 
 import 'package:intl/intl.dart';
 import 'dart:ui' as ui;
@@ -126,6 +130,10 @@ void main() async {
   Get.put(SettingsController());
   Get.put(SessionLogController(), permanent: true);
   Get.put(ExamController(), permanent: true);
+  // نظام تسجيل الدخول المستقل — تهيئته الفعلية (اتصال Supabase) كسولة
+  // ومتحصلش إلا لو المستخدم فعلاً فتح شاشة الحساب أو كان مسجّل دخول
+  // قبل كده، عشان صفر تأثير على باقي المستخدمين.
+  Get.put(AuthController(), permanent: true);
 
   // تهيئة Workmanager فقط على الأنظمة المدعومة (ليس الويب)
   if (!kIsWeb) {
@@ -210,6 +218,9 @@ class MyApp extends StatelessWidget {
             GetPage(
                 name: ROUTE_BOOKING_SETTINGS,
                 page: () => const BookingSettingsPage()),
+            GetPage(name: ROUTE_LOGIN,    page: () => const LoginScreen()),
+            GetPage(name: ROUTE_REGISTER, page: () => const RegisterScreen()),
+            GetPage(name: ROUTE_ACCOUNT,  page: () => const AccountScreen()),
             GetPage(
               name: ROUTE_STUDENT_EXAM_HISTORY,
               page: () {

@@ -1,0 +1,100 @@
+# supabase/docker/docker-compose.yml
+#
+# Supabase مستضاف ذاتيًا — نسخة مُختصرة على قدر الحاجة الفعلية لنظام
+# تسجيل الدخول المستقل (Postgres + Auth + Kong كبوابة API). مفيش
+# Realtime/PostgREST/Storage هنا لأنهم مش مستخدمين حاليًا — راجع
+# ../../docs/auth_deployment.md لو حبيت تضيفهم لاحقًا.
+#
+# الاستخدام:
+#   cp .env.example .env   # واملأ القيم (راجع دليل النشر لتوليدها)
+#   docker compose up -d
+#   docker compose exec db psql -U postgres -d postgres -f /schema.sql
+
+name: active-class-auth
+
+services:
+  db:
+    image: supabase/postgres:15.6.1.143
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXP: 3600
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ../schema.sql:/schema.sql:ro
+    # مفيش داعي نفتح 5432 على الإنترنت — الاتصال بين الحاويات (auth
+    # <-> db) بيحصل داخليًا على شبكة Docker، ومفيش حد بره محتاج يوصل
+    # لقاعدة البيانات مباشرة. ده كمان بيتجنب تعارض مع أي Postgres تاني
+    # شغال على نفس البورت على السيرفر.
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    image: supabase/gotrue:v2.158.1
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL}
+
+      GOTRUE_DB_DRIVER: postgres
+      DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+
+      GOTRUE_SITE_URL: ${SITE_URL}
+      GOTRUE_URI_ALLOW_LIST: "*"
+      GOTRUE_DISABLE_SIGNUP: "false"
+
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+
+      # مفيش بريد حقيقي وراء العناوين الصناعية (<phone>@app.local) —
+      # نعدّي خطوة تأكيد البريد تلقائيًا.
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+
+      # مش بنستخدم تسجيل دخول بالتليفون عبر SMS/OTP فعليًا — رقم
+      # التليفون بيتحوّل لبريد صناعي جوه التطبيق نفسه (auth_service.dart).
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+
+  kong:
+    image: kong:3.6
+    restart: unless-stopped
+    depends_on:
+      - auth
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_ADMIN_LISTEN: "127.0.0.1:8001"
+    volumes:
+      - ./kong.yml:/var/lib/kong/kong.yml:ro
+    ports:
+      - "${KONG_HTTP_PORT:-8000}:8000"
+
+  # ── (اختياري) لوحة إدارة لمراجعة المستخدمين يدويًا ─────────────────
+  # فعّلها بـ: docker compose --profile studio up -d
+  studio:
+    image: supabase/studio:latest
+    restart: unless-stopped
+    profiles: ["studio"]
+    depends_on:
+      - kong
+    environment:
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      DEFAULT_ORGANIZATION_NAME: "Active Class"
+      DEFAULT_PROJECT_NAME: "auth"
+    ports:
+      - "3000:3000"
+
+volumes:
+  db-data:

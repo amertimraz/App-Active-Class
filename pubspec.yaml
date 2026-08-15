@@ -81,6 +81,10 @@ dependencies:
   open_filex: ^4.5.0
   android_id: ^0.5.2+1
 
+  # Standalone login system (self-hosted Supabase on VPS) — foundation
+  # for future account-based features, separate from license activation.
+  supabase_flutter: ^2.8.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

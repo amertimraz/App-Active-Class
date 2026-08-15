@@ -1,0 +1,38 @@
+# supabase/docker/kong.yml.template
+#
+# قالب — منسخه لـ kong.yml وبنستبدل __ANON_KEY__ / __SERVICE_ROLE_KEY__
+# بالقيم الحقيقية من .env قبل ما نشغّل الـ stack (التفاصيل في
+# ../../docs/auth_deployment.md). Kong مش بيعمل env-substitution تلقائي
+# جوه ملف الـ declarative config، فالاستبدال ده خطوة يدوية/سكريبت بسيطة.
+
+_format_version: "2.1"
+_transform: true
+
+consumers:
+  - username: anon
+    keyauth_credentials:
+      - key: __ANON_KEY__
+  - username: service_role
+    keyauth_credentials:
+      - key: __SERVICE_ROLE_KEY__
+
+acls:
+  - consumer: anon
+    group: anon
+  - consumer: service_role
+    group: admin
+
+services:
+  - name: auth-v1
+    url: http://auth:9999/
+    routes:
+      - name: auth-v1-all
+        strip_path: true
+        paths:
+          - /auth/v1
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          key_names: [apikey]
+          hide_credentials: true

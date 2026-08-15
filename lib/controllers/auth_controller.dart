@@ -1,0 +1,78 @@
+// lib/controllers/auth_controller.dart
+import 'package:get/get.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show User;
+
+import 'package:active_class/services/auth_service.dart';
+
+class AuthController extends GetxController {
+  static AuthController get to => Get.find();
+
+  final AuthService _service = AuthService();
+
+  final isLoggedIn = false.obs;
+  final currentPhone = RxnString();
+  final currentDisplayName = RxnString();
+  final loading = false.obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _restoreSilently();
+  }
+
+  Future<void> _restoreSilently() async {
+    final user = await _service.tryRestoreSession();
+    _applyUser(user);
+  }
+
+  void _applyUser(User? user) {
+    if (user == null) {
+      isLoggedIn.value = false;
+      currentPhone.value = null;
+      currentDisplayName.value = null;
+      return;
+    }
+    isLoggedIn.value = true;
+    currentPhone.value = user.userMetadata?['phone'] as String?;
+    currentDisplayName.value = user.userMetadata?['display_name'] as String?;
+  }
+
+  /// بترجع رسالة خطأ بالعربي، أو null لو نجحت العملية.
+  Future<String?> register({
+    required String phone,
+    required String password,
+    String? displayName,
+  }) async {
+    loading.value = true;
+    try {
+      final err = await _service.register(
+        phone: phone,
+        password: password,
+        displayName: displayName,
+      );
+      if (err == null) _applyUser(_service.currentUser);
+      return err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  Future<String?> signIn({
+    required String phone,
+    required String password,
+  }) async {
+    loading.value = true;
+    try {
+      final err = await _service.signIn(phone: phone, password: password);
+      if (err == null) _applyUser(_service.currentUser);
+      return err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  Future<void> signOut() async {
+    await _service.signOut();
+    _applyUser(null);
+  }
+}

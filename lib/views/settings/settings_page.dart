@@ -14,6 +14,9 @@ import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/theme_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
+import 'package:active_class/controllers/auth_controller.dart';
+import 'package:active_class/views/auth/login_screen.dart';
+import 'package:active_class/views/auth/account_screen.dart';
 import 'package:active_class/widgets/custom_dialogs.dart';
 import 'package:active_class/widgets/progress_dialog.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -65,6 +68,44 @@ class SettingsPage extends StatelessWidget {
 
                       // ── 1. بيانات المعلم ─────────────────────────
                       _buildTeacherSection(context, isDark, settings),
+                      const SizedBox(height: 14),
+
+                      // ── 1ب. الحساب (نظام دخول مستقل — اختياري) ────
+                      _buildSection(
+                        context,
+                        isDark,
+                        title: 'الحساب',
+                        icon: Icons.account_circle_rounded,
+                        color: const Color(0xFF4F46E5),
+                        collapsible: true,
+                        initiallyExpanded: false,
+                        children: [
+                          Obx(() {
+                            final auth = Get.find<AuthController>();
+                            if (auth.isLoggedIn.value) {
+                              final phone = auth.currentPhone.value ?? '';
+                              return _buildNavTile(
+                                context,
+                                isDark,
+                                icon: Icons.account_circle_rounded,
+                                iconColor: const Color(0xFF4F46E5),
+                                title: 'حسابي',
+                                subtitle: phone,
+                                onTap: () => Get.to(() => const AccountScreen()),
+                              );
+                            }
+                            return _buildNavTile(
+                              context,
+                              isDark,
+                              icon: Icons.login_rounded,
+                              iconColor: const Color(0xFF4F46E5),
+                              title: 'تسجيل الدخول',
+                              subtitle: 'أساس لميزات مستقبلية (رقم تليفون وباسورد)',
+                              onTap: () => Get.to(() => const LoginScreen()),
+                            );
+                          }),
+                        ],
+                      ),
                       const SizedBox(height: 14),
 
                       // ── 2. المظهر والتوقيت ───────────────────────
