@@ -22,8 +22,18 @@ class SyncEngine {
   final SupabaseClient client;
   final String teamId;
   final String deviceId;
+  /// بتتنادى لو اكتشفنا إن المستخدم بقى مش عضو في الفريق ده (المدرس
+  /// شاله، أو حذف الفريق) — RLS بتقفل القراءة/الكتابة صامتة (نتيجة
+  /// فاضية، مش error)، فمن غير الفحص الصريح ده الجهاز كان هيفضل شغال
+  /// بصلاحيات bypass للأبد من غير ما حد يعرف إنه اتشال فعليًا.
+  final VoidCallback? onRemovedFromTeam;
 
-  SyncEngine({required this.client, required this.teamId, required this.deviceId});
+  SyncEngine({
+    required this.client,
+    required this.teamId,
+    required this.deviceId,
+    this.onRemovedFromTeam,
+  });
 
   static const _tables = [
     TABLE_GROUPS,
@@ -158,9 +168,20 @@ class SyncEngine {
               await _localRemoteId(TABLE_GROUPS, COL_GROUP_ID, groupLocalId);
           if (groupRemoteId == null) return null;
         }
+        // ملحوظة: عكس group_remote_id، لو الأخ/الأخت لسه ملهوش remote_id
+        // (الاتنين ممكن يتزامنوا في نفس اللحظة تقريبًا) بنسيب الحقل
+        // فاضي بدل ما نمنع تزامن الطالب كله — وإلا لو الاتنين مستنيين
+        // remote_id بعض، محدش هياخد remote_id أبدًا (deadlock). الربط
+        // هيتزامن لاحقًا أول ما الطرفين يبقى عندهم remote_id.
+        final siblingLocalId = payload[COL_STUDENT_SIBLING_ID] as int?;
+        final siblingRemoteId = siblingLocalId != null
+            ? await _localRemoteId(TABLE_STUDENTS, COL_STUDENT_ID, siblingLocalId)
+            : null;
         return {
           ...base,
           'group_remote_id': groupRemoteId,
+          'sibling_remote_id': siblingRemoteId,
+          'siblings_total': payload[COL_STUDENT_SIBLINGS_TOTAL],
           'name': payload[COL_STUDENT_NAME],
           'code': payload[COL_STUDENT_CODE],
           'price': payload[COL_STUDENT_PRICE],
@@ -260,7 +281,35 @@ class SyncEngine {
   /// لأنها مش بتعيد بث اللي فات وقت إعادة الاتصال. عشان كده بنعمل
   /// "تحميل لحاق" كامل (يشمل الصفوف المحذوفة كمان، عكس initialFullPull،
   /// عشان نعرف بحذف حصل وإحنا offline) كل ما القناة تتصل/تعيد الاتصال.
-  Future<void> catchUpPull() => _fullPull(includeDeleted: true);
+  Future<void> catchUpPull() async {
+    if (await _wasRemovedFromTeam()) return;
+    await _fullPull(includeDeleted: true);
+  }
+
+  /// بتتحقق من عضوية المستخدم في الفريق ده لسه موجودة على السيرفر —
+  /// RLS بترفض بصمت (نتيجة فاضية) مش بترمي error، فمن غير الفحص
+  /// الصريح ده محدش هيعرف إنه اتشال. بتتنادى مع catchUpPull (كل ما
+  /// الاتصال يرجع) عشان نلحق الحالة دي بسرعة معقولة.
+  Future<bool> _wasRemovedFromTeam() async {
+    final uid = client.auth.currentUser?.id;
+    if (uid == null) return false;
+    try {
+      final rows = await client
+          .from('team_members')
+          .select('user_id')
+          .eq('team_id', teamId)
+          .eq('user_id', uid)
+          .limit(1);
+      if ((rows as List).isEmpty) {
+        onRemovedFromTeam?.call();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('SyncEngine: فشل التحقق من العضوية — $e');
+      return false;
+    }
+  }
 
   /// _pulling بتمنع initialFullPull وcatchUpPull يشتغلوا في نفس
   /// اللحظة (بيحصل غالبًا لحظة أول انضمام — الاتنين بيتنادوا قريب من
@@ -433,8 +482,18 @@ class SyncEngine {
             ? await _localIdForRemote(TABLE_GROUPS, COL_GROUP_ID, groupRemoteId)
             : null;
         if (groupRemoteId != null && localGroupId == null) return null;
+        // عكس المجموعة، رابط الأخ/الأخت مش شرط لإدراج الطالب — لو
+        // لسه مش عندنا الطالب التاني محليًا (وصل بترتيب مختلف)، بنسيب
+        // الرابط فاضي بدل ما نأجّل الطالب كله؛ هيتصحّح لما يحصل تعديل
+        // تاني على أي واحد فيهم.
+        final siblingRemoteId = remote['sibling_remote_id'] as String?;
+        final localSiblingId = siblingRemoteId != null
+            ? await _localIdForRemote(TABLE_STUDENTS, COL_STUDENT_ID, siblingRemoteId)
+            : null;
         return {
           COL_STUDENT_GROUP_ID: localGroupId,
+          COL_STUDENT_SIBLING_ID: localSiblingId,
+          COL_STUDENT_SIBLINGS_TOTAL: remote['siblings_total'],
           COL_STUDENT_NAME: remote['name'],
           COL_STUDENT_CODE: remote['code'],
           COL_STUDENT_PRICE: remote['price'],

@@ -23,6 +23,7 @@ import 'package:active_class/widgets/progress_dialog.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/backup_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/views/license/trial_banner.dart';
@@ -650,6 +651,8 @@ class SettingsPage extends StatelessWidget {
           ),
           padding: const EdgeInsets.all(20),
           child: Obx(() {
+            final team = TeamModeService();
+            final isAssistant = team.isEnabled.value && !team.isOwner.value;
             final fullName = settings.teacherFullName.value.trim();
             final avatarPath = settings.teacherAvatarPath.value.trim();
 
@@ -660,6 +663,28 @@ class SettingsPage extends StatelessWidget {
             }
             final initial =
                 fullName.isNotEmpty ? fullName.characters.first : 'م';
+
+            if (isAssistant) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    const Icon(Icons.lock_rounded, size: 14, color: Color(0xFF9CA3AF)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'بيانات المعلم بتتعرض من حساب المدرس اللي انت مساعد لديه — معندكش صلاحية تعدّلها من جهازك',
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 12,
+                          color: isDark ? Colors.white54 : const Color(0xFF6B7280),
+                        ),
+                      ),
+                    ),
+                  ]),
+                ],
+              );
+            }
 
             return Row(
               children: [
@@ -1099,11 +1124,13 @@ class SettingsPage extends StatelessWidget {
     required void Function(String) onChanged,
     TextInputType? keyboardType,
     ui.TextDirection? textDirection,
+    bool enabled = true,
   }) {
     return TextFormField(
       initialValue: value,
       keyboardType: keyboardType,
       textDirection: textDirection ?? ui.TextDirection.rtl,
+      enabled: enabled,
       onChanged: onChanged,
       style: TextStyle(
         fontFamily: 'Cairo',

@@ -23,7 +23,13 @@ create table if not exists public.teams (
   -- المدرس فورًا لما حالة ترخيصه تتغيّر محليًا (TeamModeService).
   -- لازم تتفحص في RLS الجداول المشتركة عشان لو الترخيص خلص/اتوقف،
   -- كل أعضاء الفريق (مش بس المدرس) يتقفلوا فورًا.
-  owner_license_active boolean not null default true
+  owner_license_active boolean not null default true,
+  -- اسم/جنس المدرس (من ملفه المحلي في الإعدادات) — بيتقرا من جهاز
+  -- المساعد عشان يقدر يوضّح "أنت مساعد لدى مستر/مس فلان" بدل ما
+  -- يظهرله بروفايل المدرس وكأنه بروفايله هو (كانا منفصلين تمامًا
+  -- لأن الإعدادات مش من ضمن الجداول المتزامنة أصلاً).
+  teacher_name text,
+  teacher_gender text
 );
 
 -- عضوية الفريق + صلاحيات دقيقة قابلة للتخصيص لكل مساعد (بدل دورين
@@ -76,12 +82,18 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 
 -- ── إنشاء فريق (المدرس = owner بكل الصلاحيات) ──────────────────────
-create or replace function public.create_team(_license_code text default null)
+create or replace function public.create_team(
+  _license_code text default null,
+  _teacher_name text default null,
+  _teacher_gender text default null
+)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
   new_team_id uuid;
 begin
-  insert into public.teams (owner_id, license_code) values (auth.uid(), _license_code) returning id into new_team_id;
+  insert into public.teams (owner_id, license_code, teacher_name, teacher_gender)
+    values (auth.uid(), _license_code, _teacher_name, _teacher_gender)
+    returning id into new_team_id;
   insert into public.team_members
     (team_id, user_id, is_owner, can_delete_attendance, can_delete_payments,
      can_delete_students, can_manage_members)
@@ -104,6 +116,18 @@ $$;
 create or replace function public.is_team_license_active(_team_id uuid)
 returns boolean language sql stable security definer set search_path = public as $$
   select coalesce((select owner_license_active from public.teams where id = _team_id), false);
+$$;
+
+-- بس المالك يقدر يستخدمها — بتتنادى لما يعدّل اسمه/جنسه في الإعدادات
+-- وهو مفعّل وضع الفريق، عشان أجهزة المساعدين تفضل عارضة الاسم الصح.
+create or replace function public.set_team_teacher_profile(
+  _team_id uuid, _name text, _gender text
+)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.teams set teacher_name = _name, teacher_gender = _gender
+    where id = _team_id and owner_id = auth.uid();
+end;
 $$;
 
 -- ── توليد كود دعوة (owner أو أي حد عنده can_manage_members بس) ─────
@@ -221,6 +245,12 @@ create table if not exists public.students (
   group_remote_id uuid references public.groups(id) on delete set null,
   name text, code text, price numeric, guardian_phone text, birth_date text,
   attendance_start text, exempt_percent numeric default 0, exempt_reason text,
+  -- ربط الإخوة بيشاور على طالب تاني في نفس الجدول — ممكن الاتنين
+  -- يتزامنوا الأول من غير الربط ده (لسه محدش عنده remote_id للتاني)،
+  -- فالعمود ده nullable عمدًا ومبيمنعش إدراج الطالب من غير القيمة دي،
+  -- عكس group_remote_id اللي بيمنع (لازم مجموعة موجودة أصلاً).
+  sibling_remote_id uuid references public.students(id) on delete set null,
+  siblings_total numeric,
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
   unique (team_id, origin_device_id, local_id)

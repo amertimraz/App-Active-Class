@@ -641,13 +641,19 @@ class DatabaseService {
   /// لو فشل التحديث الثاني.
   Future<void> linkSiblings(Student s1, Student s2) async {
     final db = await database;
+    final map1 = {...s1.toMap(), COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String()};
+    final map2 = {...s2.toMap(), COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String()};
     await db.transaction((txn) async {
-      await txn.update(TABLE_STUDENTS, s1.toMap(),
+      await txn.update(TABLE_STUDENTS, map1,
           where: '$COL_STUDENT_ID = ?', whereArgs: [s1.id]);
-      await txn.update(TABLE_STUDENTS, s2.toMap(),
+      await txn.update(TABLE_STUDENTS, map2,
           where: '$COL_STUDENT_ID = ?', whereArgs: [s2.id]);
     });
     _notifyChanged();
+    // كان الربط ده مش بيتبلّغ لمحرك المزامنة خالص — يفضل الإخوة مربوطين
+    // على الجهاز ده بس ومش بيوصل للزميل.
+    await _queueSync(TABLE_STUDENTS, s1.id!, 'update', payload: map1);
+    await _queueSync(TABLE_STUDENTS, s2.id!, 'update', payload: map2);
   }
 
   Future<int> deleteStudent(int id) async {

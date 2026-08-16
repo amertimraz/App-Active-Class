@@ -9,6 +9,7 @@ import 'package:active_class/controllers/theme_controller.dart';
 import 'package:active_class/views/license/trial_banner.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/add_student_sheet.dart';
 import 'package:active_class/widgets/update_dialog.dart';
@@ -318,11 +319,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Obx(() {
-        final teacherName = _settingsController.teacherFullName.value.trim();
+        final team = TeamModeService();
+        final isAssistant = team.isEnabled.value && !team.isOwner.value;
+
+        // المساعد بيشتغل على بروفايل المدرس نفسه محليًا (نفس بيانات
+        // الحساب اللي هو داخل عليه)، فمينفعش نوريه "أهلا مستر [اسمه
+        // هو]" وكأنه المدرس — نستخدم بدل كده اسم/جنس المدرس الحقيقي
+        // اللي وصلنا من الفريق، ونوضح إنه مساعد.
+        final ownerName = team.ownerTeacherName.value?.trim() ?? '';
+        final teacherName = isAssistant
+            ? ownerName
+            : _settingsController.teacherFullName.value.trim();
         final teacherAvatar =
             _settingsController.teacherAvatarPath.value.trim();
-        final title = _settingsController.teacherTitle;
-        final isFemale = _settingsController.teacherGender.value == 'female';
+        final genderSource =
+            isAssistant ? team.ownerTeacherGender.value : _settingsController.teacherGender.value;
+        final title = genderSource == 'female' ? 'مس' : 'مستر';
+        final isFemale = genderSource == 'female';
         final displayName = teacherName.isNotEmpty ? teacherName : 'المعلم';
 
         return Container(
@@ -366,7 +379,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'أهلا $title $displayName',
+                            isAssistant
+                                ? 'مساعد $title $displayName'
+                                : 'أهلا $title $displayName',
                             style: TextStyle(
                               fontFamily: 'Cairo',
                               fontSize: 15,
@@ -873,12 +888,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       child: Column(
         children: [
           Obx(() {
-            final teacherName =
-                _settingsController.teacherFullName.value.trim();
+            final team = TeamModeService();
+            final isAssistant = team.isEnabled.value && !team.isOwner.value;
+            final ownerName = team.ownerTeacherName.value?.trim() ?? '';
+            final teacherName = isAssistant
+                ? ownerName
+                : _settingsController.teacherFullName.value.trim();
             final teacherAvatar =
                 _settingsController.teacherAvatarPath.value.trim();
-            final isFemale =
-                _settingsController.teacherGender.value == 'female';
+            final genderSource = isAssistant
+                ? team.ownerTeacherGender.value
+                : _settingsController.teacherGender.value;
+            final isFemale = genderSource == 'female';
 
             return Container(
               width: double.infinity,
@@ -918,7 +939,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'تنقل سريع بين أهم صفحات التطبيق',
+                    isAssistant
+                        ? 'مساعد في تطبيق المدرس'
+                        : 'تنقل سريع بين أهم صفحات التطبيق',
                     style: TextStyle(
                       fontFamily: 'Cairo',
                       fontSize: 12,

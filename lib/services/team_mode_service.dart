@@ -10,9 +10,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/license_controller.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/services/auth_service.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/sync_engine.dart';
+import 'package:active_class/utils/helpers.dart';
 
 class TeamModeService {
   static final TeamModeService _instance = TeamModeService._internal();
@@ -23,6 +25,7 @@ class TeamModeService {
   final DatabaseService _db = DatabaseService();
   SyncEngine? _engine;
   Worker? _licenseWorker;
+  Worker? _profileWorker;
 
   final isEnabled = false.obs;
   final teamId = RxnString();
@@ -32,6 +35,11 @@ class TeamModeService {
   final canDeleteStudents = false.obs;
   final canManageMembers = false.obs;
   final loading = false.obs;
+  /// بس عند المساعد — اسم/جنس المدرس صاحب الفريق (عشان شاشات زي
+  /// الترحيب توضّح إنه مساعد لدى مين، مش تعرض بروفايله المحلي هو
+  /// وكأنه المدرس نفسه).
+  final ownerTeacherName = RxnString();
+  final ownerTeacherGender = RxnString();
 
   /// استعادة صامتة عند فتح التطبيق — بس لو الميزة كانت مفعّلة فعلاً
   /// قبل كده وفيه جلسة دخول شغالة. صفر تأثير على غير مستخدمي الميزة.
@@ -58,8 +66,13 @@ class TeamModeService {
     }
     loading.value = true;
     try {
+      final settings = Get.isRegistered<SettingsController>()
+          ? Get.find<SettingsController>()
+          : null;
       final newTeamId = await client.rpc('create_team', params: {
         '_license_code': LicenseController.to.licenseCode.value,
+        '_teacher_name': settings?.teacherFullName.value,
+        '_teacher_gender': settings?.teacherGender.value,
       }) as String;
       teamId.value = newTeamId;
       isOwner.value = true;
@@ -127,11 +140,23 @@ class TeamModeService {
     _engine = null;
     _licenseWorker?.dispose();
     _licenseWorker = null;
+    _profileWorker?.dispose();
+    _profileWorker = null;
     await _db.setSetting(SETTING_TEAM_MODE_ENABLED, 'false');
     LicenseController.to.teamModeBypassLimits = false;
     isEnabled.value = false;
     teamId.value = null;
     isOwner.value = false;
+    ownerTeacherName.value = null;
+    ownerTeacherGender.value = null;
+  }
+
+  /// بتتنادى لو المدرس شال العضو ده من الفريق (أو حذف الفريق نفسه) —
+  /// نعطّل وضع الفريق على الجهاز ده تلقائيًا ونوضحله السبب، بدل ما
+  /// يفضل شغال بصلاحيات bypass محلية من غير ما يعرف إنه اتشال فعليًا.
+  Future<void> _handleRemovedFromTeam() async {
+    await disable();
+    ToastHelper.error('المدرس أزالك من الفريق — تم تعطيل وضع الفريق على جهازك');
   }
 
   /// بتتنادى من AuthController عند تبديل الحساب (خروج/دخول) — الإعدادات
@@ -167,30 +192,57 @@ class TeamModeService {
 
   void _startEngine(SupabaseClient client, String tId) {
     final deviceId = LicenseController.to.deviceId.value;
-    _engine = SyncEngine(client: client, teamId: tId, deviceId: deviceId);
+    _engine = SyncEngine(
+      client: client,
+      teamId: tId,
+      deviceId: deviceId,
+      onRemovedFromTeam: _handleRemovedFromTeam,
+    );
     _engine!.start();
     if (isOwner.value) {
       _watchOwnerLicense(client, tId);
+      _watchOwnerProfile(client, tId);
       _tagDeviceAsTeamRole('owner', LicenseController.to.licenseCode.value);
     } else {
       _tagAssistantDevice(client, tId);
     }
   }
 
-  /// بس على جهاز المساعد: بنجيب كود ترخيص المدرس (المخزّن على الفريق
-  /// وقت إنشائه) عشان نربط جهاز المساعد بيه في Firestore — يظهر في
-  /// لوحة الأدمن تحت تفاصيل نفس الترخيص.
+  /// بس على جهاز المدرس: كل ما يعدّل اسمه/جنسه في الإعدادات وهو مفعّل
+  /// وضع الفريق، نبعت التحديث ده للفريق — عشان أجهزة المساعدين تفضل
+  /// عارضة الاسم الصح في شاشة الترحيب.
+  void _watchOwnerProfile(SupabaseClient client, String tId) {
+    if (!Get.isRegistered<SettingsController>()) return;
+    final settings = Get.find<SettingsController>();
+    _profileWorker?.dispose();
+    _profileWorker = everAll([settings.teacherFullName, settings.teacherGender], (_) {
+      client.rpc('set_team_teacher_profile', params: {
+        '_team_id': tId,
+        '_name': settings.teacherFullName.value,
+        '_gender': settings.teacherGender.value,
+      }).catchError((e) {
+        debugPrint('TeamModeService: فشل تحديث بروفايل المدرس للفريق — $e');
+      });
+    });
+  }
+
+  /// بس على جهاز المساعد: بنجيب كود ترخيص المدرس واسمه/جنسه (المخزّنين
+  /// على الفريق) — الكود عشان نربط جهاز المساعد بيه في Firestore
+  /// (يظهر في لوحة الأدمن تحت تفاصيل نفس الترخيص)، والاسم عشان شاشة
+  /// الترحيب توضّح إنه مساعد لدى مين بدل ما تعرض بروفايله المحلي هو.
   Future<void> _tagAssistantDevice(SupabaseClient client, String tId) async {
     try {
       final row = await client
           .from('teams')
-          .select('license_code')
+          .select('license_code, teacher_name, teacher_gender')
           .eq('id', tId)
           .single();
       final code = row['license_code'] as String?;
+      ownerTeacherName.value = row['teacher_name'] as String?;
+      ownerTeacherGender.value = row['teacher_gender'] as String?;
       await _tagDeviceAsTeamRole('assistant', code);
     } catch (e) {
-      debugPrint('TeamModeService: فشل جلب كود ترخيص الفريق — $e');
+      debugPrint('TeamModeService: فشل جلب بيانات الفريق — $e');
     }
   }
 
