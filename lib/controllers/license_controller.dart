@@ -508,9 +508,15 @@ class LicenseController extends GetxController {
         'deviceName': deviceName,
         'platform': kIsWeb ? 'web' : Platform.operatingSystem,
         'lastSeenAt': FieldValue.serverTimestamp(),
-        'licenseCode': licenseCode.value,
         'licenseState': state.value.name,
       };
+      // ما نكتبش licenseCode فاضي — عند مساعد وضع الفريق (اللي معاهوش
+      // ترخيص محلي) ده كان بيدهس كود ترخيص المدرس اللي TeamModeService
+      // كاتبه على نفس المستند (سباق race condition بين الاتنين وقت فتح
+      // التطبيق)، فيختفي الجهاز من تفاصيل الترخيص في لوحة الأدمن.
+      if ((licenseCode.value ?? '').isNotEmpty) {
+        payload['licenseCode'] = licenseCode.value;
+      }
       if (!hasFirstLaunch) {
         payload['firstLaunchAt'] = FieldValue.serverTimestamp();
       }
