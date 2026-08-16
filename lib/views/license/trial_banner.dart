@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/controllers/license_controller.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/views/license/plans_page.dart';
 
 const String _kSupportPhone = '201096066818';
@@ -36,6 +37,14 @@ class TrialBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Obx(() {
       final lc = LicenseController.to;
+      final team = TeamModeService();
+
+      // المساعد في وضع الفريق شغال بدون أي قيود فعلية (bypass عن طريق
+      // ترخيص المدرس)، حتى لو حالة ترخيصه المحلي هو نفسه لسه "تجريبي" —
+      // فمينفعش نوريه بانر "التجربة المجانية" وكأنه لسه محدود.
+      if (team.isEnabled.value && !team.isOwner.value) {
+        return const SizedBox.shrink();
+      }
 
       // ── ترخيص نشط — نشوف لو قريب من الانتهاء ──────────────────
       if (lc.state.value == LicenseState.active) {
@@ -165,6 +174,19 @@ class LicenseStatusTile extends StatelessWidget {
     return Obx(() {
       final lc  = LicenseController.to;
       final exp = lc.expiresAt.value;
+      final team = TeamModeService();
+
+      // نفس سبب TrialBanner: المساعد شغال بدون قيود بترخيص المدرس،
+      // مش حالة ترخيصه المحلي — نوضح ده صراحة بدل ما نوريه "تجريبي".
+      if (team.isEnabled.value && !team.isOwner.value) {
+        return const ListTile(
+          leading: Icon(Icons.groups_rounded, color: Color(0xFF10B981)),
+          title: Text('حالة الترخيص',
+              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+          subtitle: Text('مساعد في فريق — تعمل بترخيص المدرس بدون قيود',
+              style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Color(0xFF10B981))),
+        );
+      }
 
       // نص تاريخ الانتهاء + عدد الأيام المتبقية (لو الترخيص نشط وليس مدى الحياة)
       String expText = '';

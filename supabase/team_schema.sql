@@ -220,6 +220,7 @@ create table if not exists public.students (
   local_id integer not null,
   group_remote_id uuid references public.groups(id) on delete set null,
   name text, code text, price numeric, guardian_phone text, birth_date text,
+  attendance_start text, exempt_percent numeric default 0, exempt_reason text,
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
   unique (team_id, origin_device_id, local_id)

@@ -166,6 +166,9 @@ class SyncEngine {
           'price': payload[COL_STUDENT_PRICE],
           'guardian_phone': payload[COL_STUDENT_GUARDIAN_PHONE],
           'birth_date': payload[COL_STUDENT_BIRTH_DATE],
+          'attendance_start': payload[COL_STUDENT_ATTENDANCE_START],
+          'exempt_percent': payload[COL_STUDENT_EXEMPT_PERCENT],
+          'exempt_reason': payload[COL_STUDENT_EXEMPT_REASON],
         };
       case TABLE_ATTENDANCE:
         final studentLocalId = payload[COL_ATTENDANCE_STUDENT_ID] as int?;
@@ -437,6 +440,9 @@ class SyncEngine {
           COL_STUDENT_PRICE: remote['price'],
           COL_STUDENT_GUARDIAN_PHONE: remote['guardian_phone'],
           COL_STUDENT_BIRTH_DATE: remote['birth_date'],
+          COL_STUDENT_ATTENDANCE_START: remote['attendance_start'],
+          COL_STUDENT_EXEMPT_PERCENT: remote['exempt_percent'],
+          COL_STUDENT_EXEMPT_REASON: remote['exempt_reason'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };
