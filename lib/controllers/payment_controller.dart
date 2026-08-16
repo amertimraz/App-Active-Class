@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -114,6 +115,7 @@ class PaymentController extends GetxController {
     try {
       await _dbService.insertPayment(payment);
       await loadPayments();
+      _refreshDashboard();
       ToastHelper.success('تم إضافة الدفع بنجاح');
     } catch (e) {
       ToastHelper.error('حدث خطأ في إضافة الدفع');
@@ -126,6 +128,7 @@ class PaymentController extends GetxController {
     try {
       await _dbService.updatePayment(payment);
       await loadPayments();
+      _refreshDashboard();
       return true;
     } catch (e) {
       ToastHelper.error('حدث خطأ في تعديل الدفعة');
@@ -137,9 +140,16 @@ class PaymentController extends GetxController {
     try {
       await _dbService.deletePayment(id);
       await loadPayments();
+      _refreshDashboard();
       ToastHelper.success('تم حذف الدفع بنجاح');
     } catch (e) {
       ToastHelper.error('حدث خطأ في حذف الدفع');
+    }
+  }
+
+  void _refreshDashboard() {
+    if (Get.isRegistered<DashboardController>()) {
+      Get.find<DashboardController>().loadDashboardData();
     }
   }
 

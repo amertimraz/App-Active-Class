@@ -9,6 +9,7 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 
 enum QRMode { attendance, payment }
@@ -222,6 +223,7 @@ class QRController extends GetxController {
           final p2 = Payment(studentId: sibling.id!, date: now, amount: each, note: note, createdAt: now);
           await _dbService.insertPayment(p1);
           await _dbService.insertPayment(p2);
+          _refreshDashboard();
           ToastHelper.success('عرض الإخوة: ${student.name} و ${sibling.name} • $paymentLabel ✅', title: 'تم الدفع');
           _clearPaymentState();
           return true;
@@ -243,6 +245,7 @@ class QRController extends GetxController {
         createdAt: now,
       );
       await _dbService.insertPayment(payment);
+      _refreshDashboard();
       ToastHelper.success('تم دفع $paymentLabel ✅', title: 'تم الدفع');
       _clearPaymentState();
       return true;
@@ -251,6 +254,12 @@ class QRController extends GetxController {
       return false;
     } finally {
       isProcessing.value = false;
+    }
+  }
+
+  void _refreshDashboard() {
+    if (Get.isRegistered<DashboardController>()) {
+      Get.find<DashboardController>().loadDashboardData();
     }
   }
 
