@@ -85,7 +85,11 @@ class SyncEngine {
         try {
           final done = await _pushOne(table, rowId, op, payloadStr);
           if (done) {
-            await db.update(TABLE_SYNC_OUTBOX, {COL_OUTBOX_SYNCED: 1},
+            // مفيش حد بيقرا صفوف outbox بعد ما تتزامن — نمسحها بدل ما
+            // نعلّمها بس synced=1 ونسيبها تتراكم في الداتابيز المحلية
+            // للأبد (وضع الفريق شغال باستمرار، يعني آلاف الصفوف بمرور
+            // الوقت من غير أي فايدة).
+            await db.delete(TABLE_SYNC_OUTBOX,
                 where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
           }
           // لو مش done (أب لسه مش متزامن) — نسيبه، هيتحاول تاني الجولة الجاية
