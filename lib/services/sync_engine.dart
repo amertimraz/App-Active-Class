@@ -27,12 +27,19 @@ class SyncEngine {
   /// فاضية، مش error)، فمن غير الفحص الصريح ده الجهاز كان هيفضل شغال
   /// بصلاحيات bypass للأبد من غير ما حد يعرف إنه اتشال فعليًا.
   final VoidCallback? onRemovedFromTeam;
+  /// بتتنادى لو ترخيص المدرس الحقيقي (Firebase) بقى موقوف/منتهي —
+  /// RLS بتقفل السيرفر فورًا (وده شغال ومتأكد منه)، بس ده بيوقف
+  /// المزامنة بس صامت في الخلفية؛ من غير الفحص ده مفيش أي حاجة كانت
+  /// بتوقف الـ bypass المحلي (teamModeBypassLimits) على جهاز المساعد،
+  /// فكان بيفضل يقدر يضيف بيانات محليًا من غير حدود وكأن حاجة ملحصلتش.
+  final VoidCallback? onLicenseInactive;
 
   SyncEngine({
     required this.client,
     required this.teamId,
     required this.deviceId,
     this.onRemovedFromTeam,
+    this.onLicenseInactive,
   });
 
   static const _tables = [
@@ -283,6 +290,7 @@ class SyncEngine {
   /// عشان نعرف بحذف حصل وإحنا offline) كل ما القناة تتصل/تعيد الاتصال.
   Future<void> catchUpPull() async {
     if (await _wasRemovedFromTeam()) return;
+    if (await _wasLicenseDeactivated()) return;
     await _fullPull(includeDeleted: true);
   }
 
@@ -307,6 +315,29 @@ class SyncEngine {
       return false;
     } catch (e) {
       debugPrint('SyncEngine: فشل التحقق من العضوية — $e');
+      return false;
+    }
+  }
+
+  /// بتتحقق من owner_license_active على الفريق ده — بيتحدّث بس من
+  /// جهاز المدرس نفسه لما حالة ترخيصه الحقيقي (Firebase) تتغيّر
+  /// (TeamModeService._watchOwnerLicense). لو موقوف، لازم نعطّل الـ
+  /// bypass المحلي هنا كمان، مش بس نعتمد على RLS إنها تقفل السيرفر.
+  Future<bool> _wasLicenseDeactivated() async {
+    try {
+      final row = await client
+          .from('teams')
+          .select('owner_license_active')
+          .eq('id', teamId)
+          .single();
+      final active = row['owner_license_active'] as bool? ?? true;
+      if (!active) {
+        onLicenseInactive?.call();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('SyncEngine: فشل التحقق من حالة الترخيص — $e');
       return false;
     }
   }

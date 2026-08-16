@@ -159,6 +159,12 @@ class TeamModeService {
     ToastHelper.error('المدرس أزالك من الفريق — تم تعطيل وضع الفريق على جهازك');
   }
 
+  /// بس للمساعد — لو ترخيص المدرس الحقيقي (Firebase) بقى موقوف/منتهي.
+  Future<void> _handleLicenseInactive() async {
+    await disable();
+    ToastHelper.error('ترخيص المدرس متوقف حاليًا — تم تعطيل وضع الفريق على جهازك');
+  }
+
   /// بتتنادى من AuthController عند تبديل الحساب (خروج/دخول) — الإعدادات
   /// المحلية (SETTING_TEAM_MODE_ENABLED/SETTING_TEAM_ID) مخزّنة على
   /// مستوى الجهاز مش الحساب، فلازم نصفّرها ونعيد التحقق من السيرفر
@@ -197,6 +203,12 @@ class TeamModeService {
       teamId: tId,
       deviceId: deviceId,
       onRemovedFromTeam: _handleRemovedFromTeam,
+      // بس للمساعد — لو عملناها للمدرس نفسه هتقفل وضع الفريق عنده
+      // (isOwner/teamId يترجعوا فاضيين محليًا) من غير أي طريقة يرجع بيها
+      // تلقائيًا لما ترخيصه يترجّع، لأن enableAsOwner() بينشئ فريق
+      // جديد بدل ما يستعيد القديم. المدرس أصلاً عنده متابعة مباشرة
+      // ولحظية لحالة ترخيصه هو (LicenseController)، فمش محتاج الفحص ده.
+      onLicenseInactive: isOwner.value ? null : _handleLicenseInactive,
     );
     _engine!.start();
     if (isOwner.value) {
