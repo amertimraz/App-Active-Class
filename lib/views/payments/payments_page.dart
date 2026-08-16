@@ -387,10 +387,20 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                 isDark: isDark,
                                 onAddPayment: () {
                                   final now = DateTime.now();
-                                  final safeDate = r.month.isAfter(
-                                          DateTime(now.year, now.month, 1))
-                                      ? DateTime(now.year, now.month, 1)
-                                      : r.month;
+                                  DateTime safeDate;
+                                  if (r.month.year == now.year &&
+                                      r.month.month == now.month) {
+                                    safeDate = now;
+                                  } else {
+                                    final lastDayOfMonth = DateTime(
+                                            r.month.year, r.month.month + 1, 0)
+                                        .day;
+                                    final day = now.day < lastDayOfMonth
+                                        ? now.day
+                                        : lastDayOfMonth;
+                                    safeDate = DateTime(r.month.year,
+                                        r.month.month, day, now.hour, now.minute, now.second);
+                                  }
                                   _showAddPaymentDialog(
                                     context,
                                     controller,
@@ -1300,6 +1310,7 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
           date: _date,
           amount: parsed,
           note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+          createdAt: DateTime.now(),
         ),
       );
       if (mounted) {
