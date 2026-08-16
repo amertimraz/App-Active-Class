@@ -114,6 +114,7 @@ class LicenseController extends GetxController {
   final plan = AppPlan.trial.obs;
   final trialDaysLeft = 7.obs;
   final deviceId = ''.obs;
+  final deviceName = ''.obs;
   final licenseCode = RxnString();
   final hasRequest = false.obs; // هل عنده طلب ترقية pending
   final expiresAt = Rxn<DateTime>(); // تاريخ انتهاء الترخيص
@@ -492,6 +493,7 @@ class LicenseController extends GetxController {
           deviceName = '${info.brand} ${info.model}';
         }
       } catch (_) {}
+      this.deviceName.value = deviceName;
 
       // مهم: firstLaunchAt لازم يتكتب مرة واحدة بس (أول تسجيل للجهاز)،
       // وإلا كل فتح عادي للتطبيق كان بيدهسه بالوقت الحالي — يعني وقت
