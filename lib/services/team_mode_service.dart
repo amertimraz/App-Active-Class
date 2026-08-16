@@ -292,8 +292,20 @@ class TeamModeService {
     // state لوحدها كانت مش هتلاحظ التغيير ده خالص ومكانتش هتبعت تحديث.
     _licenseWorker = everAll(
       [LicenseController.to.state, LicenseController.to.plan],
-      (_) => _pushLicenseStatus(client, tId, _hasRealPaidLicense),
+      (_) => _maybePushLicenseStatus(client, tId),
     );
+    _maybePushLicenseStatus(client, tId);
+  }
+
+  /// أول ما التطبيق يفتح، LicenseController بتاعه لسه بيتحقق من
+  /// Firestore بشكل غير متزامن — لو _startEngine حصل ونادى الدالة دي
+  /// قبل ما التحقق يخلص، state بتاعه بيكون لسه LicenseState.loading
+  /// (مش الحالة الحقيقية)، فـ _hasRealPaidLicense كانت هترجع false
+  /// غلط وتبعت "الترخيص متوقف" لحظيًا حتى لو المدرس فعلاً احترافي —
+  /// ومحتمل جهاز المساعد يستلمها في نفس اللحظة (catchUpPull بتاعته)
+  /// ويقفل نفسه غلط. نتجاهل الحالة العابرة دي ونستنى القيمة الحقيقية.
+  void _maybePushLicenseStatus(SupabaseClient client, String tId) {
+    if (LicenseController.to.state.value == LicenseState.loading) return;
     _pushLicenseStatus(client, tId, _hasRealPaidLicense);
   }
 
