@@ -239,10 +239,33 @@ class LicenseController extends GetxController {
     }, onError: (_) {});
   }
 
+  // معرّف صالح إما hex عشوائي (ANDROID_ID، طوله عادةً 16) أو UUID v4
+  // (شكل 8-4-4-4-12 بفواصل). أي شكل تاني (فيه نقطة، أو حروف كابيتال،
+  // أو رقم موديل تجاري) بيعتبر قديم/غلط.
+  static final _hexIdPattern = RegExp(r'^[0-9a-f]{8,32}$', caseSensitive: false);
+  static final _uuidPattern = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false);
+
+  bool _isValidGeneratedDeviceId(String id) {
+    return _hexIdPattern.hasMatch(id) || _uuidPattern.hasMatch(id);
+  }
+
   // ── Device ID ─────────────────────────────────────────────────────────────
   Future<void> _initDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
     var id = prefs.getString(_kDeviceId);
+    // القيم القديمة (قبل إصلاح Build.ID) شكلها متنوع حسب الشركة المصنّعة —
+    // مش بس فيرموير Build.ID العادي (زي "BP2A.250605.031.A3")، لقينا كمان
+    // موديلات هواوي/هونر بترجّع رقم الموديل التجاري بدل معرّف حقيقي (زي
+    // "HONORABR-L32") — وكل الحالتين مشتركين بين آلاف الأجهزة بنفس الموديل،
+    // مش فريدين. بدل ما نحاول نلاحق كل شكل قديم ممكن، بنتحقق إن القيمة
+    // المحفوظة شكلها فعلاً معرّف حقيقي (hex عشوائي من ANDROID_ID، أو UUID
+    // من الـ fallback) — أي حاجة تانية (فيها نقطة، شرطة، حروف كابيتال..)
+    // بنعتبرها قديمة وغلط ونعيد حسابها.
+    if (id != null && !_isValidGeneratedDeviceId(id)) {
+      id = null;
+    }
     if (id == null || id.isEmpty) {
       try {
         final plugin = DeviceInfoPlugin();
