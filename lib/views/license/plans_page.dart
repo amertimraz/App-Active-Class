@@ -1,10 +1,7 @@
 // lib/views/license/plans_page.dart
-import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/license_controller.dart';
@@ -37,7 +34,6 @@ class _PlansPageState extends State<PlansPage> {
   final _phone = TextEditingController();
   final _message = TextEditingController();
   String _paymentMethod = 'نقدي';
-  XFile? _receiptImage;
   bool _loading = false;
   String? _error;
   bool _sent = false;
@@ -62,12 +58,6 @@ class _PlansPageState extends State<PlansPage> {
     super.dispose();
   }
 
-  Future<void> _pickImage() async {
-    final img = await ImagePicker()
-        .pickImage(source: ImageSource.gallery, imageQuality: 70);
-    if (img != null && mounted) setState(() => _receiptImage = img);
-  }
-
   Future<void> _submit() async {
     setState(() {
       _loading = true;
@@ -79,7 +69,6 @@ class _PlansPageState extends State<PlansPage> {
       planId: _selectedPlan,
       message: _message.text,
       paymentMethod: _paymentMethod,
-      receiptImage: _receiptImage,
     );
     if (!mounted) return;
     setState(() => _loading = false);
@@ -189,14 +178,10 @@ class _PlansPageState extends State<PlansPage> {
                             phoneCtrl: _phone,
                             messageCtrl: _message,
                             paymentMethod: _paymentMethod,
-                            receiptImage: _receiptImage,
                             loading: _loading,
                             error: _error,
                             onPaymentChanged: (m) =>
                                 setState(() => _paymentMethod = m),
-                            onPickImage: _pickImage,
-                            onRemoveImage: () =>
-                                setState(() => _receiptImage = null),
                             onCancel: () => setState(() => _showForm = false),
                             onSubmit: _submit,
                           );
@@ -1063,11 +1048,10 @@ class _RequestForm extends StatelessWidget {
   final String planName;
   final TextEditingController nameCtrl, phoneCtrl, messageCtrl;
   final String paymentMethod;
-  final XFile? receiptImage;
   final bool loading;
   final String? error;
   final void Function(String) onPaymentChanged;
-  final VoidCallback onPickImage, onRemoveImage, onCancel, onSubmit;
+  final VoidCallback onCancel, onSubmit;
 
   const _RequestForm({
     required this.planName,
@@ -1075,12 +1059,9 @@ class _RequestForm extends StatelessWidget {
     required this.phoneCtrl,
     required this.messageCtrl,
     required this.paymentMethod,
-    required this.receiptImage,
     required this.loading,
     required this.error,
     required this.onPaymentChanged,
-    required this.onPickImage,
-    required this.onRemoveImage,
     required this.onCancel,
     required this.onSubmit,
   });
@@ -1234,77 +1215,6 @@ class _RequestForm extends StatelessWidget {
                       );
                     }).toList(),
                   ),
-                  const SizedBox(height: 18),
-
-                  // إثبات التحويل
-                  _SectionLabel(
-                      label: 'إثبات التحويل (اختياري)',
-                      icon: Icons.receipt_long_rounded),
-                  const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: onPickImage,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      width: double.infinity,
-                      height: receiptImage == null ? 64 : 140,
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryColor
-                            .withValues(alpha: isDark ? 0.07 : 0.04),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: receiptImage != null
-                              ? AppTheme.primaryColor
-                              : AppTheme.primaryColor.withValues(alpha: 0.25),
-                        ),
-                      ),
-                      child: receiptImage == null
-                          ? Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.cloud_upload_outlined,
-                                    color: AppTheme.primaryColor
-                                        .withValues(alpha: 0.7),
-                                    size: 22),
-                                const SizedBox(width: 8),
-                                Text('ارفع صورة إثبات التحويل',
-                                    style: TextStyle(
-                                        fontFamily: 'Cairo',
-                                        fontSize: 13,
-                                        color: AppTheme.primaryColor
-                                            .withValues(alpha: 0.8))),
-                              ],
-                            )
-                          : Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(13),
-                                  child: kIsWeb
-                                      ? Image.network(receiptImage!.path,
-                                          fit: BoxFit.cover)
-                                      : Image.file(File(receiptImage!.path),
-                                          fit: BoxFit.cover),
-                                ),
-                                Positioned(
-                                  top: 6,
-                                  left: 6,
-                                  child: GestureDetector(
-                                    onTap: onRemoveImage,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: const BoxDecoration(
-                                          color: Colors.red,
-                                          shape: BoxShape.circle),
-                                      child: const Icon(Icons.close_rounded,
-                                          size: 13, color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                    ),
-                  ),
-
                   if (error != null) ...[
                     const SizedBox(height: 14),
                     Container(
