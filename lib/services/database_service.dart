@@ -417,18 +417,67 @@ class DatabaseService {
 
   Future<int> deleteGroup(int id) async {
     final db = await database;
+    // لازم نلقط أبناء المجموعة (طلاب/حضور/مدفوعات) قبل الحذف — لأن
+    // PRAGMA foreign_keys=ON بيخلي SQLite يحذفهم تلقائيًا (CASCADE)
+    // جوه محرك الداتابيز نفسه، من غير ما كود الداني يعدي عليهم، يعني
+    // من غير الحذف اليدوي ده مستحيل نعرف إيه اللي اتحذف عشان نبلّغ
+    // محرك المزامنة — وهتفضل نسخ يتيمة عند زمايل الفريق.
+    final cascade = await _collectGroupCascadeIds(db, id);
     final n = await db.delete(
       TABLE_GROUPS,
       where: '$COL_GROUP_ID = ?',
       whereArgs: [id],
     );
     _notifyChanged();
+    for (final attId in cascade.attendanceIds) {
+      await _queueSync(TABLE_ATTENDANCE, attId, 'delete');
+    }
+    for (final payId in cascade.paymentIds) {
+      await _queueSync(TABLE_PAYMENTS, payId, 'delete');
+    }
+    for (final studId in cascade.studentIds) {
+      await _queueSync(TABLE_STUDENTS, studId, 'delete');
+    }
     await _queueSync(TABLE_GROUPS, id, 'delete');
     return n;
   }
 
+  Future<_GroupCascadeIds> _collectGroupCascadeIds(Database db, int groupId) async {
+    final students = await db.query(
+      TABLE_STUDENTS,
+      columns: [COL_STUDENT_ID],
+      where: '$COL_STUDENT_GROUP_ID = ?',
+      whereArgs: [groupId],
+    );
+    final studentIds = students.map((e) => e[COL_STUDENT_ID] as int).toList();
+    if (studentIds.isEmpty) {
+      return _GroupCascadeIds(studentIds: [], attendanceIds: [], paymentIds: []);
+    }
+    final placeholders = List.filled(studentIds.length, '?').join(',');
+    final attendanceRows = await db.query(
+      TABLE_ATTENDANCE,
+      columns: [COL_ATTENDANCE_ID],
+      where: '$COL_ATTENDANCE_STUDENT_ID IN ($placeholders)',
+      whereArgs: studentIds,
+    );
+    final paymentRows = await db.query(
+      TABLE_PAYMENTS,
+      columns: [COL_PAYMENT_ID],
+      where: '$COL_PAYMENT_STUDENT_ID IN ($placeholders)',
+      whereArgs: studentIds,
+    );
+    return _GroupCascadeIds(
+      studentIds: studentIds,
+      attendanceIds: attendanceRows.map((e) => e[COL_ATTENDANCE_ID] as int).toList(),
+      paymentIds: paymentRows.map((e) => e[COL_PAYMENT_ID] as int).toList(),
+    );
+  }
+
   Future<void> deleteStudentsByGroup(int groupId) async {
     final db = await database;
+    List<int> studentIds = [];
+    List<int> attendanceIds = [];
+    List<int> paymentIds = [];
     await db.transaction((txn) async {
       final students = await txn.query(
         TABLE_STUDENTS,
@@ -436,26 +485,56 @@ class DatabaseService {
         where: '$COL_STUDENT_GROUP_ID = ?',
         whereArgs: [groupId],
       );
-      final ids = students.map((e) => e[COL_STUDENT_ID] as int).toList();
-      if (ids.isEmpty) return;
-      final placeholders = List.filled(ids.length, '?').join(',');
+      studentIds = students.map((e) => e[COL_STUDENT_ID] as int).toList();
+      if (studentIds.isEmpty) return;
+      final placeholders = List.filled(studentIds.length, '?').join(',');
+
+      final attendanceRows = await txn.query(
+        TABLE_ATTENDANCE,
+        columns: [COL_ATTENDANCE_ID],
+        where: '$COL_ATTENDANCE_STUDENT_ID IN ($placeholders)',
+        whereArgs: studentIds,
+      );
+      attendanceIds = attendanceRows.map((e) => e[COL_ATTENDANCE_ID] as int).toList();
+
+      final paymentRows = await txn.query(
+        TABLE_PAYMENTS,
+        columns: [COL_PAYMENT_ID],
+        where: '$COL_PAYMENT_STUDENT_ID IN ($placeholders)',
+        whereArgs: studentIds,
+      );
+      paymentIds = paymentRows.map((e) => e[COL_PAYMENT_ID] as int).toList();
+
       await txn.delete(
         TABLE_ATTENDANCE,
         where: '$COL_ATTENDANCE_STUDENT_ID IN ($placeholders)',
-        whereArgs: ids,
+        whereArgs: studentIds,
       );
       await txn.delete(
         TABLE_PAYMENTS,
         where: '$COL_PAYMENT_STUDENT_ID IN ($placeholders)',
-        whereArgs: ids,
+        whereArgs: studentIds,
       );
       await txn.delete(
         TABLE_STUDENTS,
         where: '$COL_STUDENT_ID IN ($placeholders)',
-        whereArgs: ids,
+        whereArgs: studentIds,
       );
     });
     _notifyChanged();
+    // لازم نبلّغ محرك المزامنة بكل صف اتحذف هنا — وإلا في وضع الفريق
+    // هتفضل نسخ يتيمة (orphaned) من الطلاب/الحضور/المدفوعات دي على
+    // جهاز المدرس نفسه (لو اتزامنت الطلاب قبل كده) وعلى أجهزة زمايله،
+    // لأن الحذف الجماعي ده كان بيتم مباشرة من غير المرور بـ _queueSync.
+    for (final id in attendanceIds) {
+      await _queueSync(TABLE_ATTENDANCE, id, 'delete');
+    }
+    for (final id in paymentIds) {
+      await _queueSync(TABLE_PAYMENTS, id, 'delete');
+    }
+    for (final id in studentIds) {
+      await _queueSync(TABLE_STUDENTS, id, 'delete');
+    }
   }
 
   Future<void> renumberStudentCodesByGroup({required int groupId}) async {
@@ -573,12 +652,28 @@ class DatabaseService {
 
   Future<int> deleteStudent(int id) async {
     final db = await database;
+    // نفس سبب deleteGroup: الحضور والمدفوعات بتاعة الطالب ده هتتحذف
+    // تلقائيًا بالـ CASCADE، فلازم نلقطهم الأول عشان نبلّغ المزامنة.
+    final attendanceRows = await db.query(TABLE_ATTENDANCE,
+        columns: [COL_ATTENDANCE_ID],
+        where: '$COL_ATTENDANCE_STUDENT_ID = ?',
+        whereArgs: [id]);
+    final paymentRows = await db.query(TABLE_PAYMENTS,
+        columns: [COL_PAYMENT_ID],
+        where: '$COL_PAYMENT_STUDENT_ID = ?',
+        whereArgs: [id]);
     final n = await db.delete(
       TABLE_STUDENTS,
       where: '$COL_STUDENT_ID = ?',
       whereArgs: [id],
     );
     _notifyChanged();
+    for (final row in attendanceRows) {
+      await _queueSync(TABLE_ATTENDANCE, row[COL_ATTENDANCE_ID] as int, 'delete');
+    }
+    for (final row in paymentRows) {
+      await _queueSync(TABLE_PAYMENTS, row[COL_PAYMENT_ID] as int, 'delete');
+    }
     await _queueSync(TABLE_STUDENTS, id, 'delete');
     return n;
   }
@@ -1287,4 +1382,15 @@ class DatabaseService {
     }).toList();
     return list;
   }
+}
+
+class _GroupCascadeIds {
+  final List<int> studentIds;
+  final List<int> attendanceIds;
+  final List<int> paymentIds;
+  _GroupCascadeIds({
+    required this.studentIds,
+    required this.attendanceIds,
+    required this.paymentIds,
+  });
 }

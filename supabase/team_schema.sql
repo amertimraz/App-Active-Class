@@ -18,7 +18,12 @@ create table if not exists public.teams (
   -- كود ترخيص المدرس (Firebase) وقت إنشاء الفريق — بيتقرا من أجهزة
   -- المساعدين عند الانضمام عشان تتسجّل أجهزتهم في Firestore مربوطة
   -- بنفس الترخيص، فيظهروا في تفاصيله بلوحة الأدمن.
-  license_code text
+  license_code text,
+  -- آخر حالة معروفة لترخيص المدرس الحقيقي (Firebase) — بيدفعها جهاز
+  -- المدرس فورًا لما حالة ترخيصه تتغيّر محليًا (TeamModeService).
+  -- لازم تتفحص في RLS الجداول المشتركة عشان لو الترخيص خلص/اتوقف،
+  -- كل أعضاء الفريق (مش بس المدرس) يتقفلوا فورًا.
+  owner_license_active boolean not null default true
 );
 
 -- عضوية الفريق + صلاحيات دقيقة قابلة للتخصيص لكل مساعد (بدل دورين
@@ -83,6 +88,22 @@ begin
   values (new_team_id, auth.uid(), true, true, true, true, true);
   return new_team_id;
 end;
+$$;
+
+-- بس المالك يقدر يستخدمها، وبتتنادى من جهاز المالك كل ما حالة
+-- ترخيصه الحقيقي (Firebase) تتغيّر — عشان RLS على الجداول المشتركة
+-- تقدر تقفل الفريق كله (المالك والمساعدين) فور ما الترخيص يخلص.
+create or replace function public.set_team_license_active(_team_id uuid, _active boolean)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.teams set owner_license_active = _active
+    where id = _team_id and owner_id = auth.uid();
+end;
+$$;
+
+create or replace function public.is_team_license_active(_team_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select owner_license_active from public.teams where id = _team_id), false);
 $$;
 
 -- ── توليد كود دعوة (owner أو أي حد عنده can_manage_members بس) ─────
@@ -233,21 +254,37 @@ alter table public.students   enable row level security;
 alter table public.attendance enable row level security;
 alter table public.payments   enable row level security;
 
-create policy "groups_select" on public.groups for select using (public.is_team_member(team_id));
-create policy "groups_insert" on public.groups for insert with check (public.is_team_member(team_id));
-create policy "groups_update" on public.groups for update using (public.is_team_member(team_id));
+-- ملحوظة: is_team_license_active(team_id) لازم تتفحص هنا كمان — لو
+-- الترخيص الحقيقي (Firebase) بتاع المدرس خلص/اتوقف، is_team_member
+-- لوحدها مش كفاية (لسه عضو رسمي بالفريق)، فبنقفل القراءة/الكتابة
+-- كلها لحد ما المدرس يجدد.
+create policy "groups_select" on public.groups for select
+  using (public.is_team_member(team_id) and public.is_team_license_active(team_id));
+create policy "groups_insert" on public.groups for insert
+  with check (public.is_team_member(team_id) and public.is_team_license_active(team_id));
+create policy "groups_update" on public.groups for update
+  using (public.is_team_member(team_id) and public.is_team_license_active(team_id));
 
-create policy "students_select" on public.students for select using (public.is_team_member(team_id));
-create policy "students_insert" on public.students for insert with check (public.is_team_member(team_id));
-create policy "students_update" on public.students for update using (public.is_team_member(team_id));
+create policy "students_select" on public.students for select
+  using (public.is_team_member(team_id) and public.is_team_license_active(team_id));
+create policy "students_insert" on public.students for insert
+  with check (public.is_team_member(team_id) and public.is_team_license_active(team_id));
+create policy "students_update" on public.students for update
+  using (public.is_team_member(team_id) and public.is_team_license_active(team_id));
 
-create policy "attendance_select" on public.attendance for select using (public.is_team_member(team_id));
-create policy "attendance_insert" on public.attendance for insert with check (public.is_team_member(team_id));
-create policy "attendance_update" on public.attendance for update using (public.is_team_member(team_id));
+create policy "attendance_select" on public.attendance for select
+  using (public.is_team_member(team_id) and public.is_team_license_active(team_id));
+create policy "attendance_insert" on public.attendance for insert
+  with check (public.is_team_member(team_id) and public.is_team_license_active(team_id));
+create policy "attendance_update" on public.attendance for update
+  using (public.is_team_member(team_id) and public.is_team_license_active(team_id));
 
-create policy "payments_select" on public.payments for select using (public.is_team_member(team_id));
-create policy "payments_insert" on public.payments for insert with check (public.is_team_member(team_id));
-create policy "payments_update" on public.payments for update using (public.is_team_member(team_id));
+create policy "payments_select" on public.payments for select
+  using (public.is_team_member(team_id) and public.is_team_license_active(team_id));
+create policy "payments_insert" on public.payments for insert
+  with check (public.is_team_member(team_id) and public.is_team_license_active(team_id));
+create policy "payments_update" on public.payments for update
+  using (public.is_team_member(team_id) and public.is_team_license_active(team_id));
 
 -- لا يوجد DELETE policy عمدًا على الأربعة جداول دي — الحذف بيتم عن
 -- طريق soft-delete (تحديث deleted_at) بس، والـ triggers تحت بتتأكد

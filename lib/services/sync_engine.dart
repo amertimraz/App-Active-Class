@@ -12,6 +12,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:active_class/config/constants.dart';
@@ -334,11 +335,41 @@ class SyncEngine {
     try {
       final localMap = await _toLocalMap(table, remote);
       if (localMap == null) return; // الأب لسه مش موجود محليًا — best effort
-      await db.insert(table, localMap);
+      await _insertWithCodeRetry(db, table, localMap);
     } catch (e) {
-      // مثلاً تعارض كود طالب فريد (UNIQUE) — نتجاهل الصف ده بدل ما نكسر
-      // حلقة المزامنة كلها.
+      // فشل نهائي حتى بعد محاولات تعديل الكود — نتجاهل الصف بدل ما
+      // نكسر حلقة المزامنة كلها.
       debugPrint('SyncEngine: تعذر إدراج صف مستلم من $table — $e');
+    }
+  }
+
+  /// كود الطالب بيتولّد محليًا على كل جهاز لوحده (بعدّ طلاب نفس
+  /// المجموعة عنده هو بس)، فلو المدرس والمساعد ضافوا طالب جديد في
+  /// نفس المجموعة قريب من بعض، الاتنين ممكن يولّدوا نفس الكود.
+  /// عمود code عنده UNIQUE محليًا، فالـ insert العادي كان بيفشل
+  /// ويتجاهل صف الطالب الجديد بصمت (يختفي عند الزميل). هنا بدل
+  /// التجاهل، لو الفشل بسبب تعارض الكود، نضيف لاحقة ونعيد المحاولة
+  /// كذا مرة — الطالب يفضل موجود بكود مختلف شوية بدل ما يضيع تمامًا.
+  Future<void> _insertWithCodeRetry(
+      DatabaseExecutor db, String table, Map<String, dynamic> localMap) async {
+    try {
+      await db.insert(table, localMap);
+      return;
+    } catch (e) {
+      if (table != TABLE_STUDENTS || localMap[COL_STUDENT_CODE] == null) rethrow;
+      final baseCode = localMap[COL_STUDENT_CODE] as String;
+      for (var suffix = 2; suffix <= 20; suffix++) {
+        final map = {...localMap, COL_STUDENT_CODE: '$baseCode-$suffix'};
+        try {
+          await db.insert(table, map);
+          debugPrint(
+              'SyncEngine: تعارض كود طالب ($baseCode) — اتسجّل بكود بديل ($baseCode-$suffix)');
+          return;
+        } catch (_) {
+          continue;
+        }
+      }
+      rethrow;
     }
   }
 
