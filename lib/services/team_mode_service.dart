@@ -287,11 +287,26 @@ class TeamModeService {
   /// جهاز المدرس. الحظر الفعلي بيحصل عن طريق RLS على السيرفر.
   void _watchOwnerLicense(SupabaseClient client, String tId) {
     _licenseWorker?.dispose();
-    _licenseWorker = ever(LicenseController.to.state, (_) {
-      _pushLicenseStatus(client, tId, LicenseController.to.isActive);
-    });
-    _pushLicenseStatus(client, tId, LicenseController.to.isActive);
+    // لازم نراقب state وplan مع بعض (مش state بس) — تنزيل الباقة من
+    // احترافي لأساسي مثلاً بيسيب state زي ما هو "active"، فمراقبة
+    // state لوحدها كانت مش هتلاحظ التغيير ده خالص ومكانتش هتبعت تحديث.
+    _licenseWorker = everAll(
+      [LicenseController.to.state, LicenseController.to.plan],
+      (_) => _pushLicenseStatus(client, tId, _hasRealPaidLicense),
+    );
+    _pushLicenseStatus(client, tId, _hasRealPaidLicense);
   }
+
+  /// عمدًا مش بنستخدم LicenseController.isActive (بتتحقق صح لـ trial
+  /// كمان) — وبنتأكد كمان من الباقة نفسها، لأن تفعيل وضع الفريق كمدرس
+  /// أصلاً شرطه باقة احترافية/مدى الحياة حقيقية، مش أي حالة "قابلة
+  /// للاستخدام". لو حصل احتمال نادر (الترخيص اتحذف والجهاز لسه مؤهل
+  /// لتجربة جديدة، أو الباقة اتنزّلت لأساسي من غير ما الحالة تتغيّر)،
+  /// الفريق المفروض يتقفل فورًا برضو.
+  bool get _hasRealPaidLicense =>
+      LicenseController.to.state.value == LicenseState.active &&
+      (LicenseController.to.plan.value == AppPlan.pro ||
+          LicenseController.to.plan.value == AppPlan.lifetime);
 
   Future<void> _pushLicenseStatus(
       SupabaseClient client, String tId, bool active) async {
