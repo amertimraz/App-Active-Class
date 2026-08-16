@@ -94,7 +94,8 @@ class BookingController extends GetxController {
         // بإعادة تثبيت غيّرت anonymous auth uid، هيك بنمنع رفض القراءة
         // الصامت من security rules (راجع BookingService.refreshOwnerUid).
         try {
-          await _service.refreshOwnerUid(slug.value);
+          final license = Get.find<LicenseController>();
+          await _service.refreshOwnerUid(slug.value, license.deviceId.value);
         } catch (_) {}
         _listen();
         await _loadRemoteExtras();

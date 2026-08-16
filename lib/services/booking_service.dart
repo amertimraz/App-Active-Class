@@ -67,14 +67,17 @@ class BookingService {
   /// لأن إعادة تثبيت التطبيق (مثلاً بعد تحديث بيمسح البيانات) بتولّد uid
   /// جديد، فلو الـ uid القديم فضل مخزّن في Firestore هتترفض كل قراءات
   /// طلبات الحجز بصمت بسبب security rules.
-  Future<void> refreshOwnerUid(String slug) async {
+  Future<void> refreshOwnerUid(String slug, String deviceId) async {
     await _ensureAuth();
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
-    await _db
-        .collection('teacher_profiles')
-        .doc(slug)
-        .set({'ownerUid': uid}, SetOptions(merge: true));
+    // لازم نبعت deviceId مع الطلب عشان security rules تتحقق منه — لو
+    // بعتنا ownerUid لوحده، الـ merge هيحافظ على deviceId المخزّن زي ما
+    // هو وقاعدة التحقق هتبقى بلا معنى (راجع firestore.rules).
+    await _db.collection('teacher_profiles').doc(slug).set(
+      {'ownerUid': uid, 'deviceId': deviceId},
+      SetOptions(merge: true),
+    );
   }
 
   Future<void> setActive(String slug, bool active) async {

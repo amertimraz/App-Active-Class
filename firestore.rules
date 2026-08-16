@@ -92,7 +92,17 @@ service cloud.firestore {
       allow create: if request.auth != null
                     && request.resource.data.ownerUid == request.auth.uid;
       allow update: if request.auth != null
-                    && resource.data.ownerUid == request.auth.uid;
+                    && (
+                      resource.data.ownerUid == request.auth.uid
+                      // إعادة ربط الملكية بعد إعادة تثبيت التطبيق: anonymous
+                      // auth uid بيتغيّر بعد كل تثبيت جديد، فلو فضلنا نطلب
+                      // تطابق ownerUid القديم مستحيل نصلّحه أبدًا (catch-22).
+                      // بنسمح بتحديث ownerUid لوحده لو الطلب مثبت معرفته
+                      // بـ deviceId المخزّن أصلاً في نفس الملف.
+                      || (request.resource.data.deviceId == resource.data.deviceId
+                          && request.resource.data.diff(resource.data).affectedKeys()
+                               .hasOnly(['ownerUid']))
+                    );
       allow delete: if false;
     }
 
