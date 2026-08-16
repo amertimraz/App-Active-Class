@@ -178,9 +178,12 @@ class LicenseStatusTile extends StatelessWidget {
         expText = ' — مدى الحياة ♾️';
       }
 
+      final code = lc.licenseCode.value;
+      final codeText = (code != null && code.isNotEmpty) ? ' — كود: $code' : '';
+
       final (icon, label, color) = switch (lc.state.value) {
         LicenseState.active       => (Icons.verified_rounded,
-            '${lc.plan.value.nameAr}$expText',
+            '${lc.plan.value.nameAr}$expText$codeText',
             const Color(0xFF10B981)),
         LicenseState.trial        => (Icons.hourglass_top_rounded,
             'تجريبي — باقي ${lc.trialDaysLeft.value} أيام',
