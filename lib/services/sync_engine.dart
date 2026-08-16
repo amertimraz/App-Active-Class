@@ -33,6 +33,12 @@ class SyncEngine {
   /// بتوقف الـ bypass المحلي (teamModeBypassLimits) على جهاز المساعد،
   /// فكان بيفضل يقدر يضيف بيانات محليًا من غير حدود وكأن حاجة ملحصلتش.
   final VoidCallback? onLicenseInactive;
+  /// بتتنادى مع كل catchUpPull (أول اتصال وكل إعادة اتصال) — team_members
+  /// (صلاحيات الأعضاء) مش من ضمن الجداول المتزامنة/الـ Realtime هنا،
+  /// فلو المدرس غيّر صلاحية لمساعد (زي منح/سحب حذف الطلاب) وجهاز
+  /// المساعد شغال بالفعل، مكانش هياخد التحديث ده إلا لو قفل التطبيق
+  /// وفتحه تاني (أول مرة بس بتتقرا الصلاحيات في _startEngine).
+  final VoidCallback? onReconnected;
 
   SyncEngine({
     required this.client,
@@ -40,6 +46,7 @@ class SyncEngine {
     required this.deviceId,
     this.onRemovedFromTeam,
     this.onLicenseInactive,
+    this.onReconnected,
   });
 
   static const _tables = [
@@ -291,6 +298,7 @@ class SyncEngine {
   Future<void> catchUpPull() async {
     if (await _wasRemovedFromTeam()) return;
     if (await _wasLicenseDeactivated()) return;
+    onReconnected?.call();
     await _fullPull(includeDeleted: true);
   }
 

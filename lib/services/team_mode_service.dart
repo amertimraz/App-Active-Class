@@ -209,6 +209,7 @@ class TeamModeService {
       // جديد بدل ما يستعيد القديم. المدرس أصلاً عنده متابعة مباشرة
       // ولحظية لحالة ترخيصه هو (LicenseController)، فمش محتاج الفحص ده.
       onLicenseInactive: isOwner.value ? null : _handleLicenseInactive,
+      onReconnected: () => _refreshMyPermissions(client, tId),
     );
     _engine!.start();
     if (isOwner.value) {
