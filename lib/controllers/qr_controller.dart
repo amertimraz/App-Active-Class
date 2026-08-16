@@ -63,6 +63,18 @@ class QRController extends GetxController {
 
   Future<void> _recordAttendance(Student student) async {
     final now = DateTime.now();
+
+    // تأكد إن مجموعة الطالب أصلاً ليها حصة النهاردة (حسب جدولها الأسبوعي)
+    // قبل ما نسجّل الحضور تلقائيًا بمجرد المسح. لو المجموعة ملهاش جدول
+    // مُدخَل، بنسمح عادي (الميزة اختيارية ومبنية على وجود جدول).
+    final group = await _dbService.getGroup(student.groupId);
+    if (group != null &&
+        Get.isRegistered<AttendanceController>() &&
+        !Get.find<AttendanceController>().groupHasSessionOnDay(group, now)) {
+      ToastHelper.error('مجموعة "${group.name}" ليس لها حصة اليوم');
+      return;
+    }
+
     final attendance = Attendance(
       studentId: student.id!,
       date: now,

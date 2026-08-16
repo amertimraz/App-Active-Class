@@ -461,6 +461,30 @@ class SyncEngine {
     try {
       final localMap = await _toLocalMap(table, remote);
       if (localMap == null) return; // الأب لسه مش موجود محليًا — best effort
+
+      // حضور: ممكن جهازين (المدرس + المساعد) يسجّلوا حضور نفس الطالب
+      // في نفس اليوم كل واحد من عنده قبل ما تتم المزامنة بينهم. الفهرس
+      // UNIQUE على مستوى اليوم بيمنع الإدراج المباشر، لكن لازم نتأكد
+      // هنا صراحة عشان نتجاهل الصف بهدوء بدل ما نعتمد على استثناء القاعدة.
+      if (table == TABLE_ATTENDANCE) {
+        final studentId = localMap[COL_ATTENDANCE_STUDENT_ID];
+        final date = localMap[COL_ATTENDANCE_DATE] as String?;
+        if (studentId != null && date != null && date.length >= 10) {
+          final dayPrefix = date.substring(0, 10);
+          final dup = await db.query(
+            table,
+            where: '$COL_ATTENDANCE_STUDENT_ID = ? AND substr($COL_ATTENDANCE_DATE, 1, 10) = ?',
+            whereArgs: [studentId, dayPrefix],
+            limit: 1,
+          );
+          if (dup.isNotEmpty) {
+            debugPrint(
+                'SyncEngine: تجاهل صف حضور مكرر (طالب $studentId، يوم $dayPrefix) وارد من جهاز تاني');
+            return;
+          }
+        }
+      }
+
       await _insertWithCodeRetry(db, table, localMap);
     } catch (e) {
       // فشل نهائي حتى بعد محاولات تعديل الكود — نتجاهل الصف بدل ما

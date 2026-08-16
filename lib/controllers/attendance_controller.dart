@@ -431,6 +431,18 @@ class AttendanceController extends GetxController {
         .toList();
   }
 
+  // هل عند المجموعة دي حصة في يوم معين حسب جدولها الأسبوعي؟
+  // لو المجموعة لسه محددتش جدول أصلاً، بنرجّع true (منسمحش نمنع تسجيل
+  // الحضور لمجموعات ملهاش جدول مُدخَل، عشان الميزة دي اختيارية).
+  bool groupHasSessionOnDay(Group group, DateTime day) {
+    if (group.schedule == null || group.schedule!.trim().isEmpty) return true;
+    final singleDay = DateTimeRange(
+      start: DateTime(day.year, day.month, day.day),
+      end: DateTime(day.year, day.month, day.day, 23, 59, 59),
+    );
+    return _countExpectedForGroup(group, singleDay) > 0;
+  }
+
   // وقت الحصة لمجموعة في يوم معين (للعرض في الواجهة)
   // يُرجع مثلاً "10:00 - 11:00"
   String? sessionTimeForGroupOnDay(Group group, DateTime day) {

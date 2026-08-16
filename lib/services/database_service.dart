@@ -28,6 +28,11 @@ class DataSummary {
   });
 }
 
+const String _attendanceDayUniqueIndexSql = '''
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_ATTENDANCE}_${COL_ATTENDANCE_STUDENT_ID}_day
+  ON $TABLE_ATTENDANCE($COL_ATTENDANCE_STUDENT_ID, substr($COL_ATTENDANCE_DATE, 1, 10))
+''';
+
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
   factory DatabaseService() => _instance;
@@ -111,6 +116,10 @@ class DatabaseService {
         FOREIGN KEY($COL_ATTENDANCE_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
       )
     ''');
+    // القيد UNIQUE فوق على $COL_ATTENDANCE_DATE بالطابع الزمني الكامل (بالثانية)
+    // ما بيمنعش فعليًا تكرار حضور نفس الطالب في نفس اليوم. الفهرس ده بياخد
+    // أول 10 حروف بس من التاريخ (yyyy-MM-dd) فيمنع التكرار على مستوى اليوم فعليًا.
+    await db.execute(_attendanceDayUniqueIndexSql);
 
     // Payments
     await db.execute('''
@@ -339,6 +348,19 @@ class DatabaseService {
         } catch (_) {}
       }
       await _createSyncOutboxTable(db);
+    }
+    if (oldVersion < 14) {
+      // نظف أي تكرار حضور موجود فعلاً (نفس الطالب/نفس اليوم) قبل إنشاء
+      // الفهرس UNIQUE الجديد — وإلا فشل إنشاء الفهرس لو فيه تكرار سابق.
+      // بيسيب أقدم سجل (أصغر id) ويحذف الباقي.
+      await db.execute('''
+        DELETE FROM $TABLE_ATTENDANCE
+        WHERE $COL_ATTENDANCE_ID NOT IN (
+          SELECT MIN($COL_ATTENDANCE_ID) FROM $TABLE_ATTENDANCE
+          GROUP BY $COL_ATTENDANCE_STUDENT_ID, substr($COL_ATTENDANCE_DATE, 1, 10)
+        )
+      ''');
+      await db.execute(_attendanceDayUniqueIndexSql);
     }
   }
 
