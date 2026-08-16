@@ -146,13 +146,16 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
         }
       }
 
+      final notesTrimmed = _notes[studentId]?.text.trim();
+      final notesValue = (notesTrimmed == null || notesTrimmed.isEmpty)
+          ? null
+          : notesTrimmed;
+
       await _ec.saveGrade(
         examId: widget.exam.id!,
         studentId: studentId,
         grade: isAbsent ? null : val,
-        notes: _notes[studentId]?.text.trim().isEmpty == true
-            ? null
-            : _notes[studentId]?.text.trim(),
+        notes: notesValue,
         isAbsent: isAbsent,
       );
 
@@ -161,8 +164,10 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
       final idx = _grades.indexWhere((g) => g.studentId == studentId);
       if (idx >= 0) {
         setState(() {
-          _grades[idx] = _grades[idx]
-              .copyWith(grade: isAbsent ? null : val, isAbsent: isAbsent);
+          _grades[idx] = _grades[idx].copyWith(
+              grade: isAbsent ? null : val,
+              notes: notesValue,
+              isAbsent: isAbsent);
         });
       }
 
@@ -456,16 +461,19 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
                           itemBuilder: (_, i) {
                             final g = _filteredGrades[i];
                             return _GradeRow(
+                              key: ValueKey(g.studentId),
                               grade: g,
                               ctrl: _ctrls[g.studentId]!,
                               notesCtrl: _notes[g.studentId]!,
                               maxGrade: widget.exam.maxGrade,
                               passingGrade: widget.exam.passingGrade,
-                              onSaved: (raw) => _saveGrade(g.studentId, raw),
+                              onSaved: (raw) => _saveGrade(g.studentId, raw,
+                                  absent: g.isAbsent),
                               onAbsent: (val) =>
                                   _saveGrade(g.studentId, '', absent: val),
                               onNotesSaved: () => _saveGrade(
-                                  g.studentId, _ctrls[g.studentId]?.text ?? ''),
+                                  g.studentId, _ctrls[g.studentId]?.text ?? '',
+                                  absent: g.isAbsent),
                             );
                           },
                         ),
@@ -649,6 +657,7 @@ class _GradeRow extends StatefulWidget {
   final Future<void> Function() onNotesSaved;
 
   const _GradeRow({
+    super.key,
     required this.grade,
     required this.ctrl,
     required this.notesCtrl,
@@ -667,12 +676,45 @@ class _GradeRowState extends State<_GradeRow> {
   bool _saving = false;
   bool _showNotes = false;
   String _lastSaved = ''; // آخر قيمة اتحفظت — منع double-fire
+  String _lastSavedNotes = '';
+  late final FocusNode _gradeFocusNode;
+  late final FocusNode _notesFocusNode;
 
   @override
   void initState() {
     super.initState();
     // تهيئة _lastSaved من القيمة الموجودة مسبقاً
     _lastSaved = widget.ctrl.text;
+    _lastSavedNotes = widget.notesCtrl.text;
+
+    // FocusNode listeners بدل الاعتماد على onTapOutside فقط —
+    // onTapOutside مبيتفعّلش لما المستخدم يرجع للصفحة اللي قبلها
+    // (زرار الرجوع)، فكانت الملاحظة بتتفقد من غير ما تتحفظ.
+    _gradeFocusNode = FocusNode()..addListener(_onGradeFocusChange);
+    _notesFocusNode = FocusNode()..addListener(_onNotesFocusChange);
+  }
+
+  void _onGradeFocusChange() {
+    if (_gradeFocusNode.hasFocus) return;
+    final current = widget.ctrl.text;
+    if (current == _lastSaved) return;
+    _lastSaved = current;
+    _runSave(() => widget.onSaved(current));
+  }
+
+  void _onNotesFocusChange() {
+    if (_notesFocusNode.hasFocus) return;
+    final current = widget.notesCtrl.text;
+    if (current == _lastSavedNotes) return;
+    _lastSavedNotes = current;
+    _runSave(() => widget.onNotesSaved());
+  }
+
+  @override
+  void dispose() {
+    _gradeFocusNode.dispose();
+    _notesFocusNode.dispose();
+    super.dispose();
   }
 
   /// ينفّذ عملية حفظ (درجة أو غياب) ويضمن إن الـ spinner يقفل دايماً،
@@ -712,7 +754,11 @@ class _GradeRowState extends State<_GradeRow> {
     if (widget.grade.isAbsent) return GradeCategory.absent;
     final val = double.tryParse(widget.ctrl.text.trim());
     if (val == null) return GradeCategory.fail;
-    return GradeCategoryExt.fromPercentage((val / widget.maxGrade) * 100);
+    final passingPct = widget.maxGrade > 0
+        ? (widget.passingGrade / widget.maxGrade) * 100
+        : 60.0;
+    return GradeCategoryExt.fromPercentage((val / widget.maxGrade) * 100,
+        passingPct: passingPct);
   }
 
   String get _initials {
@@ -811,7 +857,10 @@ class _GradeRowState extends State<_GradeRow> {
               GestureDetector(
                 onTap: () async {
                   final now = !widget.grade.isAbsent;
-                  if (now) widget.ctrl.clear();
+                  if (now) {
+                    widget.ctrl.clear();
+                    _lastSaved = '';
+                  }
                   await _runSave(() => widget.onAbsent(now));
                 },
                 child: AnimatedContainer(
@@ -852,6 +901,7 @@ class _GradeRowState extends State<_GradeRow> {
                     triggerMode: TooltipTriggerMode.longPress,
                     child: TextField(
                       controller: widget.ctrl,
+                      focusNode: _gradeFocusNode,
                       enabled: !widget.grade.isAbsent,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
@@ -877,19 +927,8 @@ class _GradeRowState extends State<_GradeRow> {
                             : Colors.white,
                       ),
                       onChanged: (_) => setState(() {}),
-                      onSubmitted: (v) async {
-                        // سجّل القيمة أولاً — يمنع onTapOutside من الحفظ مرة ثانية
-                        _lastSaved = v;
-                        await _runSave(() => widget.onSaved(v));
-                      },
-                      onTapOutside: (_) async {
-                        FocusScope.of(context).unfocus();
-                        final current = widget.ctrl.text;
-                        // احفظ فقط لو القيمة تغيّرت عن آخر مرة
-                        if (current == _lastSaved) return;
-                        _lastSaved = current;
-                        await _runSave(() => widget.onSaved(current));
-                      },
+                      onSubmitted: (_) => _gradeFocusNode.unfocus(),
+                      onTapOutside: (_) => _gradeFocusNode.unfocus(),
                     ),
                   ),
                 ),
@@ -934,6 +973,7 @@ class _GradeRowState extends State<_GradeRow> {
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
               child: TextField(
                 controller: widget.notesCtrl,
+                focusNode: _notesFocusNode,
                 style: TextStyle(
                     fontFamily: 'Cairo', fontSize: 12, color: cs.onSurface),
                 decoration: InputDecoration(
@@ -961,11 +1001,8 @@ class _GradeRowState extends State<_GradeRow> {
                       borderSide:
                           const BorderSide(color: AppTheme.primaryColor)),
                 ),
-                onSubmitted: (_) => widget.onNotesSaved(),
-                onTapOutside: (_) {
-                  FocusScope.of(context).unfocus();
-                  widget.onNotesSaved();
-                },
+                onSubmitted: (_) => _notesFocusNode.unfocus(),
+                onTapOutside: (_) => _notesFocusNode.unfocus(),
               ),
             ),
         ],

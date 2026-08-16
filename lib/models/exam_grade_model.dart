@@ -34,11 +34,12 @@ extension GradeCategoryExt on GradeCategory {
     }
   }
 
-  static GradeCategory fromPercentage(double pct) {
+  // passingPct: نسبة درجة النجاح المحددة للامتحان (افتراضي 60% لو مفيش امتحان محدد)
+  static GradeCategory fromPercentage(double pct, {double passingPct = 60}) {
     if (pct >= 90) return GradeCategory.excellent;
     if (pct >= 80) return GradeCategory.veryGood;
     if (pct >= 70) return GradeCategory.good;
-    if (pct >= 60) return GradeCategory.pass;
+    if (pct >= passingPct) return GradeCategory.pass;
     return GradeCategory.fail;
   }
 }
@@ -77,7 +78,10 @@ class ExamGrade {
     if (isAbsent) return GradeCategory.absent;
     if (grade == null || maxGrade == null || maxGrade! <= 0) return GradeCategory.fail;
     final pct = (grade! / maxGrade!) * 100;
-    return GradeCategoryExt.fromPercentage(pct);
+    final passingPct = (passingGrade != null && maxGrade! > 0)
+        ? (passingGrade! / maxGrade!) * 100
+        : 60.0;
+    return GradeCategoryExt.fromPercentage(pct, passingPct: passingPct);
   }
 
   double get percentage =>
@@ -109,16 +113,19 @@ class ExamGrade {
     passingGrade: m['passing_grade'] != null ? (m['passing_grade'] as num).toDouble() : null,
   );
 
+  // sentinel: يفرّق بين "الباراميتر ماتبعتش" و"اتبعت null قصداً" (لمسح الملاحظة)
+  static const _unsetNotes = Object();
+
   ExamGrade copyWith({
     double? grade,
-    String? notes,
+    Object? notes = _unsetNotes,
     bool?   isAbsent,
   }) => ExamGrade(
     id:           id,
     examId:       examId,
     studentId:    studentId,
     grade:        isAbsent == true ? null : (grade ?? this.grade),
-    notes:        notes        ?? this.notes,
+    notes:        identical(notes, _unsetNotes) ? this.notes : notes as String?,
     isAbsent:     isAbsent     ?? this.isAbsent,
     createdAt:    createdAt,
     studentName:  studentName,
@@ -229,7 +236,8 @@ class StudentExamRecord {
   GradeCategory get category {
     if (isAbsent) return GradeCategory.absent;
     if (grade == null) return GradeCategory.fail;
-    return GradeCategoryExt.fromPercentage(percentage);
+    final passingPct = maxGrade > 0 ? (passingGrade / maxGrade) * 100 : 60.0;
+    return GradeCategoryExt.fromPercentage(percentage, passingPct: passingPct);
   }
 }
 

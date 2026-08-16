@@ -1227,7 +1227,8 @@ class DatabaseService {
     final passed = entered.where((g) => g.grade! >= passingGrade).length;
     final values = entered.map((g) => g.grade!).toList();
 
-    // توزيع الدرجات
+    // توزيع الدرجات — استخدام درجة النجاح الفعلية للامتحان بدل نسبة ثابتة 60%
+    final passingPct = maxGrade > 0 ? (passingGrade / maxGrade) * 100 : 60;
     int excellent = 0, veryGood = 0, good = 0, pass = 0, fail = 0;
     for (final g in entered) {
       final pct = maxGrade > 0 ? (g.grade! / maxGrade) * 100 : 0;
@@ -1237,7 +1238,7 @@ class DatabaseService {
         veryGood++;
       else if (pct >= 70)
         good++;
-      else if (pct >= 60)
+      else if (pct >= passingPct)
         pass++;
       else
         fail++;
