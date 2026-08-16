@@ -36,6 +36,7 @@ class SyncEngine {
   Timer? _pushTimer;
   RealtimeChannel? _channel;
   bool _draining = false;
+  bool _pulling = false;
 
   String _pkCol(String table) => switch (table) {
         TABLE_GROUPS => COL_GROUP_ID,
@@ -244,16 +245,39 @@ class SyncEngine {
   }
 
   // ── Pull: أول تحميل كامل (وقت ما مساعد ينضم لفريق) ────────────────
-  Future<void> initialFullPull() async {
-    for (final table in _tables) {
-      final rows = await client
-          .from(table)
-          .select()
-          .eq('team_id', teamId)
-          .isFilter('deleted_at', null);
-      for (final r in (rows as List)) {
-        await _applyRemoteRow(table, r as Map<String, dynamic>);
+  Future<void> initialFullPull() => _fullPull(includeDeleted: false);
+
+  /// Realtime بس بتبعت الأحداث اللي بتحصل وهي متصلة — أي تغيير حصل
+  /// من زميل وأنا offline (التطبيق مقفول/في الخلفية/النت مقطوع، وده
+  /// عادي جدًا على الموبايل) هيضيع للأبد لو معتمدين على Realtime بس،
+  /// لأنها مش بتعيد بث اللي فات وقت إعادة الاتصال. عشان كده بنعمل
+  /// "تحميل لحاق" كامل (يشمل الصفوف المحذوفة كمان، عكس initialFullPull،
+  /// عشان نعرف بحذف حصل وإحنا offline) كل ما القناة تتصل/تعيد الاتصال.
+  Future<void> catchUpPull() => _fullPull(includeDeleted: true);
+
+  /// _pulling بتمنع initialFullPull وcatchUpPull يشتغلوا في نفس
+  /// اللحظة (بيحصل غالبًا لحظة أول انضمام — الاتنين بيتنادوا قريب من
+  /// بعض) — لو اشتغلوا مع بعض ممكن الاتنين يحاولوا يدرجوا نفس الصف
+  /// الجديد محليًا في نفس الوقت قبل ما أي حد يسجّل remote_id، فيتكرر
+  /// الصف بدل ما يتوحّد.
+  Future<void> _fullPull({required bool includeDeleted}) async {
+    if (_pulling) return;
+    _pulling = true;
+    try {
+      for (final table in _tables) {
+        final rows = includeDeleted
+            ? await client.from(table).select().eq('team_id', teamId)
+            : await client
+                .from(table)
+                .select()
+                .eq('team_id', teamId)
+                .isFilter('deleted_at', null);
+        for (final r in (rows as List)) {
+          await _applyRemoteRow(table, r as Map<String, dynamic>);
+        }
       }
+    } finally {
+      _pulling = false;
     }
   }
 
@@ -277,7 +301,14 @@ class SyncEngine {
         },
       );
     }
-    channel.subscribe();
+    // بتتنادى وقت أول اشتراك ناجح، وكمان أوتوماتيك كل ما الـ socket
+    // يعيد الاتصال بعد انقطاع (الحزمة بتعمل reconnect+rejoin لوحدها) —
+    // فبتغطي بالظبط اللحظة اللي كنا محتاجين فيها تحميل لحاق.
+    channel.subscribe((status, error) {
+      if (status == RealtimeSubscribeStatus.subscribed) {
+        unawaited(catchUpPull());
+      }
+    });
     _channel = channel;
   }
 
