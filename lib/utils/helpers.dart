@@ -6,6 +6,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/services/team_mode_service.dart';
+import 'package:active_class/widgets/app_toast.dart';
 
 /// يتحقق من صلاحية الوصول لميزة محدودة بالباقة (نسخ احتياطي/واتساب
 /// جماعي/تصدير). لو ممنوعة، بيعرض SnackBar فيه زر "ترقية" ويرجّع false.
@@ -314,49 +315,48 @@ class StorageHelper {
 }
 
 class ToastHelper {
-  // بنستخدم ScaffoldMessenger الأصلي بدل Get.snackbar عمداً: لو أي toast
-  // فشل (مثلاً الـ Overlay مش جاهز أثناء انتقال بين الشاشات)، GetX بيسيب
-  // الـ SnackbarController في حالة تلف لبقية الجلسة، وأي Get.back() بعد
-  // كده في أي حوار بالتطبيق بيعمل crash صامت (تجربة فعلية أثبتت المشكلة
-  // دي). ScaffoldMessenger مالوش نفس المشكلة — كل فشل معزول عن التاني.
-  static void _show(String title, String message, {Color bg = Colors.green}) {
+  // بنستخدم نفس الـ AppToast اللي بيستخدمه باقي التطبيق (Overlay على
+  // مستوى الـ root) بدل Get.snackbar أو ScaffoldMessenger عمداً:
+  // - Get.snackbar: لو فشل (مثلاً الـ Overlay مش جاهز أثناء انتقال بين
+  //   الشاشات)، GetX بيسيب الـ SnackbarController في حالة تلف لبقية
+  //   الجلسة، وأي Get.back() بعد كده في أي حوار بالتطبيق بيعمل crash
+  //   صامت (تجربة فعلية أثبتت المشكلة دي).
+  // - ScaffoldMessenger.of(Get.context): بيدوّر على أقرب Scaffold من
+  //   الجذر، فلو الرسالة طلعت من فوق Bottom Sheet/Dialog (زي فحص كود
+  //   الطالب المكرر عند الحفظ)، السناك بار بيظهر ورا الموديل بدل ما
+  //   يظهر فوقه. الـ Overlay الجذري بتاع AppToast بيتحط فوق كل حاجة
+  //   دايماً، فمفيش المشكلة دي.
+  static void _show(String title, String message, {ToastType type = ToastType.success}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final context = Get.context;
       if (context == null) return;
       try {
-        final messenger = ScaffoldMessenger.of(context);
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(SnackBar(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title,
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
-              Text(message, style: const TextStyle(color: Colors.white)),
-            ],
-          ),
-          backgroundColor: bg,
-          duration: const Duration(milliseconds: 1200),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ));
+        switch (type) {
+          case ToastType.success:
+            AppToast.success(context, message);
+            break;
+          case ToastType.error:
+            AppToast.error(context, message);
+            break;
+          case ToastType.info:
+          case ToastType.warning:
+            AppToast.info(context, message);
+            break;
+        }
       } catch (_) {}
     });
   }
 
   static void success(String message, {String title = 'تم'}) {
-    _show(title, message, bg: Colors.green);
+    _show(title, message, type: ToastType.success);
   }
 
   static void error(String message, {String title = 'خطأ'}) {
-    _show(title, message, bg: Colors.red);
+    _show(title, message, type: ToastType.error);
   }
 
   static void info(String message, {String title = 'تنبيه'}) {
-    _show(title, message, bg: Colors.teal);
+    _show(title, message, type: ToastType.info);
   }
 }
 
