@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/services/team_mode_service.dart';
 
 /// يتحقق من صلاحية الوصول لميزة محدودة بالباقة (نسخ احتياطي/واتساب
 /// جماعي/تصدير). لو ممنوعة، بيعرض SnackBar فيه زر "ترقية" ويرجّع false.
@@ -21,6 +22,27 @@ bool requireLicenseFeature(BuildContext context, bool allowed, String deniedMess
       textColor: Colors.white,
       onPressed: () => Get.toNamed(ROUTE_PLANS),
     ),
+  ));
+  return false;
+}
+
+/// يتحقق إن أفعال النظام الخطيرة (حذف كامل البيانات / استعادة نسخة
+/// احتياطية بتستبدل كل حاجة) متاحة بس للمدرس (صاحب الفريق) لو وضع
+/// الفريق مفعّل — أي مساعد، مهما كانت صلاحياته التانية، ميقدرش
+/// يوصلها. لو وضع الفريق مش مفعّل أصلاً، الفعل متاح عادي زي ما كان
+/// دايمًا (مفيش تأثير على مستخدم لوحده).
+bool requireTeamOwnerIfTeamMode(BuildContext context) {
+  final team = TeamModeService();
+  if (!team.isEnabled.value || team.isOwner.value) return true;
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.clearSnackBars();
+  messenger.showSnackBar(const SnackBar(
+    content: Text(
+      'الإجراء ده متاح للمدرس (صاحب الفريق) بس',
+      style: TextStyle(fontFamily: 'Cairo'),
+    ),
+    backgroundColor: Colors.red,
+    duration: Duration(seconds: 3),
   ));
   return false;
 }

@@ -11,7 +11,14 @@ create table if not exists public.teams (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
   name text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- أقصى عدد مساعدين (غير المالك) مسموح لهم ينضموا — افتراضي 1،
+  -- قابل للتعديل يدويًا من لوحة الإدارة لأي مدرس معيّن (upsell).
+  max_assistants integer not null default 1,
+  -- كود ترخيص المدرس (Firebase) وقت إنشاء الفريق — بيتقرا من أجهزة
+  -- المساعدين عند الانضمام عشان تتسجّل أجهزتهم في Firestore مربوطة
+  -- بنفس الترخيص، فيظهروا في تفاصيله بلوحة الأدمن.
+  license_code text
 );
 
 -- عضوية الفريق + صلاحيات دقيقة قابلة للتخصيص لكل مساعد (بدل دورين
@@ -64,12 +71,12 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 
 -- ── إنشاء فريق (المدرس = owner بكل الصلاحيات) ──────────────────────
-create or replace function public.create_team()
+create or replace function public.create_team(_license_code text default null)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
   new_team_id uuid;
 begin
-  insert into public.teams (owner_id) values (auth.uid()) returning id into new_team_id;
+  insert into public.teams (owner_id, license_code) values (auth.uid(), _license_code) returning id into new_team_id;
   insert into public.team_members
     (team_id, user_id, is_owner, can_delete_attendance, can_delete_payments,
      can_delete_students, can_manage_members)
@@ -98,11 +105,21 @@ create or replace function public.redeem_invite(_code text)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
   inv record;
+  team_row record;
+  current_assistants integer;
 begin
   select * into inv from public.team_invites where code = upper(_code) for update;
   if inv is null then raise exception 'invalid invite code'; end if;
   if inv.expires_at < now() then raise exception 'invite expired'; end if;
   if inv.used_count >= inv.max_uses then raise exception 'invite already used'; end if;
+
+  select * into team_row from public.teams where id = inv.team_id;
+  select count(*) into current_assistants
+    from public.team_members
+    where team_id = inv.team_id and is_owner = false;
+  if current_assistants >= team_row.max_assistants then
+    raise exception 'team member limit reached';
+  end if;
 
   insert into public.team_members
     (team_id, user_id, is_owner, can_delete_attendance, can_delete_payments,
@@ -135,13 +152,19 @@ create policy "teams_select_member" on public.teams for select using (public.is_
 
 create policy "team_members_select" on public.team_members for select
   using (public.is_team_member(team_id));
+-- محدش (حتى عضو عنده can_manage_members) يقدر يعدّل أو يحذف صف
+-- المدرس (owner) نفسه — using بيمنع استهداف صف الـ owner، وwith check
+-- بيمنع كمان أي حد يترقّي لـ owner عن طريق تحديث.
 create policy "team_members_update" on public.team_members for update
-  using (public.team_permission(team_id, 'manage_members'));
+  using (public.team_permission(team_id, 'manage_members') and not is_owner)
+  with check (not is_owner);
 create policy "team_members_delete" on public.team_members for delete
   using (public.team_permission(team_id, 'manage_members') and not is_owner);
 
 create policy "team_invites_select" on public.team_invites for select
   using (public.is_team_member(team_id));
+create policy "team_invites_delete" on public.team_invites for delete
+  using (public.team_permission(team_id, 'manage_members'));
 
 -- ── الجداول المشتركة (نسخة مرآة من الجداول المحلية، بس اللي فعلاً
 -- محتاجة تتشارك — الامتحانات والتقارير والإعدادات تفضل محلية بس) ───

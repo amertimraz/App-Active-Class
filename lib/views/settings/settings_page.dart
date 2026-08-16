@@ -429,6 +429,7 @@ class SettingsPage extends StatelessWidget {
                                   'استعادة النسخ الاحتياطية غير متاحة في الفترة التجريبية — قم بالترقية')) {
                                 return;
                               }
+                              if (!requireTeamOwnerIfTeamMode(context)) return;
                               _handleRestoreBackup(context);
                             },
                           ),
@@ -451,7 +452,10 @@ class SettingsPage extends StatelessWidget {
                             title: 'حذف جميع البيانات',
                             subtitle: 'حذف نهائي — لا يمكن التراجع',
                             titleColor: const Color(0xFFEF4444),
-                            onTap: () => _handleDeleteAll(context, settings),
+                            onTap: () {
+                              if (!requireTeamOwnerIfTeamMode(context)) return;
+                              _handleDeleteAll(context, settings);
+                            },
                           ),
                         ],
                       ),

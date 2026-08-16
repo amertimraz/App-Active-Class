@@ -3,6 +3,7 @@
 // "وضع الفريق" — يبني فوق نظام تسجيل الدخول المستقل (Supabase)
 // وSyncEngine. المدرس (owner) بيفعّله وبيبعت كود دعوة، والمساعد
 // بيسجّل حسابه الخاص (نفس شاشات الدخول الموجودة) وينضم بالكود.
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -21,6 +22,7 @@ class TeamModeService {
   final AuthService _auth = AuthService();
   final DatabaseService _db = DatabaseService();
   SyncEngine? _engine;
+  Worker? _licenseWorker;
 
   final isEnabled = false.obs;
   final teamId = RxnString();
@@ -56,7 +58,9 @@ class TeamModeService {
     }
     loading.value = true;
     try {
-      final newTeamId = await client.rpc('create_team') as String;
+      final newTeamId = await client.rpc('create_team', params: {
+        '_license_code': LicenseController.to.licenseCode.value,
+      }) as String;
       teamId.value = newTeamId;
       isOwner.value = true;
       canDeleteAttendance.value = true;
@@ -106,6 +110,9 @@ class TeamModeService {
       if (msg.contains('invalid invite')) return 'كود الدعوة غير صحيح';
       if (msg.contains('expired')) return 'كود الدعوة منتهي الصلاحية';
       if (msg.contains('already used')) return 'كود الدعوة اتستخدم قبل كده';
+      if (msg.contains('member limit')) {
+        return 'الفريق وصل للحد الأقصى من المساعدين — تواصل مع الدعم لزيادة العدد';
+      }
       debugPrint('TeamModeService: فشل الانضمام — $e');
       return 'تعذر الانضمام — تأكد من الإنترنت وحاول تاني';
     } finally {
@@ -118,6 +125,8 @@ class TeamModeService {
   Future<void> disable() async {
     await _engine?.stop();
     _engine = null;
+    _licenseWorker?.dispose();
+    _licenseWorker = null;
     await _db.setSetting(SETTING_TEAM_MODE_ENABLED, 'false');
     LicenseController.to.teamModeBypassLimits = false;
     isEnabled.value = false;
@@ -125,10 +134,109 @@ class TeamModeService {
     isOwner.value = false;
   }
 
+  /// بتتنادى من AuthController عند تبديل الحساب (خروج/دخول) — الإعدادات
+  /// المحلية (SETTING_TEAM_MODE_ENABLED/SETTING_TEAM_ID) مخزّنة على
+  /// مستوى الجهاز مش الحساب، فلازم نصفّرها ونعيد التحقق من السيرفر
+  /// لصاحب الحساب الجديد تحديدًا (مش نثق في القيمة المحفوظة اللي
+  /// ممكن تكون خاصة بحساب سابق كان مسجّل دخول على نفس الجهاز).
+  Future<void> resetForAccountSwitch() => disable();
+
+  Future<void> restoreForCurrentUser() async {
+    final client = await _auth.ensureClient();
+    final uid = client?.auth.currentUser?.id;
+    if (client == null || uid == null) return;
+    try {
+      final rows = await client
+          .from('team_members')
+          .select('team_id')
+          .eq('user_id', uid)
+          .limit(1);
+      if (rows.isEmpty) return; // الحساب ده مش عضو في أي فريق
+      final foundTeamId = rows.first['team_id'] as String;
+      teamId.value = foundTeamId;
+      await _db.setSetting(SETTING_TEAM_MODE_ENABLED, 'true');
+      await _db.setSetting(SETTING_TEAM_ID, foundTeamId);
+      await _refreshMyPermissions(client, foundTeamId);
+      _startEngine(client, foundTeamId);
+      LicenseController.to.teamModeBypassLimits = true;
+      isEnabled.value = true;
+    } catch (e) {
+      debugPrint('TeamModeService: فشل استعادة الفريق للحساب الحالي — $e');
+    }
+  }
+
   void _startEngine(SupabaseClient client, String tId) {
     final deviceId = LicenseController.to.deviceId.value;
     _engine = SyncEngine(client: client, teamId: tId, deviceId: deviceId);
     _engine!.start();
+    if (isOwner.value) {
+      _watchOwnerLicense(client, tId);
+      _tagDeviceAsTeamRole('owner', LicenseController.to.licenseCode.value);
+    } else {
+      _tagAssistantDevice(client, tId);
+    }
+  }
+
+  /// بس على جهاز المساعد: بنجيب كود ترخيص المدرس (المخزّن على الفريق
+  /// وقت إنشائه) عشان نربط جهاز المساعد بيه في Firestore — يظهر في
+  /// لوحة الأدمن تحت تفاصيل نفس الترخيص.
+  Future<void> _tagAssistantDevice(SupabaseClient client, String tId) async {
+    try {
+      final row = await client
+          .from('teams')
+          .select('license_code')
+          .eq('id', tId)
+          .single();
+      final code = row['license_code'] as String?;
+      await _tagDeviceAsTeamRole('assistant', code);
+    } catch (e) {
+      debugPrint('TeamModeService: فشل جلب كود ترخيص الفريق — $e');
+    }
+  }
+
+  /// بيسجّل دور الجهاز (مدرس/مساعد) وكود الترخيص المرتبط بيه في مستند
+  /// devices/{deviceId} الموجود أصلاً (LicenseController._registerDevice) —
+  /// عشان لوحة الأدمن تقدر تعرض أجهزة المساعدين تحت نفس الترخيص.
+  Future<void> _tagDeviceAsTeamRole(String role, String? licenseCode) async {
+    try {
+      final deviceId = LicenseController.to.deviceId.value;
+      if (deviceId.isEmpty) return;
+      final payload = <String, dynamic>{
+        'teamRole': role,
+        'lastSeenAt': FieldValue.serverTimestamp(),
+      };
+      if (licenseCode != null && licenseCode.isNotEmpty) {
+        payload['licenseCode'] = licenseCode;
+      }
+      await FirebaseFirestore.instance
+          .collection('devices')
+          .doc(deviceId)
+          .set(payload, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('TeamModeService: فشل ربط الجهاز بالترخيص — $e');
+    }
+  }
+
+  /// بس على جهاز المدرس: كل ما حالة الترخيص الحقيقية (Firebase) تتغيّر
+  /// محليًا، بنبعتها لسيرفر الفريق — عشان لو الترخيص خلص/اتوقف، كل
+  /// أعضاء الفريق (المدرس والمساعدين) يتقفلوا مع بعض فورًا، مش بس
+  /// جهاز المدرس. الحظر الفعلي بيحصل عن طريق RLS على السيرفر.
+  void _watchOwnerLicense(SupabaseClient client, String tId) {
+    _licenseWorker?.dispose();
+    _licenseWorker = ever(LicenseController.to.state, (_) {
+      _pushLicenseStatus(client, tId, LicenseController.to.isActive);
+    });
+    _pushLicenseStatus(client, tId, LicenseController.to.isActive);
+  }
+
+  Future<void> _pushLicenseStatus(
+      SupabaseClient client, String tId, bool active) async {
+    try {
+      await client.rpc('set_team_license_active',
+          params: {'_team_id': tId, '_active': active});
+    } catch (e) {
+      debugPrint('TeamModeService: فشل تحديث حالة الترخيص للفريق — $e');
+    }
   }
 
   Future<void> _refreshMyPermissions(SupabaseClient client, String tId) async {
@@ -153,15 +261,51 @@ class TeamModeService {
   }
 
   // ── إدارة الأعضاء (owner أو أي حد عنده can_manage_members) ────────
-  Future<String?> createInvite() async {
+  /// بترجع (عدد المساعدين الحاليين, الحد الأقصى المسموح) — بتُستخدم
+  /// عشان نمنع توليد كود دعوة جديد من الأساس لو الفريق وصل للحد،
+  /// بدل ما نسيب المدرس يبعت كود للمساعد وبعدين يترفض وقت الانضمام.
+  Future<(int, int)> getAssistantCapacity() async {
     final client = await _auth.ensureClient();
-    if (client == null || teamId.value == null) return null;
+    if (client == null || teamId.value == null) return (0, 1);
     try {
-      return await client
+      final members = await client
+          .from('team_members')
+          .select('is_owner')
+          .eq('team_id', teamId.value as Object) as List;
+      final current = members.where((m) => m['is_owner'] != true).length;
+      final teamRow = await client
+          .from('teams')
+          .select('max_assistants')
+          .eq('id', teamId.value as Object)
+          .single();
+      final max = (teamRow['max_assistants'] as num?)?.toInt() ?? 1;
+      return (current, max);
+    } catch (e) {
+      debugPrint('TeamModeService: فشل تحميل سعة الفريق — $e');
+      return (0, 1);
+    }
+  }
+
+  /// بترجع (كود الدعوة, null) لو نجحت، أو (null, رسالة الخطأ) لو فشلت.
+  Future<(String?, String?)> createInvite() async {
+    final client = await _auth.ensureClient();
+    if (client == null || teamId.value == null) {
+      return (null, 'مفيش فريق مفعّل على الجهاز ده');
+    }
+    try {
+      final code = await client
           .rpc('create_invite', params: {'_team_id': teamId.value}) as String;
+      return (code, null);
     } catch (e) {
       debugPrint('TeamModeService: فشل توليد كود الدعوة — $e');
-      return null;
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('not authorized')) {
+        return (
+          null,
+          'الفريق المحفوظ على جهازك مش موجود على السيرفر — عطّل وضع الفريق وفعّله تاني'
+        );
+      }
+      return (null, 'تعذر توليد كود الدعوة — تأكد من الإنترنت وحاول تاني');
     }
   }
 
@@ -195,24 +339,50 @@ class TeamModeService {
     }
   }
 
-  Future<void> updateMemberPermission(
+  /// بترجع رسالة خطأ بالعربي، أو null لو نجح التحديث.
+  Future<String?> updateMemberPermission(
       String userId, String field, bool value) async {
     final client = await _auth.ensureClient();
-    if (client == null || teamId.value == null) return;
-    await client
-        .from('team_members')
-        .update({field: value})
-        .eq('team_id', teamId.value as Object)
-        .eq('user_id', userId);
+    if (client == null || teamId.value == null) {
+      return 'مفيش فريق مفعّل على الجهاز ده';
+    }
+    try {
+      final res = await client
+          .from('team_members')
+          .update({field: value})
+          .eq('team_id', teamId.value as Object)
+          .eq('user_id', userId)
+          .select();
+      if ((res).isEmpty) {
+        return 'تعذر التحديث — تأكد إن عندك صلاحية إدارة الأعضاء';
+      }
+      return null;
+    } catch (e) {
+      debugPrint('TeamModeService: فشل تحديث الصلاحية — $e');
+      return 'تعذر التحديث — تأكد من الإنترنت وحاول تاني';
+    }
   }
 
-  Future<void> removeMember(String userId) async {
+  /// بترجع رسالة خطأ بالعربي، أو null لو نجحت الإزالة.
+  Future<String?> removeMember(String userId) async {
     final client = await _auth.ensureClient();
-    if (client == null || teamId.value == null) return;
-    await client
-        .from('team_members')
-        .delete()
-        .eq('team_id', teamId.value as Object)
-        .eq('user_id', userId);
+    if (client == null || teamId.value == null) {
+      return 'مفيش فريق مفعّل على الجهاز ده';
+    }
+    try {
+      final res = await client
+          .from('team_members')
+          .delete()
+          .eq('team_id', teamId.value as Object)
+          .eq('user_id', userId)
+          .select();
+      if ((res).isEmpty) {
+        return 'تعذر إزالة العضو — تأكد إن عندك صلاحية إدارة الأعضاء';
+      }
+      return null;
+    } catch (e) {
+      debugPrint('TeamModeService: فشل إزالة العضو — $e');
+      return 'تعذر إزالة العضو — تأكد من الإنترنت وحاول تاني';
+    }
   }
 }

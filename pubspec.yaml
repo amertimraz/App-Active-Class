@@ -87,6 +87,7 @@ dependencies:
   # Standalone login system (self-hosted Supabase on VPS) — foundation
   # for future account-based features, separate from license activation.
   supabase_flutter: ^2.8.0
+  firebase_app_check: ^0.3.2+10
 
 dev_dependencies:
   flutter_test:

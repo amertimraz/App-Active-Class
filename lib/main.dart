@@ -42,10 +42,11 @@ import 'package:active_class/views/team/manage_members_screen.dart';
 import 'package:intl/intl.dart';
 import 'dart:ui' as ui;
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:active_class/firebase_options.dart';
 import 'package:active_class/controllers/license_controller.dart';
 
@@ -126,6 +127,21 @@ void main() async {
   try {
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
+
+    // App Check: يثبت إن الطلبات لـ Firestore/Storage جاية فعلاً من نسخة
+    // موقّعة من التطبيق (مش من سكريبت/متصفح بيتصل مباشرة بـ Firebase
+    // بنفس الـ apiKey العام). في وضع debug بنستخدم debug provider
+    // (بيطبع token في اللوج تسجّله يدوي في Console وقت التطوير على
+    // إيموليتور/جهاز مش من Play Store)، وفي الإصدار الفعلي بنستخدم
+    // Play Integrity الحقيقي.
+    if (!kIsWeb) {
+      try {
+        await FirebaseAppCheck.instance.activate(
+          androidProvider:
+              kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+        );
+      } catch (_) {}
+    }
   } catch (_) {}
 
   // تسجيل المتحكمات

@@ -1,6 +1,7 @@
 // lib/views/team/manage_members_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/services/team_mode_service.dart';
@@ -30,12 +31,22 @@ class _ManageMembersScreenState extends State<ManageMembersScreen> {
   }
 
   Future<void> _generateInvite() async {
+    LoadingDialog.show(context, message: 'جاري التحقق...');
+    final (current, max) = await _team.getAssistantCapacity();
+    if (!mounted) return;
+    LoadingDialog.hide();
+    if (current >= max) {
+      await _showLimitReachedDialog(max);
+      return;
+    }
+    if (!mounted) return;
+
     LoadingDialog.show(context, message: 'جاري توليد الكود...');
-    final code = await _team.createInvite();
+    final (code, error) = await _team.createInvite();
     if (!mounted) return;
     LoadingDialog.hide();
     if (code == null) {
-      ToastHelper.error('تعذر توليد كود الدعوة');
+      ToastHelper.error(error ?? 'تعذر توليد كود الدعوة');
       return;
     }
     if (!mounted) return;
@@ -102,6 +113,63 @@ class _ManageMembersScreenState extends State<ManageMembersScreen> {
     );
   }
 
+  Future<void> _showLimitReachedDialog(int max) async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('وصلت للحد الأقصى',
+              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+          content: Text(
+            'باقتك الحالية بتسمح بـ $max ${max == 1 ? 'مساعد' : 'مساعدين'} بس. '
+            'لو عايز تضيف مساعدين أكتر، تواصل مع الدعم.',
+            style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 13,
+                color: isDark ? Colors.white70 : Colors.black87),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('إغلاق', style: TextStyle(fontFamily: 'Cairo')),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _openSupportWhatsApp(max);
+              },
+              icon: const Icon(Icons.chat_rounded, size: 16),
+              label: const Text('تواصل عبر واتساب',
+                  style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF25D366),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openSupportWhatsApp(int max) async {
+    const supportPhone = '201096066818';
+    final message = 'مرحبًا، أنا مدرس بستخدم تطبيق Active Class وعايز أزوّد '
+        'عدد المساعدين المسموح لي (وصلت للحد الأقصى الحالي: $max).';
+    final uri = Uri.parse(
+        'https://wa.me/$supportPhone?text=${Uri.encodeComponent(message)}');
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) ToastHelper.error('تعذر فتح واتساب');
+    }
+  }
+
   Future<void> _removeMember(Map<String, dynamic> m) async {
     final name = (m['display_name'] as String?)?.isNotEmpty == true
         ? m['display_name'] as String
@@ -132,7 +200,13 @@ class _ManageMembersScreenState extends State<ManageMembersScreen> {
       ),
     );
     if (confirmed != true) return;
-    await _team.removeMember(m['user_id'] as String);
+    final error = await _team.removeMember(m['user_id'] as String);
+    if (!mounted) return;
+    if (error != null) {
+      ToastHelper.error(error);
+      return;
+    }
+    ToastHelper.success('تم إزالة العضو');
     _load();
   }
 
@@ -179,8 +253,13 @@ class _ManageMembersScreenState extends State<ManageMembersScreen> {
               member: members[i],
               isDark: isDark,
               onChangedPermission: (field, value) async {
-                await _team.updateMemberPermission(
+                final error = await _team.updateMemberPermission(
                     members[i]['user_id'] as String, field, value);
+                if (!mounted) return;
+                if (error != null) {
+                  ToastHelper.error(error);
+                  return;
+                }
                 _load();
               },
               onRemove: () => _removeMember(members[i]),
