@@ -118,12 +118,21 @@ class StudentController extends GetxController {
   // ── تعديل طالب ──────────────────────────────────────────────────
   Future<void> updateStudent(Student student) async {
     try {
+      // لازم نعرف الكود/التليفون القديمين قبل التحديث — لو أي منهم
+      // تغيّر، مستند ملخص المتابعة القديم (مبني على القيم القديمة)
+      // يفضل معلّق على Firestore للأبد من غير ده.
+      final old = students.firstWhereOrNull((s) => s.id == student.id);
       await _dbService.updateStudent(student);
       final index = students.indexWhere((s) => s.id == student.id);
       if (index != -1) students[index] = student;
       filterStudents();
       if (student.id != null) {
         unawaited(ParentPortalService().pushStudentSummary(student.id!));
+        if (old != null &&
+            (old.code.toUpperCase() != student.code.toUpperCase() ||
+                old.guardianPhone != student.guardianPhone)) {
+          unawaited(ParentPortalService().removeStudentSummary(old));
+        }
       }
       ToastHelper.success('تم تحديث الطالب بنجاح');
     } catch (e) {
@@ -154,9 +163,13 @@ class StudentController extends GetxController {
   /// بيرجّع true لو نجح وبيحدّث قائمة الطلاب محلياً على طول.
   Future<bool> deleteStudent(int id) async {
     try {
+      final student = students.firstWhereOrNull((s) => s.id == id);
       await _dbService.deleteStudent(id);
       students.removeWhere((s) => s.id == id);
       filterStudents();
+      if (student != null) {
+        unawaited(ParentPortalService().removeStudentSummary(student));
+      }
       return true;
     } catch (e) {
       ToastHelper.error('حدث خطأ في حذف الطالب');

@@ -19,6 +19,7 @@ import 'package:get/get.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
 
 class ParentPortalService {
@@ -67,6 +68,18 @@ class ParentPortalService {
     return digits.substring(digits.length - 4);
   }
 
+  /// بتُنشر لوحدها (مش مربوطة بنجاح نشر طالب) — لو مفيش أي طالب عنده
+  /// رقم تليفون صحيح لسه، كان المستند ده مبيتعملش خالص، فصفحة المتابعة
+  /// تفضل من غير اسم المدرس وكأنها رابط عام مش رابط المدرس ده تحديدًا.
+  Future<void> publishProfile() async {
+    if (!LicenseController.to.parentPortalEnabled.value) return;
+    try {
+      await _ensureAuth();
+      final slug = await ensureSlug();
+      await _publishProfile(slug);
+    } catch (_) {}
+  }
+
   Future<void> _publishProfile(String slug) async {
     final settings =
         Get.isRegistered<SettingsController>() ? Get.find<SettingsController>() : null;
@@ -89,7 +102,10 @@ class ParentPortalService {
       if (student == null) return;
       final last4 = _last4(student.guardianPhone);
       if (last4 == null) return;
-      final code = student.code;
+      // صفحة المتابعة العامة بتحوّل الكود اللي ولي الأمر بيكتبه لحروف
+      // كبيرة قبل البحث — لازم نطابقها هنا، وإلا كود بحروف صغيرة (لو
+      // كود المجموعة نفسه متكتب بحروف صغيرة) مستحيل يتطابق مع أي بحث.
+      final code = student.code.toUpperCase();
       if (code.isEmpty) return;
 
       final attendanceRecords = await _dbService.getAttendanceByStudent(studentId);
@@ -128,10 +144,33 @@ class ParentPortalService {
     }
   }
 
+  /// لازم تُستدعى **قبل** حذف الطالب فعليًا (محتاجين الكود ورقم
+  /// التليفون بتاعه للوصول لمستند الملخص) — وإلا بيانات الطالب المحذوف
+  /// (اسمه، حضوره، مدفوعاته) تفضل معروضة للأبد لمين يعرف الكود والرقم،
+  /// حتى بعد ما يتمسح من التطبيق تمامًا.
+  Future<void> removeStudentSummary(Student student) async {
+    if (!LicenseController.to.parentPortalEnabled.value) return;
+    try {
+      final last4 = _last4(student.guardianPhone);
+      if (last4 == null) return;
+      final code = student.code.toUpperCase();
+      if (code.isEmpty) return;
+      final slug = await getSlugIfExists();
+      if (slug == null) return;
+      await _db
+          .collection('parent_portal')
+          .doc(slug)
+          .collection('students')
+          .doc('${code}_$last4')
+          .delete();
+    } catch (_) {}
+  }
+
   /// نشر شامل لكل الطلاب — بيتنادى أول مرة الميزة تتفعّل، أو يدويًا من
   /// الإعدادات لو المدرس عايز "يحدّث كل حاجة دلوقتي".
   Future<int> publishAllStudents() async {
     if (!LicenseController.to.parentPortalEnabled.value) return 0;
+    await publishProfile();
     final students = await _dbService.getAllStudents();
     var count = 0;
     for (final s in students) {
