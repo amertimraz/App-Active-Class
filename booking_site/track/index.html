@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title id="pageTitle">متابعة الطالب</title>
+<link id="favicon" rel="icon" href="data:," />
+<meta name="robots" content="noindex" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#10B981;
+    --primary-dark:#059669;
+    --bg:#F7F8FF;
+    --card-bg:#FFFFFF;
+    --text:#111827;
+    --text-muted:#6B7280;
+    --border:#E5E7EB;
+    --danger:#EF4444;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;overflow-x:hidden;max-width:100%;}
+  body{
+    font-family:'Cairo', sans-serif;
+    background:var(--bg);
+    min-height:100vh;
+    width:100%;
+    color:var(--text);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:40px 14px 60px;
+  }
+  .wrap{width:100%;max-width:440px;}
+
+  .hero{
+    text-align:center;
+    margin-bottom:22px;
+  }
+  .hero-icon{
+    width:64px;height:64px;border-radius:50%;
+    background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+    display:flex;align-items:center;justify-content:center;
+    margin:0 auto 12px;
+    font-size:28px;
+    box-shadow:0 8px 20px rgba(16,185,129,.28);
+  }
+  .hero-title{font-size:18px;font-weight:800;margin:0 0 4px;}
+  .hero-sub{font-size:13px;color:var(--text-muted);margin:0;}
+
+  .card{
+    background:var(--card-bg);
+    border-radius:var(--radius);
+    box-shadow:0 10px 30px rgba(17,24,39,.06);
+    border:1px solid var(--border);
+    padding:22px;
+  }
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px;}
+  .field input{
+    width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid var(--border);
+    font-family:'Cairo';font-size:15px;background:#F9FAFB;
+    text-align:center;letter-spacing:1px;
+  }
+  .field input:focus{outline:none;border-color:var(--primary);background:#fff;}
+  .btn{
+    width:100%;padding:13px;border-radius:12px;border:none;
+    background:var(--primary);color:#fff;font-family:'Cairo';font-weight:800;font-size:15px;
+    cursor:pointer;transition:opacity .15s;
+  }
+  .btn:disabled{opacity:.6;cursor:default;}
+  .btn:not(:disabled):active{opacity:.85;}
+  .err{
+    background:#FEF2F2;border:1px solid #FECACA;color:var(--danger);
+    padding:10px 12px;border-radius:10px;font-size:12px;margin-bottom:14px;text-align:center;
+  }
+
+  /* ── نتيجة الطالب ──────────────── */
+  .result-name{font-size:19px;font-weight:800;margin:0 0 2px;}
+  .result-group{font-size:12px;color:var(--text-muted);margin:0 0 18px;}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+  .stat{
+    background:#F9FAFB;border-radius:12px;padding:14px 10px;text-align:center;
+    border:1px solid var(--border);
+  }
+  .stat .n{font-size:22px;font-weight:900;}
+  .stat .l{font-size:11px;color:var(--text-muted);margin-top:2px;}
+  .stat.present .n{color:var(--primary);}
+  .stat.absent .n{color:var(--danger);}
+  .money-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:12px 14px;background:#F9FAFB;border-radius:12px;margin-bottom:8px;
+    font-size:13px;border:1px solid var(--border);
+  }
+  .money-row b{font-size:15px;}
+  .exempt-badge{
+    display:inline-block;background:#ECFDF5;color:var(--primary-dark);
+    font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;margin-top:6px;
+  }
+  .back-btn{
+    display:block;text-align:center;margin-top:16px;font-size:12px;color:var(--text-muted);
+    text-decoration:none;cursor:pointer;
+  }
+  .spinner{
+    width:24px;height:24px;border:3px solid #E5E7EB;border-top-color:var(--primary);
+    border-radius:50%;animation:spin .7s linear infinite;margin:20px auto;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="hero-icon">🎓</div>
+    <p class="hero-title" id="teacherTitle">متابعة الطالب</p>
+    <p class="hero-sub" id="teacherSub">أدخل بيانات الطالب لعرض الحضور والمدفوعات</p>
+  </div>
+  <div class="card" id="card"></div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAqFLZ4kHEgPLVgLgDGbbIjxnZheBqMjMc",
+    authDomain: "active-class-72e0f.firebaseapp.com",
+    projectId: "active-class-72e0f",
+    storageBucket: "active-class-72e0f.firebasestorage.app",
+    messagingSenderId: "822461821604",
+    appId: "1:822461821604:web:3bd266a9833ce045916c31",
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  const card = document.getElementById('card');
+  const teacherTitle = document.getElementById('teacherTitle');
+  const teacherSub = document.getElementById('teacherSub');
+
+  function getSlug() {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const idx = parts.indexOf('track');
+    if (idx !== -1 && parts[idx + 1]) return parts[idx + 1];
+    return parts[parts.length - 1] || '';
+  }
+
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.innerText = str ?? '';
+    return d.innerHTML;
+  }
+
+  function fmtMoney(n){
+    return (n ?? 0).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
+  }
+
+  const slug = getSlug();
+
+  function renderForm(errorMsg){
+    card.innerHTML = `
+      ${errorMsg ? `<div class="err">${escapeHtml(errorMsg)}</div>` : ''}
+      <div class="field">
+        <label>كود الطالب</label>
+        <input id="codeInput" type="text" placeholder="مثلاً A05" autocapitalize="characters">
+      </div>
+      <div class="field">
+        <label>آخر 4 أرقام من رقم تليفون ولي الأمر</label>
+        <input id="phoneInput" type="tel" placeholder="1234" maxlength="4" inputmode="numeric">
+      </div>
+      <button class="btn" id="submitBtn">عرض البيانات</button>
+    `;
+    document.getElementById('submitBtn').onclick = handleSubmit;
+    document.getElementById('phoneInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleSubmit();
+    });
+  }
+
+  function renderNotFound(){
+    card.innerHTML = `
+      <div style="text-align:center;padding:10px;">
+        <div style="font-size:32px;margin-bottom:8px;">🔗</div>
+        <p style="font-weight:800;margin:0 0 4px;">الرابط غير متاح</p>
+        <p style="font-size:12px;color:var(--text-muted);">تأكد إنك فتحت الرابط الصحيح من المعلم.</p>
+      </div>`;
+  }
+
+  async function handleSubmit(){
+    const code = document.getElementById('codeInput').value.trim().toUpperCase();
+    const phone = document.getElementById('phoneInput').value.trim();
+    if (!code) { renderForm('أدخل كود الطالب'); return; }
+    if (!/^\d{4}$/.test(phone)) { renderForm('أدخل آخر 4 أرقام صحيحة من رقم التليفون'); return; }
+
+    card.innerHTML = '<div class="spinner"></div>';
+    try {
+      const docId = `${code}_${phone}`;
+      const snap = await getDoc(doc(db, 'parent_portal', slug, 'students', docId));
+      if (!snap.exists()) {
+        renderForm('البيانات غير صحيحة — تأكد من الكود ورقم التليفون');
+        return;
+      }
+      renderStudent(snap.data());
+    } catch (e) {
+      renderForm('حصل خطأ — حاول تاني');
+    }
+  }
+
+  function renderStudent(d){
+    const price = Number(d.price) || 0;
+    const exemptPercent = Number(d.exemptPercent) || 0;
+    const effectivePrice = price * (1 - exemptPercent / 100);
+    const totalPaid = Number(d.totalPaid) || 0;
+    const remaining = Math.max(0, effectivePrice - totalPaid);
+
+    card.innerHTML = `
+      <p class="result-name">${escapeHtml(d.name)}</p>
+      <p class="result-group">${escapeHtml(d.groupName || '')}</p>
+      <div class="stat-grid">
+        <div class="stat present"><div class="n">${d.present ?? 0}</div><div class="l">حاضر</div></div>
+        <div class="stat absent"><div class="n">${d.absent ?? 0}</div><div class="l">غائب</div></div>
+      </div>
+      <div class="money-row"><span>إجمالي المدفوع</span><b>${fmtMoney(totalPaid)} جنيه</b></div>
+      ${effectivePrice > 0 ? `<div class="money-row"><span>المتبقي</span><b style="color:${remaining > 0 ? 'var(--danger)' : 'var(--primary-dark)'}">${fmtMoney(remaining)} جنيه</b></div>` : ''}
+      ${exemptPercent > 0 ? `<div style="text-align:center;"><span class="exempt-badge">إعفاء ${exemptPercent}%</span></div>` : ''}
+      <a class="back-btn" id="backBtn">🔍 البحث عن طالب تاني</a>
+    `;
+    document.getElementById('backBtn').onclick = () => renderForm();
+  }
+
+  async function init(){
+    if (!slug) { renderNotFound(); return; }
+    try {
+      const profileSnap = await getDoc(doc(db, 'parent_portal', slug));
+      if (profileSnap.exists()) {
+        const p = profileSnap.data();
+        const title = p.teacherGender === 'female' ? 'مس' : 'مستر';
+        const name = p.teacherName ? `${title} ${p.teacherName}` : '';
+        if (name) {
+          teacherTitle.textContent = name;
+          teacherSub.textContent = 'أدخل بيانات ابنك لعرض الحضور والمدفوعات';
+          document.getElementById('pageTitle').textContent = `متابعة الطلاب — ${name}`;
+        }
+      }
+    } catch (e) {}
+    renderForm();
+  }
+
+  init();
+</script>
+</body>
+</html>

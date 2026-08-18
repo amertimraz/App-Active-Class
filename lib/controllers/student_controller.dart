@@ -1,11 +1,14 @@
 // lib/controllers/student_controller.dart
 
+import 'dart:async';
+
 import 'package:get/get.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/helpers.dart';
 
 class StudentController extends GetxController {
@@ -79,6 +82,7 @@ class StudentController extends GetxController {
       final newStudent = student.copyWith(id: id);
       students.add(newStudent);
       filterStudents(); // أعِد تطبيق الفلتر بدل الإضافة المباشرة
+      unawaited(ParentPortalService().pushStudentSummary(id));
       return newStudent;
     } catch (e) {
       ToastHelper.error(_studentErrorMessage(e, 'إضافة'));
@@ -118,6 +122,9 @@ class StudentController extends GetxController {
       final index = students.indexWhere((s) => s.id == student.id);
       if (index != -1) students[index] = student;
       filterStudents();
+      if (student.id != null) {
+        unawaited(ParentPortalService().pushStudentSummary(student.id!));
+      }
       ToastHelper.success('تم تحديث الطالب بنجاح');
     } catch (e) {
       ToastHelper.error(_studentErrorMessage(e, 'تحديث'));

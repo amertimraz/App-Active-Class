@@ -1,5 +1,6 @@
 ﻿// lib/controllers/attendance_controller.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -64,6 +66,7 @@ class AttendanceController extends GetxController {
 
       await _dbService.insertAttendance(att);
       await loadAttendance();
+      unawaited(ParentPortalService().pushStudentSummary(att.studentId));
       ToastHelper.success('تم تسجيل الحضور بنجاح');
     } catch (e) {
       // في حال خالف UNIQUE في القاعدة بسبب فرق الثواني
@@ -79,8 +82,12 @@ class AttendanceController extends GetxController {
   // حذف سجل
   Future<void> deleteAttendance(int id) async {
     try {
+      final studentId = attendance.firstWhereOrNull((a) => a.id == id)?.studentId;
       await _dbService.deleteAttendance(id);
       await loadAttendance();
+      if (studentId != null) {
+        unawaited(ParentPortalService().pushStudentSummary(studentId));
+      }
       ToastHelper.success('تم حذف السجل بنجاح');
     } catch (e) {
       ToastHelper.error('حدث خطأ في حذف السجل');
@@ -111,6 +118,7 @@ class AttendanceController extends GetxController {
         await _dbService.deleteAttendance(existing.id!);
       }
       await loadAttendance();
+      unawaited(ParentPortalService().pushStudentSummary(studentId));
     } catch (e) {
       ToastHelper.error('حدث خطأ');
     }
@@ -140,6 +148,7 @@ class AttendanceController extends GetxController {
       await _dbService.updateAttendance(existing.copyWith(status: status));
     }
     await loadAttendance();
+    unawaited(ParentPortalService().pushStudentSummary(studentId));
   }
 
   // تحضير جميع طلاب المجموعة الغير مسجلين في يوم معين — بيتابع كل
@@ -177,6 +186,9 @@ class AttendanceController extends GetxController {
         }
       }
       await loadAttendance();
+      for (final id in studentIds) {
+        unawaited(ParentPortalService().pushStudentSummary(id));
+      }
       if (failed == 0) {
         ToastHelper.success('تم إلغاء تحضير جميع الطلاب');
       } else if (succeeded == 0) {
@@ -204,6 +216,9 @@ class AttendanceController extends GetxController {
       }
     }
     await loadAttendance();
+    for (final id in studentIds) {
+      unawaited(ParentPortalService().pushStudentSummary(id));
+    }
     if (failed == 0) {
       ToastHelper.success('تم تحضير جميع الطلاب');
     } else if (succeeded == 0) {

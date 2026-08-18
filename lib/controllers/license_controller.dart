@@ -115,6 +115,9 @@ class LicenseController extends GetxController {
   final trialDaysLeft = 7.obs;
   final deviceId = ''.obs;
   final deviceName = ''.obs;
+  /// إضافة مدفوعة منفصلة عن الباقة — بوابة متابعة أولياء الأمور.
+  /// تتحدّث من نفس مستند الترخيص، الأدمن بيفعّلها/يلغيها لوحدها.
+  final parentPortalEnabled = false.obs;
   final licenseCode = RxnString();
   final hasRequest = false.obs; // هل عنده طلب ترقية pending
   final expiresAt = Rxn<DateTime>(); // تاريخ انتهاء الترخيص
@@ -357,6 +360,7 @@ class LicenseController extends GetxController {
       final durationDays = (data['durationDays'] as num?)?.toInt();
       DateTime? effectiveExpiresAt = (data['expiresAt'] as Timestamp?)?.toDate();
       final boundDev = data['deviceId'] as String?;
+      parentPortalEnabled.value = data['parentPortalEnabled'] as bool? ?? false;
 
       // الجهاز مربوط بجهاز آخر
       if (boundDev != null && boundDev != deviceId.value) {
@@ -457,6 +461,7 @@ class LicenseController extends GetxController {
         await prefs.remove(_kPlan);
         licenseCode.value = null;
         expiresAt.value = null;
+        parentPortalEnabled.value = false;
         await _checkTrial(prefs);
         return;
       }
@@ -468,6 +473,7 @@ class LicenseController extends GetxController {
       final status = data['status'] as String? ?? 'active';
       final planStr = data['plan'] as String? ?? 'basic';
       final exp = (data['expiresAt'] as Timestamp?)?.toDate();
+      parentPortalEnabled.value = data['parentPortalEnabled'] as bool? ?? false;
 
       if (status == 'suspended') {
         state.value = LicenseState.suspended;
