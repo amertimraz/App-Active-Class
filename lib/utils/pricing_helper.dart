@@ -9,6 +9,20 @@ import 'package:active_class/models/student_model.dart';
 /// - بالحصة: سعر الحصة الواحدة × عدد الحصص اللي حضرها الطالب فعليًا
 ///   في الشهر المطلوب (من سجل الحضور)، ثم تُطبَّق نسبة الإعفاء لو موجودة.
 class PricingHelper {
+  static int sessionsAttended({
+    required Student student,
+    required DateTime month,
+    required List<Attendance> allAttendance,
+  }) {
+    return allAttendance
+        .where((a) =>
+            a.studentId == student.id &&
+            a.status == ATTENDANCE_PRESENT &&
+            a.date.year == month.year &&
+            a.date.month == month.month)
+        .length;
+  }
+
   static double monthlyDue({
     required Student student,
     required Group? group,
@@ -19,14 +33,9 @@ class PricingHelper {
 
     final double base;
     if (group != null && group.isPerSession) {
-      final sessionsAttended = allAttendance
-          .where((a) =>
-              a.studentId == student.id &&
-              a.status == ATTENDANCE_PRESENT &&
-              a.date.year == month.year &&
-              a.date.month == month.month)
-          .length;
-      base = student.price * sessionsAttended;
+      final attended = sessionsAttended(
+          student: student, month: month, allAttendance: allAttendance);
+      base = student.price * attended;
     } else {
       base = student.price;
     }

@@ -50,10 +50,10 @@ Future<Student?> showEditStudentSheet(
 }
 
 class EditStudentSheet extends StatefulWidget {
-  final Student            student;
-  final Color              accentColor;
+  final Student student;
+  final Color accentColor;
   final StudentController? controller;
-  final List<Group>?       groups;
+  final List<Group>? groups;
 
   const EditStudentSheet({
     super.key,
@@ -76,17 +76,17 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
 
   DateTime? _attendanceStart;
   DateTime? _birthDate;
-  bool      _saving = false;
+  bool _saving = false;
   late String _code;
   late final TextEditingController _codeCtrl;
   bool _codeIsManual = false;
 
-  Group?   _selectedGroup;
+  Group? _selectedGroup;
   Student? _sibling;
 
   // الإعفاء
-  bool    _isExempt;
-  double  _exemptPercent;
+  bool _isExempt;
+  double _exemptPercent;
   String? _exemptPreset;
 
   _EditStudentSheetState()
@@ -99,26 +99,33 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   void initState() {
     super.initState();
     final s = widget.student;
-    _nameCtrl  = TextEditingController(text: s.name);
+    _nameCtrl = TextEditingController(text: s.name);
     _priceCtrl = TextEditingController(text: s.price.toStringAsFixed(0));
     _phoneCtrl = TextEditingController(text: s.guardianPhone ?? '');
-    _sibTotalCtrl = TextEditingController(text: s.siblingsTotal?.toString() ?? '');
+    _sibTotalCtrl =
+        TextEditingController(text: s.siblingsTotal?.toString() ?? '');
     _attendanceStart = s.attendanceStart ?? DateTime.now();
     _birthDate = s.birthDate;
     _code = s.code;
     _codeCtrl = TextEditingController(text: _code);
 
     if (widget.groups != null) {
-      _selectedGroup = widget.groups!.where((g) => g.id == s.groupId).firstOrNull;
+      _selectedGroup =
+          widget.groups!.where((g) => g.id == s.groupId).firstOrNull;
     }
 
     // الإعفاء
-    _isExempt      = s.isExempt;
+    _isExempt = s.isExempt;
     _exemptPercent = s.exemptPercent > 0 ? s.exemptPercent : 100;
     _exemptCustomCtrl = TextEditingController();
     // لو السبب من القائمة الجاهزة اختاره، غير كده اعتبره "أخرى"
     const presets = [
-      'يتيم', 'مكفول', 'إعفاء مؤسسي', 'ظروف اجتماعية', 'أخ / أخت لطالب', 'أخرى',
+      'يتيم',
+      'مكفول',
+      'إعفاء مؤسسي',
+      'ظروف اجتماعية',
+      'أخ / أخت لطالب',
+      'أخرى',
     ];
     if (s.exemptReason != null && s.exemptReason!.isNotEmpty) {
       if (presets.contains(s.exemptReason)) {
@@ -229,8 +236,8 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
 
   // ── مسح QR من كرت مطبوع مسبقاً واستبدال كود الطالب بيه ───────────
   Future<void> _scanPrintedCode() async {
-    final scanned = await Navigator.of(context)
-        .push<String>(MaterialPageRoute(builder: (_) => const CodeScannerPage()));
+    final scanned = await Navigator.of(context).push<String>(
+        MaterialPageRoute(builder: (_) => const CodeScannerPage()));
     if (scanned == null || !mounted) return;
     final trimmed = scanned.trim();
     if (trimmed.isEmpty) {
@@ -244,7 +251,8 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     if (!mounted) return;
     if (existing != null && existing.id != widget.student.id) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('هذا الكود مستخدم بالفعل للطالب: ${existing.name}')),
+        SnackBar(
+            content: Text('هذا الكود مستخدم بالفعل للطالب: ${existing.name}')),
       );
       return;
     }
@@ -276,14 +284,20 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     }
     if (_sibling != null) {
       final total = double.tryParse(_sibTotalCtrl.text.trim());
-      if (total == null) {
+      if (total == null || total < 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('يرجى إدخال إجمالي الأخوين')),
         );
         return;
       }
     }
-    final price = double.tryParse(_priceCtrl.text.trim()) ?? widget.student.price;
+    final price = double.tryParse(_priceCtrl.text.trim());
+    if (price == null || price < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أدخل رسوم صحيحة')),
+      );
+      return;
+    }
 
     String? finalReason;
     if (_isExempt) {
@@ -299,24 +313,22 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     setState(() => _saving = true);
     try {
       final prevSiblingId = widget.student.siblingId;
-      final newTotal = _sibling != null
-          ? double.tryParse(_sibTotalCtrl.text.trim())
-          : null;
+      final newTotal =
+          _sibling != null ? double.tryParse(_sibTotalCtrl.text.trim()) : null;
 
       final updated = widget.student.copyWith(
-        name:            name,
-        code:            _code,
-        price:           price,
-        groupId:         _selectedGroup?.id ?? widget.student.groupId,
-        siblingId:       _sibling?.id,
-        siblingsTotal:   _sibling != null ? newTotal : null,
+        name: name,
+        code: _code,
+        price: price,
+        groupId: _selectedGroup?.id ?? widget.student.groupId,
+        siblingId: _sibling?.id,
+        siblingsTotal: _sibling != null ? newTotal : null,
         attendanceStart: _attendanceStart,
-        guardianPhone:   _phoneCtrl.text.trim().isEmpty
-            ? null
-            : _phoneCtrl.text.trim(),
-        birthDate:       _birthDate,
-        exemptPercent:   _isExempt ? _exemptPercent : 0,
-        exemptReason:    finalReason,
+        guardianPhone:
+            _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+        birthDate: _birthDate,
+        exemptPercent: _isExempt ? _exemptPercent : 0,
+        exemptReason: finalReason,
         clearExemptReason: !_isExempt,
       );
 
@@ -363,7 +375,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark  = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = widget.accentColor;
 
     return Container(
@@ -381,7 +393,8 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
             // Header
             Row(children: [
               Container(
-                width: 44, height: 44,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
@@ -410,7 +423,8 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
               final boxColor = changed ? Colors.purple : primary;
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
                   color: boxColor.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
@@ -441,7 +455,9 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                             onChanged: (v) => setState(() => _code = v.trim()),
                           )
                         : Text(
-                            changed ? 'كود من كرت مطبوع: $_code' : 'الكود: $_code',
+                            changed
+                                ? 'كود من كرت مطبوع: $_code'
+                                : 'الكود: $_code',
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 13,
@@ -452,7 +468,8 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                   if (changed)
                     IconButton(
                       tooltip: 'رجوع للكود الأصلي',
-                      icon: const Icon(Icons.refresh_rounded, size: 20, color: Colors.purple),
+                      icon: const Icon(Icons.refresh_rounded,
+                          size: 20, color: Colors.purple),
                       onPressed: _resetCode,
                     ),
                   Switch.adaptive(
@@ -462,7 +479,8 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                   ),
                   IconButton(
                     tooltip: 'مسح QR من كرت مطبوع مسبقاً',
-                    icon: Icon(Icons.qr_code_scanner_rounded, size: 20, color: boxColor),
+                    icon: Icon(Icons.qr_code_scanner_rounded,
+                        size: 20, color: boxColor),
                     onPressed: _scanPrintedCode,
                   ),
                 ]),
@@ -493,7 +511,8 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                   tooltip: 'اختيار من جهات الاتصال',
                   icon: Icon(Icons.contacts_rounded, color: widget.accentColor),
                   onPressed: () async {
-                    final phone = await ContactPickerService.pickPhoneNumber(context);
+                    final phone =
+                        await ContactPickerService.pickPhoneNumber(context);
                     if (phone != null) {
                       setState(() => _phoneCtrl.text = phone);
                     }
@@ -511,8 +530,8 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                 decoration: InputDecoration(
                   labelText: 'المجموعة',
                   isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
@@ -523,7 +542,25 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                               maxLines: 1, overflow: TextOverflow.ellipsis),
                         ))
                     .toList(),
-                onChanged: (g) => setState(() => _selectedGroup = g),
+                onChanged: (g) {
+                  setState(() => _selectedGroup = g);
+                  // بنفصل بس (مش بنغيّر الرسوم تلقائي) عشان معندناش أي
+                  // فكرة هل الرسوم الحالية مخصصة عمدًا أو كانت افتراضية
+                  // من المجموعة القديمة — لو غيّرناها من غير تنبيه ممكن
+                  // نمسح سعر مخصص المدرّس حطه بنفسه.
+                  final newPrice = g?.price;
+                  final currentPrice = double.tryParse(_priceCtrl.text.trim());
+                  if (g != null &&
+                      newPrice != null &&
+                      currentPrice != null &&
+                      newPrice != currentPrice) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(
+                          'سعر مجموعة "${g.name}" مختلف — راجع خانة الرسوم قبل الحفظ'),
+                      duration: const Duration(seconds: 3),
+                    ));
+                  }
+                },
               ),
               const SizedBox(height: 12),
             ],
@@ -654,7 +691,8 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
               ),
               icon: _saving
                   ? const SizedBox(
-                      width: 18, height: 18,
+                      width: 18,
+                      height: 18,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.save_rounded),
@@ -671,9 +709,9 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
 // زر اختيار التاريخ
 class _DateBtn extends StatelessWidget {
   final IconData icon;
-  final String   label;
-  final bool     hasValue;
-  final Color    color;
+  final String label;
+  final bool hasValue;
+  final Color color;
   final VoidCallback onTap;
   const _DateBtn({
     required this.icon,
@@ -695,9 +733,8 @@ class _DateBtn extends StatelessWidget {
               : Colors.grey.withValues(alpha: 0.07),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: hasValue
-                ? color.withValues(alpha: 0.3)
-                : Colors.grey.shade300,
+            color:
+                hasValue ? color.withValues(alpha: 0.3) : Colors.grey.shade300,
           ),
         ),
         child: Row(children: [
@@ -710,7 +747,8 @@ class _DateBtn extends StatelessWidget {
                   color: hasValue ? color : Colors.grey.shade500,
                   fontWeight: hasValue ? FontWeight.w600 : FontWeight.normal,
                 ),
-                maxLines: 1, overflow: TextOverflow.ellipsis),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
           ),
         ]),
       ),

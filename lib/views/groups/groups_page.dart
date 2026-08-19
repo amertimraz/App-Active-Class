@@ -13,6 +13,7 @@ import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/services/notification_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:intl/intl.dart';
 
 /// يتحقق من وجود مواعيد متداخلة في نفس اليوم داخل نص الجدول
@@ -240,6 +241,10 @@ class _GroupsPageState extends State<GroupsPage> {
                                   students: _groupStudents(items[i].id),
                                   onEdit: () => _showGroupFormDialog(context, group: items[i]),
                                   onDelete: () {
+                                    if (!requireDeletePermission(context,
+                                        TeamModeService().canDeleteStudentsNow)) {
+                                      return;
+                                    }
                                     if (items[i].id != null) controller.deleteGroup(items[i].id!);
                                   },
                                   displaySchedule: (raw) =>

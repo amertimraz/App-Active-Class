@@ -12,9 +12,6 @@ class AccountScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
-    final card = isDark ? const Color(0xFF1E293B) : Colors.white;
-    final border = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
-    final auth = AuthController.to;
 
     return Scaffold(
       backgroundColor: bg,
@@ -29,7 +26,27 @@ class AccountScreen extends StatelessWidget {
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 460),
-            child: Obx(() {
+            child: const AccountSection(),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// محتوى شاشة الحساب (صورة، اسم، تليفون، تسجيل خروج) — بدون Scaffold/AppBar
+/// عشان نقدر نضمّه جوه شاشة تانية (زي شاشة "المساعدين والحسابات" الموحدة).
+class AccountSection extends StatelessWidget {
+  const AccountSection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final card = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final border = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final auth = AuthController.to;
+
+    return Obx(() {
               final name = auth.currentDisplayName.value;
               final phone = auth.currentPhone.value ?? '';
               final initial = (name != null && name.trim().isNotEmpty)
@@ -87,10 +104,6 @@ class AccountScreen extends StatelessWidget {
                   ),
                 ],
               );
-            }),
-          ),
-        ),
-      ),
-    );
+    });
   }
 }

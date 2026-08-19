@@ -11,8 +11,37 @@ class CurrencyText extends StatelessWidget {
   final double? amount;
   final TextStyle? style;
   final TextAlign? textAlign;
+  // لو true، بيفصل الرقم عن رمز العملة على سطرين منفصلين بدل ما يتزنقوا
+  // في سطر واحد — مفيد في الكروت الضيقة زي إحصائيات المجموعات بالتقارير.
+  final bool stacked;
 
-  const CurrencyText(this.amount, {super.key, this.style, this.textAlign});
+  const CurrencyText(this.amount,
+      {super.key, this.style, this.textAlign, this.stacked = false});
+
+  Widget _buildText(String formatted) {
+    if (!stacked) {
+      return Text(formatted, style: style, textAlign: textAlign);
+    }
+    final parts = formatted.trim().split(RegExp(r'\s+'));
+    final currencyPart = parts.length > 1 ? parts.removeLast() : '';
+    final numberPart = parts.join(' ');
+    final crossAlign = textAlign == TextAlign.center
+        ? CrossAxisAlignment.center
+        : CrossAxisAlignment.start;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: crossAlign,
+      children: [
+        Text(numberPart, style: style, textAlign: textAlign),
+        if (currencyPart.isNotEmpty)
+          Text(currencyPart,
+              style: style?.copyWith(
+                  fontSize: (style?.fontSize ?? 13) * 0.8,
+                  fontWeight: FontWeight.normal),
+              textAlign: textAlign),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,18 +50,10 @@ class CurrencyText extends StatelessWidget {
       return Obx(() {
         // قراءة currencyCode.value تجعل GetX يتابع التغييرات
         settings.currencyCode.value;
-        return Text(
-          FormatHelper.formatCurrency(amount),
-          style: style,
-          textAlign: textAlign,
-        );
+        return _buildText(FormatHelper.formatCurrency(amount));
       });
     } catch (_) {
-      return Text(
-        FormatHelper.formatCurrency(amount),
-        style: style,
-        textAlign: textAlign,
-      );
+      return _buildText(FormatHelper.formatCurrency(amount));
     }
   }
 }
@@ -252,7 +273,8 @@ class _CustomButtonState extends State<CustomButton> {
           onTapDown: (_) => setState(() => _isPressed = true),
           onTapUp: (_) => setState(() => _isPressed = false),
           onTapCancel: () => setState(() => _isPressed = false),
-          onTap: widget.isEnabled && !widget.isLoading ? widget.onPressed : null,
+          onTap:
+              widget.isEnabled && !widget.isLoading ? widget.onPressed : null,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             decoration: BoxDecoration(
@@ -275,40 +297,41 @@ class _CustomButtonState extends State<CustomButton> {
               ],
             ),
             child: Center(
-            child: widget.isLoading
-                ? SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        widget.textColor ?? Colors.white,
-                      ),
-                    ),
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.icon != null) ...[
-                        Icon(widget.icon, color: widget.textColor ?? Colors.white),
-                        const SizedBox(width: 8),
-                      ],
-                      Text(
-                        widget.label,
-                        style: TextStyle(
-                          color: widget.textColor ?? Colors.white,
-                          fontSize: FONT_SIZE_NORMAL,
-                          fontWeight: FontWeight.w600,
+              child: widget.isLoading
+                  ? SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          widget.textColor ?? Colors.white,
                         ),
                       ),
-                    ],
-                  ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.icon != null) ...[
+                          Icon(widget.icon,
+                              color: widget.textColor ?? Colors.white),
+                          const SizedBox(width: 8),
+                        ],
+                        Text(
+                          widget.label,
+                          style: TextStyle(
+                            color: widget.textColor ?? Colors.white,
+                            fontSize: FONT_SIZE_NORMAL,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
   }
 }
 
@@ -349,17 +372,17 @@ class EmptyState extends StatelessWidget {
             Text(
               title,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Colors.grey[800],
-                fontWeight: FontWeight.w600,
-              ),
+                    color: Colors.grey[800],
+                    fontWeight: FontWeight.w600,
+                  ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
             Text(
               subtitle,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
-              ),
+                    color: Colors.grey[600],
+                  ),
               textAlign: TextAlign.center,
             ),
             if (onActionPressed != null && actionLabel != null) ...[
@@ -425,7 +448,8 @@ class CustomSearchBar extends StatelessWidget {
             fontFamily: 'Cairo',
             color: isDark ? Colors.grey[400] : Colors.grey[500],
           ),
-          prefixIcon: Icon(Icons.search, color: isDark ? Colors.grey[400] : Colors.grey[500]),
+          prefixIcon: Icon(Icons.search,
+              color: isDark ? Colors.grey[400] : Colors.grey[500]),
           suffixIcon: controller.text.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear),
@@ -435,7 +459,8 @@ class CustomSearchBar extends StatelessWidget {
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         ),
       ),
     );
@@ -482,7 +507,8 @@ class _ListCardState extends State<ListCard> {
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.only(bottom: PADDING_NORMAL),
         decoration: BoxDecoration(
-          color: widget.backgroundColor ?? (isDark ? const Color(0xFF1E293B) : Colors.white),
+          color: widget.backgroundColor ??
+              (isDark ? const Color(0xFF1E293B) : Colors.white),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
@@ -498,7 +524,8 @@ class _ListCardState extends State<ListCard> {
         ),
         child: ListTile(
           onTap: widget.onTap,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           leading: widget.icon != null
               ? Container(
                   padding: const EdgeInsets.all(8),
@@ -506,7 +533,8 @@ class _ListCardState extends State<ListCard> {
                     color: AppTheme.primaryColor.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(widget.icon, color: AppTheme.primaryColor, size: 22),
+                  child:
+                      Icon(widget.icon, color: AppTheme.primaryColor, size: 22),
                 )
               : null,
           title: Text(
@@ -554,7 +582,8 @@ class _ListCardState extends State<ListCard> {
                           children: [
                             Icon(Icons.edit, size: 18),
                             SizedBox(width: 8),
-                            Text('تعديل', style: TextStyle(fontFamily: 'Cairo')),
+                            Text('تعديل',
+                                style: TextStyle(fontFamily: 'Cairo')),
                           ],
                         ),
                       ),
@@ -565,7 +594,9 @@ class _ListCardState extends State<ListCard> {
                           children: [
                             Icon(Icons.delete, size: 18, color: Colors.red),
                             SizedBox(width: 8),
-                            Text('حذف', style: TextStyle(fontFamily: 'Cairo', color: Colors.red)),
+                            Text('حذف',
+                                style: TextStyle(
+                                    fontFamily: 'Cairo', color: Colors.red)),
                           ],
                         ),
                       ),

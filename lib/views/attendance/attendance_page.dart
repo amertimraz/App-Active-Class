@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/qr_controller.dart';
@@ -12,6 +13,7 @@ import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/export_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/custom_dialogs.dart' as custom_dialogs;
@@ -984,17 +986,35 @@ class _RecordsTabState extends State<_RecordsTab> {
                         ),
                         const SizedBox(width: 4),
                         IconButton(
+                          icon: Icon(Icons.edit_calendar_outlined,
+                              size: 18, color: Colors.grey.shade400),
+                          onPressed: () {
+                            if (!requireDeletePermission(context,
+                                TeamModeService().canDeleteAttendanceNow)) {
+                              return;
+                            }
+                            _editAttendanceDate(context, att, s?.name);
+                          },
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        IconButton(
                           icon: Icon(Icons.delete_outline_rounded,
                               size: 18, color: Colors.grey.shade400),
-                          onPressed: () => custom_dialogs.ConfirmDeleteDialog.show(
-                            context,
-                            title: 'حذف السجل',
-                            message:
-                                'هل تريد حذف سجل حضور ${s?.name ?? "الطالب"} '
-                                'بتاريخ ${FormatHelper.formatDate(att.date)}؟',
-                            onConfirm: () =>
-                                widget.controller.deleteAttendance(att.id!),
-                          ),
+                          onPressed: () {
+                            if (!requireDeletePermission(context,
+                                TeamModeService().canDeleteAttendanceNow)) {
+                              return;
+                            }
+                            custom_dialogs.ConfirmDeleteDialog.show(
+                              context,
+                              title: 'حذف السجل',
+                              message:
+                                  'هل تريد حذف سجل حضور ${s?.name ?? "الطالب"} '
+                                  'بتاريخ ${FormatHelper.formatDate(att.date)}؟',
+                              onConfirm: () =>
+                                  widget.controller.deleteAttendance(att.id!),
+                            );
+                          },
                           visualDensity: VisualDensity.compact,
                         ),
                       ]),
@@ -1004,6 +1024,55 @@ class _RecordsTabState extends State<_RecordsTab> {
         ),
       ]);
     });
+  }
+
+  Future<void> _editAttendanceDate(
+      BuildContext context, Attendance att, String? studentName) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: att.date,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      helpText: 'اختر تاريخ الحضور الصحيح',
+    );
+    if (picked == null || !context.mounted) return;
+    if (picked.year == att.date.year &&
+        picked.month == att.date.month &&
+        picked.day == att.date.day) {
+      return;
+    }
+
+    final warning =
+        await widget.controller.paidMonthWarning(att.studentId, att.date);
+    if (!context.mounted) return;
+
+    if (warning != null) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('تنبيه', style: TextStyle(fontFamily: 'Cairo')),
+          content: Text(warning, style: const TextStyle(fontFamily: 'Cairo')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('متابعة التعديل',
+                  style: TextStyle(fontFamily: 'Cairo')),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+      if (!context.mounted) return;
+    }
+
+    final error = await widget.controller.editAttendanceDate(att, picked);
+    if (error != null && context.mounted) {
+      ToastHelper.error(error);
+    }
   }
 
   void _showGroupSheet(BuildContext context, List<Group> groups) {

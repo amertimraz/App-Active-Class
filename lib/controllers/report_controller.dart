@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/export_service.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/student_model.dart';
@@ -107,19 +108,27 @@ class ReportController extends GetxController {
     final presentByStudent = <int, int>{};
     for (final a in monthAttendance) {
       if (a.status == 'حاضر') {
-        presentByStudent.update(a.studentId, (v) => v + 1,
-            ifAbsent: () => 1);
+        presentByStudent.update(a.studentId, (v) => v + 1, ifAbsent: () => 1);
       }
     }
+
+    final m = selectedMonth.value;
+    // بنستخدم PricingHelper بدل effectivePrice مباشرة عشان مجموعات "بالحصة"
+    // تُحسَب بعدد الحصص المحضورة فعليًا الشهر ده، مش بسعر الحصة الواحدة
+    // كأنه القيمة الشهرية الكاملة.
+    double dueFor(Student st, Group group) => PricingHelper.monthlyDue(
+        student: st, group: group, month: m, allAttendance: allAttendance);
 
     return allGroups.map((g) {
       final students = studentsByGroup[g.id] ?? [];
       final expectedIncome =
-          students.fold<double>(0, (s, st) => s + st.effectivePrice);
-      final collectedIncome = students.fold<double>(
-          0, (s, st) => s + (paidByStudent[st.id] ?? 0));
-      final fullyPaid =
-          students.where((s) => (paidByStudent[s.id] ?? 0) >= s.effectivePrice && s.effectivePrice > 0).length;
+          students.fold<double>(0, (s, st) => s + dueFor(st, g));
+      final collectedIncome =
+          students.fold<double>(0, (s, st) => s + (paidByStudent[st.id] ?? 0));
+      final fullyPaid = students.where((s) {
+        final due = dueFor(s, g);
+        return due > 0 && (paidByStudent[s.id] ?? 0) >= due;
+      }).length;
       final totalPresent =
           students.fold<int>(0, (s, st) => s + (presentByStudent[st.id] ?? 0));
       return GroupMonthSummary(
@@ -145,14 +154,19 @@ class ReportController extends GetxController {
     final groupById = {for (final g in allGroups) g.id: g};
     final result = <AtRiskStudent>[];
     for (final s in _studentsActiveInMonth) {
-      if (s.effectivePrice <= 0) continue;
+      final due = PricingHelper.monthlyDue(
+          student: s,
+          group: groupById[s.groupId],
+          month: m,
+          allAttendance: allAttendance);
+      if (due <= 0) continue;
       final paid = paidByStudent[s.id] ?? 0;
-      if (paid < s.effectivePrice) {
+      if (paid < due) {
         result.add(AtRiskStudent(
           student: s,
           group: groupById[s.groupId],
           paid: paid,
-          due: s.effectivePrice,
+          due: due,
           month: m,
         ));
       }
@@ -258,8 +272,7 @@ class ReportController extends GetxController {
   RxInt get paymentCount => RxInt(allPayments.length);
   RxInt get totalStudents => RxInt(allStudents.length);
   RxInt get totalGroups => RxInt(allGroups.length);
-  RxList<Payment> get recentPayments =>
-      RxList(allPayments.take(10).toList());
+  RxList<Payment> get recentPayments => RxList(allPayments.take(10).toList());
   RxList<Attendance> get recentAttendance =>
       RxList(allAttendance.take(10).toList());
 }

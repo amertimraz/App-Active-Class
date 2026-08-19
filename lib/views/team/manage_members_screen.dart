@@ -210,6 +210,48 @@ class _ManageMembersScreenState extends State<ManageMembersScreen> {
     _load();
   }
 
+  Future<void> _resetDevice(Map<String, dynamic> m) async {
+    final name = (m['display_name'] as String?)?.isNotEmpty == true
+        ? m['display_name'] as String
+        : (m['phone'] as String? ?? '');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('فك ارتباط الجهاز',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+        content: Text(
+            'هيقدر "$name" يسجّل دخول من جهاز جديد بعد كده. استخدمها بس لو '
+            'فعلاً غيّر جهازه.',
+            style: const TextStyle(fontFamily: 'Cairo')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('فك الارتباط', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final error = await _team.resetMemberDevice(m['user_id'] as String);
+    if (!mounted) return;
+    if (error != null) {
+      ToastHelper.error(error);
+      return;
+    }
+    ToastHelper.success('تم فك ارتباط الجهاز');
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -263,6 +305,7 @@ class _ManageMembersScreenState extends State<ManageMembersScreen> {
                 _load();
               },
               onRemove: () => _removeMember(members[i]),
+              onResetDevice: () => _resetDevice(members[i]),
             ),
           );
         },
@@ -276,12 +319,14 @@ class _MemberCard extends StatelessWidget {
   final bool isDark;
   final void Function(String field, bool value) onChangedPermission;
   final VoidCallback onRemove;
+  final VoidCallback onResetDevice;
 
   const _MemberCard({
     required this.member,
     required this.isDark,
     required this.onChangedPermission,
     required this.onRemove,
+    required this.onResetDevice,
   });
 
   @override
@@ -358,6 +403,45 @@ class _MemberCard extends StatelessWidget {
           ),
           if (!isOwner) ...[
             const Divider(height: 24),
+            Row(
+              children: [
+                Icon(
+                  member['bound_device_id'] != null
+                      ? Icons.phonelink_lock_rounded
+                      : Icons.phonelink_ring_rounded,
+                  size: 15,
+                  color: isDark ? Colors.white54 : Colors.black45,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    member['bound_device_id'] != null
+                        ? 'مرتبط بجهاز'
+                        : 'لسه مبيتربطش بجهاز',
+                    style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
+                        color: isDark ? Colors.white54 : Colors.black45),
+                  ),
+                ),
+                if (member['bound_device_id'] != null)
+                  TextButton(
+                    onPressed: onResetDevice,
+                    style: TextButton.styleFrom(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('فك الارتباط',
+                        style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                  ),
+              ],
+            ),
+            const Divider(height: 20),
             _PermSwitch(
               label: 'حذف سجلات الحضور',
               value: member['can_delete_attendance'] as bool? ?? false,
@@ -380,6 +464,19 @@ class _MemberCard extends StatelessWidget {
               label: 'إدارة الأعضاء',
               value: member['can_manage_members'] as bool? ?? false,
               onChanged: (v) => onChangedPermission('can_manage_members', v),
+              isDark: isDark,
+            ),
+            const Divider(height: 24),
+            _PermSwitch(
+              label: 'رؤية الأرقام المالية (مدفوعات وتقارير)',
+              value: member['can_view_financials'] as bool? ?? true,
+              onChanged: (v) => onChangedPermission('can_view_financials', v),
+              isDark: isDark,
+            ),
+            _PermSwitch(
+              label: 'رؤية الامتحانات والدرجات',
+              value: member['can_view_academics'] as bool? ?? true,
+              onChanged: (v) => onChangedPermission('can_view_academics', v),
               isDark: isDark,
             ),
           ],

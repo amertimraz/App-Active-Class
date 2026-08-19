@@ -48,6 +48,27 @@ bool requireTeamOwnerIfTeamMode(BuildContext context) {
   return false;
 }
 
+/// يتحقق إن المساعد عنده صلاحية الحذف المطلوبة (حضور/دفعات/طلاب-
+/// مجموعات) **قبل** ما نسمح بالحذف محليًا. من غير الفحص ده، الحذف كان
+/// بيحصل محليًا على طول ويختفي الصف من شاشة المساعد فورًا، وبعدين
+/// السيرفر بس هو اللي بيرفض المزامنة بصمت (RLS trigger) — يعني الصف
+/// يفضل موجود عند المدرس بس متسحّب من عند المساعد، لخبطة حقيقية بين
+/// الجهازين بدل ما نمنع الحذف من الأساس.
+bool requireDeletePermission(BuildContext context, bool allowed) {
+  if (allowed) return true;
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.clearSnackBars();
+  messenger.showSnackBar(const SnackBar(
+    content: Text(
+      'معندكش صلاحية الحذف ده — كلم المدرس يفعّلها من شاشة إدارة الأعضاء',
+      style: TextStyle(fontFamily: 'Cairo'),
+    ),
+    backgroundColor: Colors.red,
+    duration: Duration(seconds: 3),
+  ));
+  return false;
+}
+
 /// أدوات تنسيق للنصوص والتواريخ
 class FormatHelper {
   /// تنسيق التاريخ

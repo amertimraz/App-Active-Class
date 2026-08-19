@@ -1,7 +1,6 @@
 // lib/services/export_service.dart
 // خدمة تصدير PDF لتقارير Active Class
 
-
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -25,8 +24,12 @@ class ExportResult {
   final bool success;
   final String? path;
   final String? error;
-  ExportResult.ok(this.path) : success = true, error = null;
-  ExportResult.fail(this.error) : success = false, path = null;
+  ExportResult.ok(this.path)
+      : success = true,
+        error = null;
+  ExportResult.fail(this.error)
+      : success = false,
+        path = null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -38,24 +41,24 @@ class ExportService {
   ExportService._();
 
   // ── الألوان الرئيسية ──────────────────────────────────────────────
-  static const _primary   = PdfColor.fromInt(0xFF1565C0);
-  static const _accent    = PdfColor.fromInt(0xFF42A5F5);
-  static const _success   = PdfColor.fromInt(0xFF2E7D32);
-  static const _warning   = PdfColor.fromInt(0xFFF57F17);
-  static const _error     = PdfColor.fromInt(0xFFC62828);
-  static const _grey      = PdfColor.fromInt(0xFF757575);
+  static const _primary = PdfColor.fromInt(0xFF1565C0);
+  static const _accent = PdfColor.fromInt(0xFF42A5F5);
+  static const _success = PdfColor.fromInt(0xFF2E7D32);
+  static const _warning = PdfColor.fromInt(0xFFF57F17);
+  static const _error = PdfColor.fromInt(0xFFC62828);
+  static const _grey = PdfColor.fromInt(0xFF757575);
   static const _lightGrey = PdfColor.fromInt(0xFFF5F5F5);
-  static const _white     = PdfColors.white;
+  static const _white = PdfColors.white;
 
   pw.Font? _regular;
   pw.Font? _bold;
 
   Future<void> _loadFonts() async {
     if (_regular != null) return;
-    final regData  = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
+    final regData = await rootBundle.load('assets/fonts/Cairo-Regular.ttf');
     final boldData = await rootBundle.load('assets/fonts/Cairo-Bold.ttf');
     _regular = pw.Font.ttf(regData);
-    _bold    = pw.Font.ttf(boldData);
+    _bold = pw.Font.ttf(boldData);
   }
 
   pw.TextStyle _style({
@@ -84,12 +87,15 @@ class ExportService {
       await _loadFonts();
       final doc = pw.Document();
 
-      final monthPayments = payments.where((p) =>
-          p.date.year == month.year && p.date.month == month.month).toList();
+      final monthPayments = payments
+          .where(
+              (p) => p.date.year == month.year && p.date.month == month.month)
+          .toList();
 
       final paidMap = <int, double>{};
       for (final p in monthPayments) {
-        paidMap.update(p.studentId, (v) => v + p.amount, ifAbsent: () => p.amount);
+        paidMap.update(p.studentId, (v) => v + p.amount,
+            ifAbsent: () => p.amount);
       }
       final groupById = {for (final g in groups) g.id: g};
 
@@ -101,7 +107,7 @@ class ExportService {
         });
 
       double totalExpected = 0;
-      double totalPaid     = 0;
+      double totalPaid = 0;
       for (final s in sorted) {
         if (!s.isFullyExempt) {
           totalExpected += PricingHelper.monthlyDue(
@@ -148,12 +154,14 @@ class ExportService {
       await _loadFonts();
       final doc = pw.Document();
 
-      final start   = DateTime(month.year, month.month, 1);
-      final end     = DateTime(month.year, month.month + 1, 0);
-      final days    = end.day; // عدد أيام الشهر
+      final start = DateTime(month.year, month.month, 1);
+      final end = DateTime(month.year, month.month + 1, 0);
+      final days = end.day; // عدد أيام الشهر
 
-      final monthAtt = attendance.where((a) =>
-          a.date.year == month.year && a.date.month == month.month).toList();
+      final monthAtt = attendance
+          .where(
+              (a) => a.date.year == month.year && a.date.month == month.month)
+          .toList();
 
       // Map: studentId → Map<day, status>
       final attMap = <int, Map<int, String>>{};
@@ -177,8 +185,8 @@ class ExportService {
       }
 
       for (final entry in byGroup.entries) {
-        final g       = groupById[entry.key];
-        final gLabel  = g?.name ?? 'مجموعة ${entry.key}';
+        final g = groupById[entry.key];
+        final gLabel = g?.name ?? 'مجموعة ${entry.key}';
         final gStudents = entry.value;
 
         doc.addPage(pw.MultiPage(
@@ -215,14 +223,19 @@ class ExportService {
       await _loadFonts();
       final doc = pw.Document();
 
-      final monthPayments = payments.where((p) =>
-          p.date.year == month.year && p.date.month == month.month).toList();
-      final monthAtt = attendance.where((a) =>
-          a.date.year == month.year && a.date.month == month.month).toList();
+      final monthPayments = payments
+          .where(
+              (p) => p.date.year == month.year && p.date.month == month.month)
+          .toList();
+      final monthAtt = attendance
+          .where(
+              (a) => a.date.year == month.year && a.date.month == month.month)
+          .toList();
 
       final paidMap = <int, double>{};
       for (final p in monthPayments) {
-        paidMap.update(p.studentId, (v) => v + p.amount, ifAbsent: () => p.amount);
+        paidMap.update(p.studentId, (v) => v + p.amount,
+            ifAbsent: () => p.amount);
       }
       final presentMap = <int, int>{};
       for (final a in monthAtt) {
@@ -240,7 +253,8 @@ class ExportService {
         header: (_) => _pageHeader('ملخص المجموعات — $monthLabel'),
         footer: (ctx) => _pageFooter(ctx),
         build: (ctx) => [
-          _groupsSummaryTable(groups, students, paidMap, presentMap),
+          _groupsSummaryTable(
+              groups, students, paidMap, presentMap, month, attendance),
         ],
       ));
 
@@ -277,10 +291,8 @@ class ExportService {
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(title,
-              style: _style(size: 14, bold: true, color: _primary)),
-          pw.Text('Active Class',
-              style: _style(size: 10, color: _grey)),
+          pw.Text(title, style: _style(size: 14, bold: true, color: _primary)),
+          pw.Text('Active Class', style: _style(size: 10, color: _grey)),
         ],
       ),
     );
@@ -300,16 +312,14 @@ class ExportService {
         children: [
           pw.Text('صفحة ${ctx.pageNumber} من ${ctx.pagesCount}',
               style: _style(size: 9, color: _grey)),
-          pw.Text('تم التصدير: $now',
-              style: _style(size: 9, color: _grey)),
+          pw.Text('تم التصدير: $now', style: _style(size: 9, color: _grey)),
         ],
       ),
     );
   }
 
   // ── ملخص الدفعات ─────────────────────────────────────────────────
-  pw.Widget _summaryRow(
-      double expected, double paid, int count, String month) {
+  pw.Widget _summaryRow(double expected, double paid, int count, String month) {
     final remaining = (expected - paid).clamp(0.0, double.infinity);
     final rate = expected > 0 ? (paid / expected * 100) : 0.0;
 
@@ -326,9 +336,16 @@ class ExportService {
           _statBox('إجمالي الطلاب', '$count طالب', _primary),
           _statBox('المتوقع', _fmt(expected), _grey),
           _statBox('المحصّل', _fmt(paid), _success),
-          _statBox('المتبقي', _fmt(remaining), remaining > 0 ? _error : _success),
-          _statBox('نسبة التحصيل', '${rate.toStringAsFixed(1)}%',
-              rate >= 80 ? _success : rate >= 50 ? _warning : _error),
+          _statBox(
+              'المتبقي', _fmt(remaining), remaining > 0 ? _error : _success),
+          _statBox(
+              'نسبة التحصيل',
+              '${rate.toStringAsFixed(1)}%',
+              rate >= 80
+                  ? _success
+                  : rate >= 50
+                      ? _warning
+                      : _error),
         ],
       ),
     );
@@ -336,21 +353,25 @@ class ExportService {
 
   pw.Widget _statBox(String label, String value, PdfColor color) {
     return pw.Column(children: [
-      pw.Text(value,
-          style: _style(size: 13, bold: true, color: color)),
+      pw.Text(value, style: _style(size: 13, bold: true, color: color)),
       pw.SizedBox(height: 2),
       pw.Text(label, style: _style(size: 9, color: _grey)),
     ]);
   }
 
   // ── جدول الدفعات ─────────────────────────────────────────────────
-  pw.Widget _paymentsTable(
-      List<Student> students,
-      Map<int, double> paidMap,
-      Map<int?, Group> groupById,
-      DateTime month,
-      List<Attendance> attendance) {
-    const headers = ['#', 'الاسم', 'الكود', 'المجموعة', 'المطلوب', 'المدفوع', 'المتبقي', 'الحالة'];
+  pw.Widget _paymentsTable(List<Student> students, Map<int, double> paidMap,
+      Map<int?, Group> groupById, DateTime month, List<Attendance> attendance) {
+    const headers = [
+      '#',
+      'الاسم',
+      'الكود',
+      'المجموعة',
+      'المطلوب',
+      'المدفوع',
+      'المتبقي',
+      'الحالة'
+    ];
     final colWidths = [
       pw.FixedColumnWidth(25),
       pw.FlexColumnWidth(3),
@@ -369,31 +390,31 @@ class ExportService {
 
     // Rows
     for (var i = 0; i < students.length; i++) {
-      final s         = students[i];
-      final group     = groupById[s.groupId];
-      final paid      = paidMap[s.id] ?? 0;
-      final due       = PricingHelper.monthlyDue(
+      final s = students[i];
+      final group = groupById[s.groupId];
+      final paid = paidMap[s.id] ?? 0;
+      final due = PricingHelper.monthlyDue(
         student: s,
         group: group,
         month: month,
         allAttendance: attendance,
       );
       final remaining = (due - paid).clamp(0.0, double.infinity);
-      final isEven    = i % 2 == 0;
+      final isEven = i % 2 == 0;
 
       String status;
       PdfColor statusColor;
       if (s.isFullyExempt) {
-        status      = 'معفى';
+        status = 'معفى';
         statusColor = _success;
       } else if (paid >= due && due > 0) {
-        status      = 'مكتمل';
+        status = 'مكتمل';
         statusColor = _success;
       } else if (paid > 0) {
-        status      = 'جزئي';
+        status = 'جزئي';
         statusColor = _warning;
       } else {
-        status      = 'لم يدفع';
+        status = 'لم يدفع';
         statusColor = _error;
       }
 
@@ -404,24 +425,23 @@ class ExportService {
         _td(group?.name ?? '—', isEven: isEven),
         _td(_fmt(due), isEven: isEven),
         _td(_fmt(paid), isEven: isEven),
-        _td(_fmt(remaining), isEven: isEven,
-            color: remaining > 0 ? _error : _success),
+        _td(_fmt(remaining),
+            isEven: isEven, color: remaining > 0 ? _error : _success),
         _tdStatus(status, statusColor, isEven: isEven),
       ]);
     }
 
     return pw.Table(
-      columnWidths: { for (var i = 0; i < colWidths.length; i++) i: colWidths[i] },
+      columnWidths: {
+        for (var i = 0; i < colWidths.length; i++) i: colWidths[i]
+      },
       children: rows.map((cells) => pw.TableRow(children: cells)).toList(),
     );
   }
 
   // ── جدول الحضور ──────────────────────────────────────────────────
-  pw.Widget _attendanceTable(
-      List<Student> students,
-      Map<int, Map<int, String>> attMap,
-      int days,
-      DateTime start) {
+  pw.Widget _attendanceTable(List<Student> students,
+      Map<int, Map<int, String>> attMap, int days, DateTime start) {
     // أعمدة: الاسم + أيام الشهر
     final colWidths = <int, pw.TableColumnWidth>{
       0: const pw.FlexColumnWidth(2.5), // الاسم
@@ -437,8 +457,8 @@ class ExportService {
     // Header row
     final headerCells = <pw.Widget>[_th('الاسم', size: 8)];
     for (var d = 1; d <= days; d++) {
-      final date     = DateTime(start.year, start.month, d);
-      final weekday  = _weekdayShort(date.weekday);
+      final date = DateTime(start.year, start.month, d);
+      final weekday = _weekdayShort(date.weekday);
       headerCells.add(_thSmall('$d\n$weekday'));
     }
     headerCells.add(_th('ح', size: 8));
@@ -447,11 +467,11 @@ class ExportService {
 
     // Data rows
     for (var i = 0; i < students.length; i++) {
-      final s      = students[i];
-      final sAtt   = attMap[s.id] ?? {};
+      final s = students[i];
+      final sAtt = attMap[s.id] ?? {};
       final isEven = i % 2 == 0;
       int presentCount = 0;
-      int absentCount  = 0;
+      int absentCount = 0;
 
       final cells = <pw.Widget>[
         _td(s.name, isEven: isEven, bold: true, size: 8),
@@ -469,7 +489,7 @@ class ExportService {
         }
       }
       cells.add(_td('$presentCount', isEven: isEven, color: _success, size: 9));
-      cells.add(_td('$absentCount',  isEven: isEven, color: _error,   size: 9));
+      cells.add(_td('$absentCount', isEven: isEven, color: _error, size: 9));
       rows.add(pw.TableRow(children: cells));
     }
 
@@ -477,18 +497,16 @@ class ExportService {
   }
 
   pw.Widget _attendanceSummary(
-      List<Student> students,
-      Map<int, Map<int, String>> attMap,
-      int days) {
+      List<Student> students, Map<int, Map<int, String>> attMap, int days) {
     int totalPresent = 0;
-    int totalAbsent  = 0;
+    int totalAbsent = 0;
     for (final s in students) {
       final sAtt = attMap[s.id] ?? {};
       totalPresent += sAtt.values.where((v) => v == ATTENDANCE_PRESENT).length;
-      totalAbsent  += sAtt.values.where((v) => v == ATTENDANCE_ABSENT).length;
+      totalAbsent += sAtt.values.where((v) => v == ATTENDANCE_ABSENT).length;
     }
     final total = totalPresent + totalAbsent;
-    final rate  = total > 0 ? (totalPresent / total * 100) : 0.0;
+    final rate = total > 0 ? (totalPresent / total * 100) : 0.0;
 
     return pw.Container(
       padding: const pw.EdgeInsets.all(10),
@@ -501,8 +519,14 @@ class ExportService {
         children: [
           _statBox('إجمالي الحضور', '$totalPresent جلسة', _success),
           _statBox('إجمالي الغياب', '$totalAbsent جلسة', _error),
-          _statBox('نسبة الحضور', '${rate.toStringAsFixed(1)}%',
-              rate >= 80 ? _success : rate >= 60 ? _warning : _error),
+          _statBox(
+              'نسبة الحضور',
+              '${rate.toStringAsFixed(1)}%',
+              rate >= 80
+                  ? _success
+                  : rate >= 60
+                      ? _warning
+                      : _error),
         ],
       ),
     );
@@ -513,13 +537,23 @@ class ExportService {
       List<Group> groups,
       List<Student> students,
       Map<int, double> paidMap,
-      Map<int, int> presentMap) {
+      Map<int, int> presentMap,
+      DateTime month,
+      List<Attendance> allAttendance) {
     final byGroup = <int, List<Student>>{};
     for (final s in students) {
       byGroup.putIfAbsent(s.groupId, () => []).add(s);
     }
 
-    const headers = ['المجموعة', 'الطلاب', 'معفيون', 'المتوقع', 'المحصّل', 'نسبة التحصيل', 'جلسات الحضور'];
+    const headers = [
+      'المجموعة',
+      'الطلاب',
+      'معفيون',
+      'المتوقع',
+      'المحصّل',
+      'نسبة التحصيل',
+      'جلسات الحضور'
+    ];
     final colWidths = [
       pw.FlexColumnWidth(2.5),
       pw.FixedColumnWidth(45),
@@ -531,28 +565,36 @@ class ExportService {
     ];
 
     final rows = <pw.TableRow>[];
-    rows.add(pw.TableRow(
-        children: headers.map((h) => _th(h)).toList()));
+    rows.add(pw.TableRow(children: headers.map((h) => _th(h)).toList()));
 
     double grandExpected = 0;
-    double grandPaid     = 0;
-    int    grandStudents = 0;
+    double grandPaid = 0;
+    int grandStudents = 0;
 
     for (var i = 0; i < groups.length; i++) {
-      final g        = groups[i];
+      final g = groups[i];
       final gStudents = byGroup[g.id] ?? [];
-      final exempt   = gStudents.where((s) => s.isFullyExempt).length;
-      final active   = gStudents.where((s) => !s.isFullyExempt).toList();
-      final expected = active.fold<double>(0, (s, st) => s + st.effectivePrice);
-      final paid     = active.fold<double>(
-          0, (s, st) => s + (paidMap[st.id] ?? 0));
-      final sessions = gStudents.fold<int>(
-          0, (s, st) => s + (presentMap[st.id] ?? 0));
-      final rate     = expected > 0 ? paid / expected * 100 : 0.0;
-      final isEven   = i % 2 == 0;
+      final exempt = gStudents.where((s) => s.isFullyExempt).length;
+      final active = gStudents.where((s) => !s.isFullyExempt).toList();
+      // بيستخدم PricingHelper بدل effectivePrice مباشرة عشان مجموعات
+      // "بالحصة" تُحسَب بعدد الحصص المحضورة فعليًا الشهر ده.
+      final expected = active.fold<double>(
+          0,
+          (s, st) =>
+              s +
+              PricingHelper.monthlyDue(
+                  student: st,
+                  group: g,
+                  month: month,
+                  allAttendance: allAttendance));
+      final paid = active.fold<double>(0, (s, st) => s + (paidMap[st.id] ?? 0));
+      final sessions =
+          gStudents.fold<int>(0, (s, st) => s + (presentMap[st.id] ?? 0));
+      final rate = expected > 0 ? paid / expected * 100 : 0.0;
+      final isEven = i % 2 == 0;
 
       grandExpected += expected;
-      grandPaid     += paid;
+      grandPaid += paid;
       grandStudents += gStudents.length;
 
       rows.add(pw.TableRow(children: [
@@ -560,10 +602,14 @@ class ExportService {
         _td('${gStudents.length}', isEven: isEven),
         _td('$exempt', isEven: isEven, color: exempt > 0 ? _success : _grey),
         _td(_fmt(expected), isEven: isEven),
-        _td(_fmt(paid),     isEven: isEven),
+        _td(_fmt(paid), isEven: isEven),
         _tdStatus(
           '${rate.toStringAsFixed(0)}%',
-          rate >= 80 ? _success : rate >= 50 ? _warning : _error,
+          rate >= 80
+              ? _success
+              : rate >= 50
+                  ? _warning
+                  : _error,
           isEven: isEven,
         ),
         _td('$sessions', isEven: isEven),
@@ -583,7 +629,9 @@ class ExportService {
     ]));
 
     return pw.Table(
-      columnWidths: { for (var i = 0; i < colWidths.length; i++) i: colWidths[i] },
+      columnWidths: {
+        for (var i = 0; i < colWidths.length; i++) i: colWidths[i]
+      },
       children: rows,
     );
   }
@@ -631,7 +679,8 @@ class ExportService {
         padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4),
         alignment: pw.Alignment.center,
         child: pw.Text(text,
-            style: _style(size: size, bold: bold, color: color ?? PdfColors.black),
+            style:
+                _style(size: size, bold: bold, color: color ?? PdfColors.black),
             textAlign: pw.TextAlign.center),
       );
 
@@ -667,9 +716,8 @@ class ExportService {
                 decoration: pw.BoxDecoration(
                   shape: pw.BoxShape.circle,
                   color: present ? _success : null,
-                  border: present
-                      ? null
-                      : pw.Border.all(color: _error, width: 1),
+                  border:
+                      present ? null : pw.Border.all(color: _error, width: 1),
                 ),
               ),
       );
@@ -678,8 +726,7 @@ class ExportService {
   //  Helpers
   // ══════════════════════════════════════════════════════════════════
 
-  String _fmt(double v) =>
-      NumberFormat('#,##0', 'ar').format(v);
+  String _fmt(double v) => NumberFormat('#,##0', 'ar').format(v);
 
   String _fileMonth(DateTime m) =>
       '${m.year}_${m.month.toString().padLeft(2, '0')}';
@@ -690,8 +737,8 @@ class ExportService {
   }
 
   Future<ExportResult> _savePdf(pw.Document doc, String name) async {
-    final bytes  = await doc.save();
-    final dir    = await getApplicationDocumentsDirectory();
+    final bytes = await doc.save();
+    final dir = await getApplicationDocumentsDirectory();
     final folder = Directory(p.join(dir.path, 'exports'));
     if (!folder.existsSync()) folder.createSync(recursive: true);
     final path = p.join(folder.path, '$name.pdf');

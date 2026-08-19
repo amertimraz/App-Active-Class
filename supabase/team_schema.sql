@@ -42,6 +42,17 @@ create table if not exists public.team_members (
   can_delete_payments boolean not null default true,
   can_delete_students boolean not null default false, -- وده كمان بيغطي حذف المجموعات
   can_manage_members boolean not null default false,
+  -- صلاحيات عرض (مش حذف) — بتتفحص في التطبيق نفسه بس (client-side)،
+  -- مش عن طريق RLS، لأن البيانات الأساسية (المدفوعات مثلاً) لازم
+  -- تفضل متاحة تقنيًا للمساعد أصلاً عشان يقدر يسجّل عليها، إحنا بس
+  -- بنخفي شاشات/كروت معيّنة عنه في الواجهة.
+  can_view_financials boolean not null default true,
+  can_view_academics boolean not null default true,
+  -- جهاز واحد بس مسموح لكل مساعد — أول جهاز يسجّل دخول بيه بيتربط
+  -- بيه تلقائيًا (claim_device)، وأي جهاز تاني بنفس الحساب يترفض لحد
+  -- ما المدرس يفك الارتباط يدويًا (reset_member_device). المالك نفسه
+  -- مش مقيّد بالقيد ده — عادةً بيستخدم أكتر من جهاز لشغله هو.
+  bound_device_id text,
   joined_at timestamptz not null default now(),
   primary key (team_id, user_id)
 );
@@ -96,8 +107,8 @@ begin
     returning id into new_team_id;
   insert into public.team_members
     (team_id, user_id, is_owner, can_delete_attendance, can_delete_payments,
-     can_delete_students, can_manage_members)
-  values (new_team_id, auth.uid(), true, true, true, true, true);
+     can_delete_students, can_manage_members, can_view_financials, can_view_academics)
+  values (new_team_id, auth.uid(), true, true, true, true, true, true, true);
   return new_team_id;
 end;
 $$;
@@ -127,6 +138,22 @@ returns void language plpgsql security definer set search_path = public as $$
 begin
   update public.teams set teacher_name = _name, teacher_gender = _gender
     where id = _team_id and owner_id = auth.uid();
+end;
+$$;
+
+-- بس المالك يقدر يستخدمها — بتتنادى لما المدرس يعطّل "وضع الفريق"
+-- عمدًا من الشاشة. بتحذف صف الفريق نفسه، وده بيسحب معاه team_members
+-- وteam_invites تلقائيًا (on delete cascade) — فكل أجهزة المساعدين
+-- هتكتشف إنها اتشالت من الفريق (نفس آلية _wasRemovedFromTeam
+-- الموجودة أصلاً) في أول catchUpPull بعد كده، وهتتقفل عندهم برضو.
+-- عمدًا مش بنعمل كده تلقائيًا وقت تسجيل خروج/تبديل حساب المدرس على
+-- نفس الجهاز (TeamModeService.disable() العادية) — ده كان هيهدم
+-- الفريق بالغلط لو المدرس بس عايز يسجّل خروج مؤقت، مع إن الفريق لسه
+-- شغال وممكن يكون بيستخدمه من جهاز تاني.
+create or replace function public.delete_team(_team_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  delete from public.teams where id = _team_id and owner_id = auth.uid();
 end;
 $$;
 
@@ -168,12 +195,74 @@ begin
 
   insert into public.team_members
     (team_id, user_id, is_owner, can_delete_attendance, can_delete_payments,
-     can_delete_students, can_manage_members)
-  values (inv.team_id, auth.uid(), false, true, true, false, false)
+     can_delete_students, can_manage_members, can_view_financials, can_view_academics)
+  values (inv.team_id, auth.uid(), false, true, true, false, false, true, true)
   on conflict (team_id, user_id) do nothing;
 
   update public.team_invites set used_count = used_count + 1 where code = inv.code;
   return inv.team_id;
+end;
+$$;
+
+-- ── قفل جهاز واحد لكل مساعد ──────────────────────────────────────
+-- بتتنادى من جهاز المساعد كل مرة يفتح فيها التطبيق (أو ينضم لأول
+-- مرة) — لو مفيش جهاز مربوط لسه، بتربط الجهاز الحالي وترجع true. لو
+-- فيه جهاز مربوط بالفعل، بترجع true بس لو نفس الجهاز ده، وfalse لو
+-- جهاز مختلف (يعني الحساب اتفتح على جهاز تاني بالغلط/عمدًا).
+-- المالك مستبعد من القيد ده تمامًا (بيرجع true دايمًا).
+-- security definer ضروري هنا (عكس صلاحيات العرض) لأن القيد ده مرتبط
+-- بحد تجاري (عدد الأجهزة لكل مساعد)، فلازم يتفرض من السيرفر مش يتوثق
+-- فيه على التطبيق بس.
+create or replace function public.claim_device(_team_id uuid, _device_id text)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare
+  m record;
+begin
+  select is_owner, bound_device_id into m
+    from public.team_members
+    where team_id = _team_id and user_id = auth.uid();
+
+  if not found then
+    return false; -- مش عضو في الفريق ده أصلاً
+  end if;
+  if m.is_owner then
+    return true;
+  end if;
+  if m.bound_device_id is null then
+    update public.team_members set bound_device_id = _device_id
+      where team_id = _team_id and user_id = auth.uid();
+    return true;
+  end if;
+  return m.bound_device_id = _device_id;
+end;
+$$;
+
+-- فحص قراءة بس (بدون أي ربط تلقائي) — بيتنادى دوريًا من الجهاز
+-- المتصل بالفعل عشان يتأكد إنه لسه هو الجهاز المرتبط. عمدًا مختلفة
+-- عن claim_device: لو استخدمنا claim_device هنا، وقفل الفريق كان
+-- فكّ الارتباط عشان يسمح لجهاز جديد، الجهاز القديم (لسه شغال) كان
+-- هيربط نفسه تاني تلقائيًا قبل ما الجهاز الجديد ياخد فرصته — بيلغي
+-- الغرض من "فك الارتباط" تمامًا. الدالة دي بس بتقرا الحالة الحالية.
+create or replace function public.is_device_still_bound(_team_id uuid, _device_id text)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare
+  m record;
+begin
+  select is_owner, bound_device_id into m
+    from public.team_members
+    where team_id = _team_id and user_id = auth.uid();
+
+  if not found then
+    return false;
+  end if;
+  if m.is_owner then
+    return true;
+  end if;
+  -- NULL = أي حاجة بترجع NULL في SQL مش false — لازم نتأكد صراحة إن
+  -- bound_device_id مش فاضي قبل المقارنة، وإلا الفحص هيرجع NULL (مش
+  -- false) فور ما المدرس يفكّ الارتباط، ولن يُكتشف كجهاز غير مرتبط
+  -- إلا بعد ما جهاز جديد يرتبط فعليًا.
+  return m.bound_device_id is not null and m.bound_device_id = _device_id;
 end;
 $$;
 

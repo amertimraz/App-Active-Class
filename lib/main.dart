@@ -33,7 +33,7 @@ import 'package:active_class/controllers/exam_controller.dart';
 import 'package:active_class/controllers/auth_controller.dart';
 import 'package:active_class/views/auth/login_screen.dart';
 import 'package:active_class/views/auth/register_screen.dart';
-import 'package:active_class/views/auth/account_screen.dart';
+import 'package:active_class/views/settings/account_team_screen.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/views/team/team_mode_screen.dart';
 import 'package:active_class/views/team/join_team_screen.dart';
@@ -243,7 +243,7 @@ class MyApp extends StatelessWidget {
                 page: () => const BookingSettingsPage()),
             GetPage(name: ROUTE_LOGIN,    page: () => const LoginScreen()),
             GetPage(name: ROUTE_REGISTER, page: () => const RegisterScreen()),
-            GetPage(name: ROUTE_ACCOUNT,  page: () => const AccountScreen()),
+            GetPage(name: ROUTE_ACCOUNT,  page: () => const AccountTeamScreen()),
             GetPage(name: ROUTE_TEAM_MODE,    page: () => const TeamModeScreen()),
             GetPage(name: ROUTE_TEAM_JOIN,    page: () => const JoinTeamScreen()),
             GetPage(name: ROUTE_TEAM_MEMBERS, page: () => const ManageMembersScreen()),

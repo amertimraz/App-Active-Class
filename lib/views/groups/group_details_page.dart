@@ -9,6 +9,7 @@ import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
@@ -16,6 +17,8 @@ import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
+import 'package:active_class/widgets/locked_feature.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/controllers/settings_controller.dart';
@@ -33,18 +36,18 @@ import 'package:printing/printing.dart';
 
 // ─── أيقونات المجموعات (نفس قائمة groups_page) ──────────────────────────────
 const _kIconMap = <String, IconData>{
-  'group':    Icons.groups_rounded,
-  'class':    Icons.class_rounded,
-  'book':     Icons.menu_book_rounded,
-  'math':     Icons.calculate_rounded,
-  'science':  Icons.science_rounded,
+  'group': Icons.groups_rounded,
+  'class': Icons.class_rounded,
+  'book': Icons.menu_book_rounded,
+  'math': Icons.calculate_rounded,
+  'science': Icons.science_rounded,
   'language': Icons.language_rounded,
-  'code':     Icons.code_rounded,
-  'star':     Icons.star_rounded,
-  'music':    Icons.music_note_rounded,
-  'art':      Icons.brush_rounded,
-  'sport':    Icons.sports_soccer_rounded,
-  'english':  Icons.translate_rounded,
+  'code': Icons.code_rounded,
+  'star': Icons.star_rounded,
+  'music': Icons.music_note_rounded,
+  'art': Icons.brush_rounded,
+  'sport': Icons.sports_soccer_rounded,
+  'english': Icons.translate_rounded,
 };
 
 class GroupDetailsPage extends StatefulWidget {
@@ -56,29 +59,43 @@ class GroupDetailsPage extends StatefulWidget {
 
 class _GroupDetailsPageState extends State<GroupDetailsPage> {
   final StudentController studentController = Get.put(StudentController());
+  final AttendanceController attendanceController =
+      Get.isRegistered<AttendanceController>()
+          ? Get.find<AttendanceController>()
+          : Get.put(AttendanceController());
   Group? group;
   late final TextEditingController _searchCtrl;
 
   bool _isSelectionMode = false;
   final Set<int> _selectedStudents = {};
   final Set<int> _paidStudentIds = {};
+  late final bool _canSeeFinancials = TeamModeService().canSeeFinancials;
 
   @override
   void initState() {
     super.initState();
     group = Get.arguments as Group?;
-    _searchCtrl = TextEditingController(text: studentController.searchQuery.value)
+    _searchCtrl = TextEditingController(
+        text: studentController.searchQuery.value)
       ..selection = TextSelection.fromPosition(
           ui.TextPosition(offset: studentController.searchQuery.value.length));
-    _searchCtrl.addListener(() => studentController.searchStudents(_searchCtrl.text));
+    _searchCtrl
+        .addListener(() => studentController.searchStudents(_searchCtrl.text));
     final g = group;
     if (g != null && g.id != null) studentController.loadStudentsByGroup(g.id!);
+    attendanceController.loadAttendance();
     _loadPaidStudents();
   }
 
   Future<void> _loadPaidStudents() async {
-    final paid = await DatabaseService().getPaidStudentIdsForMonth(DateTime.now());
-    if (mounted) setState(() { _paidStudentIds..clear()..addAll(paid); });
+    final paid =
+        await DatabaseService().getPaidStudentIdsForMonth(DateTime.now());
+    if (mounted)
+      setState(() {
+        _paidStudentIds
+          ..clear()
+          ..addAll(paid);
+      });
   }
 
   void _toggleSelection(int studentId) {
@@ -100,6 +117,15 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         ? Get.find<AttendanceController>()
         : Get.put(AttendanceController());
 
+    // نفس التحقق من جدول المجموعة المستخدم في تاب "تسجيل" اليدوي ومسح
+    // الـ QR — من غيره كان ممكن يتسجل حضور جماعي في يوم مفيهوش حصة
+    // مجدولة أصلاً، وده بيفسد حساب "عدد الحصص المستحقة" في PricingHelper.
+    final g = group;
+    if (g != null && !attCtrl.groupHasSessionOnDay(g, now)) {
+      ToastHelper.error('مجموعة "${g.name}" ليس لها حصة اليوم');
+      return;
+    }
+
     // بنستخدم setAttendanceStatus (تحديث مباشر) بدل insertAttendance
     // المباشر — عشان لو طالب اتسجّل حضوره النهارده بالفعل، العملية
     // تحدّث حالته بدل ما تفشل بصمت بسبب UNIQUE(student_id, date).
@@ -118,9 +144,13 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     } else if (failed == total) {
       ToastHelper.error('فشل تسجيل $label — حاول تاني');
     } else {
-      ToastHelper.error('اتسجّل $label لـ${total - failed} من $total طالب — فشل $failed');
+      ToastHelper.error(
+          'اتسجّل $label لـ${total - failed} من $total طالب — فشل $failed');
     }
-    setState(() { _selectedStudents.clear(); _isSelectionMode = false; });
+    setState(() {
+      _selectedStudents.clear();
+      _isSelectionMode = false;
+    });
   }
 
   void _refreshGroup() async {
@@ -153,8 +183,10 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       if (settings.use24hFormat.value) {
         return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
       }
-      return DateFormat('hh:mm a', 'ar').format(DateTime(2000, 1, 1, t.hour, t.minute));
+      return DateFormat('hh:mm a', 'ar')
+          .format(DateTime(2000, 1, 1, t.hour, t.minute));
     }
+
     TimeOfDay? parse(String v) {
       final p = v.split(':');
       if (p.length != 2) return null;
@@ -162,6 +194,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       if (h == null || m == null) return null;
       return TimeOfDay(hour: h, minute: m);
     }
+
     return r.split(',').map((s) {
       final txt = s.trim();
       if (txt.isEmpty) return txt;
@@ -191,7 +224,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     final primary = _groupColor;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1520) : const Color(0xFFF5F7FA),
+      backgroundColor:
+          isDark ? const Color(0xFF0D1520) : const Color(0xFFF5F7FA),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -228,7 +262,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                 final err = lic.checkCanAddStudent(allStudents.length);
                 if (err != null) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(err, style: const TextStyle(fontFamily: 'Cairo')),
+                    content:
+                        Text(err, style: const TextStyle(fontFamily: 'Cairo')),
                     backgroundColor: Colors.red.shade700,
                     duration: const Duration(seconds: 4),
                     action: SnackBarAction(
@@ -244,20 +279,38 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
               backgroundColor: primary,
               icon: const Icon(Icons.person_add_rounded, color: Colors.white),
               label: const Text('إضافة طالب',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w700)),
             ),
-      bottomNavigationBar: _isSelectionMode ? _buildSelectionBar(primary) : null,
+      bottomNavigationBar:
+          _isSelectionMode ? _buildSelectionBar(primary) : null,
       body: Obx(() {
-        final allStudents = studentController.students.where((s) => s.groupId == g.id).toList();
-        final totalFees = allStudents.fold<double>(0.0, (sum, s) => sum + s.price);
+        final allStudents =
+            studentController.students.where((s) => s.groupId == g.id).toList();
+        // بيستخدم PricingHelper بدل s.price مباشرة عشان يراعي الإعفاء
+        // ومجموعات "بالحصة" (بيتحسب فيها على عدد الحصص المحضورة الشهر
+        // الحالي، مش سعر الحصة الواحدة كأنه القيمة الشهرية الكاملة).
+        final now = DateTime.now();
+        final totalFees = allStudents.fold<double>(
+            0.0,
+            (sum, s) =>
+                sum +
+                PricingHelper.monthlyDue(
+                    student: s,
+                    group: g,
+                    month: DateTime(now.year, now.month),
+                    allAttendance: attendanceController.attendance));
 
         return CustomScrollView(
           slivers: [
             // ── Header ─────────────────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildHeader(context, g, allStudents, totalFees, primary, isDark)),
+            SliverToBoxAdapter(
+                child: _buildHeader(
+                    context, g, allStudents, totalFees, primary, isDark)),
 
             // ── Action buttons ──────────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildActionRow(context, g, allStudents, primary)),
+            SliverToBoxAdapter(
+                child: _buildActionRow(context, g, allStudents, primary)),
 
             // ── Student list header ─────────────────────────────────────────
             SliverToBoxAdapter(
@@ -273,7 +326,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                     const Spacer(),
                     if (!_isSelectionMode && allStudents.isNotEmpty)
                       TextButton.icon(
-                        onPressed: () => setState(() => _isSelectionMode = true),
+                        onPressed: () =>
+                            setState(() => _isSelectionMode = true),
                         icon: const Icon(Icons.checklist_rounded, size: 18),
                         label: const Text('تحديد متعدد'),
                         style: TextButton.styleFrom(foregroundColor: primary),
@@ -324,21 +378,26 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                         student: student,
                         groupColor: primary,
                         hasPaid: _paidStudentIds.contains(student.id),
+                        canSeeFinancials: _canSeeFinancials,
                         isSelectionMode: _isSelectionMode,
                         isSelected: _selectedStudents.contains(student.id),
                         onTap: () {
                           if (_isSelectionMode) {
-                            if (student.id != null) _toggleSelection(student.id!);
+                            if (student.id != null)
+                              _toggleSelection(student.id!);
                           } else {
-                            Get.toNamed(ROUTE_STUDENT_DETAILS, arguments: student);
+                            Get.toNamed(ROUTE_STUDENT_DETAILS,
+                                arguments: student);
                           }
                         },
                         onLongPress: () {
-                          if (!_isSelectionMode) setState(() => _isSelectionMode = true);
+                          if (!_isSelectionMode)
+                            setState(() => _isSelectionMode = true);
                           if (student.id != null) _toggleSelection(student.id!);
                         },
                         onQr: () => _gdShowQRDialog(context, student),
-                        onEdit: () => _showEditStudentSheet(context, student, g),
+                        onEdit: () =>
+                            _showEditStudentSheet(context, student, g),
                         onDelete: () => _confirmDeleteStudent(student),
                       );
                     },
@@ -365,7 +424,10 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
-          BoxShadow(color: primary.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6)),
+          BoxShadow(
+              color: primary.withValues(alpha: 0.35),
+              blurRadius: 16,
+              offset: const Offset(0, 6)),
         ],
       ),
       child: Padding(
@@ -377,7 +439,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             Row(
               children: [
                 Container(
-                  width: 56, height: 56,
+                  width: 56,
+                  height: 56,
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(18),
@@ -398,14 +461,17 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                           overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 4),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 3),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(g.code ?? '-',
                             style: const TextStyle(
-                                color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
                       ),
                     ],
                   ),
@@ -417,7 +483,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             if ((g.schedule?.isNotEmpty ?? false)) ...[
               const SizedBox(height: 14),
               Text(_formatSchedule(g.schedule),
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis),
             ],
@@ -427,20 +494,32 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             // إحصائيات
             Row(
               children: [
-                _HeaderStat(label: 'الطلاب', value: '${students.length}', icon: Icons.people_rounded),
+                _HeaderStat(
+                    label: 'الطلاب',
+                    value: '${students.length}',
+                    icon: Icons.people_rounded),
                 const SizedBox(width: 12),
                 _HeaderStat(
                     label: 'إجمالي الرسوم',
-                    value: FormatHelper.formatCurrency(totalFees),
+                    value: _canSeeFinancials
+                        ? FormatHelper.formatCurrency(totalFees)
+                        : '🔒',
                     icon: Icons.payments_rounded,
+                    locked: !_canSeeFinancials,
                     onTap: students.isEmpty
                         ? null
-                        : () => _gdShowFeesBreakdownDialog(context, students)),
+                        : () =>
+                            _gdShowFeesBreakdownDialog(context, students, g)),
                 const SizedBox(width: 12),
                 _HeaderStat(
                     label: 'اشتراك',
-                    value: g.price != null ? FormatHelper.formatCurrency(g.price!) : '-',
-                    icon: Icons.monetization_on_rounded),
+                    value: !_canSeeFinancials
+                        ? '🔒'
+                        : (g.price != null
+                            ? FormatHelper.formatCurrency(g.price!)
+                            : '-'),
+                    icon: Icons.monetization_on_rounded,
+                    locked: !_canSeeFinancials),
               ],
             ),
           ],
@@ -450,7 +529,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   }
 
   // ─── Action row ───────────────────────────────────────────────────────────
-  Widget _buildActionRow(BuildContext context, Group g, List<Student> students, Color primary) {
+  Widget _buildActionRow(
+      BuildContext context, Group g, List<Student> students, Color primary) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Row(
@@ -468,8 +548,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
               color: reached ? Colors.green : Colors.grey,
               onTap: reached
                   ? () => _startGroupWhatsappBatchSend(context, g.id!)
-                  : () => ToastHelper.info(
-                      'زر الواتساب يظهر يوم '
+                  : () => ToastHelper.info('زر الواتساب يظهر يوم '
                       '${settings.whatsappSendDay.value} من الشهر'),
             );
           }),
@@ -507,7 +586,9 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))],
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))
+        ],
       ),
       child: Row(
         children: [
@@ -535,6 +616,9 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
 
   // ─── Dialogs / sheets ─────────────────────────────────────────────────────
   void _confirmDeleteGroup(Group g) {
+    if (!requireDeletePermission(context, TeamModeService().canDeleteStudentsNow)) {
+      return;
+    }
     final count =
         studentController.students.where((s) => s.groupId == g.id).length;
     Get.defaultDialog(
@@ -560,9 +644,13 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   }
 
   void _confirmResetStudents(Group g) {
+    if (!requireDeletePermission(context, TeamModeService().canDeleteStudentsNow)) {
+      return;
+    }
     Get.defaultDialog(
       title: 'تصفير الطلاب',
-      middleText: 'سيتم حذف جميع الطلاب وسجلاتهم لهذه المجموعة. هل تريد المتابعة؟',
+      middleText:
+          'سيتم حذف جميع الطلاب وسجلاتهم لهذه المجموعة. هل تريد المتابعة؟',
       textCancel: 'إلغاء',
       textConfirm: 'متابعة',
       confirmTextColor: Colors.white,
@@ -582,6 +670,9 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   }
 
   void _confirmDeleteStudent(Student student) {
+    if (!requireDeletePermission(context, TeamModeService().canDeleteStudentsNow)) {
+      return;
+    }
     Get.defaultDialog(
       title: 'حذف الطالب',
       middleText: 'هل تريد حذف ${student.name}؟\n'
@@ -653,14 +744,22 @@ class _HeaderStat extends StatelessWidget {
   final String value;
   final IconData icon;
   final VoidCallback? onTap;
+  final bool locked;
 
-  const _HeaderStat({required this.label, required this.value, required this.icon, this.onTap});
+  const _HeaderStat(
+      {required this.label,
+      required this.value,
+      required this.icon,
+      this.onTap,
+      this.locked = false});
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
+      child: LockBadge(
+        locked: locked,
+        child: GestureDetector(
+        onTap: locked ? showLockedPermissionHint : onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           decoration: BoxDecoration(
@@ -673,15 +772,19 @@ class _HeaderStat extends StatelessWidget {
               const SizedBox(height: 4),
               Text(value,
                   style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
               Text(label,
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 10),
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8), fontSize: 10),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -697,7 +800,11 @@ class _ActionChip extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
 
-  const _ActionChip({required this.icon, required this.label, required this.color, required this.onTap});
+  const _ActionChip(
+      {required this.icon,
+      required this.label,
+      required this.color,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -716,7 +823,8 @@ class _ActionChip extends StatelessWidget {
               Icon(icon, color: color, size: 20),
               const SizedBox(height: 3),
               Text(label,
-                  style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                      color: color, fontSize: 11, fontWeight: FontWeight.w700),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
             ],
@@ -734,6 +842,7 @@ class _StudentCard extends StatelessWidget {
   final Student student;
   final Color groupColor;
   final bool hasPaid;
+  final bool canSeeFinancials;
   final bool isSelectionMode;
   final bool isSelected;
   final VoidCallback onTap;
@@ -746,6 +855,7 @@ class _StudentCard extends StatelessWidget {
     required this.student,
     required this.groupColor,
     required this.hasPaid,
+    required this.canSeeFinancials,
     required this.isSelectionMode,
     required this.isSelected,
     required this.onTap,
@@ -758,7 +868,8 @@ class _StudentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final initials = student.name.trim().isNotEmpty ? student.name.trim()[0] : '؟';
+    final initials =
+        student.name.trim().isNotEmpty ? student.name.trim()[0] : '؟';
 
     return GestureDetector(
       onTap: onTap,
@@ -793,21 +904,25 @@ class _StudentCard extends StatelessWidget {
                   padding: const EdgeInsets.only(left: 10),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
-                    width: 24, height: 24,
+                    width: 24,
+                    height: 24,
                     decoration: BoxDecoration(
                       color: isSelected ? groupColor : Colors.transparent,
                       shape: BoxShape.circle,
                       border: Border.all(
-                          color: isSelected ? groupColor : Colors.grey.shade400, width: 2),
+                          color: isSelected ? groupColor : Colors.grey.shade400,
+                          width: 2),
                     ),
                     child: isSelected
-                        ? const Icon(Icons.check_rounded, color: Colors.white, size: 14)
+                        ? const Icon(Icons.check_rounded,
+                            color: Colors.white, size: 14)
                         : null,
                   ),
                 )
               else
                 Container(
-                  width: 44, height: 44,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
                     color: groupColor.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
@@ -832,28 +947,49 @@ class _StudentCard extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(student.name,
-                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700, fontSize: 14),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis),
                         ),
-                        if (!hasPaid) ...[
+                        if (!canSeeFinancials) ...[
+                          // مبنفرقش هنا بين دفع/مادفعش — عرض الشارة بس
+                          // لما "لم يدفع" كانت هتبقى هي نفسها تسريب
+                          // لحالة الدفع (وجودها/غيابها كان هيوضح الحالة
+                          // حتى تحت قفل).
                           const SizedBox(width: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Icon(Icons.lock_rounded,
+                                size: 10, color: Colors.grey.shade600),
+                          ),
+                        ] else if (!hasPaid) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: Colors.red.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: const Text('لم يدفع',
                                 style: TextStyle(
-                                    color: Colors.red, fontSize: 9, fontWeight: FontWeight.w700)),
+                                    color: Colors.red,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700)),
                           ),
                         ],
                       ],
                     ),
                     const SizedBox(height: 3),
                     Text(student.code,
-                        style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                        style: TextStyle(
+                            color: Colors.grey.shade500, fontSize: 12)),
                   ],
                 ),
               ),
@@ -863,17 +999,34 @@ class _StudentCard extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _IconBtn(icon: Icons.qr_code_rounded, color: groupColor, onTap: onQr),
+                    _IconBtn(
+                        icon: Icons.qr_code_rounded,
+                        color: groupColor,
+                        onTap: onQr),
                     const SizedBox(width: 4),
                     PopupMenuButton<String>(
-                      icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade500, size: 20),
+                      icon: Icon(Icons.more_vert_rounded,
+                          color: Colors.grey.shade500, size: 20),
                       onSelected: (v) {
                         if (v == 'edit') onEdit();
                         if (v == 'delete') onDelete();
                       },
                       itemBuilder: (_) => [
-                        const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit_rounded, size: 18), SizedBox(width: 8), Text('تعديل')])),
-                        const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_rounded, size: 18, color: Colors.red), SizedBox(width: 8), Text('حذف', style: TextStyle(color: Colors.red))])),
+                        const PopupMenuItem(
+                            value: 'edit',
+                            child: Row(children: [
+                              Icon(Icons.edit_rounded, size: 18),
+                              SizedBox(width: 8),
+                              Text('تعديل')
+                            ])),
+                        const PopupMenuItem(
+                            value: 'delete',
+                            child: Row(children: [
+                              Icon(Icons.delete_rounded,
+                                  size: 18, color: Colors.red),
+                              SizedBox(width: 8),
+                              Text('حذف', style: TextStyle(color: Colors.red))
+                            ])),
                       ],
                     ),
                   ],
@@ -890,14 +1043,16 @@ class _IconBtn extends StatelessWidget {
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
-  const _IconBtn({required this.icon, required this.color, required this.onTap});
+  const _IconBtn(
+      {required this.icon, required this.color, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 34, height: 34,
+        width: 34,
+        height: 34,
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
@@ -917,7 +1072,8 @@ String? _validateScheduleText(String raw) {
     if (s.isEmpty) continue;
     final sp = s.split(' ');
     final day = sp.first;
-    if (sp.length < 2) return 'اليوم "$day" بدون وقت — حدد وقت البداية والنهاية';
+    if (sp.length < 2)
+      return 'اليوم "$day" بدون وقت — حدد وقت البداية والنهاية';
     final range = s.substring(day.length).trim().split('-');
     TimeOfDay? parseT(String v) {
       final p = v.trim().split(':');
@@ -926,8 +1082,9 @@ String? _validateScheduleText(String raw) {
       if (h == null || m == null) return null;
       return TimeOfDay(hour: h, minute: m);
     }
+
     final from = range.length == 2 ? parseT(range[0]) : null;
-    final to   = range.length == 2 ? parseT(range[1]) : null;
+    final to = range.length == 2 ? parseT(range[1]) : null;
     if (from == null || to == null) {
       return 'اليوم "$day" بدون وقت كامل — حدد وقت البداية والنهاية';
     }
@@ -938,7 +1095,8 @@ String? _validateScheduleText(String raw) {
   for (final ranges in byDay.values) {
     ranges.sort((a, b) => a.$1.compareTo(b.$1));
     for (var i = 1; i < ranges.length; i++) {
-      if (ranges[i].$1 < ranges[i - 1].$2) return 'فيه موعدين متداخلين في نفس اليوم';
+      if (ranges[i].$1 < ranges[i - 1].$2)
+        return 'فيه موعدين متداخلين في نفس اليوم';
     }
   }
   return null;
@@ -967,16 +1125,18 @@ class _GroupEditSheetState extends State<_GroupEditSheet> {
   void initState() {
     super.initState();
     final g = widget.group;
-    _nameCtrl    = TextEditingController(text: g.name);
-    _codeCtrl    = TextEditingController(text: g.code ?? '');
-    _priceCtrl   = TextEditingController(text: g.price?.toString() ?? '');
+    _nameCtrl = TextEditingController(text: g.name);
+    _codeCtrl = TextEditingController(text: g.code ?? '');
+    _priceCtrl = TextEditingController(text: g.price?.toString() ?? '');
     _scheduleCtrl = TextEditingController(text: g.schedule ?? '');
   }
 
   @override
   void dispose() {
-    _nameCtrl.dispose(); _codeCtrl.dispose();
-    _priceCtrl.dispose(); _scheduleCtrl.dispose();
+    _nameCtrl.dispose();
+    _codeCtrl.dispose();
+    _priceCtrl.dispose();
+    _scheduleCtrl.dispose();
     super.dispose();
   }
 
@@ -984,11 +1144,23 @@ class _GroupEditSheetState extends State<_GroupEditSheet> {
     final name = _nameCtrl.text.trim();
     final code = _codeCtrl.text.trim();
     final price = double.tryParse(_priceCtrl.text.trim());
-    if (name.isEmpty) { ToastHelper.info('أدخل اسم المجموعة'); return; }
-    if (code.isEmpty) { ToastHelper.info('أدخل بادئة الكود'); return; }
-    if (price == null) { ToastHelper.info('السعر غير صالح'); return; }
+    if (name.isEmpty) {
+      ToastHelper.info('أدخل اسم المجموعة');
+      return;
+    }
+    if (code.isEmpty) {
+      ToastHelper.info('أدخل بادئة الكود');
+      return;
+    }
+    if (price == null) {
+      ToastHelper.info('السعر غير صالح');
+      return;
+    }
     final scheduleErr = _validateScheduleText(_scheduleCtrl.text);
-    if (scheduleErr != null) { ToastHelper.error(scheduleErr); return; }
+    if (scheduleErr != null) {
+      ToastHelper.error(scheduleErr);
+      return;
+    }
 
     setState(() => _saving = true);
     try {
@@ -996,7 +1168,9 @@ class _GroupEditSheetState extends State<_GroupEditSheet> {
         name: name,
         code: code,
         price: price,
-        schedule: _scheduleCtrl.text.trim().isEmpty ? null : _scheduleCtrl.text.trim(),
+        schedule: _scheduleCtrl.text.trim().isEmpty
+            ? null
+            : _scheduleCtrl.text.trim(),
       ));
       if (mounted && ok) Navigator.of(context).pop();
       // لو فشل: رسالة الخطأ اتعرضت بالفعل من الـcontroller، خلّي الشيت مفتوح
@@ -1008,31 +1182,45 @@ class _GroupEditSheetState extends State<_GroupEditSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = widget.group.color != null ? Color(widget.group.color!) : AppTheme.primaryColor;
+    final primary = widget.group.color != null
+        ? Color(widget.group.color!)
+        : AppTheme.primaryColor;
 
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF131D31) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      padding: EdgeInsets.fromLTRB(20, 16, 20,
-          MediaQuery.of(context).viewInsets.bottom + 24),
+      padding: EdgeInsets.fromLTRB(
+          20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(child: Container(width: 40, height: 4,
-              decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)))),
+          Center(
+              child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(2)))),
           const SizedBox(height: 14),
           Text('تعديل المجموعة',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           const SizedBox(height: 16),
           CustomTextField(controller: _nameCtrl, label: 'اسم المجموعة'),
           const SizedBox(height: 12),
           Row(children: [
-            Expanded(child: CustomTextField(controller: _codeCtrl, label: 'بادئة الكود')),
+            Expanded(
+                child: CustomTextField(
+                    controller: _codeCtrl, label: 'بادئة الكود')),
             const SizedBox(width: 12),
-            Expanded(child: CustomTextField(controller: _priceCtrl, label: 'السعر', keyboardType: TextInputType.number)),
+            Expanded(
+                child: CustomTextField(
+                    controller: _priceCtrl,
+                    label: 'السعر',
+                    keyboardType: TextInputType.number)),
           ]),
           const SizedBox(height: 12),
           _GDScheduleLabel(),
@@ -1044,11 +1232,15 @@ class _GroupEditSheetState extends State<_GroupEditSheet> {
             style: FilledButton.styleFrom(
               backgroundColor: primary,
               minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
             ),
             icon: _saving
-                ? const SizedBox(width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.save_rounded),
             label: const Text('حفظ التعديلات',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
@@ -1061,8 +1253,8 @@ class _GroupEditSheetState extends State<_GroupEditSheet> {
 
 class _GDScheduleLabel extends StatelessWidget {
   @override
-  Widget build(BuildContext context) =>
-      const Text('المواعيد الأسبوعية', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13));
+  Widget build(BuildContext context) => const Text('المواعيد الأسبوعية',
+      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1077,7 +1269,15 @@ class _GDScheduleEditor extends StatefulWidget {
 }
 
 class _GDScheduleEditorState extends State<_GDScheduleEditor> {
-  static const _days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+  static const _days = [
+    'السبت',
+    'الأحد',
+    'الاثنين',
+    'الثلاثاء',
+    'الأربعاء',
+    'الخميس',
+    'الجمعة'
+  ];
   List<_Slot> _slots = [];
 
   @override
@@ -1103,19 +1303,26 @@ class _GDScheduleEditorState extends State<_GDScheduleEditor> {
         if (h == null || m == null) return null;
         return TimeOfDay(hour: h, minute: m);
       }
-      if (range.length == 2) { from = parse(range[0]); to = parse(range[1]); }
+
+      if (range.length == 2) {
+        from = parse(range[0]);
+        to = parse(range[1]);
+      }
       return _Slot(day: day, from: from, to: to);
     }).toList();
   }
 
   void _sync() {
-    final parts = _slots.map((s) {
-      if (s.day == null) return '';
-      if (s.from == null || s.to == null) return s.day!;
-      String fmt(TimeOfDay t) =>
-          '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-      return '${s.day} ${fmt(s.from!)}-${fmt(s.to!)}';
-    }).where((e) => e.isNotEmpty).join(',');
+    final parts = _slots
+        .map((s) {
+          if (s.day == null) return '';
+          if (s.from == null || s.to == null) return s.day!;
+          String fmt(TimeOfDay t) =>
+              '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+          return '${s.day} ${fmt(s.from!)}-${fmt(s.to!)}';
+        })
+        .where((e) => e.isNotEmpty)
+        .join(',');
     widget.controller.text = parts;
   }
 
@@ -1137,11 +1344,12 @@ class _GDScheduleEditorState extends State<_GDScheduleEditor> {
       if (isFrom) {
         // حساب مدة الحصة الحالية والحفاظ عليها عند تغيير البداية
         final oldFrom = _slots[i].from;
-        final oldTo   = _slots[i].to;
+        final oldTo = _slots[i].to;
         int durMins = 60; // افتراضي ساعة
         if (oldFrom != null && oldTo != null) {
-          final d = oldTo.hour * 60 + oldTo.minute
-                  - (oldFrom.hour * 60 + oldFrom.minute);
+          final d = oldTo.hour * 60 +
+              oldTo.minute -
+              (oldFrom.hour * 60 + oldFrom.minute);
           if (d > 0) durMins = d;
         }
         _slots[i].from = t;
@@ -1162,25 +1370,37 @@ class _GDScheduleEditorState extends State<_GDScheduleEditor> {
         ..._slots.asMap().entries.map((e) {
           final i = e.key;
           final s = e.value;
-          String fmtT(TimeOfDay? t) => t == null ? '--:--'
+          String fmtT(TimeOfDay? t) => t == null
+              ? '--:--'
               : '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
           // يوم متحدد بدون وقت كامل = الموعد ده مش هيظهر في جدول الحصص
           final incomplete = s.day != null && (s.from == null || s.to == null);
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: _days.contains(s.day) ? s.day : null,
                     decoration: InputDecoration(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
                       isDense: true,
                     ),
                     hint: const Text('اليوم', style: TextStyle(fontSize: 13)),
-                    items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 13)))).toList(),
-                    onChanged: (v) => setState(() { _slots[i].day = v; _sync(); }),
+                    items: _days
+                        .map((d) => DropdownMenuItem(
+                            value: d,
+                            child:
+                                Text(d, style: const TextStyle(fontSize: 13))))
+                        .toList(),
+                    onChanged: (v) => setState(() {
+                      _slots[i].day = v;
+                      _sync();
+                    }),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -1188,22 +1408,33 @@ class _GDScheduleEditorState extends State<_GDScheduleEditor> {
                   onTap: () => _pickTime(i, true),
                   child: _TimeBox(label: fmtT(s.from), warning: incomplete),
                 ),
-                const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text('-')),
+                const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Text('-')),
                 GestureDetector(
                   onTap: () => _pickTime(i, false),
                   child: _TimeBox(label: fmtT(s.to), warning: incomplete),
                 ),
                 const SizedBox(width: 4),
                 GestureDetector(
-                  onTap: _slots.length > 1 ? () => setState(() { _slots.removeAt(i); _sync(); }) : null,
+                  onTap: _slots.length > 1
+                      ? () => setState(() {
+                            _slots.removeAt(i);
+                            _sync();
+                          })
+                      : null,
                   child: Icon(Icons.remove_circle_rounded,
-                      color: _slots.length > 1 ? Colors.red.shade300 : Colors.grey.shade300, size: 20),
+                      color: _slots.length > 1
+                          ? Colors.red.shade300
+                          : Colors.grey.shade300,
+                      size: 20),
                 ),
               ]),
               if (incomplete)
                 const Padding(
                   padding: EdgeInsets.only(top: 2, right: 4),
-                  child: Text('⚠️ حدد وقت البداية والنهاية وإلا الموعد ده مش هيظهر في جدول الحصص',
+                  child: Text(
+                      '⚠️ حدد وقت البداية والنهاية وإلا الموعد ده مش هيظهر في جدول الحصص',
                       style: TextStyle(fontSize: 11, color: Colors.orange)),
                 ),
             ]),
@@ -1224,18 +1455,20 @@ class _GDScheduleEditorState extends State<_GDScheduleEditor> {
 
 class _TimeBox extends StatelessWidget {
   final String label;
-  final bool   warning;
+  final bool warning;
   const _TimeBox({required this.label, this.warning = false});
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        border: Border.all(color: warning ? Colors.orange : Colors.grey.shade300),
+        border:
+            Border.all(color: warning ? Colors.orange : Colors.grey.shade300),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(label, style: TextStyle(
-          fontSize: 12, color: warning ? Colors.orange.shade800 : null)),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 12, color: warning ? Colors.orange.shade800 : null)),
     );
   }
 }
@@ -1262,30 +1495,42 @@ void _gdShowQRDialog(BuildContext context, Student student) {
           content: SizedBox(
             width: 280,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text(student.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(student.name,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
               if (groupName.isNotEmpty) ...[
                 const SizedBox(height: 4),
-                Text('المجموعة: $groupName', style: const TextStyle(fontSize: 13)),
+                Text('المجموعة: $groupName',
+                    style: const TextStyle(fontSize: 13)),
               ],
               const SizedBox(height: 12),
               if (student.code.trim().isEmpty)
                 const Text('لا يوجد كود', style: TextStyle(color: Colors.red))
               else
-                QrImageView(data: student.code, version: QrVersions.auto, size: 200,
+                QrImageView(
+                    data: student.code,
+                    version: QrVersions.auto,
+                    size: 200,
                     backgroundColor: Colors.white),
               const SizedBox(height: 8),
               Text('الكود: ${student.code}'),
             ]),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('إغلاق')),
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('إغلاق')),
             FilledButton.icon(
-              onPressed: student.code.trim().isEmpty ? null : () async {
-                final ok = await _gdSaveStudentQrImage(student);
-                if (!ctx.mounted) return;
-                if (ok) { ToastHelper.success('تم حفظ صورة QR'); }
-                else { ToastHelper.error('تعذر حفظ صورة QR'); }
-              },
+              onPressed: student.code.trim().isEmpty
+                  ? null
+                  : () async {
+                      final ok = await _gdSaveStudentQrImage(student);
+                      if (!ctx.mounted) return;
+                      if (ok) {
+                        ToastHelper.success('تم حفظ صورة QR');
+                      } else {
+                        ToastHelper.error('تعذر حفظ صورة QR');
+                      }
+                    },
               icon: const Icon(Icons.download_rounded),
               label: const Text('حفظ'),
             ),
@@ -1307,48 +1552,70 @@ Future<bool> _gdSaveStudentQrImage(Student student) async {
     const double padding = 40, spacing = 24;
 
     final painter = QrPainter(
-      data: student.code, version: QrVersions.auto,
+      data: student.code,
+      version: QrVersions.auto,
       eyeStyle: const QrEyeStyle(color: Color(0xFF000000)),
       dataModuleStyle: const QrDataModuleStyle(color: Color(0xFF000000)),
     );
     final ui.Image qrImage = await painter.toImage(qrSize.toDouble());
 
-    const textStyleTitle = TextStyle(color: Colors.black, fontSize: 48, fontWeight: FontWeight.w600, fontFamily: 'Cairo');
-    const textStyleSub   = TextStyle(color: Colors.black, fontSize: 36, fontFamily: 'Cairo');
+    const textStyleTitle = TextStyle(
+        color: Colors.black,
+        fontSize: 48,
+        fontWeight: FontWeight.w600,
+        fontFamily: 'Cairo');
+    const textStyleSub =
+        TextStyle(color: Colors.black, fontSize: 36, fontFamily: 'Cairo');
 
     final tpName = TextPainter(
       text: TextSpan(text: student.name, style: textStyleTitle),
-      textAlign: TextAlign.center, textDirection: ui.TextDirection.rtl,
+      textAlign: TextAlign.center,
+      textDirection: ui.TextDirection.rtl,
     )..layout(maxWidth: qrSize.toDouble());
 
-    final groupLine = (groupName == null || groupName.isEmpty) ? null : 'المجموعة: $groupName';
-    final TextPainter? tpGroup = groupLine == null ? null
-        : (TextPainter(text: TextSpan(text: groupLine, style: textStyleSub),
-            textAlign: TextAlign.center, textDirection: ui.TextDirection.rtl)
-            ..layout(maxWidth: qrSize.toDouble()));
+    final groupLine = (groupName == null || groupName.isEmpty)
+        ? null
+        : 'المجموعة: $groupName';
+    final TextPainter? tpGroup = groupLine == null
+        ? null
+        : (TextPainter(
+            text: TextSpan(text: groupLine, style: textStyleSub),
+            textAlign: TextAlign.center,
+            textDirection: ui.TextDirection.rtl)
+          ..layout(maxWidth: qrSize.toDouble()));
 
     final tpCode = TextPainter(
       text: TextSpan(text: 'الكود: ${student.code}', style: textStyleSub),
-      textAlign: TextAlign.center, textDirection: ui.TextDirection.ltr,
+      textAlign: TextAlign.center,
+      textDirection: ui.TextDirection.ltr,
     )..layout(maxWidth: qrSize.toDouble());
 
-    final double textHeight = tpName.height + (tpGroup?.height ?? 0) + tpCode.height + spacing * 2;
+    final double textHeight =
+        tpName.height + (tpGroup?.height ?? 0) + tpCode.height + spacing * 2;
     final int widthPx = (qrSize + padding * 2).round();
-    final int heightPx = (padding + qrSize + spacing + textHeight + padding).round();
+    final int heightPx =
+        (padding + qrSize + spacing + textHeight + padding).round();
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    canvas.drawRect(Rect.fromLTWH(0, 0, widthPx.toDouble(), heightPx.toDouble()),
+    canvas.drawRect(
+        Rect.fromLTWH(0, 0, widthPx.toDouble(), heightPx.toDouble()),
         Paint()..color = const Color(0xFFFFFFFF));
 
     final qrLeft = (widthPx - qrSize) / 2;
-    canvas.drawImageRect(qrImage,
+    canvas.drawImageRect(
+        qrImage,
         Rect.fromLTWH(0, 0, qrSize.toDouble(), qrSize.toDouble()),
-        Rect.fromLTWH(qrLeft, padding, qrSize.toDouble(), qrSize.toDouble()), Paint());
+        Rect.fromLTWH(qrLeft, padding, qrSize.toDouble(), qrSize.toDouble()),
+        Paint());
 
     double y = padding + qrSize + spacing;
-    tpName.paint(canvas, Offset((widthPx - tpName.width) / 2, y)); y += tpName.height + 8;
-    if (tpGroup != null) { tpGroup.paint(canvas, Offset((widthPx - tpGroup.width) / 2, y)); y += tpGroup.height + 8; }
+    tpName.paint(canvas, Offset((widthPx - tpName.width) / 2, y));
+    y += tpName.height + 8;
+    if (tpGroup != null) {
+      tpGroup.paint(canvas, Offset((widthPx - tpGroup.width) / 2, y));
+      y += tpGroup.height + 8;
+    }
     tpCode.paint(canvas, Offset((widthPx - tpCode.width) / 2, y));
 
     final composed = await recorder.endRecording().toImage(widthPx, heightPx);
@@ -1364,23 +1631,30 @@ Future<bool> _gdSaveStudentQrImage(Student student) async {
     await tmpFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
 
     var saveInfo = await MediaStore().saveFile(
-        tempFilePath: tmpFile.path, dirType: DirType.photo, dirName: DirType.photo.defaults);
+        tempFilePath: tmpFile.path,
+        dirType: DirType.photo,
+        dirName: DirType.photo.defaults);
     if (saveInfo?.uri == null) {
       saveInfo = await MediaStore().saveFile(
-          tempFilePath: tmpFile.path, dirType: DirType.download, dirName: DirType.download.defaults);
+          tempFilePath: tmpFile.path,
+          dirType: DirType.download,
+          dirName: DirType.download.defaults);
     }
 
     final success = saveInfo?.uri != null;
     if (success) {
       try {
-        final path = await MediaStore().getFilePathFromUri(uriString: saveInfo!.uri.toString());
+        final path = await MediaStore()
+            .getFilePathFromUri(uriString: saveInfo!.uri.toString());
         if (path != null && path.isNotEmpty) {
           await DatabaseService().updateStudent(student.copyWith(qrPath: path));
         }
       } catch (_) {}
     }
     return success;
-  } catch (_) { return false; }
+  } catch (_) {
+    return false;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1388,10 +1662,10 @@ Future<bool> _gdSaveStudentQrImage(Student student) async {
 // ─────────────────────────────────────────────────────────────────────────────
 Future<void> _exportGroupRosterPdf(Group g, List<Student> students) async {
   final pdf = pw.Document();
-  final font = pw.Font.ttf(
-      await rootBundle.load('assets/fonts/Cairo-Regular.ttf'));
-  final fontBold = pw.Font.ttf(
-      await rootBundle.load('assets/fonts/Cairo-Bold.ttf'));
+  final font =
+      pw.Font.ttf(await rootBundle.load('assets/fonts/Cairo-Regular.ttf'));
+  final fontBold =
+      pw.Font.ttf(await rootBundle.load('assets/fonts/Cairo-Bold.ttf'));
   final sorted = List<Student>.from(students)
     ..sort((a, b) => a.code.compareTo(b.code));
 
@@ -1399,89 +1673,90 @@ Future<void> _exportGroupRosterPdf(Group g, List<Student> students) async {
     pageFormat: PdfPageFormat.a4,
     textDirection: pw.TextDirection.rtl,
     build: (ctx) => [
-        pw.Container(
-          width: double.infinity,
-          padding: const pw.EdgeInsets.all(16),
-          decoration: pw.BoxDecoration(
-            color: g.color != null
-                ? PdfColor.fromInt(g.color!)
-                : PdfColor.fromInt(0xFF4F46E5),
-            borderRadius: pw.BorderRadius.circular(8),
-          ),
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.center,
-            children: [
-              pw.Text('كشف طلاب مجموعة',
-                  style: pw.TextStyle(
-                      font: fontBold, fontSize: 16, color: PdfColors.white)),
-              pw.SizedBox(height: 4),
-              pw.Text(g.name,
-                  style: pw.TextStyle(
-                      font: fontBold, fontSize: 22, color: PdfColors.white)),
-              pw.SizedBox(height: 4),
-              pw.Text('عدد الطلاب: ${sorted.length}',
-                  style: pw.TextStyle(
-                      font: font,
-                      fontSize: 12,
-                      color: const PdfColor(1, 1, 1, 0.7))),
-            ],
-          ),
+      pw.Container(
+        width: double.infinity,
+        padding: const pw.EdgeInsets.all(16),
+        decoration: pw.BoxDecoration(
+          color: g.color != null
+              ? PdfColor.fromInt(g.color!)
+              : PdfColor.fromInt(0xFF4F46E5),
+          borderRadius: pw.BorderRadius.circular(8),
         ),
-        pw.SizedBox(height: 16),
-        pw.Table(
-          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-          columnWidths: {
-            0: const pw.FlexColumnWidth(1),
-            1: const pw.FlexColumnWidth(3),
-            2: const pw.FlexColumnWidth(2),
-            3: const pw.FlexColumnWidth(2),
-            4: const pw.FlexColumnWidth(2),
-          },
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
           children: [
-            pw.TableRow(
-              decoration:
-                  const pw.BoxDecoration(color: PdfColor.fromInt(0xFF4F46E5)),
-              children: ['#', 'اسم الطالب', 'الكود', 'هاتف ولي الأمر', 'الرسوم']
-                  .map((h) => pw.Padding(
+            pw.Text('كشف طلاب مجموعة',
+                style: pw.TextStyle(
+                    font: fontBold, fontSize: 16, color: PdfColors.white)),
+            pw.SizedBox(height: 4),
+            pw.Text(g.name,
+                style: pw.TextStyle(
+                    font: fontBold, fontSize: 22, color: PdfColors.white)),
+            pw.SizedBox(height: 4),
+            pw.Text('عدد الطلاب: ${sorted.length}',
+                style: pw.TextStyle(
+                    font: font,
+                    fontSize: 12,
+                    color: const PdfColor(1, 1, 1, 0.7))),
+          ],
+        ),
+      ),
+      pw.SizedBox(height: 16),
+      pw.Table(
+        border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+        columnWidths: {
+          0: const pw.FlexColumnWidth(1),
+          1: const pw.FlexColumnWidth(3),
+          2: const pw.FlexColumnWidth(2),
+          3: const pw.FlexColumnWidth(2),
+          4: const pw.FlexColumnWidth(2),
+        },
+        children: [
+          pw.TableRow(
+            decoration:
+                const pw.BoxDecoration(color: PdfColor.fromInt(0xFF4F46E5)),
+            children: ['#', 'اسم الطالب', 'الكود', 'هاتف ولي الأمر', 'الرسوم']
+                .map((h) => pw.Padding(
+                      padding: const pw.EdgeInsets.all(8),
+                      child: pw.Text(h,
+                          style: pw.TextStyle(
+                              font: fontBold,
+                              fontSize: 11,
+                              color: PdfColors.white),
+                          textAlign: pw.TextAlign.center),
+                    ))
+                .toList(),
+          ),
+          ...sorted.asMap().entries.map((entry) {
+            final i = entry.key;
+            final s = entry.value;
+            final bg =
+                i.isEven ? PdfColors.white : const PdfColor.fromInt(0xFFF8FAFF);
+            return pw.TableRow(
+              decoration: pw.BoxDecoration(color: bg),
+              children: [
+                '${i + 1}',
+                s.name,
+                s.code,
+                s.guardianPhone?.trim().isNotEmpty == true
+                    ? s.guardianPhone!
+                    : '-',
+                TeamModeService().canSeeFinancials
+                    ? s.effectivePrice.toStringAsFixed(0)
+                    : '-',
+              ]
+                  .map((v) => pw.Padding(
                         padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(h,
-                            style: pw.TextStyle(
-                                font: fontBold,
-                                fontSize: 11,
-                                color: PdfColors.white),
+                        child: pw.Text(v,
+                            style: pw.TextStyle(font: font, fontSize: 10),
                             textAlign: pw.TextAlign.center),
                       ))
                   .toList(),
-            ),
-            ...sorted.asMap().entries.map((entry) {
-              final i = entry.key;
-              final s = entry.value;
-              final bg = i.isEven
-                  ? PdfColors.white
-                  : const PdfColor.fromInt(0xFFF8FAFF);
-              return pw.TableRow(
-                decoration: pw.BoxDecoration(color: bg),
-                children: [
-                  '${i + 1}',
-                  s.name,
-                  s.code,
-                  s.guardianPhone?.trim().isNotEmpty == true
-                      ? s.guardianPhone!
-                      : '-',
-                  s.effectivePrice.toStringAsFixed(0),
-                ]
-                    .map((v) => pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(v,
-                              style: pw.TextStyle(font: font, fontSize: 10),
-                              textAlign: pw.TextAlign.center),
-                        ))
-                    .toList(),
-              );
-            }),
-          ],
-        ),
-      ],
+            );
+          }),
+        ],
+      ),
+    ],
   ));
 
   await Printing.sharePdf(
@@ -1491,23 +1766,31 @@ Future<void> _exportGroupRosterPdf(Group g, List<Student> students) async {
 // ─────────────────────────────────────────────────────────────────────────────
 // WhatsApp batch send
 // ─────────────────────────────────────────────────────────────────────────────
-Future<void> _startGroupWhatsappBatchSend(BuildContext context, int groupId) async {
+Future<void> _startGroupWhatsappBatchSend(
+    BuildContext context, int groupId) async {
   final db = DatabaseService();
   final settings = Get.find<SettingsController>();
   final students = await db.getStudentsByGroup(groupId);
-  final valid = students.where((s) => (s.guardianPhone ?? '').trim().isNotEmpty).toList()
+  final valid = students
+      .where((s) => (s.guardianPhone ?? '').trim().isNotEmpty)
+      .toList()
     ..sort((a, b) => a.name.compareTo(b.name));
-  if (valid.isEmpty) { ToastHelper.info('لا يوجد أولياء أمور بأرقام مسجلة'); return; }
+  if (valid.isEmpty) {
+    ToastHelper.info('لا يوجد أولياء أمور بأرقام مسجلة');
+    return;
+  }
   if (!context.mounted) return;
   await _pickAndSend(context, valid, settings);
 }
 
-Future<void> _pickAndSend(BuildContext context, List<Student> all, SettingsController settings) async {
+Future<void> _pickAndSend(BuildContext context, List<Student> all,
+    SettingsController settings) async {
   final db = DatabaseService();
   final now = DateTime.now();
   final start = DateTime(now.year, now.month, 1);
   final end = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
-  final sentMap = await db.getReportSentMap(all.map((s) => s.id!).toList(), start);
+  final sentMap =
+      await db.getReportSentMap(all.map((s) => s.id!).toList(), start);
 
   String normalize(String input, String defaultDial) {
     var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
@@ -1526,210 +1809,252 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all, SettingsContr
     builder: (ctx) {
       List<Student> items = List.of(all);
       // افتراضياً: الطلاب اللي اتبعتلهم الشهر ده ميتشيكوش (عشان ميتكررش الإرسال)
-      List<bool> sel =
-          items.map((s) => !sentMap.containsKey(s.id)).toList();
+      List<bool> sel = items.map((s) => !sentMap.containsKey(s.id)).toList();
       bool sending = false;
       return StatefulBuilder(
         builder: (ctx, setSt) {
-          final sentCount      = items.where((s) => sentMap.containsKey(s.id)).length;
+          final sentCount =
+              items.where((s) => sentMap.containsKey(s.id)).length;
           final remainingCount = items.length - sentCount;
-          final selectedCount  = sel.where((e) => e).length;
+          final selectedCount = sel.where((e) => e).length;
           return AlertDialog(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('إرسال تقرير واتساب'),
-              const SizedBox(height: 6),
-              Row(children: [
-                _SendStatBadge(
-                    label: 'تم الإرسال', count: sentCount,
-                    color: const Color(0xFF10B981),
-                    icon: Icons.check_circle_rounded),
-                const SizedBox(width: 8),
-                _SendStatBadge(
-                    label: 'لم يُرسل', count: remainingCount,
-                    color: const Color(0xFFF59E0B),
-                    icon: Icons.schedule_rounded),
-              ]),
-            ],
-          ),
-          content: SizedBox(
-            width: 460,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // أزرار تحديد سريعة
+                const Text('إرسال تقرير واتساب'),
+                const SizedBox(height: 6),
                 Row(children: [
-                  TextButton.icon(
-                    onPressed: sending
-                        ? null
-                        : () => setSt(() {
-                              for (int i = 0; i < sel.length; i++) {
-                                sel[i] = !sentMap.containsKey(items[i].id);
-                              }
-                            }),
-                    icon: const Icon(Icons.filter_alt_rounded, size: 16),
-                    label: const Text('غير المُرسَل فقط'),
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: sending
-                        ? null
-                        : () => setSt(() {
-                              for (int i = 0; i < sel.length; i++) {
-                                sel[i] = true;
-                              }
-                            }),
-                    child: const Text('تحديد الكل'),
-                  ),
+                  _SendStatBadge(
+                      label: 'تم الإرسال',
+                      count: sentCount,
+                      color: const Color(0xFF10B981),
+                      icon: Icons.check_circle_rounded),
+                  const SizedBox(width: 8),
+                  _SendStatBadge(
+                      label: 'لم يُرسل',
+                      count: remainingCount,
+                      color: const Color(0xFFF59E0B),
+                      icon: Icons.schedule_rounded),
                 ]),
-                const Divider(height: 1),
-                SizedBox(
-                  height: 320,
-                  child: ListView.builder(
-                    itemCount: items.length,
-                    itemBuilder: (_, i) {
-                      final s = items[i];
-                      final last = sentMap[s.id!];
-                      final alreadySent = last != null;
-                      return CheckboxListTile(
-                        value: sel[i],
-                        onChanged: sending
-                            ? null
-                            : (v) => setSt(() => sel[i] = v ?? false),
-                        title: Row(children: [
-                          Expanded(child: Text(s.name)),
-                          if (alreadySent)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF10B981)
-                                    .withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.check_circle_rounded,
-                                        size: 13,
-                                        color: Color(0xFF10B981)),
-                                    SizedBox(width: 3),
-                                    Text('تم الإرسال',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF10B981))),
-                                  ]),
-                            ),
-                        ]),
-                        subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(s.guardianPhone ?? '-'),
-                              if (last != null)
-                                Text(
-                                    'آخر إرسال: ${FormatHelper.formatDateTime(last)}',
-                                    style:
-                                        Theme.of(ctx).textTheme.bodySmall),
-                            ]),
-                        controlAffinity: ListTileControlAffinity.leading,
-                      );
-                    },
-                  ),
-                ),
               ],
             ),
-          ),
-          actions: [
-            TextButton(onPressed: sending ? null : () => Navigator.of(ctx).pop(), child: const Text('إلغاء')),
-            FilledButton(
-              onPressed: sending || selectedCount == 0 ? null : () async {
-                setSt(() => sending = true);
-                for (int i = 0; i < items.length; i++) {
-                  if (!sel[i]) continue;
-                  final s = items[i];
-                  final phone = normalize(s.guardianPhone!.trim(), settings.countryDial.value);
-                  final group = await db.getGroup(s.groupId);
-                  final atts = await db.getAttendanceByStudent(s.id!);
-                  final pays = await db.getPaymentsByStudent(s.id!);
-                  final attsMonth = atts.where((a) => !a.date.isBefore(start) && !a.date.isAfter(end)).toList();
-                  final paysMonth = pays.where((p) => !p.date.isBefore(start) && !p.date.isAfter(end)).toList();
-                  final present = attsMonth.where((a) => a.status == ATTENDANCE_PRESENT).length;
-                  final absent  = attsMonth.where((a) => a.status == ATTENDANCE_ABSENT).length;
-                  final total   = present + absent;
-                  final percent = total == 0 ? 0.0 : (present / total) * 100.0;
-                  final totalPaid = paysMonth.fold<double>(0.0, (sum, p) => sum + p.amount);
-
-                  final buffer = StringBuffer()
-                    ..writeln('🧾 تقرير الشهر: ${DateFormat('MMMM yyyy', 'ar').format(start)}')
-                    ..writeln('👤 الاسم: ${s.name}')
-                    ..writeln('🆔 الكود: ${s.code}')
-                    ..writeln('👥 المجموعة: ${group?.name ?? '-'}')
-                    ..writeln('📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
-                    ..writeln('')
-                    ..writeln('📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
-
-                  final attsSorted = List.of(attsMonth)..sort((a, b) => b.date.compareTo(a.date));
-                  if (attsSorted.isNotEmpty) {
-                    buffer.writeln('\n📅 سجلات الحضور:');
-                    for (final a in attsSorted.take(10)) {
-                      buffer.writeln('• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب'}');
-                    }
-                  }
-                  buffer.writeln('\n💰 المدفوعات: إجمالي ${FormatHelper.formatCurrency(totalPaid)}');
-                  for (final p in (List.of(paysMonth)..sort((a, b) => b.date.compareTo(a.date)))) {
-                    buffer.writeln('• ${DateFormat('yyyy-MM-dd HH:mm').format(p.date)} — ${FormatHelper.formatCurrency(p.amount)}');
-                  }
-
-                  final examRecords = await db.getStudentExamHistory(s.id!);
-                  final examsMonth = examRecords
-                      .where((r) => !r.examDate.isBefore(start) && !r.examDate.isAfter(end))
-                      .toList()
-                    ..sort((a, b) => b.examDate.compareTo(a.examDate));
-                  if (examsMonth.isNotEmpty) {
-                    buffer.writeln('\n📝 الامتحانات:');
-                    for (final r in examsMonth) {
-                      final dateStr = DateFormat('yyyy-MM-dd').format(r.examDate);
-                      if (r.isAbsent) {
-                        buffer.writeln('• $dateStr — ${r.examName}: غائب');
-                      } else if (r.grade != null) {
-                        buffer.writeln('• $dateStr — ${r.examName}: ${r.grade!.toStringAsFixed(1)}/${r.maxGrade.toStringAsFixed(0)} (${r.category.label})');
-                      } else {
-                        buffer.writeln('• $dateStr — ${r.examName}: لم تُدخل الدرجة بعد');
-                      }
-                    }
-                  }
-
-                  final tName = settings.teacherFullName.value.trim();
-                  final tSpec = settings.teacherSpecialization.value.trim();
-                  if (tName.isNotEmpty || tSpec.isNotEmpty) {
-                    buffer.writeln('\n👨‍🏫 المعلم: ${tName.isNotEmpty ? tName : '-'}');
-                    buffer.writeln('📘 التخصص: ${tSpec.isNotEmpty ? tSpec : '-'}');
-                  }
-                  buffer.writeln('\nتم الإرسال من تطبيق Active Class');
-
-                  final uri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(buffer.toString())}');
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  await _gdWaitForResume();
-
-                  final sentAt = DateTime.now();
-                  await db.upsertReportLog(s.id!, start, sentAt);
-                  ToastHelper.success('تم إرسال التقرير لـ ${s.name}');
-
-                  setSt(() {
-                    sentMap[s.id!] = sentAt;
-                    items.removeAt(i);
-                    sel.removeAt(i);
-                    i--;
-                  });
-                }
-                if (ctx.mounted) Navigator.of(ctx).pop();
-              },
-              child: Text('ابدأ الإرسال ($selectedCount)'),
+            content: SizedBox(
+              width: 460,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // أزرار تحديد سريعة
+                  Row(children: [
+                    TextButton.icon(
+                      onPressed: sending
+                          ? null
+                          : () => setSt(() {
+                                for (int i = 0; i < sel.length; i++) {
+                                  sel[i] = !sentMap.containsKey(items[i].id);
+                                }
+                              }),
+                      icon: const Icon(Icons.filter_alt_rounded, size: 16),
+                      label: const Text('غير المُرسَل فقط'),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: sending
+                          ? null
+                          : () => setSt(() {
+                                for (int i = 0; i < sel.length; i++) {
+                                  sel[i] = true;
+                                }
+                              }),
+                      child: const Text('تحديد الكل'),
+                    ),
+                  ]),
+                  const Divider(height: 1),
+                  SizedBox(
+                    height: 320,
+                    child: ListView.builder(
+                      itemCount: items.length,
+                      itemBuilder: (_, i) {
+                        final s = items[i];
+                        final last = sentMap[s.id!];
+                        final alreadySent = last != null;
+                        return CheckboxListTile(
+                          value: sel[i],
+                          onChanged: sending
+                              ? null
+                              : (v) => setSt(() => sel[i] = v ?? false),
+                          title: Row(children: [
+                            Expanded(child: Text(s.name)),
+                            if (alreadySent)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981)
+                                      .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.check_circle_rounded,
+                                          size: 13, color: Color(0xFF10B981)),
+                                      SizedBox(width: 3),
+                                      Text('تم الإرسال',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF10B981))),
+                                    ]),
+                              ),
+                          ]),
+                          subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(s.guardianPhone ?? '-'),
+                                if (last != null)
+                                  Text(
+                                      'آخر إرسال: ${FormatHelper.formatDateTime(last)}',
+                                      style: Theme.of(ctx).textTheme.bodySmall),
+                              ]),
+                          controlAffinity: ListTileControlAffinity.leading,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ],
-        );
+            actions: [
+              TextButton(
+                  onPressed: sending ? null : () => Navigator.of(ctx).pop(),
+                  child: const Text('إلغاء')),
+              FilledButton(
+                onPressed: sending || selectedCount == 0
+                    ? null
+                    : () async {
+                        setSt(() => sending = true);
+                        for (int i = 0; i < items.length; i++) {
+                          if (!sel[i]) continue;
+                          final s = items[i];
+                          final phone = normalize(s.guardianPhone!.trim(),
+                              settings.countryDial.value);
+                          final group = await db.getGroup(s.groupId);
+                          final atts = await db.getAttendanceByStudent(s.id!);
+                          final pays = await db.getPaymentsByStudent(s.id!);
+                          final attsMonth = atts
+                              .where((a) =>
+                                  !a.date.isBefore(start) &&
+                                  !a.date.isAfter(end))
+                              .toList();
+                          final paysMonth = pays
+                              .where((p) =>
+                                  !p.date.isBefore(start) &&
+                                  !p.date.isAfter(end))
+                              .toList();
+                          final present = attsMonth
+                              .where((a) => a.status == ATTENDANCE_PRESENT)
+                              .length;
+                          final absent = attsMonth
+                              .where((a) => a.status == ATTENDANCE_ABSENT)
+                              .length;
+                          final total = present + absent;
+                          final percent =
+                              total == 0 ? 0.0 : (present / total) * 100.0;
+                          final totalPaid = paysMonth.fold<double>(
+                              0.0, (sum, p) => sum + p.amount);
+
+                          final buffer = StringBuffer()
+                            ..writeln(
+                                '🧾 تقرير الشهر: ${DateFormat('MMMM yyyy', 'ar').format(start)}')
+                            ..writeln('👤 الاسم: ${s.name}')
+                            ..writeln('🆔 الكود: ${s.code}')
+                            ..writeln('👥 المجموعة: ${group?.name ?? '-'}')
+                            ..writeln(
+                                '📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
+                            ..writeln('')
+                            ..writeln(
+                                '📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
+
+                          final attsSorted = List.of(attsMonth)
+                            ..sort((a, b) => b.date.compareTo(a.date));
+                          if (attsSorted.isNotEmpty) {
+                            buffer.writeln('\n📅 سجلات الحضور:');
+                            for (final a in attsSorted.take(10)) {
+                              buffer.writeln(
+                                  '• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب'}');
+                            }
+                          }
+                          if (TeamModeService().canSeeFinancials) {
+                            buffer.writeln(
+                                '\n💰 المدفوعات: إجمالي ${FormatHelper.formatCurrency(totalPaid)}');
+                            for (final p in (List.of(paysMonth)
+                              ..sort((a, b) => b.date.compareTo(a.date)))) {
+                              buffer.writeln(
+                                  '• ${DateFormat('yyyy-MM-dd HH:mm').format(p.date)} — ${FormatHelper.formatCurrency(p.amount)}');
+                            }
+                          }
+
+                          final examsMonth = TeamModeService().canSeeAcademics
+                              ? ((await db.getStudentExamHistory(s.id!))
+                                      .where((r) =>
+                                          !r.examDate.isBefore(start) &&
+                                          !r.examDate.isAfter(end))
+                                      .toList()
+                                    ..sort((a, b) =>
+                                        b.examDate.compareTo(a.examDate)))
+                              : <StudentExamRecord>[];
+                          if (examsMonth.isNotEmpty) {
+                            buffer.writeln('\n📝 الامتحانات:');
+                            for (final r in examsMonth) {
+                              final dateStr =
+                                  DateFormat('yyyy-MM-dd').format(r.examDate);
+                              if (r.isAbsent) {
+                                buffer.writeln(
+                                    '• $dateStr — ${r.examName}: غائب');
+                              } else if (r.grade != null) {
+                                buffer.writeln(
+                                    '• $dateStr — ${r.examName}: ${r.grade!.toStringAsFixed(1)}/${r.maxGrade.toStringAsFixed(0)} (${r.category.label})');
+                              } else {
+                                buffer.writeln(
+                                    '• $dateStr — ${r.examName}: لم تُدخل الدرجة بعد');
+                              }
+                            }
+                          }
+
+                          final tName = settings.teacherFullName.value.trim();
+                          final tSpec =
+                              settings.teacherSpecialization.value.trim();
+                          if (tName.isNotEmpty || tSpec.isNotEmpty) {
+                            buffer.writeln(
+                                '\n👨‍🏫 المعلم: ${tName.isNotEmpty ? tName : '-'}');
+                            buffer.writeln(
+                                '📘 التخصص: ${tSpec.isNotEmpty ? tSpec : '-'}');
+                          }
+                          buffer.writeln('\nتم الإرسال من تطبيق Active Class');
+
+                          final uri = Uri.parse(
+                              'https://wa.me/$phone?text=${Uri.encodeComponent(buffer.toString())}');
+                          await launchUrl(uri,
+                              mode: LaunchMode.externalApplication);
+                          await _gdWaitForResume();
+
+                          final sentAt = DateTime.now();
+                          await db.upsertReportLog(s.id!, start, sentAt);
+                          ToastHelper.success('تم إرسال التقرير لـ ${s.name}');
+
+                          setSt(() {
+                            sentMap[s.id!] = sentAt;
+                            items.removeAt(i);
+                            sel.removeAt(i);
+                            i--;
+                          });
+                        }
+                        if (ctx.mounted) Navigator.of(ctx).pop();
+                      },
+                child: Text('ابدأ الإرسال ($selectedCount)'),
+              ),
+            ],
+          );
         },
       );
     },
@@ -1738,9 +2063,9 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all, SettingsContr
 
 // شارة إحصائية صغيرة في عنوان نافذة الإرسال
 class _SendStatBadge extends StatelessWidget {
-  final String   label;
-  final int      count;
-  final Color    color;
+  final String label;
+  final int count;
+  final Color color;
   final IconData icon;
   const _SendStatBadge({
     required this.label,
@@ -1751,8 +2076,7 @@ class _SendStatBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
@@ -1763,8 +2087,10 @@ class _SendStatBadge extends StatelessWidget {
           const SizedBox(width: 5),
           Text('$label: $count',
               style: TextStyle(
-                  fontFamily: 'Cairo', fontSize: 12,
-                  fontWeight: FontWeight.w800, color: color)),
+                  fontFamily: 'Cairo',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: color)),
         ]),
       );
 }
@@ -1792,13 +2118,18 @@ Future<void> _gdWaitForResume() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Fees breakdown dialog
 // ─────────────────────────────────────────────────────────────────────────────
-void _gdShowFeesBreakdownDialog(BuildContext context, List<Student> students) {
+void _gdShowFeesBreakdownDialog(
+    BuildContext context, List<Student> students, Group group) {
   showDialog(
     context: context,
     builder: (ctx) {
       final db = DatabaseService();
       final settings = Get.find<SettingsController>();
-      DateTime selected = DateTime(DateTime.now().year, DateTime.now().month, 1);
+      final attCtrl = Get.isRegistered<AttendanceController>()
+          ? Get.find<AttendanceController>()
+          : Get.put(AttendanceController());
+      DateTime selected =
+          DateTime(DateTime.now().year, DateTime.now().month, 1);
 
       String normalize(String input, String defaultDial) {
         var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
@@ -1811,61 +2142,117 @@ void _gdShowFeesBreakdownDialog(BuildContext context, List<Student> students) {
       }
 
       Future<Map<String, dynamic>> load(DateTime monthStart) async {
-        final monthEnd = DateTime(monthStart.year, monthStart.month + 1, 0, 23, 59, 59);
-        final byId = {for (final s in students) if (s.id != null) s.id!: s};
+        final monthEnd =
+            DateTime(monthStart.year, monthStart.month + 1, 0, 23, 59, 59);
+        final byId = {
+          for (final s in students)
+            if (s.id != null) s.id!: s
+        };
         final Set<int> allowed = {};
         for (final s in students) {
           if (s.id == null) continue;
           final st = s.attendanceStart;
-          if (st != null && DateTime(st.year, st.month, 1).isAfter(monthStart)) continue;
+          if (st != null && DateTime(st.year, st.month, 1).isAfter(monthStart))
+            continue;
           allowed.add(s.id!);
         }
 
+        // بيستخدم PricingHelper بدل s.price مباشرة عشان يراعي الإعفاء
+        // (جزئي أو كامل) ومجموعات "بالحصة" (بيتحسب فيها على عدد الحصص
+        // المحضورة الشهر ده، مش سعر الحصة الواحدة كأنه القيمة الكاملة).
+        // عرض الإخوة مالوش معنى لمجموعات بالحصة (كل حصة بسعرها المنفصل)
+        // فبيتطبّق بس على المجموعات الشهرية، زي نفس السياسة المتبعة في
+        // qr_controller.dart.
         final Map<double, int> solo = {}, pairs = {};
+        final Map<int, double> dueById = {};
         final Set<int> paired = {};
         for (final id in allowed) {
           final s = byId[id]!;
-          if (s.siblingId != null && s.siblingsTotal != null && allowed.contains(s.siblingId!) && !paired.contains(id)) {
+          final due = PricingHelper.monthlyDue(
+              student: s,
+              group: group,
+              month: monthStart,
+              allAttendance: attCtrl.attendance);
+          if (!group.isPerSession &&
+              s.siblingId != null &&
+              s.siblingsTotal != null &&
+              allowed.contains(s.siblingId!) &&
+              !paired.contains(id)) {
             final sib = byId[s.siblingId!];
-            if (sib != null && sib.siblingId == id && sib.siblingsTotal == s.siblingsTotal) {
-              paired..add(id)..add(sib.id!);
+            if (sib != null &&
+                sib.siblingId == id &&
+                sib.siblingsTotal == s.siblingsTotal &&
+                !s.isFullyExempt) {
+              paired
+                ..add(id)
+                ..add(sib.id!);
               pairs[s.siblingsTotal!] = (pairs[s.siblingsTotal!] ?? 0) + 1;
-            } else { solo[s.price] = (solo[s.price] ?? 0) + 1; }
-          } else { solo[s.price] = (solo[s.price] ?? 0) + 1; }
+              dueById[id] = s.siblingsTotal! / 2.0;
+              continue;
+            }
+          }
+          if (due > 0) solo[due] = (solo[due] ?? 0) + 1;
+          dueById[id] = due;
         }
 
         double expected = 0;
         solo.forEach((p, c) => expected += p * c);
         pairs.forEach((t, c) => expected += t * c);
 
-        int paidCount = 0; double paidAmount = 0;
-        final key = '${monthStart.year.toString().padLeft(4, '0')}-${monthStart.month.toString().padLeft(2, '0')}';
+        int paidCount = 0;
+        double paidAmount = 0;
+        final key =
+            '${monthStart.year.toString().padLeft(4, '0')}-${monthStart.month.toString().padLeft(2, '0')}';
         final List<Student> unpaidStudents = [];
+        // مفيش أي مستحق أصلاً (معفى بالكامل، أو بالحصة ولسه محضرش أي
+        // حصة الشهر ده) — مش هيتحسب لا مدفوع ولا غير مدفوع.
+        var applicableCount = 0;
 
         for (final id in allowed) {
           final s = byId[id]!;
+          final due = dueById[id] ?? 0;
+          if (due <= 0) continue;
+          applicableCount++;
           final list = await db.getPaymentsByStudent(id);
-          bool isPaid = false; double stuPaid = 0;
+          bool isPaid = false;
+          double stuPaid = 0;
           for (final p in list) {
             if (!p.date.isBefore(monthStart) && !p.date.isAfter(monthEnd)) {
-              stuPaid += p.amount; isPaid = true;
+              stuPaid += p.amount;
+              isPaid = true;
             } else {
               final note = p.note ?? '';
               if (note.startsWith('months=') &&
-                  note.split(';').first.substring(7).split(',').map((e) => e.trim()).contains(key)) {
-                stuPaid += p.amount; isPaid = true;
+                  note
+                      .split(';')
+                      .first
+                      .substring(7)
+                      .split(',')
+                      .map((e) => e.trim())
+                      .contains(key)) {
+                stuPaid += p.amount;
+                isPaid = true;
               }
             }
           }
-          if (isPaid) paidCount++; else unpaidStudents.add(s);
+          if (isPaid)
+            paidCount++;
+          else
+            unpaidStudents.add(s);
           paidAmount += stuPaid;
         }
 
         return {
-          'solo': solo, 'pairs': pairs, 'expected': expected,
-          'paidCount': paidCount, 'unpaidCount': allowed.length - paidCount,
-          'paidAmount': paidAmount, 'month': DateFormat('MMMM yyyy', 'ar').format(monthStart),
-          'key': key, 'allowedTotal': allowed.length, 'unpaidStudents': unpaidStudents,
+          'solo': solo,
+          'pairs': pairs,
+          'expected': expected,
+          'paidCount': paidCount,
+          'unpaidCount': applicableCount - paidCount,
+          'paidAmount': paidAmount,
+          'month': DateFormat('MMMM yyyy', 'ar').format(monthStart),
+          'key': key,
+          'allowedTotal': applicableCount,
+          'unpaidStudents': unpaidStudents,
         };
       }
 
@@ -1874,9 +2261,10 @@ void _gdShowFeesBreakdownDialog(BuildContext context, List<Student> students) {
           future: load(selected),
           builder: (context, snap) {
             final data = snap.data;
-            final expected   = (data?['expected']   as double?) ?? 0;
-            final paidAmount = (data?['paidAmount']  as double?) ?? 0;
-            final progress   = expected > 0 ? (paidAmount / expected).clamp(0.0, 1.0) : 0.0;
+            final expected = (data?['expected'] as double?) ?? 0;
+            final paidAmount = (data?['paidAmount'] as double?) ?? 0;
+            final progress =
+                expected > 0 ? (paidAmount / expected).clamp(0.0, 1.0) : 0.0;
 
             return AlertDialog(
               title: Row(children: [
@@ -1885,92 +2273,147 @@ void _gdShowFeesBreakdownDialog(BuildContext context, List<Student> students) {
                 OutlinedButton.icon(
                   onPressed: () async {
                     final p = await showDatePicker(
-                        context: ctx, firstDate: DateTime(2020, 1, 1),
-                        lastDate: DateTime(2100, 12, 31), initialDate: selected);
-                    if (p != null) setSt(() => selected = DateTime(p.year, p.month, 1));
+                        context: ctx,
+                        firstDate: DateTime(2020, 1, 1),
+                        lastDate: DateTime(2100, 12, 31),
+                        initialDate: selected);
+                    if (p != null)
+                      setSt(() => selected = DateTime(p.year, p.month, 1));
                   },
                   icon: const Icon(Icons.date_range_rounded, size: 16),
                   label: Text(data == null ? '...' : data['month']),
                 ),
               ]),
               content: SizedBox(
-                width: 480, height: 520,
+                width: 480,
+                height: 520,
                 child: snap.connectionState != ConnectionState.done
                     ? const Center(child: CircularProgressIndicator())
                     : Column(children: [
                         Row(children: [
-                          Expanded(child: Row(children: [
-                            const Text('تحصيل: '), CurrencyText(paidAmount),
-                            const Text(' / '), CurrencyText(expected),
+                          Expanded(
+                              child: Row(children: [
+                            const Text('تحصيل: '),
+                            CurrencyText(paidAmount),
+                            const Text(' / '),
+                            CurrencyText(expected),
                           ])),
                           const SizedBox(width: 8),
                           Text('${(progress * 100).toStringAsFixed(0)}%'),
                         ]),
                         const SizedBox(height: 6),
-                        LinearProgressIndicator(value: expected > 0 ? progress : null, minHeight: 6),
+                        LinearProgressIndicator(
+                            value: expected > 0 ? progress : null,
+                            minHeight: 6),
                         const SizedBox(height: 12),
-                        Expanded(child: SingleChildScrollView(child: Column(
+                        Expanded(
+                            child: SingleChildScrollView(
+                                child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            if ((data?['solo'] as Map<double, int>?)?.isNotEmpty ?? false) ...[
-                              Text('أسعار فردية', style: Theme.of(context).textTheme.titleMedium),
+                            if ((data?['solo'] as Map<double, int>?)
+                                    ?.isNotEmpty ??
+                                false) ...[
+                              Text('أسعار فردية',
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium),
                               const SizedBox(height: 8),
-                              ...((data!['solo'] as Map<double, int>).entries.toList()
-                                    ..sort((a, b) => (b.key * b.value).compareTo(a.key * a.value)))
+                              ...((data!['solo'] as Map<double, int>)
+                                      .entries
+                                      .toList()
+                                    ..sort((a, b) => (b.key * b.value)
+                                        .compareTo(a.key * a.value)))
                                   .map((e) => Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 2),
-                                    child: Row(children: [
-                                      Expanded(child: Row(children: [Text('${e.value} طالب × '), CurrencyText(e.key)])),
-                                      CurrencyText(e.key * e.value),
-                                    ]),
-                                  )),
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 2),
+                                        child: Row(children: [
+                                          Expanded(
+                                              child: Row(children: [
+                                            Text('${e.value} طالب × '),
+                                            CurrencyText(e.key)
+                                          ])),
+                                          CurrencyText(e.key * e.value),
+                                        ]),
+                                      )),
                               const SizedBox(height: 12),
                             ],
-                            if ((data?['pairs'] as Map<double, int>?)?.isNotEmpty ?? false) ...[
-                              Text('عروض الإخوة', style: Theme.of(context).textTheme.titleMedium),
+                            if ((data?['pairs'] as Map<double, int>?)
+                                    ?.isNotEmpty ??
+                                false) ...[
+                              Text('عروض الإخوة',
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium),
                               const SizedBox(height: 8),
-                              ...((data!['pairs'] as Map<double, int>).entries.toList()
-                                    ..sort((a, b) => (b.key * b.value).compareTo(a.key * a.value)))
+                              ...((data!['pairs'] as Map<double, int>)
+                                      .entries
+                                      .toList()
+                                    ..sort((a, b) => (b.key * b.value)
+                                        .compareTo(a.key * a.value)))
                                   .map((e) => Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 2),
-                                    child: Row(children: [
-                                      Expanded(child: Row(children: [Text('${e.value} زوج × '), CurrencyText(e.key)])),
-                                      CurrencyText(e.key * e.value),
-                                    ]),
-                                  )),
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 2),
+                                        child: Row(children: [
+                                          Expanded(
+                                              child: Row(children: [
+                                            Text('${e.value} زوج × '),
+                                            CurrencyText(e.key)
+                                          ])),
+                                          CurrencyText(e.key * e.value),
+                                        ]),
+                                      )),
                               const SizedBox(height: 12),
                             ],
                             Divider(color: Colors.grey[300]),
                             const SizedBox(height: 8),
                             Row(children: [
-                              Expanded(child: Text('مدفوع: ${data?['paidCount'] ?? 0}')),
-                              Expanded(child: Text('غير مدفوع: ${data?['unpaidCount'] ?? 0}')),
+                              Expanded(
+                                  child: Text(
+                                      'مدفوع: ${data?['paidCount'] ?? 0}')),
+                              Expanded(
+                                  child: Text(
+                                      'غير مدفوع: ${data?['unpaidCount'] ?? 0}')),
                             ]),
                             const SizedBox(height: 12),
-                            if ((data?['unpaidStudents'] as List<Student>?)?.isNotEmpty ?? false) ...[
-                              Text('غير المدفوعين', style: Theme.of(context).textTheme.titleMedium),
+                            if ((data?['unpaidStudents'] as List<Student>?)
+                                    ?.isNotEmpty ??
+                                false) ...[
+                              Text('غير المدفوعين',
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium),
                               const SizedBox(height: 8),
-                              ...((data!['unpaidStudents'] as List<Student>)).map((s) => ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(s.name),
-                                subtitle: Text('الكود: ${s.code}'),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.message_rounded, color: Colors.green),
-                                  onPressed: () async {
-                                    final raw = (s.guardianPhone ?? '').trim();
-                                    if (raw.isEmpty) return;
-                                    final phone = normalize(raw, settings.countryDial.value);
-                                    final uri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent('تذكير برسوم شهر ${data['month']} للطالب ${s.name}.')}');
-                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                  },
-                                ),
-                              )),
+                              ...((data!['unpaidStudents'] as List<Student>))
+                                  .map((s) => ListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        title: Text(s.name),
+                                        subtitle: Text('الكود: ${s.code}'),
+                                        trailing: IconButton(
+                                          icon: const Icon(
+                                              Icons.message_rounded,
+                                              color: Colors.green),
+                                          onPressed: () async {
+                                            final raw =
+                                                (s.guardianPhone ?? '').trim();
+                                            if (raw.isEmpty) return;
+                                            final phone = normalize(raw,
+                                                settings.countryDial.value);
+                                            final uri = Uri.parse(
+                                                'https://wa.me/$phone?text=${Uri.encodeComponent('تذكير برسوم شهر ${data['month']} للطالب ${s.name}.')}');
+                                            await launchUrl(uri,
+                                                mode: LaunchMode
+                                                    .externalApplication);
+                                          },
+                                        ),
+                                      )),
                             ],
                           ],
                         ))),
                       ]),
               ),
-              actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('إغلاق'))],
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('إغلاق'))
+              ],
             );
           },
         );

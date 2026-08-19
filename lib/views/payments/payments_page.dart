@@ -15,6 +15,7 @@ import 'package:active_class/models/group_model.dart' show Group;
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/custom_dialogs.dart' as custom_dialogs;
 import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/app_toast.dart';
 
@@ -130,7 +131,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
             );
             final remaining =
                 (due - paid).clamp(0.0, double.infinity).toDouble();
-            final status = due <= 0
+            final status = s.isFullyExempt
                 ? 'مُعفى'
                 : paid >= due
                     ? 'مدفوع بالكامل'
@@ -178,8 +179,8 @@ class _PaymentsPageState extends State<PaymentsPage> {
                             icon: const Icon(Icons.chevron_right_rounded),
                             tooltip: 'الشهر السابق',
                             onPressed: () {
-                              final prev = DateTime(
-                                  month.year, month.month - 1, 1);
+                              final prev =
+                                  DateTime(month.year, month.month - 1, 1);
                               controller.setMonth(prev);
                             },
                           ),
@@ -207,8 +208,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                     style: Theme.of(context)
                                         .textTheme
                                         .titleMedium
-                                        ?.copyWith(
-                                            fontWeight: FontWeight.w800),
+                                        ?.copyWith(fontWeight: FontWeight.w800),
                                   ),
                                   Text(
                                     'اضغط لتغيير الشهر',
@@ -229,8 +229,8 @@ class _PaymentsPageState extends State<PaymentsPage> {
                             icon: const Icon(Icons.chevron_left_rounded),
                             tooltip: 'الشهر التالي',
                             onPressed: () {
-                              final next = DateTime(
-                                  month.year, month.month + 1, 1);
+                              final next =
+                                  DateTime(month.year, month.month + 1, 1);
                               controller.setMonth(next);
                             },
                           ),
@@ -247,8 +247,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
-                                  ?.copyWith(
-                                      color: Colors.grey.shade600),
+                                  ?.copyWith(color: Colors.grey.shade600),
                             ),
                             const SizedBox(height: 2),
                             CurrencyText(
@@ -333,8 +332,8 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
               // ─── Status filter tabs ────────────────────────────────────
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: PADDING_NORMAL, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: PADDING_NORMAL, vertical: 8),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -367,16 +366,12 @@ class _PaymentsPageState extends State<PaymentsPage> {
                             child: const EmptyState(
                               icon: Icons.payment,
                               title: 'لا توجد سجلات',
-                              subtitle:
-                                  'عدّل المرشحات أو سجّل دفعة جديدة',
+                              subtitle: 'عدّل المرشحات أو سجّل دفعة جديدة',
                             ),
                           )
                         : ListView.separated(
                             padding: const EdgeInsets.fromLTRB(
-                                PADDING_NORMAL,
-                                0,
-                                PADDING_NORMAL,
-                                80),
+                                PADDING_NORMAL, 0, PADDING_NORMAL, 80),
                             itemCount: rows.length,
                             separatorBuilder: (_, __) =>
                                 const SizedBox(height: 8),
@@ -398,8 +393,13 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                     final day = now.day < lastDayOfMonth
                                         ? now.day
                                         : lastDayOfMonth;
-                                    safeDate = DateTime(r.month.year,
-                                        r.month.month, day, now.hour, now.minute, now.second);
+                                    safeDate = DateTime(
+                                        r.month.year,
+                                        r.month.month,
+                                        day,
+                                        now.hour,
+                                        now.minute,
+                                        now.second);
                                   }
                                   _showAddPaymentDialog(
                                     context,
@@ -561,8 +561,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                     final p = payments[i];
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor:
-                            Colors.green.withValues(alpha: 0.12),
+                        backgroundColor: Colors.green.withValues(alpha: 0.12),
                         child: const Icon(Icons.payments_rounded,
                             color: Colors.green, size: 18),
                       ),
@@ -586,8 +585,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                           IconButton(
                             icon: const Icon(Icons.edit_rounded, size: 18),
                             tooltip: 'تعديل',
-                            onPressed: () =>
-                                _editPayment(context, p, ctrl),
+                            onPressed: () => _editPayment(context, p, ctrl),
                           ),
                           IconButton(
                             icon: const Icon(Icons.delete_rounded,
@@ -611,16 +609,20 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
   void _confirmDeletePayment(
       BuildContext context, Payment p, PaymentController ctrl) {
+    if (!requireDeletePermission(
+        context, TeamModeService().canDeletePaymentsNow)) {
+      return;
+    }
     custom_dialogs.ConfirmDeleteDialog.show(
       context,
       title: 'حذف الدفعة',
-      message: 'هل تريد حذف دفعة بقيمة ${FormatHelper.formatCurrency(p.amount)}؟',
+      message:
+          'هل تريد حذف دفعة بقيمة ${FormatHelper.formatCurrency(p.amount)}؟',
       onConfirm: () => ctrl.deletePayment(p.id!),
     );
   }
 
-  void _editPayment(
-      BuildContext context, Payment p, PaymentController ctrl) {
+  void _editPayment(BuildContext context, Payment p, PaymentController ctrl) {
     final amountCtrl = TextEditingController(text: p.amount.toString());
     final noteCtrl = TextEditingController(text: p.note ?? '');
     showDialog(
@@ -632,7 +634,8 @@ class _PaymentsPageState extends State<PaymentsPage> {
           children: [
             TextField(
               controller: amountCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(labelText: 'المبلغ'),
             ),
             const SizedBox(height: 12),
@@ -660,7 +663,8 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 studentId: p.studentId,
                 date: p.date,
                 amount: amount,
-                note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+                note:
+                    noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
                 createdAt: p.createdAt,
               ));
               if (ok) ToastHelper.success('تم تعديل الدفعة بنجاح');
@@ -718,16 +722,42 @@ class _PaymentsPageState extends State<PaymentsPage> {
       return (due - paidThisMonth).clamp(0.0, double.infinity);
     }
 
+    // لطلاب التسعير بالحصة بس — مينفعش تتسجل دفعة لطالب لسه ماحضرش أي
+    // حصة اتسجلت "حاضر" في الشهر ده (مفيش أساس نحسب عليه المبلغ)، ولا
+    // لطالب دافع بالفعل عن كل الحصص اللي حضرها (منع دفع مكرر يدوي، زي
+    // نفس الحماية المطبّقة في مسار الدفع بالـ QR).
+    bool blockedForNoAttendance(Student student) {
+      final group = groupController.groups
+          .firstWhereOrNull((g) => g.id == student.groupId);
+      if (group == null || !group.isPerSession) return false;
+      final attended = PricingHelper.sessionsAttended(
+          student: student,
+          month: month,
+          allAttendance: attendanceController.attendance);
+      if (attended == 0) {
+        ToastHelper.error(
+            '${student.name} لسه متسجلش حضور لأي حصة الشهر ده — سجّل الحضور الأول قبل الدفع');
+        return true;
+      }
+      if ((dueFor(student) ?? 0) <= 0) {
+        ToastHelper.error(
+            '${student.name} مدفوع بالكامل عن كل الحصص اللي حضرها بالفعل');
+        return true;
+      }
+      return false;
+    }
+
     if (preselectedStudentId != null) {
       final student = studentController.students
           .firstWhereOrNull((s) => s.id == preselectedStudentId);
       if (student != null && student.isFullyExempt) {
-        ToastHelper.error('${student.name} معفي بالكامل من الرسوم — لا داعي لتسجيل دفعة');
+        ToastHelper.error(
+            '${student.name} معفي بالكامل من الرسوم — لا داعي لتسجيل دفعة');
         return;
       }
+      if (student != null && blockedForNoAttendance(student)) return;
       openSheet(preselectedStudentId,
-          price: defaultAmount ?? dueFor(student),
-          studentName: student?.name);
+          price: defaultAmount ?? dueFor(student), studentName: student?.name);
       return;
     }
 
@@ -742,10 +772,13 @@ class _PaymentsPageState extends State<PaymentsPage> {
         final student = studentController.students
             .firstWhereOrNull((s) => s.id == studentId);
         if (student != null && student.isFullyExempt) {
-          ToastHelper.error('${student.name} معفي بالكامل من الرسوم — لا داعي لتسجيل دفعة');
+          ToastHelper.error(
+              '${student.name} معفي بالكامل من الرسوم — لا داعي لتسجيل دفعة');
           return;
         }
-        openSheet(studentId, price: dueFor(student), studentName: student?.name);
+        if (student != null && blockedForNoAttendance(student)) return;
+        openSheet(studentId,
+            price: dueFor(student), studentName: student?.name);
       },
     );
   }
@@ -786,8 +819,7 @@ class _StudentPaymentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _statusColor;
-    final progress =
-        row.due > 0 ? (row.paid / row.due).clamp(0.0, 1.0) : 1.0;
+    final progress = row.due > 0 ? (row.paid / row.due).clamp(0.0, 1.0) : 1.0;
 
     return Container(
       decoration: BoxDecoration(
@@ -816,11 +848,8 @@ class _StudentPaymentCard extends StatelessWidget {
                   radius: 18,
                   backgroundColor: color.withValues(alpha: 0.14),
                   child: Text(
-                    row.student.name.isNotEmpty
-                        ? row.student.name[0]
-                        : '؟',
-                    style: TextStyle(
-                        color: color, fontWeight: FontWeight.w800),
+                    row.student.name.isNotEmpty ? row.student.name[0] : '؟',
+                    style: TextStyle(color: color, fontWeight: FontWeight.w800),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -843,13 +872,12 @@ class _StudentPaymentCard extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
-                    border:
-                        Border.all(color: color.withValues(alpha: 0.3)),
+                    border: Border.all(color: color.withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     row.status,
@@ -954,9 +982,7 @@ class _AmountBox extends StatelessWidget {
             CurrencyText(
               amount,
               style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: color),
+                  fontSize: 13, fontWeight: FontWeight.w800, color: color),
               textAlign: TextAlign.center,
             ),
           ],
@@ -997,16 +1023,13 @@ class _SummaryPill extends StatelessWidget {
             child: Text(
               value.toString(),
               style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16),
+                  color: color, fontWeight: FontWeight.w900, fontSize: 16),
             ),
           ),
         ),
         const SizedBox(height: 4),
         Text(label,
-            style:
-                TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
       ],
     );
   }
@@ -1031,12 +1054,10 @@ class _StatusTab extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           decoration: BoxDecoration(
-            color: selected
-                ? color.withValues(alpha: 0.15)
-                : Colors.transparent,
+            color:
+                selected ? color.withValues(alpha: 0.15) : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: selected
@@ -1048,8 +1069,7 @@ class _StatusTab extends StatelessWidget {
             label,
             style: TextStyle(
               color: selected ? color : Colors.grey.shade600,
-              fontWeight:
-                  selected ? FontWeight.w700 : FontWeight.w400,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
               fontSize: 13,
             ),
           ),
@@ -1075,13 +1095,11 @@ class _FilterButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border:
-              Border.all(color: Colors.grey.withValues(alpha: 0.3)),
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1089,11 +1107,9 @@ class _FilterButton extends StatelessWidget {
             Icon(icon, size: 16, color: Colors.grey.shade600),
             const SizedBox(width: 6),
             Text(label,
-                style: TextStyle(
-                    fontSize: 13, color: Colors.grey.shade700)),
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
             const SizedBox(width: 4),
-            Icon(Icons.arrow_drop_down,
-                size: 16, color: Colors.grey.shade500),
+            Icon(Icons.arrow_drop_down, size: 16, color: Colors.grey.shade500),
           ],
         ),
       ),
@@ -1141,9 +1157,8 @@ class _AttendanceHintChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasAbsences = absentDates.isNotEmpty;
     final color = hasAbsences ? Colors.orange : Colors.green;
-    final icon = hasAbsences
-        ? Icons.event_busy_rounded
-        : Icons.event_available_rounded;
+    final icon =
+        hasAbsences ? Icons.event_busy_rounded : Icons.event_available_rounded;
     final text = hasAbsences
         ? 'غائب ${absentDates.length} يوم هذا الشهر'
         : (presentCount > 0
@@ -1168,9 +1183,7 @@ class _AttendanceHintChip extends StatelessWidget {
                 child: Text(
                   text,
                   style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: color),
+                      fontSize: 13, fontWeight: FontWeight.w700, color: color),
                 ),
               ),
               if (hasAbsences)
@@ -1317,7 +1330,8 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
         AppToast.success(
           context,
           'تم تسجيل الدفعة بنجاح',
-          subtitle: '${widget.studentName} • ${FormatHelper.formatCurrency(parsed)}',
+          subtitle:
+              '${widget.studentName} • ${FormatHelper.formatCurrency(parsed)}',
         );
         Navigator.of(context).pop();
       }
@@ -1368,7 +1382,8 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
                       color: primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(Icons.payments_rounded, color: primary, size: 22),
+                    child:
+                        Icon(Icons.payments_rounded, color: primary, size: 22),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1381,8 +1396,7 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
                         if (widget.studentName.isNotEmpty)
                           Text(widget.studentName,
                               style: TextStyle(
-                                  color: Colors.grey.shade500,
-                                  fontSize: 13)),
+                                  color: Colors.grey.shade500, fontSize: 13)),
                       ],
                     ),
                   ),
@@ -1419,8 +1433,9 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
                     onTap: () async {
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate:
-                            _date.isAfter(DateTime.now()) ? DateTime.now() : _date,
+                        initialDate: _date.isAfter(DateTime.now())
+                            ? DateTime.now()
+                            : _date,
                         firstDate: DateTime(2020),
                         lastDate: DateTime.now().add(const Duration(days: 30)),
                         helpText: 'اختر التاريخ',

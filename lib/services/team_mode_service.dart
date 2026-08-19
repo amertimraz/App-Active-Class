@@ -3,6 +3,8 @@
 // "وضع الفريق" — يبني فوق نظام تسجيل الدخول المستقل (Supabase)
 // وSyncEngine. المدرس (owner) بيفعّله وبيبعت كود دعوة، والمساعد
 // بيسجّل حسابه الخاص (نفس شاشات الدخول الموجودة) وينضم بالكود.
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -14,7 +16,7 @@ import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/services/auth_service.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/sync_engine.dart';
-import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/widgets/team_disconnect_dialog.dart';
 
 class TeamModeService {
   static final TeamModeService _instance = TeamModeService._internal();
@@ -34,7 +36,12 @@ class TeamModeService {
   final canDeletePayments = false.obs;
   final canDeleteStudents = false.obs;
   final canManageMembers = false.obs;
+  final canViewFinancials = true.obs;
+  final canViewAcademics = true.obs;
   final loading = false.obs;
+  /// جهاز الحساب ده مرتبط بجهاز تاني — مفعّلة بس بعد محاولة دخول
+  /// فعلية اكتشفت التعارض، مش تخمين مسبق.
+  final deviceBlocked = false.obs;
   /// بس عند المساعد — اسم/جنس المدرس صاحب الفريق (عشان شاشات زي
   /// الترحيب توضّح إنه مساعد لدى مين، مش تعرض بروفايله المحلي هو
   /// وكأنه المدرس نفسه).
@@ -54,9 +61,42 @@ class TeamModeService {
 
     teamId.value = storedTeamId;
     await _refreshMyPermissions(client, storedTeamId);
+    if (!await _claimDevice(client, storedTeamId)) {
+      // مش بس نصفّر teamId.value — لازم نمسح بيانات الفريق القديمة
+      // المتزامنة محليًا (لو الجهاز ده مساعد) زي disable() بالظبط،
+      // وإلا هتفضل عالقة وتظهر تحت أي حساب/فريق جديد يتسجّل بعد كده
+      // على نفس الجهاز.
+      await disable();
+      return;
+    }
     _startEngine(client, storedTeamId);
     LicenseController.to.teamModeBypassLimits = true;
     isEnabled.value = true;
+  }
+
+  /// جهاز واحد بس مسموح لكل مساعد — أول مرة بيتربط تلقائيًا، وأي جهاز
+  /// تاني بيترفض. المالك مستبعد (الفحص بيرجع true دايمًا له من
+  /// السيرفر). فشل الشبكة نفسه مش بيمنع الاستخدام (fail-open) — بس
+  /// رفض صريح من السيرفر هو اللي بيمنع.
+  Future<bool> _claimDevice(SupabaseClient client, String tId) async {
+    final deviceId = LicenseController.to.deviceId.value;
+    if (deviceId.isEmpty) {
+      // لسه بيتحمّل بشكل غير متزامن (device_info_plus) وقت فتح
+      // التطبيق — لو بعتنا قيمة فاضية كانت هترتبط بالحساب للأبد
+      // وتقفل أي جهاز حقيقي بعد كده. منمنعش الاستخدام بسبب توقيت
+      // داخلي عندنا، ومنربطش بقيمة فاضية أصلاً.
+      return true;
+    }
+    try {
+      final allowed = await client.rpc('claim_device',
+          params: {'_team_id': tId, '_device_id': deviceId}) as bool;
+      deviceBlocked.value = !allowed;
+      return allowed;
+    } catch (e) {
+      debugPrint('TeamModeService: فشل فحص الجهاز — $e');
+      deviceBlocked.value = false;
+      return true;
+    }
   }
 
   Future<String?> enableAsOwner() async {
@@ -80,9 +120,12 @@ class TeamModeService {
       canDeletePayments.value = true;
       canDeleteStudents.value = true;
       canManageMembers.value = true;
+      canViewFinancials.value = true;
+      canViewAcademics.value = true;
 
       await _db.setSetting(SETTING_TEAM_MODE_ENABLED, 'true');
       await _db.setSetting(SETTING_TEAM_ID, newTeamId);
+      await _db.setSetting(SETTING_TEAM_IS_OWNER, 'true');
 
       _startEngine(client, newTeamId);
       await _engine!.enqueueAllExistingLocalRows();
@@ -109,6 +152,12 @@ class TeamModeService {
           .rpc('redeem_invite', params: {'_code': code.trim()}) as String;
       teamId.value = newTeamId;
 
+      if (!await _claimDevice(client, newTeamId)) {
+        teamId.value = null;
+        return 'حساب المساعد ده مرتبط بجهاز تاني بالفعل — كلم المدرس '
+            'يفك الارتباط من شاشة إدارة الأعضاء';
+      }
+
       await _db.setSetting(SETTING_TEAM_MODE_ENABLED, 'true');
       await _db.setSetting(SETTING_TEAM_ID, newTeamId);
 
@@ -133,36 +182,107 @@ class TeamModeService {
     }
   }
 
-  /// تعطيل وضع الفريق على الجهاز ده بس — البيانات المحلية تفضل زي
-  /// ما هي، وبيانات الفريق على السيرفر تفضل موجودة (مش بنحذف الفريق).
+  /// تعطيل وضع الفريق على الجهاز ده بس — بيانات الفريق على السيرفر
+  /// تفضل موجودة (مش بنحذف الفريق من هنا، عشان الدالة دي بتتنادى كمان
+  /// من مسارات ضمنية زي تسجيل الخروج/تبديل الحساب، ومش عايزين نهدم
+  /// فريق المدرس بالغلط لمجرد إنه سجّل خروج مؤقت).
+  ///
+  /// على جهاز المدرس (owner): بياناته المحلية بتفضل زي ما هي (هي
+  /// بياناته الحقيقية أصلاً، مش نسخة من حد تاني).
+  /// على جهاز المساعد: كل البيانات المتزامنة (مجموعات/طلاب/حضور/
+  /// مدفوعات المدرس) بتتمسح محليًا — هي مش بتاعته من الأساس، ومفيش
+  /// داعي تفضل ظاهرة على شاشته بعد ما وضع الفريق اتقفل عنده (تسجيل
+  /// خروج، تعطيل يدوي، أو إزالة من الفريق).
   Future<void> disable() async {
+    // teamId.value/isOwner.value ممكن يكونوا لسه فاضيين في الذاكرة
+    // للجلسة دي (مثلاً disable() اتنادت بدري — وقت تبديل حساب فوق
+    // init() لسه ما كملش، أو init() فشل جزئيًا (claim جهاز مرفوض)
+    // وسابهم فاضيين) حتى لو فيه بيانات فريق قديمة متزامنة فعليًا
+    // موجودة محليًا. لو اعتمدنا على القيمتين دول بس، الشرط كان بيقول
+    // "مفيش فريق حاليًا" ويتجاهل المسح، وبيانات المساعد القديمة
+    // بتفضل عالقة للأبد وتظهر تاني تحت أي حساب جديد على نفس الجهاز.
+    // فبنرجع للقيمة المحفوظة على الجهاز كـ fallback لو الذاكرة فاضية.
+    final hadTeam = teamId.value != null ||
+        await _db.getSetting(SETTING_TEAM_MODE_ENABLED) == 'true';
+    final wasOwner = teamId.value != null
+        ? isOwner.value
+        : await _db.getSetting(SETTING_TEAM_IS_OWNER) == 'true';
+
     await _engine?.stop();
     _engine = null;
     _licenseWorker?.dispose();
     _licenseWorker = null;
     _profileWorker?.dispose();
     _profileWorker = null;
+
+    if (hadTeam && !wasOwner) {
+      await _db.clearTeamSyncedData();
+    }
+
     await _db.setSetting(SETTING_TEAM_MODE_ENABLED, 'false');
+    await _db.setSetting(SETTING_TEAM_IS_OWNER, 'false');
     LicenseController.to.teamModeBypassLimits = false;
     isEnabled.value = false;
     teamId.value = null;
     isOwner.value = false;
     ownerTeacherName.value = null;
     ownerTeacherGender.value = null;
+    canViewFinancials.value = true;
+    canViewAcademics.value = true;
+    deviceBlocked.value = false;
   }
 
-  /// بتتنادى لو المدرس شال العضو ده من الفريق (أو حذف الفريق نفسه) —
-  /// نعطّل وضع الفريق على الجهاز ده تلقائيًا ونوضحله السبب، بدل ما
-  /// يفضل شغال بصلاحيات bypass محلية من غير ما يعرف إنه اتشال فعليًا.
+  /// بس للمدرس (owner) — بتتنادى لما يعطّل "وضع الفريق" عمدًا من
+  /// الشاشة (عكس disable() العادية اللي بتتنادى ضمنيًا من تسجيل
+  /// الخروج/تبديل الحساب). بتحذف الفريق فعليًا من السيرفر (مش بس
+  /// محليًا)، فكل أجهزة المساعدين تكتشف إنها اتشالت وتتقفل عندهم برضو
+  /// (نفس آلية _handleRemovedFromTeam)، بدل ما تفضل شغالة بصلاحيات
+  /// bypass محلية وبيانات المدرس ظاهرة عندهم وكأن حاجة ملحصلتش.
+  Future<String?> disableAsOwner() async {
+    final tId = teamId.value;
+    if (tId != null && isOwner.value) {
+      final client = await _auth.ensureClient();
+      if (client != null) {
+        try {
+          await client.rpc('delete_team', params: {'_team_id': tId});
+        } catch (e) {
+          debugPrint('TeamModeService: فشل حذف الفريق من السيرفر — $e');
+          return 'تعذر حذف الفريق من السيرفر — تأكد من الإنترنت وحاول تاني';
+        }
+      }
+    }
+    await disable();
+    return null;
+  }
+
+  /// بتتنادى لو المدرس شال العضو ده من الفريق (أو عطّل وضع الفريق
+  /// عنده أصلاً — بيحذف الفريق كله من delete_team) — بيانات الفريق
+  /// المحلية بتتمسح فورًا (disable())، وبعدين بنوضح للمساعد السبب
+  /// بحوار عدّاد تنازلي غير قابل للإغلاق، وبعده بيتسجّل خروجه تلقائيًا
+  /// ويرجع التطبيق لحالة تجربة مجانية جديدة — بدل ما يفضل شغال
+  /// بصلاحيات bypass محلية من غير ما يعرف إنه اتشال فعليًا.
   Future<void> _handleRemovedFromTeam() async {
     await disable();
-    ToastHelper.error('المدرس أزالك من الفريق — تم تعطيل وضع الفريق على جهازك');
+    unawaited(TeamDisconnectDialog.show(
+        'المدرس عطّل وضع الفريق أو أزالك منه — تم قطع الاتصال ببياناته'));
+  }
+
+  /// بتتنادى لو المدرس فكّ ارتباط الجهاز ده تحديدًا (من إدارة الأعضاء)
+  /// عشان يسمح لجهاز جديد ياخد مكانه — لسه المساعد عضو رسمي في
+  /// الفريق (عكس _handleRemovedFromTeam)، بس مش من الجهاز ده. نفس
+  /// المعاملة بالظبط: مسح البيانات + حوار + تسجيل خروج تلقائي، عشان
+  /// لو دخل بنفس الحساب من جهازه الجديد يرتبط بيه من الأول.
+  Future<void> _handleDeviceUnbound() async {
+    await disable();
+    unawaited(TeamDisconnectDialog.show(
+        'المدرس فكّ ارتباط الجهاز ده — سجّل دخول من جهازك الجديد'));
   }
 
   /// بس للمساعد — لو ترخيص المدرس الحقيقي (Firebase) بقى موقوف/منتهي.
   Future<void> _handleLicenseInactive() async {
     await disable();
-    ToastHelper.error('ترخيص المدرس متوقف حاليًا — تم تعطيل وضع الفريق على جهازك');
+    unawaited(TeamDisconnectDialog.show(
+        'ترخيص المدرس متوقف حاليًا — تم قطع الاتصال ببياناته'));
   }
 
   /// بتتنادى من AuthController عند تبديل الحساب (خروج/دخول) — الإعدادات
@@ -185,10 +305,20 @@ class TeamModeService {
       if (rows.isEmpty) return; // الحساب ده مش عضو في أي فريق
       final foundTeamId = rows.first['team_id'] as String;
       teamId.value = foundTeamId;
+      if (!await _claimDevice(client, foundTeamId)) {
+        teamId.value = null;
+        return;
+      }
       await _db.setSetting(SETTING_TEAM_MODE_ENABLED, 'true');
       await _db.setSetting(SETTING_TEAM_ID, foundTeamId);
       await _refreshMyPermissions(client, foundTeamId);
       _startEngine(client, foundTeamId);
+      // الدالة دي بتتنادى وقت الجهاز يبقى فاضي من بيانات الفريق (بعد
+      // فك ارتباط جهاز، أو حساب موجود بيسجّل دخول من جديد بعد ما
+      // بياناته المحلية اتمسحت) — لازم نحمّل البيانات الموجودة فعلاً
+      // من السيرفر، مش نستنى بس تحديثات جديدة تيجي (زي joinWithInvite
+      // بالظبط).
+      await _engine!.initialFullPull();
       LicenseController.to.teamModeBypassLimits = true;
       isEnabled.value = true;
     } catch (e) {
@@ -202,13 +332,23 @@ class TeamModeService {
       client: client,
       teamId: tId,
       deviceId: deviceId,
-      onRemovedFromTeam: _handleRemovedFromTeam,
+      // بس للمساعد — RLS مبتسمحش لحد يحذف صف عضوية المالك نفسه أصلاً
+      // (team_members_delete policy)، فمن المفروض الفحص ده مايرجعش true
+      // للمدرس أبدًا. لكن بعد ما بقى _handleRemovedFromTeam بيسجّل خروج
+      // كامل تلقائي (مش Toast بس زي الأول)، أي خطأ عابر هنا (سباق
+      // شبكة مثلاً) كان ممكن يسجّل خروج المدرس نفسه من حسابه بالغلط —
+      // فبنستبعده صراحة زي onLicenseInactive تمامًا.
+      onRemovedFromTeam: isOwner.value ? null : _handleRemovedFromTeam,
       // بس للمساعد — لو عملناها للمدرس نفسه هتقفل وضع الفريق عنده
       // (isOwner/teamId يترجعوا فاضيين محليًا) من غير أي طريقة يرجع بيها
       // تلقائيًا لما ترخيصه يترجّع، لأن enableAsOwner() بينشئ فريق
       // جديد بدل ما يستعيد القديم. المدرس أصلاً عنده متابعة مباشرة
       // ولحظية لحالة ترخيصه هو (LicenseController)، فمش محتاج الفحص ده.
       onLicenseInactive: isOwner.value ? null : _handleLicenseInactive,
+      // بس للمساعد — نفس منطق استبعاد المدرس فوق. لو المدرس نفسه فكّ
+      // ارتباط جهازه هو (مش منطقي أصلاً، مفيش زرار لده)، ماينفعش نسجّل
+      // خروجه بالغلط.
+      onDeviceUnbound: isOwner.value ? null : _handleDeviceUnbound,
       onReconnected: () => _refreshMyPermissions(client, tId),
     );
     _engine!.start();
@@ -343,10 +483,14 @@ class TeamModeService {
       if (rows.isEmpty) return;
       final m = rows.first;
       isOwner.value = m['is_owner'] as bool? ?? false;
+      await _db.setSetting(
+          SETTING_TEAM_IS_OWNER, isOwner.value ? 'true' : 'false');
       canDeleteAttendance.value = m['can_delete_attendance'] as bool? ?? false;
       canDeletePayments.value = m['can_delete_payments'] as bool? ?? false;
       canDeleteStudents.value = m['can_delete_students'] as bool? ?? false;
       canManageMembers.value = m['can_manage_members'] as bool? ?? false;
+      canViewFinancials.value = m['can_view_financials'] as bool? ?? true;
+      canViewAcademics.value = m['can_view_academics'] as bool? ?? true;
     } catch (e) {
       debugPrint('TeamModeService: فشل تحميل الصلاحيات — $e');
     }
@@ -455,6 +599,31 @@ class TeamModeService {
     }
   }
 
+  /// بترجع رسالة خطأ بالعربي، أو null لو نجح فك الارتباط — بتُستخدم
+  /// لما مساعد يغيّر جهازه فعلاً (تليفون جديد مثلاً) ومحتاج يسجّل
+  /// دخول من جهاز مختلف عن اللي اتربط بيه أول مرة.
+  Future<String?> resetMemberDevice(String userId) async {
+    final client = await _auth.ensureClient();
+    if (client == null || teamId.value == null) {
+      return 'مفيش فريق مفعّل على الجهاز ده';
+    }
+    try {
+      final res = await client
+          .from('team_members')
+          .update({'bound_device_id': null})
+          .eq('team_id', teamId.value as Object)
+          .eq('user_id', userId)
+          .select();
+      if ((res).isEmpty) {
+        return 'تعذر فك الارتباط — تأكد إن عندك صلاحية إدارة الأعضاء';
+      }
+      return null;
+    } catch (e) {
+      debugPrint('TeamModeService: فشل فك ارتباط الجهاز — $e');
+      return 'تعذر فك الارتباط — تأكد من الإنترنت وحاول تاني';
+    }
+  }
+
   /// بترجع رسالة خطأ بالعربي، أو null لو نجحت الإزالة.
   Future<String?> removeMember(String userId) async {
     final client = await _auth.ensureClient();
@@ -477,4 +646,24 @@ class TeamModeService {
       return 'تعذر إزالة العضو — تأكد من الإنترنت وحاول تاني';
     }
   }
+
+  // ── فحوصات عرض جاهزة للاستخدام في الشاشات ─────────────────────────
+  /// المدرس (أو أي مستخدم مش في وضع الفريق أصلاً) يشوف كل حاجة دايمًا؛
+  /// المساعد بس اللي بيتقيّد بالصلاحية.
+  bool get canSeeFinancials =>
+      !isEnabled.value || isOwner.value || canViewFinancials.value;
+  bool get canSeeAcademics =>
+      !isEnabled.value || isOwner.value || canViewAcademics.value;
+
+  // ── فحوصات حذف جاهزة للاستخدام في الشاشات ──────────────────────────
+  /// نفس منطق canSeeFinancials — لازم نستبعد "مش في وضع الفريق أصلاً"
+  /// و"owner" هنا كمان، لأن canDeleteX الخام بتبدأ false افتراضيًا،
+  /// ولو استخدمناها لوحدها كانت هتمنع الحذف حتى عند مستخدم عادي مش
+  /// جوه فريق خالص.
+  bool get canDeleteAttendanceNow =>
+      !isEnabled.value || isOwner.value || canDeleteAttendance.value;
+  bool get canDeletePaymentsNow =>
+      !isEnabled.value || isOwner.value || canDeletePayments.value;
+  bool get canDeleteStudentsNow =>
+      !isEnabled.value || isOwner.value || canDeleteStudents.value;
 }

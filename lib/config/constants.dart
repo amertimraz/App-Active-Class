@@ -195,3 +195,7 @@ const String COL_OUTBOX_SYNCED = 'synced'; // 0/1
 // نعرف نستعيدها بصمت عند فتح التطبيق من غير ما نجبر أي حد يمر بيها.
 const String SETTING_TEAM_MODE_ENABLED = 'team_mode_enabled';
 const String SETTING_TEAM_ID = 'team_mode_team_id';
+// دور الجهاز آخر مرة كان فيها وضع الفريق مفعّل (مالك/مساعد) — محفوظ
+// عشان disable() يقدر يعرف يمسح بيانات المساعد المتزامنة محليًا حتى
+// لو اتنادى قبل ما isOwner/teamId يتملّوا في الذاكرة للجلسة الحالية.
+const String SETTING_TEAM_IS_OWNER = 'team_mode_is_owner';

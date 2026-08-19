@@ -1,5 +1,6 @@
 // lib/services/database_service.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
@@ -11,6 +12,7 @@ import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/services/auto_backup_service.dart';
+import 'package:active_class/services/parent_portal_service.dart';
 
 /// ملخص أعداد البيانات (مجموعات، طلاب، إلخ) في لحظة معيّنة.
 class DataSummary {
@@ -390,6 +392,16 @@ class DatabaseService {
     });
   }
 
+  /// نفس _queueSync بس مخصّصة للحذف — بتحفظ remote_id (لو الصف كان
+  /// متزامن قبل الحذف) جوه الـ payload، عشان محرك المزامنة يقدر
+  /// يستهدف الصف الصح على السيرفر حتى لو الصف الأصلي جه من جهاز تاني
+  /// (زميل في نفس الفريق) — بدل ما يعتمد بس على origin_device_id
+  /// الحالي، اللي بيفشل صامت في الحالة دي (راجع _pushOne).
+  Future<void> _queueDelete(String table, int id, String? remoteId) {
+    return _queueSync(table, id, 'delete',
+        payload: remoteId != null ? {'remote_id': remoteId} : null);
+  }
+
   // ========== GROUPS ==========
   Future<int> insertGroup(Group group) async {
     final db = await database;
@@ -445,102 +457,147 @@ class DatabaseService {
     // من غير الحذف اليدوي ده مستحيل نعرف إيه اللي اتحذف عشان نبلّغ
     // محرك المزامنة — وهتفضل نسخ يتيمة عند زمايل الفريق.
     final cascade = await _collectGroupCascadeIds(db, id);
+    final groupRemoteId = await _remoteIdOf(db, TABLE_GROUPS, COL_GROUP_ID, id);
+    // كمان لازم نلقط بيانات الطلاب (كود + تليفون ولي الأمر) قبل الحذف
+    // — عشان بوابة متابعة أولياء الأمور، وإلا ملخصاتهم على Firestore
+    // تفضل معروضة للأبد بعد ما يتمسحوا مع المجموعة.
+    final studentRows =
+        await db.query(TABLE_STUDENTS, where: '$COL_STUDENT_GROUP_ID = ?', whereArgs: [id]);
     final n = await db.delete(
       TABLE_GROUPS,
       where: '$COL_GROUP_ID = ?',
       whereArgs: [id],
     );
     _notifyChanged();
-    for (final attId in cascade.attendanceIds) {
-      await _queueSync(TABLE_ATTENDANCE, attId, 'delete');
+    for (final entry in cascade.attendanceIds.entries) {
+      await _queueDelete(TABLE_ATTENDANCE, entry.key, entry.value);
     }
-    for (final payId in cascade.paymentIds) {
-      await _queueSync(TABLE_PAYMENTS, payId, 'delete');
+    for (final entry in cascade.paymentIds.entries) {
+      await _queueDelete(TABLE_PAYMENTS, entry.key, entry.value);
     }
-    for (final studId in cascade.studentIds) {
-      await _queueSync(TABLE_STUDENTS, studId, 'delete');
+    for (final entry in cascade.studentIds.entries) {
+      await _queueDelete(TABLE_STUDENTS, entry.key, entry.value);
     }
-    await _queueSync(TABLE_GROUPS, id, 'delete');
+    await _queueDelete(TABLE_GROUPS, id, groupRemoteId);
+    for (final row in studentRows) {
+      unawaited(
+          ParentPortalService().removeStudentSummary(Student.fromMap(row)));
+    }
     return n;
+  }
+
+  /// remote_id الحالي لصف معيّن، لو كان متزامن قبل كده — لازم يتقرا
+  /// قبل الحذف مباشرة، وإلا الصف يكون اتمسح محليًا ومفيش طريقة نعرفه
+  /// بيها تاني.
+  Future<String?> _remoteIdOf(
+      DatabaseExecutor db, String table, String pkCol, int id) async {
+    final rows = await db.query(table,
+        columns: [COL_SYNC_REMOTE_ID], where: '$pkCol = ?', whereArgs: [id]);
+    if (rows.isEmpty) return null;
+    return rows.first[COL_SYNC_REMOTE_ID] as String?;
   }
 
   Future<_GroupCascadeIds> _collectGroupCascadeIds(Database db, int groupId) async {
     final students = await db.query(
       TABLE_STUDENTS,
-      columns: [COL_STUDENT_ID],
+      columns: [COL_STUDENT_ID, COL_SYNC_REMOTE_ID],
       where: '$COL_STUDENT_GROUP_ID = ?',
       whereArgs: [groupId],
     );
-    final studentIds = students.map((e) => e[COL_STUDENT_ID] as int).toList();
+    final studentIds = {
+      for (final e in students)
+        e[COL_STUDENT_ID] as int: e[COL_SYNC_REMOTE_ID] as String?
+    };
     if (studentIds.isEmpty) {
-      return _GroupCascadeIds(studentIds: [], attendanceIds: [], paymentIds: []);
+      return _GroupCascadeIds(studentIds: {}, attendanceIds: {}, paymentIds: {});
     }
-    final placeholders = List.filled(studentIds.length, '?').join(',');
+    final ids = studentIds.keys.toList();
+    final placeholders = List.filled(ids.length, '?').join(',');
     final attendanceRows = await db.query(
       TABLE_ATTENDANCE,
-      columns: [COL_ATTENDANCE_ID],
+      columns: [COL_ATTENDANCE_ID, COL_SYNC_REMOTE_ID],
       where: '$COL_ATTENDANCE_STUDENT_ID IN ($placeholders)',
-      whereArgs: studentIds,
+      whereArgs: ids,
     );
     final paymentRows = await db.query(
       TABLE_PAYMENTS,
-      columns: [COL_PAYMENT_ID],
+      columns: [COL_PAYMENT_ID, COL_SYNC_REMOTE_ID],
       where: '$COL_PAYMENT_STUDENT_ID IN ($placeholders)',
-      whereArgs: studentIds,
+      whereArgs: ids,
     );
     return _GroupCascadeIds(
       studentIds: studentIds,
-      attendanceIds: attendanceRows.map((e) => e[COL_ATTENDANCE_ID] as int).toList(),
-      paymentIds: paymentRows.map((e) => e[COL_PAYMENT_ID] as int).toList(),
+      attendanceIds: {
+        for (final e in attendanceRows)
+          e[COL_ATTENDANCE_ID] as int: e[COL_SYNC_REMOTE_ID] as String?
+      },
+      paymentIds: {
+        for (final e in paymentRows)
+          e[COL_PAYMENT_ID] as int: e[COL_SYNC_REMOTE_ID] as String?
+      },
     );
   }
 
   Future<void> deleteStudentsByGroup(int groupId) async {
     final db = await database;
-    List<int> studentIds = [];
-    List<int> attendanceIds = [];
-    List<int> paymentIds = [];
+    // لبوابة متابعة أولياء الأمور — محتاجين كود/تليفون كل طالب قبل
+    // ما يتمسحوا، وإلا ملخصاتهم تفضل معروضة للأبد على Firestore.
+    final studentRowsForPortal = await db.query(TABLE_STUDENTS,
+        where: '$COL_STUDENT_GROUP_ID = ?', whereArgs: [groupId]);
+    Map<int, String?> studentIds = {};
+    Map<int, String?> attendanceIds = {};
+    Map<int, String?> paymentIds = {};
     await db.transaction((txn) async {
       final students = await txn.query(
         TABLE_STUDENTS,
-        columns: [COL_STUDENT_ID],
+        columns: [COL_STUDENT_ID, COL_SYNC_REMOTE_ID],
         where: '$COL_STUDENT_GROUP_ID = ?',
         whereArgs: [groupId],
       );
-      studentIds = students.map((e) => e[COL_STUDENT_ID] as int).toList();
+      studentIds = {
+        for (final e in students)
+          e[COL_STUDENT_ID] as int: e[COL_SYNC_REMOTE_ID] as String?
+      };
       if (studentIds.isEmpty) return;
-      final placeholders = List.filled(studentIds.length, '?').join(',');
+      final ids = studentIds.keys.toList();
+      final placeholders = List.filled(ids.length, '?').join(',');
 
       final attendanceRows = await txn.query(
         TABLE_ATTENDANCE,
-        columns: [COL_ATTENDANCE_ID],
+        columns: [COL_ATTENDANCE_ID, COL_SYNC_REMOTE_ID],
         where: '$COL_ATTENDANCE_STUDENT_ID IN ($placeholders)',
-        whereArgs: studentIds,
+        whereArgs: ids,
       );
-      attendanceIds = attendanceRows.map((e) => e[COL_ATTENDANCE_ID] as int).toList();
+      attendanceIds = {
+        for (final e in attendanceRows)
+          e[COL_ATTENDANCE_ID] as int: e[COL_SYNC_REMOTE_ID] as String?
+      };
 
       final paymentRows = await txn.query(
         TABLE_PAYMENTS,
-        columns: [COL_PAYMENT_ID],
+        columns: [COL_PAYMENT_ID, COL_SYNC_REMOTE_ID],
         where: '$COL_PAYMENT_STUDENT_ID IN ($placeholders)',
-        whereArgs: studentIds,
+        whereArgs: ids,
       );
-      paymentIds = paymentRows.map((e) => e[COL_PAYMENT_ID] as int).toList();
+      paymentIds = {
+        for (final e in paymentRows)
+          e[COL_PAYMENT_ID] as int: e[COL_SYNC_REMOTE_ID] as String?
+      };
 
       await txn.delete(
         TABLE_ATTENDANCE,
         where: '$COL_ATTENDANCE_STUDENT_ID IN ($placeholders)',
-        whereArgs: studentIds,
+        whereArgs: ids,
       );
       await txn.delete(
         TABLE_PAYMENTS,
         where: '$COL_PAYMENT_STUDENT_ID IN ($placeholders)',
-        whereArgs: studentIds,
+        whereArgs: ids,
       );
       await txn.delete(
         TABLE_STUDENTS,
         where: '$COL_STUDENT_ID IN ($placeholders)',
-        whereArgs: studentIds,
+        whereArgs: ids,
       );
     });
     _notifyChanged();
@@ -548,14 +605,18 @@ class DatabaseService {
     // هتفضل نسخ يتيمة (orphaned) من الطلاب/الحضور/المدفوعات دي على
     // جهاز المدرس نفسه (لو اتزامنت الطلاب قبل كده) وعلى أجهزة زمايله،
     // لأن الحذف الجماعي ده كان بيتم مباشرة من غير المرور بـ _queueSync.
-    for (final id in attendanceIds) {
-      await _queueSync(TABLE_ATTENDANCE, id, 'delete');
+    for (final entry in attendanceIds.entries) {
+      await _queueDelete(TABLE_ATTENDANCE, entry.key, entry.value);
     }
-    for (final id in paymentIds) {
-      await _queueSync(TABLE_PAYMENTS, id, 'delete');
+    for (final entry in paymentIds.entries) {
+      await _queueDelete(TABLE_PAYMENTS, entry.key, entry.value);
     }
-    for (final id in studentIds) {
-      await _queueSync(TABLE_STUDENTS, id, 'delete');
+    for (final entry in studentIds.entries) {
+      await _queueDelete(TABLE_STUDENTS, entry.key, entry.value);
+    }
+    for (final row in studentRowsForPortal) {
+      unawaited(
+          ParentPortalService().removeStudentSummary(Student.fromMap(row)));
     }
   }
 
@@ -683,13 +744,15 @@ class DatabaseService {
     // نفس سبب deleteGroup: الحضور والمدفوعات بتاعة الطالب ده هتتحذف
     // تلقائيًا بالـ CASCADE، فلازم نلقطهم الأول عشان نبلّغ المزامنة.
     final attendanceRows = await db.query(TABLE_ATTENDANCE,
-        columns: [COL_ATTENDANCE_ID],
+        columns: [COL_ATTENDANCE_ID, COL_SYNC_REMOTE_ID],
         where: '$COL_ATTENDANCE_STUDENT_ID = ?',
         whereArgs: [id]);
     final paymentRows = await db.query(TABLE_PAYMENTS,
-        columns: [COL_PAYMENT_ID],
+        columns: [COL_PAYMENT_ID, COL_SYNC_REMOTE_ID],
         where: '$COL_PAYMENT_STUDENT_ID = ?',
         whereArgs: [id]);
+    final studentRemoteId =
+        await _remoteIdOf(db, TABLE_STUDENTS, COL_STUDENT_ID, id);
     final n = await db.delete(
       TABLE_STUDENTS,
       where: '$COL_STUDENT_ID = ?',
@@ -697,12 +760,14 @@ class DatabaseService {
     );
     _notifyChanged();
     for (final row in attendanceRows) {
-      await _queueSync(TABLE_ATTENDANCE, row[COL_ATTENDANCE_ID] as int, 'delete');
+      await _queueDelete(TABLE_ATTENDANCE, row[COL_ATTENDANCE_ID] as int,
+          row[COL_SYNC_REMOTE_ID] as String?);
     }
     for (final row in paymentRows) {
-      await _queueSync(TABLE_PAYMENTS, row[COL_PAYMENT_ID] as int, 'delete');
+      await _queueDelete(TABLE_PAYMENTS, row[COL_PAYMENT_ID] as int,
+          row[COL_SYNC_REMOTE_ID] as String?);
     }
-    await _queueSync(TABLE_STUDENTS, id, 'delete');
+    await _queueDelete(TABLE_STUDENTS, id, studentRemoteId);
     return n;
   }
 
@@ -779,13 +844,14 @@ class DatabaseService {
 
   Future<int> deleteAttendance(int id) async {
     final db = await database;
+    final remoteId = await _remoteIdOf(db, TABLE_ATTENDANCE, COL_ATTENDANCE_ID, id);
     final n = await db.delete(
       TABLE_ATTENDANCE,
       where: '$COL_ATTENDANCE_ID = ?',
       whereArgs: [id],
     );
     _notifyChanged();
-    await _queueSync(TABLE_ATTENDANCE, id, 'delete');
+    await _queueDelete(TABLE_ATTENDANCE, id, remoteId);
     return n;
   }
 
@@ -869,13 +935,14 @@ class DatabaseService {
 
   Future<int> deletePayment(int id) async {
     final db = await database;
+    final remoteId = await _remoteIdOf(db, TABLE_PAYMENTS, COL_PAYMENT_ID, id);
     final n = await db.delete(
       TABLE_PAYMENTS,
       where: '$COL_PAYMENT_ID = ?',
       whereArgs: [id],
     );
     _notifyChanged();
-    await _queueSync(TABLE_PAYMENTS, id, 'delete');
+    await _queueDelete(TABLE_PAYMENTS, id, remoteId);
     return n;
   }
 
@@ -919,6 +986,36 @@ class DatabaseService {
       await txn.delete(TABLE_GROUPS);
     });
     // لا نُشعر الحفظ التلقائي هنا — البيانات محذوفة
+  }
+
+  /// خاص بوضع الفريق — على جهاز المساعد بس. بتمسح كل البيانات اللي
+  /// جاية من مزامنة الفريق (لها sync_remote_id) بدون ما تلمس أي بيانات
+  /// محلية بحتة كان عند المساعد قبل ما ينضم للفريق أصلاً (مفيهاش
+  /// remote_id لأنها ماتبعتتش/اتزامنتش أبدًا). بتتنادى عند تسجيل خروج
+  /// المساعد، أو تعطيل وضع الفريق عنده، أو إزالته من الفريق — عشان
+  /// بيانات المدرس متفضلش ظاهرة على جهازه بعد كده.
+  ///
+  /// ملحوظة: نفس الفلتر ده (sync_remote_id IS NOT NULL) ميتستخدمش على
+  /// جهاز المدرس (owner) — بياناته هو نفسها بتاخد remote_id بعد ما
+  /// يفعّل وضع الفريق، فمسحها هنا كانت هتمسح بياناته الحقيقية بالغلط.
+  Future<void> clearTeamSyncedData() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      const where = '$COL_SYNC_REMOTE_ID IS NOT NULL';
+      await txn.delete(TABLE_ATTENDANCE, where: where);
+      await txn.delete(TABLE_PAYMENTS, where: where);
+      await txn.delete(TABLE_STUDENTS, where: where);
+      await txn.delete(TABLE_GROUPS, where: where);
+      for (final table in [
+        TABLE_GROUPS,
+        TABLE_STUDENTS,
+        TABLE_ATTENDANCE,
+        TABLE_PAYMENTS,
+      ]) {
+        await txn.delete(TABLE_SYNC_OUTBOX,
+            where: '$COL_OUTBOX_TABLE = ?', whereArgs: [table]);
+      }
+    });
   }
 
   // ========== APP SETTINGS (key/value) ==========
@@ -1414,9 +1511,12 @@ class DatabaseService {
 }
 
 class _GroupCascadeIds {
-  final List<int> studentIds;
-  final List<int> attendanceIds;
-  final List<int> paymentIds;
+  // ID → remote_id (لو الصف كان متزامن قبل الحذف) — لازم نلقط
+  // remote_id قبل ما الصف يتمسح محليًا، وإلا مفيش طريقة نعرفه بيها
+  // تاني وقت الـ push (راجع _pushOne في sync_engine.dart).
+  final Map<int, String?> studentIds;
+  final Map<int, String?> attendanceIds;
+  final Map<int, String?> paymentIds;
   _GroupCascadeIds({
     required this.studentIds,
     required this.attendanceIds,

@@ -95,51 +95,7 @@ class _BookingSettingsPageState extends State<BookingSettingsPage> {
                     return ListView(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                       children: [
-                        if (!license.canBooking)
-                          _card(
-                            isDark,
-                            child: const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Text(
-                                'ميزة رابط الحجز متاحة للباقة الاحترافية أو مدى الحياة فقط.',
-                                style: TextStyle(fontFamily: 'Cairo'),
-                              ),
-                            ),
-                          ),
-                        _card(
-                          isDark,
-                          child: SwitchListTile(
-                            title: const Text('تفعيل رابط الحجز',
-                                style:
-                                    TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
-                            subtitle: const Text(
-                              'لما يتفعّل، ولي الأمر أو الطالب يقدر يسجّل بياناته من الرابط العام',
-                              style: TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                            ),
-                            activeColor: _kPrimary,
-                            value: booking.enabled.value,
-                            onChanged: (v) async {
-                              final err = await booking.setEnabled(
-                                v,
-                                teacherName: settings.teacherFullName.value.isEmpty
-                                    ? 'المعلم'
-                                    : settings.teacherFullName.value,
-                                subject: settings.teacherSpecialization.value,
-                                title: settings.teacherTitle,
-                                photoLocalPath: settings.teacherAvatarPath.value,
-                              );
-                              if (!context.mounted) return;
-                              if (err != null) {
-                                AppToast.error(context, err);
-                              } else {
-                                AppToast.success(context,
-                                    v ? 'تم تفعيل رابط الحجز' : 'تم إيقاف رابط الحجز');
-                              }
-                            },
-                          ),
-                        ),
-                        if (booking.enabled.value && booking.bookingUrl.isNotEmpty) ...[
-                          const SizedBox(height: 12),
+                        if (booking.syncError.value) ...[
                           _card(
                             isDark,
                             child: Padding(
@@ -147,421 +103,714 @@ class _BookingSettingsPageState extends State<BookingSettingsPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _sectionTitle(isDark,
-                                      icon: Icons.link_rounded,
-                                      color: _kAccent,
-                                      text: 'رابط الحجز الخاص بك'),
-                                  const SizedBox(height: 10),
-                                  Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: isDark
-                                          ? Colors.white.withValues(alpha: 0.04)
-                                          : const Color(0xFFF3F4F8),
-                                      borderRadius: BorderRadius.circular(10),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.sync_problem_rounded,
+                                          color: Color(0xFFEF4444)),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text('رابط الحجز الحالي معطّل',
+                                            style: TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 14.5,
+                                                color: isDark
+                                                    ? Colors.white
+                                                    : const Color(0xFF111827))),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'مش هينفع تعدّل أي إعداد تاني هنا لحد ما تولّد رابط جديد — أي تعديل على الرابط القديم هيفشل. باقي الإعدادات اتعطّلت مؤقتًا تحت.',
+                                    style: TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 12.5,
+                                        color: isDark
+                                            ? Colors.white70
+                                            : Colors.grey[700]),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  ElevatedButton.icon(
+                                    onPressed: () => _confirmRegenerateLink(
+                                        context, booking),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: _kPrimary,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12)),
                                     ),
-                                    width: double.infinity,
-                                    child: SelectableText(booking.bookingUrl,
+                                    icon: const Icon(Icons.refresh_rounded,
+                                        size: 18),
+                                    label: const Text('توليد رابط حجز جديد',
+                                        style: TextStyle(fontFamily: 'Cairo')),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        IgnorePointer(
+                          ignoring: booking.syncError.value,
+                          child: Opacity(
+                            opacity: booking.syncError.value ? 0.45 : 1,
+                            child: Column(
+                              children: [
+                                if (!license.canBooking)
+                                  _card(
+                                    isDark,
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(16),
+                                      child: Text(
+                                        'ميزة رابط الحجز متاحة للباقة الاحترافية أو مدى الحياة فقط.',
+                                        style: TextStyle(fontFamily: 'Cairo'),
+                                      ),
+                                    ),
+                                  ),
+                                _card(
+                                  isDark,
+                                  child: SwitchListTile(
+                                    title: const Text('تفعيل رابط الحجز',
                                         style: TextStyle(
                                             fontFamily: 'Cairo',
-                                            fontSize: 13,
-                                            color: isDark ? Colors.white70 : const Color(0xFF374151))),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: OutlinedButton.icon(
-                                          onPressed: () async {
-                                            await Clipboard.setData(
-                                                ClipboardData(text: booking.bookingUrl));
-                                            if (context.mounted) {
-                                              AppToast.success(context, 'تم نسخ الرابط');
-                                            }
-                                          },
-                                          style: OutlinedButton.styleFrom(
-                                            shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(12)),
-                                            padding: const EdgeInsets.symmetric(vertical: 11),
-                                          ),
-                                          icon: const Icon(Icons.copy_rounded, size: 18),
-                                          label: const Text('نسخ',
-                                              style: TextStyle(fontFamily: 'Cairo')),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: ElevatedButton.icon(
-                                          onPressed: () => Share.share(booking.bookingUrl),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: _kPrimary,
-                                            foregroundColor: Colors.white,
-                                            elevation: 0,
-                                            shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(12)),
-                                            padding: const EdgeInsets.symmetric(vertical: 11),
-                                          ),
-                                          icon: const Icon(Icons.share_rounded, size: 18),
-                                          label: const Text('مشاركة',
-                                              style: TextStyle(fontFamily: 'Cairo')),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (booking.enabled.value) ...[
-                          const SizedBox(height: 12),
-                          _card(
-                            isDark,
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _sectionTitle(isDark,
-                                      icon: Icons.image_rounded,
-                                      color: const Color(0xFF0EA5E9),
-                                      text: 'صورة خلفية صفحة الحجز'),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'اختياري — لو رفعتها هتظهر خلف صورتك في صفحة الحجز، لو مرفعتهاش هيفضل التصميم الافتراضي',
-                                    style: TextStyle(
-                                        fontFamily: 'Cairo',
-                                        fontSize: 12,
-                                        color: isDark ? Colors.white54 : Colors.grey[600]),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  if (booking.coverUrl.value.isNotEmpty)
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Image.network(
-                                        booking.coverUrl.value,
-                                        height: 100,
-                                        width: double.infinity,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                                      ),
+                                            fontWeight: FontWeight.w700)),
+                                    subtitle: const Text(
+                                      'لما يتفعّل، ولي الأمر أو الطالب يقدر يسجّل بياناته من الرابط العام',
+                                      style: TextStyle(
+                                          fontFamily: 'Cairo', fontSize: 12),
                                     ),
-                                  if (booking.coverUrl.value.isNotEmpty) const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: OutlinedButton.icon(
-                                          onPressed: booking.uploadingCover.value
-                                              ? null
-                                              : () async {
-                                                  final picker = ImagePicker();
-                                                  final x = await picker.pickImage(
-                                                      source: ImageSource.gallery,
-                                                      imageQuality: 85);
-                                                  if (x == null) return;
-                                                  final err =
-                                                      await booking.uploadCover(File(x.path));
-                                                  if (!context.mounted) return;
-                                                  if (err != null) {
-                                                    AppToast.error(context, err);
-                                                  } else {
-                                                    AppToast.success(
-                                                        context, 'تم رفع صورة الخلفية');
-                                                  }
-                                                },
-                                          style: OutlinedButton.styleFrom(
-                                            shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(12)),
-                                            padding: const EdgeInsets.symmetric(vertical: 11),
-                                          ),
-                                          icon: booking.uploadingCover.value
-                                              ? const SizedBox(
-                                                  width: 16,
-                                                  height: 16,
-                                                  child: CircularProgressIndicator(strokeWidth: 2))
-                                              : const Icon(Icons.image_rounded, size: 18),
-                                          label: Text(
-                                              booking.coverUrl.value.isEmpty
-                                                  ? 'رفع صورة'
-                                                  : 'تغيير الصورة',
-                                              style: const TextStyle(fontFamily: 'Cairo')),
-                                        ),
-                                      ),
-                                      if (booking.coverUrl.value.isNotEmpty) ...[
-                                        const SizedBox(width: 10),
-                                        OutlinedButton(
-                                          onPressed: () async {
-                                            await booking.removeCover();
-                                            if (context.mounted) {
-                                              AppToast.info(context, 'تم حذف صورة الخلفية');
-                                            }
-                                          },
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: Colors.red,
-                                            shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(12)),
-                                            padding: const EdgeInsets.symmetric(
-                                                vertical: 11, horizontal: 14),
-                                          ),
-                                          child: const Icon(Icons.delete_outline_rounded, size: 18),
-                                        ),
-                                      ],
-                                    ],
+                                    activeColor: _kPrimary,
+                                    value: booking.enabled.value,
+                                    onChanged: (v) async {
+                                      final err = await booking.setEnabled(
+                                        v,
+                                        teacherName: settings
+                                                .teacherFullName.value.isEmpty
+                                            ? 'المعلم'
+                                            : settings.teacherFullName.value,
+                                        subject: settings
+                                            .teacherSpecialization.value,
+                                        title: settings.teacherTitle,
+                                        photoLocalPath:
+                                            settings.teacherAvatarPath.value,
+                                      );
+                                      if (!context.mounted) return;
+                                      if (err != null) {
+                                        AppToast.error(context, err);
+                                      } else {
+                                        AppToast.success(
+                                            context,
+                                            v
+                                                ? 'تم تفعيل رابط الحجز'
+                                                : 'تم إيقاف رابط الحجز');
+                                      }
+                                    },
                                   ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (booking.enabled.value) ...[
-                          const SizedBox(height: 12),
-                          _card(
-                            isDark,
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _sectionTitle(isDark,
-                                      icon: Icons.person_rounded,
-                                      color: const Color(0xFF8B5CF6),
-                                      text: 'نبذة عنك (سيرة ذاتية مختصرة)'),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'اختياري — لو كتبتها هتظهر في صفحة الحجز، لو سبتها فاضية القسم ده مش هيظهر خالص',
-                                    style: TextStyle(
-                                        fontFamily: 'Cairo',
-                                        fontSize: 12,
-                                        color: isDark ? Colors.white54 : Colors.grey[600]),
-                                  ),
+                                ),
+                                if (booking.enabled.value &&
+                                    booking.bookingUrl.isNotEmpty) ...[
                                   const SizedBox(height: 12),
-                                  TextField(
-                                    controller: _bioCtrl,
-                                    maxLines: 4,
-                                    maxLength: 500,
-                                    style: TextStyle(
-                                        fontFamily: 'Cairo',
-                                        fontSize: 13,
-                                        color: isDark ? Colors.white : Colors.black87),
-                                    decoration: InputDecoration(
-                                      hintText:
-                                          'مثال: مدرس رياضيات بخبرة 10 سنوات، متخصص في مناهج الثانوية العامة...',
-                                      hintStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-                                      filled: true,
-                                      fillColor: isDark
-                                          ? Colors.white.withValues(alpha: 0.04)
-                                          : const Color(0xFFF3F4F8),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                    ),
-                                  ),
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: ElevatedButton.icon(
-                                      onPressed: booking.savingBio.value
-                                          ? null
-                                          : () async {
-                                              await booking.saveBio(_bioCtrl.text.trim());
-                                              if (context.mounted) {
-                                                AppToast.success(context, 'تم حفظ النبذة');
-                                              }
-                                            },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: _kPrimary,
-                                        foregroundColor: Colors.white,
-                                        elevation: 0,
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(12)),
-                                      ),
-                                      icon: booking.savingBio.value
-                                          ? const SizedBox(
-                                              width: 16,
-                                              height: 16,
-                                              child: CircularProgressIndicator(
-                                                  strokeWidth: 2, color: Colors.white))
-                                          : const Icon(Icons.save_rounded, size: 18),
-                                      label: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo')),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (booking.enabled.value) ...[
-                          const SizedBox(height: 12),
-                          _card(
-                            isDark,
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _sectionTitle(isDark,
-                                      icon: Icons.playlist_add_rounded,
-                                      color: const Color(0xFF16A34A),
-                                      text: 'حقول مخصصة'),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'ضيف أي حقل عايزه إنت في فورم الحجز (حد أقصى ${BookingController.maxCustomFields})',
-                                    style: TextStyle(
-                                        fontFamily: 'Cairo',
-                                        fontSize: 12,
-                                        color: isDark ? Colors.white54 : Colors.grey[600]),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  ...booking.customFields.map((f) => Padding(
-                                        padding: const EdgeInsets.only(bottom: 8),
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(f['label'] as String? ?? '',
-                                                  style: TextStyle(
-                                                      fontFamily: 'Cairo',
-                                                      fontSize: 13.5,
-                                                      color: isDark
-                                                          ? Colors.white
-                                                          : const Color(0xFF111827))),
+                                  _card(
+                                    isDark,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _sectionTitle(isDark,
+                                              icon: Icons.link_rounded,
+                                              color: _kAccent,
+                                              text: 'رابط الحجز الخاص بك'),
+                                          const SizedBox(height: 10),
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: isDark
+                                                  ? Colors.white
+                                                      .withValues(alpha: 0.04)
+                                                  : const Color(0xFFF3F4F8),
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
                                             ),
-                                            Row(
-                                              children: [
-                                                Text('إجباري',
-                                                    style: TextStyle(
-                                                        fontFamily: 'Cairo',
-                                                        fontSize: 10,
-                                                        color: isDark
-                                                            ? Colors.white54
-                                                            : Colors.grey[600])),
-                                                Switch(
-                                                  value: f['required'] as bool? ?? false,
-                                                  activeColor: _kPrimary,
-                                                  onChanged: (v) => booking.toggleCustomFieldRequired(
-                                                      f['key'] as String, v,
-                                                      teacherName: settings.teacherFullName.value,
-                                                      subject: settings.teacherSpecialization.value,
-                                                      title: settings.teacherTitle),
+                                            width: double.infinity,
+                                            child: SelectableText(
+                                                booking.bookingUrl,
+                                                style: TextStyle(
+                                                    fontFamily: 'Cairo',
+                                                    fontSize: 13,
+                                                    color: isDark
+                                                        ? Colors.white70
+                                                        : const Color(
+                                                            0xFF374151))),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: OutlinedButton.icon(
+                                                  onPressed: () async {
+                                                    await Clipboard.setData(
+                                                        ClipboardData(
+                                                            text: booking
+                                                                .bookingUrl));
+                                                    if (context.mounted) {
+                                                      AppToast.success(context,
+                                                          'تم نسخ الرابط');
+                                                    }
+                                                  },
+                                                  style:
+                                                      OutlinedButton.styleFrom(
+                                                    shape:
+                                                        RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        12)),
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        vertical: 11),
+                                                  ),
+                                                  icon: const Icon(
+                                                      Icons.copy_rounded,
+                                                      size: 18),
+                                                  label: const Text('نسخ',
+                                                      style: TextStyle(
+                                                          fontFamily: 'Cairo')),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: ElevatedButton.icon(
+                                                  onPressed: () => Share.share(
+                                                      booking.bookingUrl),
+                                                  style:
+                                                      ElevatedButton.styleFrom(
+                                                    backgroundColor: _kPrimary,
+                                                    foregroundColor:
+                                                        Colors.white,
+                                                    elevation: 0,
+                                                    shape:
+                                                        RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        12)),
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        vertical: 11),
+                                                  ),
+                                                  icon: const Icon(
+                                                      Icons.share_rounded,
+                                                      size: 18),
+                                                  label: const Text('مشاركة',
+                                                      style: TextStyle(
+                                                          fontFamily: 'Cairo')),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                if (booking.enabled.value) ...[
+                                  const SizedBox(height: 12),
+                                  _card(
+                                    isDark,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _sectionTitle(isDark,
+                                              icon: Icons.image_rounded,
+                                              color: const Color(0xFF0EA5E9),
+                                              text: 'صورة خلفية صفحة الحجز'),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'اختياري — لو رفعتها هتظهر خلف صورتك في صفحة الحجز، لو مرفعتهاش هيفضل التصميم الافتراضي',
+                                            style: TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontSize: 12,
+                                                color: isDark
+                                                    ? Colors.white54
+                                                    : Colors.grey[600]),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          if (booking.coverUrl.value.isNotEmpty)
+                                            ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              child: Image.network(
+                                                booking.coverUrl.value,
+                                                height: 100,
+                                                width: double.infinity,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) =>
+                                                    const SizedBox.shrink(),
+                                              ),
+                                            ),
+                                          if (booking.coverUrl.value.isNotEmpty)
+                                            const SizedBox(height: 12),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: OutlinedButton.icon(
+                                                  onPressed: booking
+                                                          .uploadingCover.value
+                                                      ? null
+                                                      : () async {
+                                                          final picker =
+                                                              ImagePicker();
+                                                          final x = await picker
+                                                              .pickImage(
+                                                                  source:
+                                                                      ImageSource
+                                                                          .gallery,
+                                                                  imageQuality:
+                                                                      85);
+                                                          if (x == null) return;
+                                                          final err =
+                                                              await booking
+                                                                  .uploadCover(
+                                                                      File(x
+                                                                          .path));
+                                                          if (!context.mounted)
+                                                            return;
+                                                          if (err != null) {
+                                                            AppToast.error(
+                                                                context, err);
+                                                          } else {
+                                                            AppToast.success(
+                                                                context,
+                                                                'تم رفع صورة الخلفية');
+                                                          }
+                                                        },
+                                                  style:
+                                                      OutlinedButton.styleFrom(
+                                                    shape:
+                                                        RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        12)),
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        vertical: 11),
+                                                  ),
+                                                  icon: booking
+                                                          .uploadingCover.value
+                                                      ? const SizedBox(
+                                                          width: 16,
+                                                          height: 16,
+                                                          child:
+                                                              CircularProgressIndicator(
+                                                                  strokeWidth:
+                                                                      2))
+                                                      : const Icon(
+                                                          Icons.image_rounded,
+                                                          size: 18),
+                                                  label: Text(
+                                                      booking.coverUrl.value
+                                                              .isEmpty
+                                                          ? 'رفع صورة'
+                                                          : 'تغيير الصورة',
+                                                      style: const TextStyle(
+                                                          fontFamily: 'Cairo')),
+                                                ),
+                                              ),
+                                              if (booking.coverUrl.value
+                                                  .isNotEmpty) ...[
+                                                const SizedBox(width: 10),
+                                                OutlinedButton(
+                                                  onPressed: () async {
+                                                    await booking.removeCover();
+                                                    if (context.mounted) {
+                                                      AppToast.info(context,
+                                                          'تم حذف صورة الخلفية');
+                                                    }
+                                                  },
+                                                  style:
+                                                      OutlinedButton.styleFrom(
+                                                    foregroundColor: Colors.red,
+                                                    shape:
+                                                        RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        12)),
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        vertical: 11,
+                                                        horizontal: 14),
+                                                  ),
+                                                  child: const Icon(
+                                                      Icons
+                                                          .delete_outline_rounded,
+                                                      size: 18),
                                                 ),
                                               ],
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(Icons.delete_outline_rounded,
-                                                  size: 20, color: Colors.red),
-                                              onPressed: () => booking.removeCustomField(
-                                                  f['key'] as String,
-                                                  teacherName: settings.teacherFullName.value,
-                                                  subject: settings.teacherSpecialization.value,
-                                                  title: settings.teacherTitle),
-                                            ),
-                                          ],
-                                        ),
-                                      )),
-                                  if (booking.customFields.length < BookingController.maxCustomFields)
-                                    Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: OutlinedButton.icon(
-                                        onPressed: () => _showAddCustomFieldDialog(
-                                            context, booking, settings),
-                                        style: OutlinedButton.styleFrom(
-                                          shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(12)),
-                                        ),
-                                        icon: const Icon(Icons.add_rounded, size: 18),
-                                        label: const Text('إضافة حقل',
-                                            style: TextStyle(fontFamily: 'Cairo')),
+                                            ],
+                                          ),
+                                        ],
                                       ),
                                     ),
+                                  ),
                                 ],
-                              ),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
-                        _card(
-                          isDark,
-                          child: Column(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-                                child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: _sectionTitle(isDark,
-                                      icon: Icons.tune_rounded,
-                                      color: const Color(0xFFF59E0B),
-                                      text: 'الحقول اللي تظهر في فورم الحجز'),
+                                if (booking.enabled.value) ...[
+                                  const SizedBox(height: 12),
+                                  _card(
+                                    isDark,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _sectionTitle(isDark,
+                                              icon: Icons.person_rounded,
+                                              color: const Color(0xFF8B5CF6),
+                                              text:
+                                                  'نبذة عنك (سيرة ذاتية مختصرة)'),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'اختياري — لو كتبتها هتظهر في صفحة الحجز، لو سبتها فاضية القسم ده مش هيظهر خالص',
+                                            style: TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontSize: 12,
+                                                color: isDark
+                                                    ? Colors.white54
+                                                    : Colors.grey[600]),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          TextField(
+                                            controller: _bioCtrl,
+                                            maxLines: 4,
+                                            maxLength: 500,
+                                            style: TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontSize: 13,
+                                                color: isDark
+                                                    ? Colors.white
+                                                    : Colors.black87),
+                                            decoration: InputDecoration(
+                                              hintText:
+                                                  'مثال: مدرس رياضيات بخبرة 10 سنوات، متخصص في مناهج الثانوية العامة...',
+                                              hintStyle: const TextStyle(
+                                                  fontFamily: 'Cairo',
+                                                  fontSize: 12),
+                                              filled: true,
+                                              fillColor: isDark
+                                                  ? Colors.white
+                                                      .withValues(alpha: 0.04)
+                                                  : const Color(0xFFF3F4F8),
+                                              border: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                                borderSide: BorderSide.none,
+                                              ),
+                                            ),
+                                          ),
+                                          Align(
+                                            alignment: Alignment.centerLeft,
+                                            child: ElevatedButton.icon(
+                                              onPressed: booking.savingBio.value
+                                                  ? null
+                                                  : () async {
+                                                      await booking.saveBio(
+                                                          _bioCtrl.text.trim());
+                                                      if (context.mounted) {
+                                                        AppToast.success(
+                                                            context,
+                                                            'تم حفظ النبذة');
+                                                      }
+                                                    },
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: _kPrimary,
+                                                foregroundColor: Colors.white,
+                                                elevation: 0,
+                                                shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            12)),
+                                              ),
+                                              icon: booking.savingBio.value
+                                                  ? const SizedBox(
+                                                      width: 16,
+                                                      height: 16,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                              strokeWidth: 2,
+                                                              color:
+                                                                  Colors.white))
+                                                  : const Icon(
+                                                      Icons.save_rounded,
+                                                      size: 18),
+                                              label: const Text('حفظ',
+                                                  style: TextStyle(
+                                                      fontFamily: 'Cairo')),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                if (booking.enabled.value) ...[
+                                  const SizedBox(height: 12),
+                                  _card(
+                                    isDark,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _sectionTitle(isDark,
+                                              icon: Icons.playlist_add_rounded,
+                                              color: const Color(0xFF16A34A),
+                                              text: 'حقول مخصصة'),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'ضيف أي حقل عايزه إنت في فورم الحجز (حد أقصى ${BookingController.maxCustomFields})',
+                                            style: TextStyle(
+                                                fontFamily: 'Cairo',
+                                                fontSize: 12,
+                                                color: isDark
+                                                    ? Colors.white54
+                                                    : Colors.grey[600]),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          ...booking.customFields
+                                              .map((f) => Padding(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                            bottom: 8),
+                                                    child: Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: Text(
+                                                              f['label']
+                                                                      as String? ??
+                                                                  '',
+                                                              style: TextStyle(
+                                                                  fontFamily:
+                                                                      'Cairo',
+                                                                  fontSize:
+                                                                      13.5,
+                                                                  color: isDark
+                                                                      ? Colors
+                                                                          .white
+                                                                      : const Color(
+                                                                          0xFF111827))),
+                                                        ),
+                                                        Row(
+                                                          children: [
+                                                            Text('إجباري',
+                                                                style: TextStyle(
+                                                                    fontFamily:
+                                                                        'Cairo',
+                                                                    fontSize:
+                                                                        10,
+                                                                    color: isDark
+                                                                        ? Colors
+                                                                            .white54
+                                                                        : Colors
+                                                                            .grey[600])),
+                                                            Switch(
+                                                              value: f['required']
+                                                                      as bool? ??
+                                                                  false,
+                                                              activeColor:
+                                                                  _kPrimary,
+                                                              onChanged: (v) => booking.toggleCustomFieldRequired(
+                                                                  f['key']
+                                                                      as String,
+                                                                  v,
+                                                                  teacherName:
+                                                                      settings
+                                                                          .teacherFullName
+                                                                          .value,
+                                                                  subject: settings
+                                                                      .teacherSpecialization
+                                                                      .value,
+                                                                  title: settings
+                                                                      .teacherTitle),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                        IconButton(
+                                                          icon: const Icon(
+                                                              Icons
+                                                                  .delete_outline_rounded,
+                                                              size: 20,
+                                                              color:
+                                                                  Colors.red),
+                                                          onPressed: () => booking.removeCustomField(
+                                                              f['key']
+                                                                  as String,
+                                                              teacherName: settings
+                                                                  .teacherFullName
+                                                                  .value,
+                                                              subject: settings
+                                                                  .teacherSpecialization
+                                                                  .value,
+                                                              title: settings
+                                                                  .teacherTitle),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  )),
+                                          if (booking.customFields.length <
+                                              BookingController.maxCustomFields)
+                                            Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: OutlinedButton.icon(
+                                                onPressed: () =>
+                                                    _showAddCustomFieldDialog(
+                                                        context,
+                                                        booking,
+                                                        settings),
+                                                style: OutlinedButton.styleFrom(
+                                                  shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              12)),
+                                                ),
+                                                icon: const Icon(
+                                                    Icons.add_rounded,
+                                                    size: 18),
+                                                label: const Text('إضافة حقل',
+                                                    style: TextStyle(
+                                                        fontFamily: 'Cairo')),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 12),
+                                _card(
+                                  isDark,
+                                  child: Column(
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                            16, 14, 16, 4),
+                                        child: Align(
+                                          alignment: Alignment.centerRight,
+                                          child: _sectionTitle(isDark,
+                                              icon: Icons.tune_rounded,
+                                              color: const Color(0xFFF59E0B),
+                                              text:
+                                                  'الحقول اللي تظهر في فورم الحجز'),
+                                        ),
+                                      ),
+                                      _fieldRow(
+                                        context,
+                                        isDark: isDark,
+                                        title: 'المرحلة الدراسية',
+                                        show: booking.showGrade,
+                                        required: booking.requireGrade,
+                                        onShow: (v) => booking.updateField(
+                                            'grade',
+                                            show: v,
+                                            teacherName:
+                                                settings.teacherFullName.value,
+                                            subject: settings
+                                                .teacherSpecialization.value,
+                                            title: settings.teacherTitle),
+                                        onRequired: (v) => booking.updateField(
+                                            'grade',
+                                            required: v,
+                                            teacherName:
+                                                settings.teacherFullName.value,
+                                            subject: settings
+                                                .teacherSpecialization.value,
+                                            title: settings.teacherTitle),
+                                      ),
+                                      _fieldRow(
+                                        context,
+                                        isDark: isDark,
+                                        title: 'الصف / الفصل',
+                                        show: booking.showClass,
+                                        required: booking.requireClass,
+                                        onShow: (v) => booking.updateField(
+                                            'classSection',
+                                            show: v,
+                                            teacherName:
+                                                settings.teacherFullName.value,
+                                            subject: settings
+                                                .teacherSpecialization.value,
+                                            title: settings.teacherTitle),
+                                        onRequired: (v) => booking.updateField(
+                                            'classSection',
+                                            required: v,
+                                            teacherName:
+                                                settings.teacherFullName.value,
+                                            subject: settings
+                                                .teacherSpecialization.value,
+                                            title: settings.teacherTitle),
+                                      ),
+                                      _fieldRow(
+                                        context,
+                                        isDark: isDark,
+                                        title: 'الوقت المفضل',
+                                        show: booking.showTime,
+                                        required: booking.requireTime,
+                                        onShow: (v) => booking.updateField(
+                                            'preferredTime',
+                                            show: v,
+                                            teacherName:
+                                                settings.teacherFullName.value,
+                                            subject: settings
+                                                .teacherSpecialization.value,
+                                            title: settings.teacherTitle),
+                                        onRequired: (v) => booking.updateField(
+                                            'preferredTime',
+                                            required: v,
+                                            teacherName:
+                                                settings.teacherFullName.value,
+                                            subject: settings
+                                                .teacherSpecialization.value,
+                                            title: settings.teacherTitle),
+                                      ),
+                                      _fieldRow(
+                                        context,
+                                        isDark: isDark,
+                                        title: 'ملاحظات',
+                                        show: booking.showNotes,
+                                        required: booking.requireNotes,
+                                        onShow: (v) => booking.updateField(
+                                            'notes',
+                                            show: v,
+                                            teacherName:
+                                                settings.teacherFullName.value,
+                                            subject: settings
+                                                .teacherSpecialization.value,
+                                            title: settings.teacherTitle),
+                                        onRequired: (v) => booking.updateField(
+                                            'notes',
+                                            required: v,
+                                            teacherName:
+                                                settings.teacherFullName.value,
+                                            subject: settings
+                                                .teacherSpecialization.value,
+                                            title: settings.teacherTitle),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              _fieldRow(
-                                context,
-                                isDark: isDark,
-                                title: 'المرحلة الدراسية',
-                                show: booking.showGrade,
-                                required: booking.requireGrade,
-                                onShow: (v) => booking.updateField('grade',
-                                    show: v,
-                                    teacherName: settings.teacherFullName.value,
-                                    subject: settings.teacherSpecialization.value,
-                                    title: settings.teacherTitle),
-                                onRequired: (v) => booking.updateField('grade',
-                                    required: v,
-                                    teacherName: settings.teacherFullName.value,
-                                    subject: settings.teacherSpecialization.value,
-                                    title: settings.teacherTitle),
-                              ),
-                              _fieldRow(
-                                context,
-                                isDark: isDark,
-                                title: 'الصف / الفصل',
-                                show: booking.showClass,
-                                required: booking.requireClass,
-                                onShow: (v) => booking.updateField('classSection',
-                                    show: v,
-                                    teacherName: settings.teacherFullName.value,
-                                    subject: settings.teacherSpecialization.value,
-                                    title: settings.teacherTitle),
-                                onRequired: (v) => booking.updateField('classSection',
-                                    required: v,
-                                    teacherName: settings.teacherFullName.value,
-                                    subject: settings.teacherSpecialization.value,
-                                    title: settings.teacherTitle),
-                              ),
-                              _fieldRow(
-                                context,
-                                isDark: isDark,
-                                title: 'الوقت المفضل',
-                                show: booking.showTime,
-                                required: booking.requireTime,
-                                onShow: (v) => booking.updateField('preferredTime',
-                                    show: v,
-                                    teacherName: settings.teacherFullName.value,
-                                    subject: settings.teacherSpecialization.value,
-                                    title: settings.teacherTitle),
-                                onRequired: (v) => booking.updateField('preferredTime',
-                                    required: v,
-                                    teacherName: settings.teacherFullName.value,
-                                    subject: settings.teacherSpecialization.value,
-                                    title: settings.teacherTitle),
-                              ),
-                              _fieldRow(
-                                context,
-                                isDark: isDark,
-                                title: 'ملاحظات',
-                                show: booking.showNotes,
-                                required: booking.requireNotes,
-                                onShow: (v) => booking.updateField('notes',
-                                    show: v,
-                                    teacherName: settings.teacherFullName.value,
-                                    subject: settings.teacherSpecialization.value,
-                                    title: settings.teacherTitle),
-                                onRequired: (v) => booking.updateField('notes',
-                                    required: v,
-                                    teacherName: settings.teacherFullName.value,
-                                    subject: settings.teacherSpecialization.value,
-                                    title: settings.teacherTitle),
-                              ),
-                              const SizedBox(height: 8),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -574,6 +823,43 @@ class _BookingSettingsPageState extends State<BookingSettingsPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmRegenerateLink(
+      BuildContext context, BookingController booking) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('توليد رابط حجز جديد؟',
+            style: TextStyle(fontFamily: 'Cairo')),
+        content: const Text(
+          'الرابط القديم هيوقف عن العمل نهائيًا وأي طلبات حجز وصلت عليه هتضيع. '
+          'المفروض تشارك الرابط الجديد بدل القديم مع طلابك.',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: _kPrimary, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('توليد رابط جديد',
+                style: TextStyle(fontFamily: 'Cairo')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final err = await booking.regenerateLink();
+    if (!context.mounted) return;
+    if (err != null) {
+      AppToast.error(context, err);
+    } else {
+      AppToast.success(context, 'تم توليد رابط حجز جديد');
+    }
   }
 
   Widget _buildAppBar(BuildContext context, bool isDark) {
@@ -663,7 +949,8 @@ class _BookingSettingsPageState extends State<BookingSettingsPage> {
                     style: TextStyle(
                         fontFamily: 'Cairo',
                         fontSize: 14,
-                        color: isDark ? Colors.white70 : const Color(0xFF374151))),
+                        color:
+                            isDark ? Colors.white70 : const Color(0xFF374151))),
               ),
               Column(
                 children: [
@@ -713,7 +1000,8 @@ class _BookingSettingsPageState extends State<BookingSettingsPage> {
     await showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('إضافة حقل جديد', style: TextStyle(fontFamily: 'Cairo')),
+        title:
+            const Text('إضافة حقل جديد', style: TextStyle(fontFamily: 'Cairo')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -736,7 +1024,8 @@ class _BookingSettingsPageState extends State<BookingSettingsPage> {
                 onChanged: (v) => isRequired.value = v ?? false,
                 contentPadding: EdgeInsets.zero,
                 controlAffinity: ListTileControlAffinity.leading,
-                title: const Text('حقل إجباري', style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+                title: const Text('حقل إجباري',
+                    style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
               ),
             ),
           ],
@@ -747,7 +1036,8 @@ class _BookingSettingsPageState extends State<BookingSettingsPage> {
             child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: _kPrimary, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: _kPrimary, foregroundColor: Colors.white),
             onPressed: () async {
               final err = await booking.addCustomField(
                 labelCtrl.text,
@@ -804,7 +1094,8 @@ class _IconBtn extends StatelessWidget {
   final bool isDark;
   final VoidCallback onTap;
 
-  const _IconBtn({required this.icon, required this.isDark, required this.onTap});
+  const _IconBtn(
+      {required this.icon, required this.isDark, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -832,7 +1123,8 @@ class _IconBtn extends StatelessWidget {
             ),
           ],
         ),
-        child: Icon(icon, size: 18, color: isDark ? Colors.white : const Color(0xFF111827)),
+        child: Icon(icon,
+            size: 18, color: isDark ? Colors.white : const Color(0xFF111827)),
       ),
     );
   }

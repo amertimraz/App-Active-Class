@@ -11,6 +11,7 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
+import 'package:active_class/widgets/locked_feature.dart';
 import 'package:active_class/widgets/add_student_sheet.dart';
 import 'package:active_class/widgets/update_dialog.dart';
 import 'package:active_class/services/in_app_update_service.dart';
@@ -35,6 +36,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // DashboardController مسجّل كـ singleton — Get.put() فوق بيرجع نفس
+    // النسخة القديمة (بأرقامها المحفوظة في الذاكرة) لو الصفحة اتفتحت
+    // قبل كده، مش نسخة جديدة تعيد التحميل من قاعدة البيانات تلقائيًا.
+    // من غير السطر ده، أي حاجة بتغيّر قاعدة البيانات من بره الصفحة دي
+    // (زي مسح بيانات الفريق عند تعطيله) هتفضل مش ظاهرة في الأرقام لحد
+    // ما حد يضغط زرار التحديث يدويًا.
+    _dashboardController.loadDashboardData();
     // فحص التحديث بهدوء بعد ما الداشبورد يخلص رسم — ميتقفلش استخدام
     // التطبيق ولا يظهر أي حاجة لو مفيش تحديث أو لو الفحص فشل.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -60,62 +68,74 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  List<_DashboardMenuItem> get _menuEntries => [
-        _DashboardMenuItem(
-          icon: Icons.groups_rounded,
-          label: 'المجموعات',
-          color: const Color(0xFFFF4D7A),
-          onTap: () => Get.toNamed(ROUTE_GROUPS),
-        ),
-        _DashboardMenuItem(
-          icon: Icons.person_rounded,
-          label: 'الطلاب',
-          color: const Color(0xFF23A6F0),
-          onTap: () => Get.toNamed(ROUTE_STUDENTS),
-        ),
-        _DashboardMenuItem(
-          icon: Icons.how_to_reg_rounded,
-          label: 'الحضور',
-          color: const Color(0xFFFFA31A),
-          onTap: () => Get.toNamed(ROUTE_ATTENDANCE),
-        ),
-        _DashboardMenuItem(
-          icon: Icons.calendar_month_rounded,
-          label: 'جدول الحصص',
-          color: const Color(0xFF14B8A6),
-          onTap: () => Get.toNamed(ROUTE_SCHEDULE),
-        ),
-        _DashboardMenuItem(
-          icon: Icons.payments_rounded,
-          label: 'المدفوعات',
-          color: const Color(0xFF5B67F1),
-          onTap: () => Get.toNamed(ROUTE_PAYMENTS),
-        ),
-        _DashboardMenuItem(
-          icon: Icons.receipt_long_rounded,
-          label: 'التقارير',
-          color: const Color(0xFF8B5CF6),
-          onTap: () => Get.toNamed(ROUTE_REPORTS),
-        ),
-        _DashboardMenuItem(
-          icon: Icons.qr_code_2_rounded,
-          label: 'مكتبة QR',
-          color: const Color(0xFF10B981),
-          onTap: () => Get.toNamed(ROUTE_QR_GALLERY),
-        ),
-        _DashboardMenuItem(
-          icon: Icons.assignment_rounded,
-          label: 'الامتحانات',
-          color: const Color(0xFFEF4444),
-          onTap: () => Get.toNamed(ROUTE_EXAMS),
-        ),
-        _DashboardMenuItem(
-          icon: Icons.event_available_rounded,
-          label: 'الحجوزات',
-          color: const Color(0xFF0EA5E9),
-          onTap: () => Get.toNamed(ROUTE_BOOKINGS),
-        ),
-      ];
+  List<_DashboardMenuItem> get _menuEntries {
+    final team = TeamModeService();
+    return [
+      _DashboardMenuItem(
+        icon: Icons.groups_rounded,
+        label: 'المجموعات',
+        color: const Color(0xFFFF4D7A),
+        onTap: () => Get.toNamed(ROUTE_GROUPS),
+      ),
+      _DashboardMenuItem(
+        icon: Icons.person_rounded,
+        label: 'الطلاب',
+        color: const Color(0xFF23A6F0),
+        onTap: () => Get.toNamed(ROUTE_STUDENTS),
+      ),
+      _DashboardMenuItem(
+        icon: Icons.how_to_reg_rounded,
+        label: 'الحضور',
+        color: const Color(0xFFFFA31A),
+        onTap: () => Get.toNamed(ROUTE_ATTENDANCE),
+      ),
+      _DashboardMenuItem(
+        icon: Icons.calendar_month_rounded,
+        label: 'جدول الحصص',
+        color: const Color(0xFF14B8A6),
+        onTap: () => Get.toNamed(ROUTE_SCHEDULE),
+      ),
+      _DashboardMenuItem(
+        icon: Icons.payments_rounded,
+        label: 'المدفوعات',
+        color: const Color(0xFF5B67F1),
+        locked: !team.canSeeFinancials,
+        onTap: () => team.canSeeFinancials
+            ? Get.toNamed(ROUTE_PAYMENTS)
+            : showLockedPermissionHint(),
+      ),
+      _DashboardMenuItem(
+        icon: Icons.receipt_long_rounded,
+        label: 'التقارير',
+        color: const Color(0xFF8B5CF6),
+        locked: !team.canSeeFinancials,
+        onTap: () => team.canSeeFinancials
+            ? Get.toNamed(ROUTE_REPORTS)
+            : showLockedPermissionHint(),
+      ),
+      _DashboardMenuItem(
+        icon: Icons.qr_code_2_rounded,
+        label: 'مكتبة QR',
+        color: const Color(0xFF10B981),
+        onTap: () => Get.toNamed(ROUTE_QR_GALLERY),
+      ),
+      _DashboardMenuItem(
+        icon: Icons.assignment_rounded,
+        label: 'الامتحانات',
+        color: const Color(0xFFEF4444),
+        locked: !team.canSeeAcademics,
+        onTap: () => team.canSeeAcademics
+            ? Get.toNamed(ROUTE_EXAMS)
+            : showLockedPermissionHint(),
+      ),
+      _DashboardMenuItem(
+        icon: Icons.event_available_rounded,
+        label: 'الحجوزات',
+        color: const Color(0xFF0EA5E9),
+        onTap: () => Get.toNamed(ROUTE_BOOKINGS),
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -288,26 +308,30 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             title: 'الأقسام الرئيسية',
             isDark: isDark,
           ),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _menuEntries.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 0.92,
-            ),
-            itemBuilder: (context, index) {
-              final item = _menuEntries[index];
-              return _MenuGridItem(
-                icon: item.icon,
-                label: item.label,
-                color: item.color,
-                onTap: item.onTap,
-              );
-            },
-          ),
+          Obx(() {
+            final entries = _menuEntries;
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: entries.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 0.92,
+              ),
+              itemBuilder: (context, index) {
+                final item = entries[index];
+                return _MenuGridItem(
+                  icon: item.icon,
+                  label: item.label,
+                  color: item.color,
+                  onTap: item.onTap,
+                  locked: item.locked,
+                );
+              },
+            );
+          }),
         ],
       ),
     );
@@ -474,11 +498,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: _QuickActionButton(
-                        icon: Icons.payment_rounded,
-                        label: 'تسجيل دفع',
-                        color: const Color(0xFFF59E0B),
-                        onTap: () => Get.toNamed(ROUTE_QR_SCANNER_PAYMENT),
+                      child: LockBadge(
+                        locked: !team.canSeeFinancials,
+                        child: _QuickActionButton(
+                          icon: Icons.payment_rounded,
+                          label: 'تسجيل دفع',
+                          color: const Color(0xFFF59E0B),
+                          onTap: () => team.canSeeFinancials
+                              ? Get.toNamed(ROUTE_QR_SCANNER_PAYMENT)
+                              : showLockedPermissionHint(),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -548,6 +577,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 4),
           Obx(() {
+            final canSeeFinancials = TeamModeService().canSeeFinancials;
             final currency = _settingsController.currencyCode.value;
             final paid = _dashboardController.monthPaid.value;
             final expected = _dashboardController.monthExpected.value;
@@ -610,15 +640,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 8),
                 // ── صف 2: بار الدفع الشهري ──
-                _PaymentProgressCard(
-                  paid: paid,
-                  expected: expected,
-                  rate: rate,
-                  paidCount: paidCount,
-                  unpaidCount: unpaidCount,
-                  fmtPaid: _statsVisible ? fmtMoney(paid) : '••••',
-                  fmtExpected: _statsVisible ? fmtMoney(expected) : '••••',
-                  onTapUnpaid: () => _showUnpaidSheet(context),
+                LockBadge(
+                  locked: !canSeeFinancials,
+                  child: _PaymentProgressCard(
+                    paid: paid,
+                    expected: expected,
+                    rate: rate,
+                    paidCount: paidCount,
+                    unpaidCount: unpaidCount,
+                    locked: !canSeeFinancials,
+                    fmtPaid: !canSeeFinancials
+                        ? '🔒'
+                        : (_statsVisible ? fmtMoney(paid) : '••••'),
+                    fmtExpected: !canSeeFinancials
+                        ? '🔒'
+                        : (_statsVisible ? fmtMoney(expected) : '••••'),
+                    onTapUnpaid: canSeeFinancials
+                        ? () => _showUnpaidSheet(context)
+                        : showLockedPermissionHint,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 // ── صف 3: حضور اليوم + مدفوعات اليوم جنب بعض ──
@@ -637,15 +677,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: _TodayPaymentsCard(
-                          total: todayPaymentsTotal,
-                          count: todayPaymentsCount,
-                          fmtTotal: _statsVisible
-                              ? fmtMoney(todayPaymentsTotal)
-                              : '••••',
-                          onTap: todayPaymentsCount == 0
-                              ? null
-                              : () => _showTodayPaymentsSheet(context),
+                        child: LockBadge(
+                          locked: !canSeeFinancials,
+                          child: _TodayPaymentsCard(
+                            total: todayPaymentsTotal,
+                            count: todayPaymentsCount,
+                            locked: !canSeeFinancials,
+                            fmtTotal: !canSeeFinancials
+                                ? '🔒'
+                                : (_statsVisible
+                                    ? fmtMoney(todayPaymentsTotal)
+                                    : '••••'),
+                            onTap: !canSeeFinancials
+                                ? showLockedPermissionHint
+                                : (todayPaymentsCount == 0
+                                    ? null
+                                    : () => _showTodayPaymentsSheet(context)),
+                          ),
                         ),
                       ),
                     ],
@@ -654,11 +702,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 if (sessionRevenue > 0 || sessionRevenueExpected > 0) ...[
                   const SizedBox(height: 8),
                   // ── هنت: إيراد اليوم من المجموعات بالحصة (فعلي + متوقع) ──
-                  _SessionRevenueHint(
-                    actualLabel: _statsVisible ? fmtMoney(sessionRevenue) : '••••',
+                  LockBadge(
+                    locked: !canSeeFinancials,
+                    child: _SessionRevenueHint(
+                    locked: !canSeeFinancials,
+                    actualLabel: !canSeeFinancials
+                        ? '🔒'
+                        : (_statsVisible ? fmtMoney(sessionRevenue) : '••••'),
                     actualCount: sessionRevenueCount,
-                    expectedLabel: _statsVisible ? fmtMoney(sessionRevenueExpected) : '••••',
+                    expectedLabel: !canSeeFinancials
+                        ? '🔒'
+                        : (_statsVisible
+                            ? fmtMoney(sessionRevenueExpected)
+                            : '••••'),
                     expectedCount: sessionRevenueExpectedCount,
+                  ),
                   ),
                 ],
               ],
@@ -691,6 +749,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         );
       }
 
+      final canSeeFinancials = TeamModeService().canSeeFinancials;
       final attendance =
           all.where((a) => a.type == ActivityType.attendance).take(3).toList();
       final payments =
@@ -734,14 +793,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               const SizedBox(height: 14),
             ],
             if (payments.isNotEmpty)
-              _buildActivityGroup(
-                isDark,
-                title: 'آخر المدفوعات',
-                icon: Icons.payments_rounded,
-                color: const Color(0xFF4F46E5),
-                items: payments,
-                onMore: () => Get.toNamed(ROUTE_PAYMENTS),
-              ),
+              canSeeFinancials
+                  ? _buildActivityGroup(
+                      isDark,
+                      title: 'آخر المدفوعات',
+                      icon: Icons.payments_rounded,
+                      color: const Color(0xFF4F46E5),
+                      items: payments,
+                      onMore: () => Get.toNamed(ROUTE_PAYMENTS),
+                    )
+                  : _buildLockedActivityGroup(
+                      isDark,
+                      title: 'آخر المدفوعات',
+                      icon: Icons.payments_rounded,
+                      color: const Color(0xFF4F46E5),
+                    ),
           ],
         ),
       );
@@ -818,6 +884,82 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ),
         const SizedBox(height: 8),
         ...items.map((a) => _ActivityItem(activity: a)),
+      ],
+    );
+  }
+
+  /// نفس شكل _buildActivityGroup (العنوان بارز)، بس بدل عرض الصفوف
+  /// الحقيقية (اسم الطالب + المبلغ) بنعرض كارت مقفول واحد — القسم يفضل
+  /// موجود وواضح إنه فيه نشاط، بس التفاصيل الفعلية مخفية.
+  Widget _buildLockedActivityGroup(
+    bool isDark, {
+    required String title,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 14, color: color),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: isDark ? Colors.white70 : const Color(0xFF374151),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: showLockedPermissionHint,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? const Color(0xFF131D31).withValues(alpha: 0.94)
+                  : Colors.white.withValues(alpha: 0.94),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.grey.shade200,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.lock_rounded,
+                    size: 16, color: isDark ? Colors.white38 : Colors.grey.shade500),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'الصلاحية دي مقفولة من المدرس',
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white38 : Colors.grey.shade500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -956,93 +1098,98 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             );
           }),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              children: [
-                _DrawerItem(
-                  icon: Icons.home_rounded,
-                  title: 'الرئيسية',
-                  isSelected: true,
-                  onTap: () => Navigator.pop(context),
-                ),
-                _DrawerItem(
-                  icon: Icons.groups_rounded,
-                  title: 'المجموعات',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Get.toNamed(ROUTE_GROUPS);
-                  },
-                ),
-                _DrawerItem(
-                  icon: Icons.people_rounded,
-                  title: 'الطلاب',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Get.toNamed(ROUTE_STUDENTS);
-                  },
-                ),
-                _DrawerItem(
-                  icon: Icons.payments_rounded,
-                  title: 'المدفوعات',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Get.toNamed(ROUTE_PAYMENTS);
-                  },
-                ),
-                _DrawerItem(
-                  icon: Icons.how_to_reg_rounded,
-                  title: 'الحضور',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Get.toNamed(ROUTE_ATTENDANCE);
-                  },
-                ),
-                _DrawerItem(
-                  icon: Icons.calendar_month_rounded,
-                  title: 'جدول الحصص',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Get.toNamed(ROUTE_SCHEDULE);
-                  },
-                ),
-                _DrawerItem(
-                  icon: Icons.assessment_rounded,
-                  title: 'التقارير',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Get.toNamed(ROUTE_REPORTS);
-                  },
-                ),
-                _DrawerItem(
-                  icon: Icons.qr_code_2_rounded,
-                  title: 'مكتبة QR',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Get.toNamed(ROUTE_QR_GALLERY);
-                  },
-                ),
-                _DrawerItem(
-                  icon: Icons.event_available_rounded,
-                  title: 'الحجوزات',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Get.toNamed(ROUTE_BOOKINGS);
-                  },
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Divider(),
-                ),
-                _DrawerItem(
-                  icon: Icons.settings_rounded,
-                  title: 'الإعدادات',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Get.toNamed(ROUTE_SETTINGS);
-                  },
-                ),
-              ],
-            ),
+            child: Obx(() {
+              final team = TeamModeService();
+              return ListView(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                children: [
+                  _DrawerItem(
+                    icon: Icons.home_rounded,
+                    title: 'الرئيسية',
+                    isSelected: true,
+                    onTap: () => Navigator.pop(context),
+                  ),
+                  _DrawerItem(
+                    icon: Icons.groups_rounded,
+                    title: 'المجموعات',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_GROUPS);
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.people_rounded,
+                    title: 'الطلاب',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_STUDENTS);
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.payments_rounded,
+                    title: 'المدفوعات',
+                    locked: !team.canSeeFinancials,
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_PAYMENTS);
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.how_to_reg_rounded,
+                    title: 'الحضور',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_ATTENDANCE);
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.calendar_month_rounded,
+                    title: 'جدول الحصص',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_SCHEDULE);
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.assessment_rounded,
+                    title: 'التقارير',
+                    locked: !team.canSeeFinancials,
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_REPORTS);
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.qr_code_2_rounded,
+                    title: 'مكتبة QR',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_QR_GALLERY);
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.event_available_rounded,
+                    title: 'الحجوزات',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_BOOKINGS);
+                    },
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Divider(),
+                  ),
+                  _DrawerItem(
+                    icon: Icons.settings_rounded,
+                    title: 'الإعدادات',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_SETTINGS);
+                    },
+                  ),
+                ],
+              );
+            }),
           ),
         ],
       ),
@@ -1535,12 +1682,14 @@ class _SessionRevenueHint extends StatelessWidget {
   final int actualCount;
   final String expectedLabel;
   final int expectedCount;
+  final bool locked;
 
   const _SessionRevenueHint({
     required this.actualLabel,
     required this.actualCount,
     required this.expectedLabel,
     required this.expectedCount,
+    this.locked = false,
   });
 
   @override
@@ -1577,16 +1726,18 @@ class _SessionRevenueHint extends StatelessWidget {
             children: [
               Expanded(
                 child: _RevenueMiniStat(
-                  label: 'محصّل فعليًا ($actualCount دفعة)',
+                  label: locked ? 'محصّل فعليًا' : 'محصّل فعليًا ($actualCount دفعة)',
                   value: actualLabel,
                   color: color,
                 ),
               ),
-              if (expectedCount > 0) ...[
+              if (locked || expectedCount > 0) ...[
                 const SizedBox(width: 10),
                 Expanded(
                   child: _RevenueMiniStat(
-                    label: 'متوقع اليوم ($expectedCount طالب)',
+                    label: locked
+                        ? 'متوقع اليوم'
+                        : 'متوقع اليوم ($expectedCount طالب)',
                     value: expectedLabel,
                     color: isDark ? Colors.white54 : Colors.grey.shade600,
                   ),
@@ -1762,12 +1913,14 @@ class _TodayPaymentsCard extends StatelessWidget {
   final int count;
   final String fmtTotal;
   final VoidCallback? onTap;
+  final bool locked;
 
   const _TodayPaymentsCard({
     required this.total,
     required this.count,
     required this.fmtTotal,
     required this.onTap,
+    this.locked = false,
   });
 
   @override
@@ -1831,7 +1984,9 @@ class _TodayPaymentsCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              count == 0 ? 'لا يوجد مدفوعات بعد' : '$count دفعة اليوم',
+              locked
+                  ? 'مقفول'
+                  : (count == 0 ? 'لا يوجد مدفوعات بعد' : '$count دفعة اليوم'),
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
@@ -1877,12 +2032,14 @@ class _PaymentProgressCard extends StatelessWidget {
     required this.fmtPaid,
     required this.fmtExpected,
     required this.onTapUnpaid,
+    this.locked = false,
   });
 
   final double paid, expected, rate;
   final int paidCount, unpaidCount;
   final String fmtPaid, fmtExpected;
   final VoidCallback onTapUnpaid;
+  final bool locked;
 
   @override
   Widget build(BuildContext context) {
@@ -1890,11 +2047,16 @@ class _PaymentProgressCard extends StatelessWidget {
     final bg = isDark ? const Color(0xFF131D31) : Colors.white;
     final pct = (rate * 100).toInt();
 
-    final barColor = rate >= 0.8
-        ? const Color(0xFF10B981)
-        : rate >= 0.5
-            ? const Color(0xFFF59E0B)
-            : const Color(0xFFEF4444);
+    // لو مقفول، الأرقام كلها (النسبة/البار/عدد اللي لسه ما دفعوش) لازم
+    // تتقفل مع بعض — مش بس نص المبلغ. عرض المبلغ مقفول والباقي فاضح
+    // نفس المعلومة بطريقة غير مباشرة (شكل البار، لونه، النسبة).
+    final barColor = locked
+        ? (isDark ? Colors.white24 : Colors.grey.shade400)
+        : (rate >= 0.8
+            ? const Color(0xFF10B981)
+            : rate >= 0.5
+                ? const Color(0xFFF59E0B)
+                : const Color(0xFFEF4444));
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -1937,7 +2099,7 @@ class _PaymentProgressCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '$pct%',
+                  locked ? '🔒' : '$pct%',
                   style: TextStyle(
                     color: barColor,
                     fontWeight: FontWeight.bold,
@@ -1952,7 +2114,7 @@ class _PaymentProgressCard extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
-              value: rate.clamp(0.0, 1.0),
+              value: locked ? 0 : rate.clamp(0.0, 1.0),
               minHeight: 8,
               backgroundColor: isDark ? Colors.white12 : Colors.grey.shade200,
               valueColor: AlwaysStoppedAnimation<Color>(barColor),
@@ -1984,7 +2146,40 @@ class _PaymentProgressCard extends StatelessWidget {
                 ),
               ),
               // "لم يدفع" badge — قابل للضغط
-              if (unpaidCount > 0)
+              if (locked)
+                GestureDetector(
+                  onTap: onTapUnpaid,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: (isDark ? Colors.white : Colors.grey)
+                          .withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: (isDark ? Colors.white24 : Colors.grey)
+                              .withValues(alpha: 0.35)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.lock_rounded,
+                            size: 13,
+                            color: isDark ? Colors.white38 : Colors.grey.shade600),
+                        const SizedBox(width: 4),
+                        Text(
+                          'مقفول',
+                          style: TextStyle(
+                            color: isDark ? Colors.white38 : Colors.grey.shade600,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (unpaidCount > 0)
                 GestureDetector(
                   onTap: onTapUnpaid,
                   child: Container(
@@ -2140,18 +2335,24 @@ class _MenuGridItem extends StatelessWidget {
   final String label;
   final Color color;
   final VoidCallback onTap;
+  final bool locked;
 
   const _MenuGridItem({
     required this.icon,
     required this.label,
     required this.color,
     required this.onTap,
+    this.locked = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    return LockBadge(locked: locked, child: _buildCard(isDark));
+  }
+
+  Widget _buildCard(bool isDark) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -2316,12 +2517,14 @@ class _DrawerItem extends StatelessWidget {
   final String title;
   final VoidCallback onTap;
   final bool isSelected;
+  final bool locked;
 
   const _DrawerItem({
     required this.icon,
     required this.title,
     required this.onTap,
     this.isSelected = false,
+    this.locked = false,
   });
 
   @override
@@ -2336,26 +2539,35 @@ class _DrawerItem extends StatelessWidget {
             : Colors.transparent,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: ListTile(
-        leading: Icon(
-          icon,
-          color: isSelected
-              ? AppTheme.primaryColor
-              : (isDark ? Colors.grey[400] : AppTheme.textSecondary),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontFamily: 'Cairo',
-            fontSize: 14,
-            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+      child: Opacity(
+        opacity: locked ? 0.55 : 1,
+        child: ListTile(
+          leading: Icon(
+            icon,
             color: isSelected
                 ? AppTheme.primaryColor
-                : (isDark ? Colors.white : AppTheme.textPrimary),
+                : (isDark ? Colors.grey[400] : AppTheme.textSecondary),
           ),
+          title: Text(
+            title,
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+              color: isSelected
+                  ? AppTheme.primaryColor
+                  : (isDark ? Colors.white : AppTheme.textPrimary),
+            ),
+          ),
+          trailing: locked
+              ? Icon(Icons.lock_rounded,
+                  size: 16,
+                  color: isDark ? Colors.white38 : Colors.grey.shade500)
+              : null,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          onTap: locked ? showLockedPermissionHint : onTap,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        onTap: onTap,
       ),
     );
   }
@@ -2366,12 +2578,14 @@ class _DashboardMenuItem {
   final String label;
   final Color color;
   final VoidCallback onTap;
+  final bool locked;
 
   const _DashboardMenuItem({
     required this.icon,
     required this.label,
     required this.color,
     required this.onTap,
+    this.locked = false,
   });
 }
 

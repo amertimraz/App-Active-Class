@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -15,15 +16,15 @@ import 'package:active_class/controllers/theme_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/controllers/auth_controller.dart';
-import 'package:active_class/views/auth/login_screen.dart';
-import 'package:active_class/views/auth/account_screen.dart';
-import 'package:active_class/views/team/team_mode_screen.dart';
+import 'package:active_class/views/settings/account_team_screen.dart';
 import 'package:active_class/widgets/custom_dialogs.dart';
 import 'package:active_class/widgets/progress_dialog.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/backup_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
+import 'package:active_class/services/parent_portal_service.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/views/license/trial_banner.dart';
@@ -72,11 +73,11 @@ class SettingsPage extends StatelessWidget {
                       _buildTeacherSection(context, isDark, settings),
                       const SizedBox(height: 14),
 
-                      // ── 1ب. الحساب (نظام دخول مستقل — اختياري) ────
+                      // ── 1ب. المساعدين والحسابات (حساب + وضع الفريق) ──
                       _buildSection(
                         context,
                         isDark,
-                        title: 'الحساب',
+                        title: 'المساعدين والحسابات',
                         icon: Icons.account_circle_rounded,
                         color: const Color(0xFF4F46E5),
                         collapsible: true,
@@ -84,41 +85,44 @@ class SettingsPage extends StatelessWidget {
                         children: [
                           Obx(() {
                             final auth = Get.find<AuthController>();
-                            if (auth.isLoggedIn.value) {
-                              final phone = auth.currentPhone.value ?? '';
-                              return _buildNavTile(
-                                context,
-                                isDark,
-                                icon: Icons.account_circle_rounded,
-                                iconColor: const Color(0xFF4F46E5),
-                                title: 'حسابي',
-                                subtitle: phone,
-                                onTap: () => Get.to(() => const AccountScreen()),
-                              );
-                            }
+                            final phone = auth.currentPhone.value ?? '';
                             return _buildNavTile(
                               context,
                               isDark,
-                              icon: Icons.login_rounded,
+                              icon: Icons.groups_rounded,
                               iconColor: const Color(0xFF4F46E5),
-                              title: 'تسجيل الدخول',
-                              subtitle: 'أساس لميزات مستقبلية (رقم تليفون وباسورد)',
-                              onTap: () => Get.to(() => const LoginScreen()),
+                              title: 'المساعدين والحسابات',
+                              subtitle: auth.isLoggedIn.value
+                                  ? phone
+                                  : 'تسجيل دخول ومشاركة البيانات مع مساعدين',
+                              onTap: () => Get.to(() => const AccountTeamScreen()),
                             );
                           }),
-                          _buildDivider(isDark),
-                          _buildNavTile(
-                            context,
-                            isDark,
-                            icon: Icons.groups_rounded,
-                            iconColor: const Color(0xFF10B981),
-                            title: 'وضع الفريق',
-                            subtitle: 'مشاركة البيانات مع مساعدين (باقة احترافية)',
-                            onTap: () => Get.to(() => const TeamModeScreen()),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 14),
+
+                      // ── 1ج. بوابة متابعة أولياء الأمور (إضافة مدفوعة) ──
+                      Obx(() {
+                        if (!Get.find<LicenseController>()
+                            .parentPortalEnabled
+                            .value) {
+                          return const SizedBox.shrink();
+                        }
+                        return Column(children: [
+                          _buildSection(
+                            context,
+                            isDark,
+                            title: 'متابعة أولياء الأمور',
+                            icon: Icons.family_restroom_rounded,
+                            color: const Color(0xFF10B981),
+                            collapsible: true,
+                            initiallyExpanded: false,
+                            children: [_ParentPortalTile(isDark: isDark)],
+                          ),
+                          const SizedBox(height: 14),
+                        ]);
+                      }),
 
                       // ── 2. المظهر والتوقيت ───────────────────────
                       _buildSection(
@@ -2240,6 +2244,120 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
           child: const Text('إغلاق', style: TextStyle(fontFamily: 'Cairo')),
         ),
       ],
+    );
+  }
+}
+
+class _ParentPortalTile extends StatefulWidget {
+  final bool isDark;
+  const _ParentPortalTile({required this.isDark});
+  @override
+  State<_ParentPortalTile> createState() => _ParentPortalTileState();
+}
+
+class _ParentPortalTileState extends State<_ParentPortalTile> {
+  String? _slug;
+  bool _loading = true;
+  bool _publishing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final slug = await ParentPortalService().ensureSlug();
+    // ننشر بروفايل المدرس (اسمه) فورًا من غير ما ننتظر أول طالب عنده
+    // رقم تليفون صحيح — وإلا صفحة المتابعة تفضل من غير اسم لحد ما
+    // تتنشر أول بيانات طالب فعليًا.
+    unawaited(ParentPortalService().publishProfile());
+    if (mounted) setState(() { _slug = slug; _loading = false; });
+  }
+
+  String get _url => 'https://active-class.online/track/${_slug ?? ''}';
+
+  Future<void> _publishAll() async {
+    setState(() => _publishing = true);
+    final count = await ParentPortalService().publishAllStudents();
+    if (!mounted) return;
+    setState(() => _publishing = false);
+    ToastHelper.success('اتنشرت بيانات $count طالب (اللي عندهم رقم ولي أمر)');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ابعت الرابط ده لأولياء الأمور — هيقدروا يدخلوا كود الطالب وآخر 4 أرقام من رقم تليفونهم يشوفوا حضوره ومدفوعاته.',
+            style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                color: isDark ? Colors.white60 : Colors.black45),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(_url,
+                textDirection: ui.TextDirection.ltr,
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+          ),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: _url));
+                  ToastHelper.success('تم نسخ الرابط');
+                },
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                label: const Text('نسخ', style: TextStyle(fontFamily: 'Cairo')),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => Share.share(_url),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white),
+                icon: const Icon(Icons.share_rounded, size: 16),
+                label: const Text('مشاركة', style: TextStyle(fontFamily: 'Cairo')),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _publishing ? null : _publishAll,
+              icon: _publishing
+                  ? const SizedBox(
+                      width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.sync_rounded, size: 16),
+              label: const Text('نشر بيانات كل الطلاب الآن',
+                  style: TextStyle(fontFamily: 'Cairo')),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

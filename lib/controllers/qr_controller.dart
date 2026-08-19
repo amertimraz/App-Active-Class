@@ -1,4 +1,4 @@
-﻿// lib/controllers/qr_controller.dart
+// lib/controllers/qr_controller.dart
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:active_class/models/student_model.dart';
@@ -20,6 +20,7 @@ class QRController extends GetxController {
   final RxBool isProcessing = false.obs;
   final Rx<Student?> scannedStudent = Rx<Student?>(null);
   final Rx<Payment?> lastPayment = Rx<Payment?>(null);
+  final RxBool isPreparingPayment = false.obs;
   final RxList<DateTime> upcomingMonths = <DateTime>[].obs;
   final RxList<DateTime> selectedMonths = <DateTime>[].obs;
   final RxDouble totalAmount = 0.0.obs;
@@ -32,6 +33,7 @@ class QRController extends GetxController {
   // تفضل واقفة على قيمة الطالب اللي قبله.
   final Rx<Group?> _scannedGroup = Rx<Group?>(null);
   List<Attendance> _scannedAttendance = [];
+  List<Payment> _scannedPayments = [];
 
   Future<void> handleScan(String code) async {
     if (isProcessing.value) return;
@@ -90,20 +92,38 @@ class QRController extends GetxController {
   }
 
   Future<void> _preparePayment(Student student) async {
-    _scannedGroup.value = await _dbService.getGroup(student.groupId);
-    _scannedAttendance = _scannedGroup.value != null && _scannedGroup.value!.isPerSession
-        ? await _dbService.getAttendanceByStudent(student.id!)
-        : [];
+    // بنصفّر بيانات الطالب السابق وبنحط علم تحميل قبل أي await — لحد ما
+    // بيانات المجموعة/الحضور الجديدة توصل بالكامل. من غير العلم ده،
+    // الواجهة ممكن تعرض استنتاج غلط (زي "مدفوع بالكامل لهذا الشهر")
+    // بناءً على بيانات ناقصة/قديمة لحظة الانتقال بين طالب وتاني.
+    isPreparingPayment.value = true;
+    _scannedGroup.value = null;
+    _scannedAttendance = [];
+    _scannedPayments = [];
+    upcomingMonths.clear();
+    selectedMonths.clear();
+    try {
+      _scannedGroup.value = await _dbService.getGroup(student.groupId);
+      _scannedAttendance =
+          _scannedGroup.value != null && _scannedGroup.value!.isPerSession
+              ? await _dbService.getAttendanceByStudent(student.id!)
+              : [];
 
-    final payments = await _dbService.getPaymentsByStudent(student.id!);
-    final latest = payments.isNotEmpty ? payments.first : null;
-    lastPayment.value = latest;
-    final lastMonth = _extractLastPaidMonth(latest);
-    final start = _determineStartMonth(lastMonth);
-    final months = _buildUpcomingMonths(start);
-    upcomingMonths.assignAll(months);
-    selectedMonths.assignAll(months.isNotEmpty ? [months.first] : []);
-    _recalculateTotal();
+      final payments = await _dbService.getPaymentsByStudent(student.id!);
+      _scannedPayments = payments;
+      final latest = payments.isNotEmpty ? payments.first : null;
+      lastPayment.value = latest;
+      final lastMonth = _extractLastPaidMonth(latest);
+      final start = _determineStartMonth(lastMonth);
+      final months = _buildUpcomingMonths(start);
+      upcomingMonths.assignAll(months);
+      selectedMonths.assignAll(months.isNotEmpty ? [months.first] : []);
+      _sessionsCoveredByQuickPay = 0;
+      resetSessionsToPaySelection();
+      _recalculateTotal();
+    } finally {
+      isPreparingPayment.value = false;
+    }
   }
 
   DateTime? _extractLastPaidMonth(Payment? payment) {
@@ -111,7 +131,11 @@ class QRController extends GetxController {
     final note = payment.note ?? '';
     final monthsPart = note.split(';').first;
     if (monthsPart.startsWith('months=')) {
-      final raw = monthsPart.substring('months='.length).split(',').where((item) => item.trim().isNotEmpty).toList();
+      final raw = monthsPart
+          .substring('months='.length)
+          .split(',')
+          .where((item) => item.trim().isNotEmpty)
+          .toList();
       if (raw.isNotEmpty) {
         final value = raw.last.trim();
         final parts = value.split('-');
@@ -140,9 +164,11 @@ class QRController extends GetxController {
   }
 
   void toggleMonth(DateTime month) {
-    final exists = selectedMonths.any((m) => m.year == month.year && m.month == month.month);
+    final exists = selectedMonths
+        .any((m) => m.year == month.year && m.month == month.month);
     if (exists) {
-      selectedMonths.removeWhere((m) => m.year == month.year && m.month == month.month);
+      selectedMonths
+          .removeWhere((m) => m.year == month.year && m.month == month.month);
     } else {
       selectedMonths.add(month);
     }
@@ -191,7 +217,8 @@ class QRController extends GetxController {
     // لاشتراك شهر بعينه. نعرض التاريخ والوقت بس.
     if (isPerSessionGroup) return paymentDateText;
     final month = _extractLastPaidMonth(payment);
-    final monthText = month == null ? formatMonth(payment.date) : formatMonth(month);
+    final monthText =
+        month == null ? formatMonth(payment.date) : formatMonth(month);
     return '$monthText - $paymentDateText';
   }
 
@@ -205,6 +232,47 @@ class QRController extends GetxController {
       ToastHelper.info('يرجى اختيار شهر واحد على الأقل');
       return false;
     }
+    // مجموعات بالحصة بس — مينفعش تتسجل دفعة لطالب لسه ماحضرش أي حصة
+    // فعليًا في الشهور المختارة (غير كده المبلغ المحسوب هيبقى صفر بصمت).
+    // بنسمح بتجاوز الشرط ده لو المدرس حدّد مبلغ يدوي بنفسه (override).
+    if (isPerSessionGroup &&
+        selectedSessionsCount == 0 &&
+        overrideAmount.value == null) {
+      ToastHelper.error('الطالب لسه متسجلش حضور لأي حصة في الفترة المختارة');
+      return false;
+    }
+    // للمجموعات بالحصة، لازم يتم الضغط على "دفع حصة اليوم" الأول عشان
+    // يحدّد سعر حصة واحدة بالظبط (override). من غيره، الحساب العادي
+    // (_computeBaseAmount) بيرجّع إجمالي كل الحصص المحضورة في الشهر
+    // بالكامل من غير ما يخصم أي دفعات سابقة — يعني تأكيد مباشر من غير
+    // الزرار كان ممكن يحسب نفس المبلغ الكامل تاني في كل ضغطة (دفع
+    // مضاعف). ده مش حالة "بالحصة" لسه غير مدعومة إن المدرس يختار
+    // يدفع لعدة حصص دفعة واحدة، غير عن طريق الزرار المخصص لده.
+    if (isPerSessionGroup && overrideAmount.value == null) {
+      ToastHelper.error('اضغط "دفع الحصص المستحقة" الأول');
+      return false;
+    }
+    // نفس منع تكرار الدفع بتاع payAllUnpaidSessions، لكن هنا كمان عشان
+    // زر "تأكيد الدفع" العادي ممكن يتضغط مباشرة من غير المرور بيه.
+    if (fullyPaidUp) {
+      ToastHelper.error('تم تسجيل دفعة لكل الحصص المستحقة بالفعل');
+      return false;
+    }
+    // بنلقط عدد الحصص اللي هنسجل دفعة عنها دلوقتي *قبل* أي إدراج في
+    // القاعدة، عشان نحفظه جوه note الدفعة (sessions=N) — ده اللي بيخلي
+    // _paidSessionsInSelectedMonths يحسب صح لاحقًا حتى لو دفعة واحدة
+    // غطّت أكتر من حصة (زي حصة إمبارح وحصة النهاردة مع بعض). لو الدفعة
+    // مش جاية من payAllUnpaidSessions (يعني من حوار "تعديل" اليدوي)،
+    // بنستنتج العدد من المبلغ ÷ سعر الحصة كأفضل تقدير.
+    final sessionsBeingPaid = !isPerSessionGroup
+        ? 0
+        : _sessionsCoveredByQuickPay > 0
+            ? _sessionsCoveredByQuickPay
+            : (overrideAmount.value != null && student.effectivePrice > 0
+                ? (overrideAmount.value! / student.effectivePrice)
+                    .round()
+                    .clamp(1, 999)
+                : unpaidSessionsCount);
     isProcessing.value = true;
     try {
       final now = DateTime.now();
@@ -215,15 +283,21 @@ class QRController extends GetxController {
       // للمجموعات بالحصة بيبقى النص "تم دفع X حصة" مش اسم الشهر — عشان
       // ميوهمش المدرس إنه دافع اشتراك الشهر كله وهو أصلاً دافع حصة أو حصص.
       final paymentLabel = isPerSessionGroup
-          ? (customNote == 'دفع حصة واحدة'
-              ? 'حصة اليوم'
-              : '$selectedSessionsCount حصة')
+          ? (sessionsBeingPaid == 1 ? 'حصة واحدة' : '$sessionsBeingPaid حصة')
           : _successMessage(labels);
 
-      if (student.siblingId != null && student.siblingsTotal != null) {
+      // عرض الإخوة مبني على سعر باقة شهرية مشتركة — مالوش معنى لمجموعات
+      // بالحصة (فيها كل حصة بسعرها المنفصل)، وميصحش يتطبّق على طالب معفى
+      // بالكامل (كان هيتحسب عليه نص باقة رغم إعفائه). في الحالتين دول
+      // بنسيب الحساب يكمل عادي على الطالب الممسوح لوحده بدل عرض الإخوة.
+      if (student.siblingId != null &&
+          student.siblingsTotal != null &&
+          !isPerSessionGroup &&
+          !student.isFullyExempt) {
         final sibling = await _dbService.getStudent(student.siblingId!);
         if (sibling != null) {
-          final total = custom ?? ((student.siblingsTotal!) * selectedMonths.length);
+          final total =
+              custom ?? ((student.siblingsTotal!) * selectedMonths.length);
           final each = total / 2.0;
           final extra = [
             if (custom != null) 'custom=1',
@@ -231,12 +305,24 @@ class QRController extends GetxController {
             'siblings=2',
           ].join(';');
           final note = 'months=${keys.join(',')};$extra';
-          final p1 = Payment(studentId: student.id!, date: now, amount: each, note: note, createdAt: now);
-          final p2 = Payment(studentId: sibling.id!, date: now, amount: each, note: note, createdAt: now);
+          final p1 = Payment(
+              studentId: student.id!,
+              date: now,
+              amount: each,
+              note: note,
+              createdAt: now);
+          final p2 = Payment(
+              studentId: sibling.id!,
+              date: now,
+              amount: each,
+              note: note,
+              createdAt: now);
           await _dbService.insertPayment(p1);
           await _dbService.insertPayment(p2);
           _refreshDashboard();
-          ToastHelper.success('عرض الإخوة: ${student.name} و ${sibling.name} • $paymentLabel ✅', title: 'تم الدفع');
+          ToastHelper.success(
+              'عرض الإخوة: ${student.name} و ${sibling.name} • $paymentLabel ✅',
+              title: 'تم الدفع');
           _clearPaymentState();
           return true;
         }
@@ -247,8 +333,11 @@ class QRController extends GetxController {
       final extra = [
         if (custom != null) 'custom=1',
         if (customNote.isNotEmpty) 'note=$customNote',
+        if (isPerSessionGroup) 'sessions=$sessionsBeingPaid',
       ].join(';');
-      final note = extra.isEmpty ? 'months=${keys.join(',')}' : 'months=${keys.join(',')};$extra';
+      final note = extra.isEmpty
+          ? 'months=${keys.join(',')}'
+          : 'months=${keys.join(',')};$extra';
       final payment = Payment(
         studentId: student.id!,
         date: now,
@@ -295,8 +384,19 @@ class QRController extends GetxController {
       return;
     }
     final s = scannedStudent.value;
-    if (s != null && s.siblingId != null && s.siblingsTotal != null) {
+    if (s != null &&
+        s.siblingId != null &&
+        s.siblingsTotal != null &&
+        !isPerSessionGroup &&
+        !s.isFullyExempt) {
       totalAmount.value = (s.siblingsTotal!) * selectedMonths.length;
+      return;
+    }
+    // بالحصة: بنعرض قيمة عدد الحصص المختار دفعها دلوقتي بس (sessionsToPay)،
+    // مش إجمالي كل الحصص المستحقة بالضرورة — عشان الرقم المعروض هنا
+    // يطابق دايمًا اللي هيتحصّل فعليًا لو المدرس ضغط "دفع الحصص المستحقة".
+    if (isPerSessionGroup && s != null) {
+      totalAmount.value = s.effectivePrice * effectiveSessionsSelected;
       return;
     }
     totalAmount.value = _computeBaseAmount(s);
@@ -340,20 +440,136 @@ class QRController extends GetxController {
     return count;
   }
 
-  // دفع سريع لحصة واحدة بس (سعر الحصة الواحدة) — لطلاب المجموعات بالحصة
-  // اللي بيدفعوا أول بأول بعد كل حصة، بدل ما المدرس يحسب المبلغ يدويًا.
-  void quickPayOneSession() {
+  // إجمالي عدد الحصص اللي اتغطّت بدفعات سابقة ضمن الشهور المختارة —
+  // بنقرأ العدد المُخزَّن في note كل دفعة ("sessions=N") بدل ما نعتبر
+  // كل دفعة = حصة واحدة بالظبط، لأن دفعة واحدة ممكن تغطي كذا حصة مع
+  // بعض (زي حصة إمبارح وحصة النهاردة سُددوا في دفعة واحدة).
+  int get _paidSessionsInSelectedMonths {
+    if (!isPerSessionGroup) return 0;
+    var total = 0;
+    for (final p in _scannedPayments) {
+      final inRange = selectedMonths
+          .any((m) => p.date.year == m.year && p.date.month == m.month);
+      if (!inRange) continue;
+      final match = RegExp(r'sessions=(\d+)').firstMatch(p.note ?? '');
+      total += match != null ? int.parse(match.group(1)!) : 1;
+    }
+    return total;
+  }
+
+  // عدد الحصص اللي حضرها الطالب ولسه ماتدفعش عنها — ده اللي المفروض
+  // يتحصّل فعليًا (مش كل الحصص اللي حضرها من الأول).
+  int get unpaidSessionsCount {
+    if (!isPerSessionGroup) return 0;
+    final unpaid = selectedSessionsCount - _paidSessionsInSelectedMonths;
+    return unpaid < 0 ? 0 : unpaid;
+  }
+
+  // عدد الحصص اللي فعليًا هيتحصّل عنها لو ضغط المدرس "دفع الحصص المستحقة"
+  // دلوقتي — بياخد في الاعتبار اختياره (sessionsToPay) لو عايز يدفع
+  // جزء من المتأخر بس، مش كل حصص unpaidSessionsCount مجبَر عليها.
+  int get effectiveSessionsSelected {
+    final unpaid = unpaidSessionsCount;
+    return unpaid > 0 ? sessionsToPay.value.clamp(1, unpaid) : 0;
+  }
+
+  // تواريخ الحصص المستحقة بالظبط (عشان المدرس يشوف "إمبارح + النهاردة"
+  // بدل رقم مجرد). مفيش ربط فعلي بين كل دفعة وحصة بعينها في القاعدة،
+  // فبنفترض إن الدفعات بتتحصّل على أقدم الحصص الأول (FIFO) — يعني لو
+  // اتحصّل حصة واحدة من أصل اتنين، بنعتبرها غطّت الأقدم وسايبة الأحدث.
+  List<DateTime> get unpaidSessionDates {
+    if (!isPerSessionGroup) return [];
+    final dates = <DateTime>[];
+    for (final month in selectedMonths) {
+      dates.addAll(_scannedAttendance
+          .where((a) =>
+              a.status == ATTENDANCE_PRESENT &&
+              a.date.year == month.year &&
+              a.date.month == month.month)
+          .map((a) => DateTime(a.date.year, a.date.month, a.date.day)));
+    }
+    dates.sort();
+    final paid = _paidSessionsInSelectedMonths;
+    return paid >= dates.length ? dates : dates.sublist(paid);
+  }
+
+  // هل الطالب حاضر حصص فعلًا ومدفوعله عنها كلها؟ (يمنع تكرار الدفع سواء
+  // عن طريق "دفع الحصص المستحقة" أو زر "تأكيد الدفع" مباشرة).
+  bool get fullyPaidUp =>
+      isPerSessionGroup &&
+      selectedSessionsCount > 0 &&
+      unpaidSessionsCount == 0;
+
+  // عدد الحصص اللي المدرس دلوقتي مختار يدفع عنها من أصل unpaidSessionsCount
+  // — بيسمح بدفع جزء من الحصص المتأخرة بدل ما يكون إجباري تدفع كل
+  // المتأخر مرة واحدة (مثلاً ولي الأمر جاي يدفع حصة واحدة بس من أصل
+  // اتنين متأخرين). الافتراضي = كل الحصص المستحقة.
+  final RxInt sessionsToPay = 1.obs;
+
+  // عدد الحصص اللي فعليًا هتتغطّي بالدفعة الجاية — بنحفظه عشان نضمن إن
+  // note الدفعة (sessions=N) بيطابق بالظبط المبلغ المحسوب هنا، حتى لو
+  // المدرس بعدين استخدم "تعديل" وغيّر المبلغ يدويًا (وقتها بنرجع نحسب
+  // العدد من المبلغ/السعر بدل الاعتماد على القيمة القديمة هنا).
+  int _sessionsCoveredByQuickPay = 0;
+
+  // بيتنادى مرة واحدة بس مع كل طالب جديد بيتمسح — الافتراضي دايمًا "ادفع
+  // كل الحصص المستحقة" (مش بس clamp للقيمة القديمة)، عشان القيمة اللي
+  // فضلت من طالب سابق (زي 1) متفضلش عالقة كافتراض غلط لطالب جديد عنده
+  // أكتر من حصة مستحقة.
+  void resetSessionsToPaySelection() {
+    final unpaid = unpaidSessionsCount;
+    sessionsToPay.value = unpaid > 0 ? unpaid : 1;
+  }
+
+  void setSessionsToPay(int count) {
+    final unpaid = unpaidSessionsCount;
+    if (unpaid <= 0) return;
+    sessionsToPay.value = count.clamp(1, unpaid);
+    if (overrideAmount.value == null) {
+      // لسه ماضغطش زر الدفع — بس نحدّث "الإجمالي" المعروض ليطابق العدد
+      // الجديد فورًا.
+      _recalculateTotal();
+    } else {
+      // ضغط الزرار قبل كده وبعدين غيّر العدد — لازم نعيد حساب المبلغ
+      // المُعلَّق (override) بنفس العدد الجديد فورًا، وإلا هيفضل المبلغ
+      // القديم متزامن مع عدد قديم غلط لحد ما يضغط الزرار تاني.
+      payAllUnpaidSessions();
+    }
+  }
+
+  // دفع عدد الحصص المختار (sessionsToPay) من أصل الحصص المستحقة — بيغطّي
+  // حالة إن الطالب اتأخر يدفع كذا حصة (مثلاً حصة إمبارح وحصة النهاردة)
+  // لكن ولي الأمر عايز يدفع حصة واحدة بس دلوقتي مش الاتنين مع بعض.
+  void payAllUnpaidSessions() {
     final s = scannedStudent.value;
     if (s == null || !isPerSessionGroup) return;
-    if (selectedMonths.isEmpty && upcomingMonths.isNotEmpty) {
-      selectedMonths.assignAll([upcomingMonths.first]);
+    if (selectedSessionsCount == 0) {
+      ToastHelper.error('الطالب لسه متسجلش حضور لأي حصة في الفترة المختارة');
+      return;
     }
-    setOverride(amount: s.effectivePrice, note: 'دفع حصة واحدة');
+    final unpaid = unpaidSessionsCount;
+    if (unpaid <= 0) {
+      ToastHelper.error('تم تسجيل دفعة لكل الحصص المستحقة بالفعل');
+      return;
+    }
+    final count = sessionsToPay.value.clamp(1, unpaid);
+    setOverride(
+      amount: s.effectivePrice * count,
+      note: count == 1 ? 'دفع حصة واحدة' : 'دفع $count حصص',
+    );
+    // لازم بعد setOverride مباشرة — setOverride بيصفّر القيمة دي لأنه
+    // مستخدم كمان من حوار "تعديل" اليدوي اللي مش هنعرف فيه عدد الحصص.
+    _sessionsCoveredByQuickPay = count;
   }
 
   void setOverride({double? amount, String? note}) {
     overrideAmount.value = amount;
     overrideNote.value = note?.trim() ?? '';
+    // أي استخدام تاني لـ setOverride غير payAllUnpaidSessions (زي حوار
+    // "تعديل" اليدوي) معناه إحنا مش متأكدين بالظبط كام حصة اتغطّت —
+    // confirmPayment هيرجع يحسبها من المبلغ/السعر بدل ما يفترض القيمة
+    // القديمة دي.
+    _sessionsCoveredByQuickPay = 0;
     _recalculateTotal();
   }
 

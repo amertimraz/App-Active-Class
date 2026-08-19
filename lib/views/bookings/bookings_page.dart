@@ -82,9 +82,11 @@ class BookingsPage extends StatelessWidget {
                         icon: Icons.sync_problem_rounded,
                         title: 'تعذر تحميل طلبات الحجز',
                         subtitle:
-                            'تأكد من الاتصال بالإنترنت وحاول تاني. لو المشكلة استمرت، جرّب توقف رابط الحجز وتفعّله تاني من الإعدادات.',
+                            'تأكد من الاتصال بالإنترنت وحاول تاني. لو المشكلة استمرت، رابطك القديم ممكن يكون معطوب — تقدر تولّد رابط جديد بدله.',
                         actionLabel: 'إعادة المحاولة',
                         onAction: booking.retry,
+                        secondaryActionLabel: 'توليد رابط حجز جديد',
+                        onSecondaryAction: () => _confirmRegenerateLink(context, booking),
                       );
                     }
                     if (booking.requests.isEmpty) {
@@ -138,6 +140,39 @@ class BookingsPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmRegenerateLink(BuildContext context, BookingController booking) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('توليد رابط حجز جديد؟', style: TextStyle(fontFamily: 'Cairo')),
+        content: const Text(
+          'الرابط القديم هيوقف عن العمل نهائيًا وأي طلبات حجز وصلت عليه هتضيع. '
+          'المفروض تشارك الرابط الجديد بدل القديم مع طلابك.',
+          style: TextStyle(fontFamily: 'Cairo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: _kPrimary, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('توليد رابط جديد', style: TextStyle(fontFamily: 'Cairo')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final err = await booking.regenerateLink();
+    if (!context.mounted) return;
+    if (err != null) {
+      AppToast.error(context, err);
+    } else {
+      AppToast.success(context, 'تم توليد رابط حجز جديد — شاركه من الإعدادات');
+    }
   }
 
   Widget _buildAppBar(BuildContext context, bool isDark, BookingController booking) {
@@ -486,6 +521,8 @@ class _EmptyState extends StatelessWidget {
   final String subtitle;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final String? secondaryActionLabel;
+  final VoidCallback? onSecondaryAction;
 
   const _EmptyState({
     required this.isDark,
@@ -494,6 +531,8 @@ class _EmptyState extends StatelessWidget {
     required this.subtitle,
     this.actionLabel,
     this.onAction,
+    this.secondaryActionLabel,
+    this.onSecondaryAction,
   });
 
   @override
@@ -537,6 +576,17 @@ class _EmptyState extends StatelessWidget {
                 ),
                 child: Text(actionLabel!,
                     style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+              ),
+            ],
+            if (secondaryActionLabel != null) ...[
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: onSecondaryAction,
+                child: Text(secondaryActionLabel!,
+                    style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white70 : const Color(0xFF6B7280))),
               ),
             ],
           ],

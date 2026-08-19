@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:get/get.dart';
 
 import 'package:active_class/controllers/license_controller.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/booking_request_model.dart';
 import 'package:active_class/services/booking_service.dart';
 import 'package:active_class/services/database_service.dart';
@@ -69,6 +70,54 @@ class BookingController extends GetxController {
   }
 
   Future<void> retry() => _load();
+
+  /// بيولّد رابط حجز جديد بالكامل (مستند Firestore جديد) بدل القديم —
+  /// مطلوب لما القديم يبقى معطوب بشكل دائم (مثلاً الجهاز اتغيّر فعليًا
+  /// فـ refreshOwnerUid العادي مبيعرفش يصلحه، ومستند teacher_profiles
+  /// القديم مقفول ومينفعش يتمسح حسب security rules `allow delete: if false`).
+  /// الرابط القديم هيفضل موجود بس مش هيرجع يشتغل تاني، وأي طلبات حجز
+  /// كانت وصلت عليه هتضيع لأننا مش هنقدر نوصلها.
+  Future<String?> regenerateLink() async {
+    final license = Get.find<LicenseController>();
+    final settings = Get.find<SettingsController>();
+    final newSlug = _service.generateSlug();
+    try {
+      String? photoUrl;
+      final photoLocalPath = settings.teacherAvatarPath.value;
+      if (photoLocalPath.isNotEmpty) {
+        final file = File(photoLocalPath);
+        if (await file.exists()) {
+          photoUrl = await _service.uploadPhoto(newSlug, file);
+        }
+      }
+      // بننقل الـ bio وصورة الغلاف القديمين للملف الجديد — دول بيانات
+      // وصفية بس (مش مرتبطين بـ ownerUid) فمعندناش سبب نسيبهم يضيعوا.
+      await _service.upsertTeacherProfile(
+        slug: newSlug,
+        deviceId: license.deviceId.value,
+        name: settings.teacherFullName.value.isEmpty
+            ? 'المعلم'
+            : settings.teacherFullName.value,
+        subject: settings.teacherSpecialization.value,
+        title: settings.teacherTitle,
+        photoUrl: photoUrl,
+        coverUrl: coverUrl.value.isEmpty ? null : coverUrl.value,
+        bio: bio.value.isEmpty ? null : bio.value,
+        active: enabled.value,
+        fields: _fieldsMap(),
+        customFields: customFields.toList(),
+      );
+    } catch (e) {
+      return 'تعذر الاتصال بالإنترنت — حاول تاني';
+    }
+    await _sub?.cancel();
+    slug.value = newSlug;
+    await _db.setSetting(_kSlug, newSlug);
+    requests.clear();
+    syncError.value = false;
+    _listen();
+    return null;
+  }
 
   Future<void> _load() async {
     try {

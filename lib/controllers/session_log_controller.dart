@@ -4,7 +4,10 @@ import 'package:get/get.dart';
 class SessionEntry {
   final String studentName;
   final double amount;
+  // عدد الشهور المدفوعة، أو عدد الحصص لو isPerSession — نفس الحقل
+  // بمعنيين مختلفين حسب نوع تسعير مجموعة الطالب وقت الدفع.
   final int monthCount;
+  final bool isPerSession;
   final DateTime time;
   final String? guardianPhone;
 
@@ -12,6 +15,7 @@ class SessionEntry {
     required this.studentName,
     required this.amount,
     required this.monthCount,
+    this.isPerSession = false,
     required this.time,
     this.guardianPhone,
   });

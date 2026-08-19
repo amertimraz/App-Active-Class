@@ -16,7 +16,9 @@ import 'package:active_class/models/group_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
+import 'package:active_class/widgets/locked_feature.dart';
 import 'package:active_class/views/exams/student_exam_history_page.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:intl/intl.dart';
@@ -59,6 +61,11 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
   Group? _group;
   List<Group> _groups = [];
   late TabController _tabController;
+  // بيتقرا مرة واحدة بس وقت فتح الشاشة — متطابق مع باقي أماكن فحص
+  // صلاحيات وضع الفريق في التطبيق (بتتحدّث بس عند إعادة الاتصال/فتح
+  // التطبيق تاني، مش لحظيًا وسط الاستخدام).
+  late final bool _canSeeFinancials = TeamModeService().canSeeFinancials;
+  late final bool _canSeeAcademics = TeamModeService().canSeeAcademics;
 
   @override
   void initState() {
@@ -153,18 +160,24 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
         buffer.writeln('• … ${attsSorted.length - 10} سجلات إضافية');
     }
 
-    buffer.writeln(
-        '\n💰 المدفوعات: إجمالي ${FormatHelper.formatCurrency(totalPaid)}');
-    for (final p in paysSorted) {
+    if (_canSeeFinancials) {
       buffer.writeln(
-          '• ${DateFormat('yyyy-MM-dd HH:mm').format(p.date)} — ${FormatHelper.formatCurrency(p.amount)}');
+          '\n💰 المدفوعات: إجمالي ${FormatHelper.formatCurrency(totalPaid)}');
+      for (final p in paysSorted) {
+        buffer.writeln(
+            '• ${DateFormat('yyyy-MM-dd HH:mm').format(p.date)} — ${FormatHelper.formatCurrency(p.amount)}');
+      }
     }
 
-    final examRecords = await DatabaseService().getStudentExamHistory(s.id!);
-    final examsMonth = examRecords
-        .where((r) => !r.examDate.isBefore(start) && !r.examDate.isAfter(end))
-        .toList()
-      ..sort((a, b) => b.examDate.compareTo(a.examDate));
+    // لو معندوش صلاحية يشوف الامتحانات، مش هيقدر يبعت تقرير فيه
+    // درجات الطالب حتى لو عن طريق واتساب — نفس القيد اللي على الشاشة.
+    final examsMonth = _canSeeAcademics
+        ? ((await DatabaseService().getStudentExamHistory(s.id!))
+                .where((r) =>
+                    !r.examDate.isBefore(start) && !r.examDate.isAfter(end))
+                .toList()
+              ..sort((a, b) => b.examDate.compareTo(a.examDate)))
+        : <StudentExamRecord>[];
     if (examsMonth.isNotEmpty) {
       buffer.writeln('\n📝 الامتحانات:');
       for (final r in examsMonth) {
@@ -296,10 +309,12 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                   absentCount: absentCount,
                   attRate: attRate,
                   accentColor: primary),
-              _PaymentsTab(
-                  payments: studentPays,
-                  totalPaid: totalPaid,
-                  accentColor: primary),
+              _canSeeFinancials
+                  ? _PaymentsTab(
+                      payments: studentPays,
+                      totalPaid: totalPaid,
+                      accentColor: primary)
+                  : const LockedSectionPlaceholder(),
             ],
           ),
         );
@@ -420,7 +435,9 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
               const SizedBox(width: 8),
               _HeaderStat(
                   label: 'مدفوع',
-                  value: FormatHelper.formatCurrency(totalPaid),
+                  value: _canSeeFinancials
+                      ? FormatHelper.formatCurrency(totalPaid)
+                      : '🔒',
                   icon: Icons.payments_rounded),
             ]),
           ],
@@ -452,6 +469,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
           icon: Icons.assignment_rounded,
           label: 'الامتحانات',
           color: const Color(0xFF8B5CF6),
+          locked: !_canSeeAcademics,
           onTap: () => Get.to(() =>
               StudentExamHistoryPage(studentId: s.id!, studentName: s.name)),
         ),
@@ -492,9 +510,21 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
           unselectedLabelColor: Colors.grey,
           labelStyle:
               const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-          tabs: const [
-            Tab(text: 'سجل الحضور'),
-            Tab(text: 'المدفوعات'),
+          tabs: [
+            const Tab(text: 'سجل الحضور'),
+            Tab(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('المدفوعات'),
+                  if (!_canSeeFinancials) ...[
+                    const SizedBox(width: 4),
+                    const Icon(Icons.lock_rounded, size: 12),
+                  ],
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -771,33 +801,38 @@ class _ActionChip extends StatelessWidget {
   final String label;
   final Color color;
   final VoidCallback onTap;
+  final bool locked;
   const _ActionChip(
       {required this.icon,
       required this.label,
       required this.color,
-      required this.onTap});
+      required this.onTap,
+      this.locked = false});
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.25)),
+      child: LockBadge(
+        locked: locked,
+        child: GestureDetector(
+          onTap: locked ? showLockedPermissionHint : onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withValues(alpha: 0.25)),
+            ),
+            child: Column(children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(height: 3),
+              Text(label,
+                  style: TextStyle(
+                      color: color, fontSize: 11, fontWeight: FontWeight.w700),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+            ]),
           ),
-          child: Column(children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(height: 3),
-            Text(label,
-                style: TextStyle(
-                    color: color, fontSize: 11, fontWeight: FontWeight.w700),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-          ]),
         ),
       ),
     );

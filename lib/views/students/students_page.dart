@@ -13,6 +13,8 @@ import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
+import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/add_student_sheet.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
 import 'package:active_class/widgets/import_students_dialog.dart';
@@ -409,6 +411,10 @@ class _StudentsPageState extends State<StudentsPage>
   // ── Delete ───────────────────────────────────────────────────────
   void _confirmDelete(BuildContext context, Student student) {
     if (student.id == null) return;
+    if (!requireDeletePermission(
+        context, TeamModeService().canDeleteStudentsNow)) {
+      return;
+    }
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(

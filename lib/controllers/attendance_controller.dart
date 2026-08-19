@@ -9,6 +9,7 @@ import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
+import 'package:intl/intl.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -91,6 +92,63 @@ class AttendanceController extends GetxController {
       ToastHelper.success('تم حذف السجل بنجاح');
     } catch (e) {
       ToastHelper.error('حدث خطأ في حذف السجل');
+    }
+  }
+
+  /// تعديل تاريخ سجل حضور موجود (عملية ذرية واحدة، بدل حذف يدوي + إضافة
+  /// يدوية في تبويبين مختلفين، وده كان بيخلي المدرّس ينسى يحذف السجل
+  /// القديم فيفضل الطالب "مستحق عليه" شهر اتصحّح أصلاً).
+  /// بيرجع رسالة خطأ لو فيه سجل تاني للطالب في نفس اليوم الجديد، أو null
+  /// لو التعديل نجح.
+  Future<String?> editAttendanceDate(Attendance att, DateTime newDate) async {
+    final dayStart = DateTime(newDate.year, newDate.month, newDate.day);
+    final dayEnd = DateTime(newDate.year, newDate.month, newDate.day, 23, 59, 59);
+    final duplicate = attendance.firstWhereOrNull((a) =>
+        a.id != att.id &&
+        a.studentId == att.studentId &&
+        !a.date.isBefore(dayStart) &&
+        !a.date.isAfter(dayEnd));
+    if (duplicate != null) {
+      return 'فيه سجل حضور تاني للطالب في نفس اليوم المطلوب — احذف السجل ده أولاً';
+    }
+    try {
+      final updated = att.copyWith(
+        date: DateTime(newDate.year, newDate.month, newDate.day,
+            att.date.hour, att.date.minute),
+      );
+      await _dbService.updateAttendance(updated);
+      await loadAttendance();
+      unawaited(ParentPortalService().pushStudentSummary(att.studentId));
+      ToastHelper.success('تم تعديل تاريخ السجل بنجاح');
+      return null;
+    } catch (e) {
+      return 'حدث خطأ في تعديل تاريخ السجل';
+    }
+  }
+
+  /// لو الشهر القديم لسجل الحضور مرتبط فعلاً بدفعة مسجّلة (موجود في
+  /// Payment.note بصيغة months=YYYY-MM)، بنرجّع تحذير للمدرّس قبل التعديل
+  /// عشان يعرف إن فيه فاتورة قديمة اتسجلت على أساس الشهر الغلط ومحتاجة
+  /// مراجعة يدوية — التعديل هنا مش هيغيّر الدفعة القديمة تلقائيًا.
+  Future<String?> paidMonthWarning(int studentId, DateTime oldDate) async {
+    final monthKey =
+        '${oldDate.year.toString().padLeft(4, '0')}-${oldDate.month.toString().padLeft(2, '0')}';
+    try {
+      final payments = await _dbService.getPaymentsByStudent(studentId);
+      final matched = payments.any((p) {
+        final note = p.note ?? '';
+        final monthsPart = note.split(';').first;
+        if (!monthsPart.startsWith('months=')) return false;
+        final months = monthsPart.substring('months='.length).split(',');
+        return months.contains(monthKey);
+      });
+      if (matched) {
+        final label = DateFormat('MMMM yyyy', 'ar').format(oldDate);
+        return 'فيه دفعة مسجّلة بالفعل على شهر $label — تعديل تاريخ الحضور مش هيغيّر الفاتورة القديمة تلقائيًا، لازم تراجعها يدويًا';
+      }
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 

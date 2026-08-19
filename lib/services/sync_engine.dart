@@ -12,10 +12,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:get/get.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/controllers/dashboard_controller.dart';
+import 'package:active_class/controllers/group_controller.dart';
+import 'package:active_class/controllers/payment_controller.dart';
+import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/services/database_service.dart';
 
 class SyncEngine {
@@ -33,6 +39,10 @@ class SyncEngine {
   /// بتوقف الـ bypass المحلي (teamModeBypassLimits) على جهاز المساعد،
   /// فكان بيفضل يقدر يضيف بيانات محليًا من غير حدود وكأن حاجة ملحصلتش.
   final VoidCallback? onLicenseInactive;
+  /// بتتنادى لو المدرس فكّ ارتباط الجهاز ده (من شاشة إدارة الأعضاء)
+  /// عشان يسمح لجهاز جديد ياخد مكانه — الجهاز القديم (اللي شغال دلوقتي)
+  /// لازم يتقفل فورًا بدل ما يفضل شغال وكأن حاجة ملحصلتش.
+  final VoidCallback? onDeviceUnbound;
   /// بتتنادى مع كل catchUpPull (أول اتصال وكل إعادة اتصال) — team_members
   /// (صلاحيات الأعضاء) مش من ضمن الجداول المتزامنة/الـ Realtime هنا،
   /// فلو المدرس غيّر صلاحية لمساعد (زي منح/سحب حذف الطلاب) وجهاز
@@ -46,6 +56,7 @@ class SyncEngine {
     required this.deviceId,
     this.onRemovedFromTeam,
     this.onLicenseInactive,
+    this.onDeviceUnbound,
     this.onReconnected,
   });
 
@@ -58,6 +69,7 @@ class SyncEngine {
 
   final DatabaseService _dbService = DatabaseService();
   Timer? _pushTimer;
+  Timer? _membershipTimer;
   RealtimeChannel? _channel;
   bool _draining = false;
   bool _pulling = false;
@@ -73,6 +85,19 @@ class SyncEngine {
   void start() {
     DatabaseService.teamModeEnabled = true;
     _pushTimer = Timer.periodic(const Duration(seconds: 3), (_) => drainOutbox());
+    // Realtime بس بتوصّل أحداث الجداول المشتركة (groups/students/...)،
+    // مش team_members/teams — فلو المدرس عطّل وضع الفريق أو شال المساعد
+    // وهو متصل بالفعل (من غير أي قطع/إعادة اتصال)، من غير الفحص الدوري
+    // ده مكناش هنعرف غير لما الاتصال يقطع ويرجع (ممكن ياخد وقت طويل).
+    // مفيش داعي نشغّله على جهاز المدرس نفسه — الكولباكين التنين
+    // (onRemovedFromTeam/onLicenseInactive) مستبعدين له عمدًا، فالفحص
+    // هيكون طلب شبكة كل 15 ثانية للأبد من غير أي فايدة على السيرفر.
+    if (onRemovedFromTeam != null ||
+        onLicenseInactive != null ||
+        onDeviceUnbound != null) {
+      _membershipTimer = Timer.periodic(
+          const Duration(seconds: 15), (_) => _checkStillAllowed());
+    }
     unawaited(drainOutbox());
     _subscribeRealtime();
   }
@@ -81,11 +106,25 @@ class SyncEngine {
     DatabaseService.teamModeEnabled = false;
     _pushTimer?.cancel();
     _pushTimer = null;
+    _membershipTimer?.cancel();
+    _membershipTimer = null;
     final ch = _channel;
     _channel = null;
     if (ch != null) {
       await client.removeChannel(ch);
     }
+  }
+
+  Future<void> _checkStillAllowed() async {
+    if (await _wasRemovedFromTeam()) return;
+    if (await _wasLicenseDeactivated()) return;
+    if (await _wasDeviceUnbound()) return;
+    // team_members (صلاحيات الأعضاء) مش من ضمن الجداول المتزامنة، فمن
+    // غير استدعاء onReconnected هنا كمان، أي صلاحية يغيّرها المدرس
+    // (زي حذف الطلاب أو رؤية الأرقام المالية) كانت مش هتوصل للمساعد
+    // إلا لو قفل التطبيق وفتحه تاني — دلوقتي بتوصل خلال 15 ثانية
+    // كحد أقصى زي باقي الفحوصات الدورية.
+    onReconnected?.call();
   }
 
   // ── Push: تفريغ sync_outbox ──────────────────────────────────────
@@ -129,12 +168,32 @@ class SyncEngine {
   Future<bool> _pushOne(
       String table, int rowId, String op, String? payloadStr) async {
     if (op == 'delete') {
-      await client
-          .from(table)
-          .update({'deleted_at': DateTime.now().toIso8601String()})
-          .eq('team_id', teamId)
-          .eq('origin_device_id', deviceId)
-          .eq('local_id', rowId);
+      // لو الصف كان متزامن قبل الحذف (عنده remote_id)، لازم نستهدفه
+      // بيه — مش بـ origin_device_id+local_id، اللي بيفشل صامت (0 صف
+      // اتأثر، من غير أي error) لو الصف الأصلي جه من جهاز تاني (زي
+      // مساعد بيحذف مجموعة أنشأها المدرس، أو العكس): كان بيتمسح محليًا
+      // عند اللي حذف بس يفضل موجود بالكامل عند بقية الفريق، وبيرجع
+      // "يتكاثر" تاني عند أي جهاز يعمل full pull بعد كده.
+      final remoteId = payloadStr != null
+          ? (jsonDecode(payloadStr) as Map<String, dynamic>)['remote_id']
+              as String?
+          : null;
+      if (remoteId != null) {
+        await client
+            .from(table)
+            .update({'deleted_at': DateTime.now().toIso8601String()})
+            .eq('id', remoteId);
+      } else {
+        // الصف ده اتحذف قبل حتى ما يتزامن أصلاً — لازم يكون جه من نفس
+        // الجهاز ده (مستحيل يكون عند زميل عرفه من غيرنا)، فالطريقة
+        // القديمة صحيحة هنا بالظبط.
+        await client
+            .from(table)
+            .update({'deleted_at': DateTime.now().toIso8601String()})
+            .eq('team_id', teamId)
+            .eq('origin_device_id', deviceId)
+            .eq('local_id', rowId);
+      }
       return true;
     }
     if (payloadStr == null) return true;
@@ -248,8 +307,9 @@ class SyncEngine {
   }
 
   Future<int?> _localIdForRemote(
-      String table, String pkCol, String remoteId) async {
-    final db = await _dbService.database;
+      String table, String pkCol, String remoteId,
+      {DatabaseExecutor? executor}) async {
+    final db = executor ?? await _dbService.database;
     final rows = await db.query(table,
         columns: [pkCol],
         where: '$COL_SYNC_REMOTE_ID = ?',
@@ -298,6 +358,7 @@ class SyncEngine {
   Future<void> catchUpPull() async {
     if (await _wasRemovedFromTeam()) return;
     if (await _wasLicenseDeactivated()) return;
+    if (await _wasDeviceUnbound()) return;
     onReconnected?.call();
     await _fullPull(includeDeleted: true);
   }
@@ -350,6 +411,25 @@ class SyncEngine {
     }
   }
 
+  /// بتتحقق إن الجهاز ده لسه هو الجهاز المرتبط بحساب المساعد —
+  /// is_device_still_bound قراءة بس (بدون ربط تلقائي، عكس claim_device)
+  /// عمدًا، عشان لو المدرس فكّ الارتباط، الجهاز القديم (لو لسه شغال)
+  /// مايربطش نفسه تاني تلقائيًا قبل ما جهاز جديد ياخد الفرصة.
+  Future<bool> _wasDeviceUnbound() async {
+    try {
+      final stillBound = await client.rpc('is_device_still_bound',
+          params: {'_team_id': teamId, '_device_id': deviceId}) as bool;
+      if (!stillBound) {
+        onDeviceUnbound?.call();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('SyncEngine: فشل التحقق من ارتباط الجهاز — $e');
+      return false;
+    }
+  }
+
   /// _pulling بتمنع initialFullPull وcatchUpPull يشتغلوا في نفس
   /// اللحظة (بيحصل غالبًا لحظة أول انضمام — الاتنين بيتنادوا قريب من
   /// بعض) — لو اشتغلوا مع بعض ممكن الاتنين يحاولوا يدرجوا نفس الصف
@@ -359,20 +439,92 @@ class SyncEngine {
     if (_pulling) return;
     _pulling = true;
     try {
-      for (final table in _tables) {
-        final rows = includeDeleted
-            ? await client.from(table).select().eq('team_id', teamId)
-            : await client
-                .from(table)
-                .select()
-                .eq('team_id', teamId)
-                .isFilter('deleted_at', null);
-        for (final r in (rows as List)) {
-          await _applyRemoteRow(table, r as Map<String, dynamic>);
+      // نجيب كل الجداول بالتوازي (طلبات شبكة مستقلة عن بعض) بدل ما
+      // نستنى كل جدول لوحده على التالي — كان ده بيبطّئ أول انضمام
+      // لمساعد (كل الجداول بالتتابع) بدون أي داعي.
+      //
+      // كل جدول ليه try/catch لوحده: Future.wait الافتراضي بيرفض
+      // بأول خطأ ويسيب كل الجداول التانية (اللي ممكن تكون نجحت فعلاً)
+      // من غير ما تتطبّق خالص. لو جدول واحد (مثلاً الحضور لو فيه
+      // آلاف السجلات وحصل timeout) فشل، مش لازم نضيّع بيانات المجموعات
+      // والطلاب اللي نجحت معاه.
+      final results = await Future.wait(_tables.map((table) async {
+        try {
+          final rows = includeDeleted
+              ? await client.from(table).select().eq('team_id', teamId)
+              : await client
+                  .from(table)
+                  .select()
+                  .eq('team_id', teamId)
+                  .isFilter('deleted_at', null);
+          return rows;
+        } catch (e) {
+          debugPrint('SyncEngine: فشل تحميل جدول $table — $e');
+          return null;
         }
+      }));
+
+      final db = await _dbService.database;
+      for (var i = 0; i < _tables.length; i++) {
+        final rows = results[i] as List?;
+        if (rows == null || rows.isEmpty) continue;
+        // كل صفوف الجدول ده جوه transaction واحدة بدل ما كل صف يعمل
+        // commit لوحده — ده كان أكبر سبب للبطء وقت أول تحميل كامل
+        // لفريق فيه بيانات كتير (مئات سجلات الحضور/المدفوعات).
+        await db.transaction((txn) async {
+          for (final r in rows) {
+            try {
+              await _applyRemoteRow(_tables[i], r as Map<String, dynamic>,
+                  executor: txn);
+            } catch (e) {
+              // خطأ في صف واحد (زي تعارض UNIQUE وقت تحديث صف موجود)
+              // ميوقفش باقي صفوف الجدول ده — لو مسيباه يطلع من غير
+              // catch هنا، الـ transaction كلها بتترجع (rollback) وكل
+              // صفوف الجدول ده اللي نجحت قبله بتضيع معاه.
+              debugPrint(
+                  'SyncEngine: تعذر تطبيق صف من ${_tables[i]} — $e');
+            }
+          }
+        });
+        _refreshUiForTable(_tables[i]);
       }
     } finally {
       _pulling = false;
+    }
+  }
+
+  /// بيانات الفريق الواردة (أول تحميل كامل أو Realtime) بتتكتب في
+  /// SQLite مباشرة — الكنترولرز (GroupController/StudentController/...)
+  /// بتاعت الشاشات مبتعرفش إن حاجة اتغيّرت غير لو حد عمل reload صريح
+  /// (زي فتح الصفحة من الأول). من غير الاستدعاء ده، بيانات المدرس
+  /// كانت بتوصل فعليًا لقاعدة بيانات المساعد، بس مش بتظهر على شاشته
+  /// إلا لو قفل الشاشة وفتحها تاني — وده اللي كان شكله "المزامنة مش
+  /// شغالة خالص".
+  void _refreshUiForTable(String table) {
+    switch (table) {
+      case TABLE_GROUPS:
+        if (Get.isRegistered<GroupController>()) {
+          Get.find<GroupController>().loadGroups();
+        }
+        break;
+      case TABLE_STUDENTS:
+        if (Get.isRegistered<StudentController>()) {
+          Get.find<StudentController>().loadAllStudents();
+        }
+        break;
+      case TABLE_ATTENDANCE:
+        if (Get.isRegistered<AttendanceController>()) {
+          Get.find<AttendanceController>().loadAttendance();
+        }
+        break;
+      case TABLE_PAYMENTS:
+        if (Get.isRegistered<PaymentController>()) {
+          Get.find<PaymentController>().loadPayments();
+        }
+        break;
+    }
+    if (Get.isRegistered<DashboardController>()) {
+      Get.find<DashboardController>().loadDashboardData();
     }
   }
 
@@ -392,7 +544,8 @@ class SyncEngine {
         callback: (payload) {
           final newRow = payload.newRecord;
           if (newRow.isEmpty) return; // DELETE فعلي (مش بنستخدمه — بنعمل soft-delete)
-          unawaited(_applyRemoteRow(table, newRow));
+          unawaited(_applyRemoteRow(table, newRow)
+              .then((_) => _refreshUiForTable(table)));
         },
       );
     }
@@ -407,8 +560,9 @@ class SyncEngine {
     _channel = channel;
   }
 
-  Future<void> _applyRemoteRow(String table, Map<String, dynamic> remote) async {
-    final db = await _dbService.database;
+  Future<void> _applyRemoteRow(String table, Map<String, dynamic> remote,
+      {DatabaseExecutor? executor}) async {
+    final db = executor ?? await _dbService.database;
     final pkCol = _pkCol(table);
     final remoteId = remote['id'] as String;
     final remoteUpdatedAt = DateTime.tryParse(remote['updated_at'] as String? ?? '');
@@ -432,7 +586,7 @@ class SyncEngine {
           !remoteUpdatedAt.isAfter(localUpdatedAt)) {
         return; // مش أحدث من نسختي — (وده كمان بيتجاهل صدى تعديلاتي إحنا)
       }
-      final localMap = await _toLocalMap(table, remote);
+      final localMap = await _toLocalMap(table, remote, executor: executor);
       if (localMap == null) return;
       await db.update(table, localMap,
           where: '$pkCol = ?', whereArgs: [localRow[pkCol]]);
@@ -459,7 +613,7 @@ class SyncEngine {
 
     // 3) صف جديد فعليًا من عضو تاني.
     try {
-      final localMap = await _toLocalMap(table, remote);
+      final localMap = await _toLocalMap(table, remote, executor: executor);
       if (localMap == null) return; // الأب لسه مش موجود محليًا — best effort
 
       // حضور: ممكن جهازين (المدرس + المساعد) يسجّلوا حضور نفس الطالب
@@ -500,23 +654,52 @@ class SyncEngine {
   /// ويتجاهل صف الطالب الجديد بصمت (يختفي عند الزميل). هنا بدل
   /// التجاهل، لو الفشل بسبب تعارض الكود، نضيف لاحقة ونعيد المحاولة
   /// كذا مرة — الطالب يفضل موجود بكود مختلف شوية بدل ما يضيع تمامًا.
+  ///
+  /// نفس المشكلة بالظبط موجودة في المجموعات: اسم المجموعة (وكودها)
+  /// UNIQUE محليًا على كل جهاز. لو المساعد عنده أصلاً مجموعة بنفس
+  /// اسم مجموعة عند المدرس (قبل ما يتوصلوا)، الإدراج كان بيفشل
+  /// بصمت — والأخطر إن أي طالب/حضور/دفعة تابعة للمجموعة دي كانت
+  /// بتضيع هي كمان لأن _toLocalMap بيرجع null لو الأب (المجموعة)
+  /// مش موجود محليًا. فبنعمل نفس منطق اللاحقة على الاسم والكود.
   Future<void> _insertWithCodeRetry(
       DatabaseExecutor db, String table, Map<String, dynamic> localMap) async {
     try {
       await db.insert(table, localMap);
       return;
     } catch (e) {
-      if (table != TABLE_STUDENTS || localMap[COL_STUDENT_CODE] == null) rethrow;
-      final baseCode = localMap[COL_STUDENT_CODE] as String;
-      for (var suffix = 2; suffix <= 20; suffix++) {
-        final map = {...localMap, COL_STUDENT_CODE: '$baseCode-$suffix'};
-        try {
-          await db.insert(table, map);
-          debugPrint(
-              'SyncEngine: تعارض كود طالب ($baseCode) — اتسجّل بكود بديل ($baseCode-$suffix)');
-          return;
-        } catch (_) {
-          continue;
+      if (table == TABLE_STUDENTS && localMap[COL_STUDENT_CODE] != null) {
+        final baseCode = localMap[COL_STUDENT_CODE] as String;
+        for (var suffix = 2; suffix <= 20; suffix++) {
+          final map = {...localMap, COL_STUDENT_CODE: '$baseCode-$suffix'};
+          try {
+            await db.insert(table, map);
+            debugPrint(
+                'SyncEngine: تعارض كود طالب ($baseCode) — اتسجّل بكود بديل ($baseCode-$suffix)');
+            return;
+          } catch (_) {
+            continue;
+          }
+        }
+        rethrow;
+      }
+      if (table == TABLE_GROUPS) {
+        final baseName = localMap[COL_GROUP_NAME] as String?;
+        final baseCode = localMap[COL_GROUP_CODE] as String?;
+        if (baseName == null) rethrow;
+        for (var suffix = 2; suffix <= 20; suffix++) {
+          final map = {
+            ...localMap,
+            COL_GROUP_NAME: '$baseName ($suffix)',
+            if (baseCode != null) COL_GROUP_CODE: '$baseCode-$suffix',
+          };
+          try {
+            await db.insert(table, map);
+            debugPrint(
+                'SyncEngine: تعارض اسم مجموعة ($baseName) — اتسجّلت باسم بديل ($baseName ($suffix))');
+            return;
+          } catch (_) {
+            continue;
+          }
         }
       }
       rethrow;
@@ -524,7 +707,8 @@ class SyncEngine {
   }
 
   Future<Map<String, dynamic>?> _toLocalMap(
-      String table, Map<String, dynamic> remote) async {
+      String table, Map<String, dynamic> remote,
+      {DatabaseExecutor? executor}) async {
     final updatedAt = remote['updated_at'] as String?;
     switch (table) {
       case TABLE_GROUPS:
@@ -542,7 +726,8 @@ class SyncEngine {
       case TABLE_STUDENTS:
         final groupRemoteId = remote['group_remote_id'] as String?;
         final localGroupId = groupRemoteId != null
-            ? await _localIdForRemote(TABLE_GROUPS, COL_GROUP_ID, groupRemoteId)
+            ? await _localIdForRemote(TABLE_GROUPS, COL_GROUP_ID, groupRemoteId,
+                executor: executor)
             : null;
         if (groupRemoteId != null && localGroupId == null) return null;
         // عكس المجموعة، رابط الأخ/الأخت مش شرط لإدراج الطالب — لو
@@ -551,7 +736,9 @@ class SyncEngine {
         // تاني على أي واحد فيهم.
         final siblingRemoteId = remote['sibling_remote_id'] as String?;
         final localSiblingId = siblingRemoteId != null
-            ? await _localIdForRemote(TABLE_STUDENTS, COL_STUDENT_ID, siblingRemoteId)
+            ? await _localIdForRemote(
+                TABLE_STUDENTS, COL_STUDENT_ID, siblingRemoteId,
+                executor: executor)
             : null;
         return {
           COL_STUDENT_GROUP_ID: localGroupId,
@@ -572,7 +759,8 @@ class SyncEngine {
         final studentRemoteId = remote['student_remote_id'] as String?;
         final localStudentId = studentRemoteId != null
             ? await _localIdForRemote(
-                TABLE_STUDENTS, COL_STUDENT_ID, studentRemoteId)
+                TABLE_STUDENTS, COL_STUDENT_ID, studentRemoteId,
+                executor: executor)
             : null;
         if (studentRemoteId != null && localStudentId == null) return null;
         return {
@@ -587,7 +775,8 @@ class SyncEngine {
         final studentRemoteId = remote['student_remote_id'] as String?;
         final localStudentId = studentRemoteId != null
             ? await _localIdForRemote(
-                TABLE_STUDENTS, COL_STUDENT_ID, studentRemoteId)
+                TABLE_STUDENTS, COL_STUDENT_ID, studentRemoteId,
+                executor: executor)
             : null;
         if (studentRemoteId != null && localStudentId == null) return null;
         return {

@@ -114,7 +114,10 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
 
   // ── Search ───────────────────────────────────────────────────
   void _onSearch(String q) {
-    if (q.isEmpty) { setState(() => _searchResults = []); return; }
+    if (q.isEmpty) {
+      setState(() => _searchResults = []);
+      return;
+    }
     final lq = q.toLowerCase();
     setState(() {
       _searchResults = studentController.students
@@ -157,21 +160,31 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text('تأكيد عرض الإخوة'),
           content: Text(
               'سيتم تطبيق عرض الإخوة بين ${student.name} و ${sib?.name ?? "الأخ"}'
               ' بمبلغ إجمالي ${FormatHelper.formatCurrency(total)}'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأكيد')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('إلغاء')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('تأكيد')),
           ],
         ),
       );
       if (ok != true) return;
     }
 
-    final monthCount = controller.selectedMonths.length;
+    // بنلقط النوع والعدد قبل confirmPayment لأنها بتصفّر بيانات الطالب
+    // (_clearPaymentState) بعد النجاح مباشرة.
+    final isPerSession = controller.isPerSessionGroup;
+    final monthCount = isPerSession
+        ? controller.effectiveSessionsSelected
+        : controller.selectedMonths.length;
     final amount = controller.totalAmount.value;
     final success = await controller.confirmPayment();
     if (!mounted) return;
@@ -185,6 +198,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
         studentName: student.name,
         amount: amount,
         monthCount: monthCount,
+        isPerSession: isPerSession,
         time: DateTime.now(),
         guardianPhone: student.guardianPhone,
       ));
@@ -229,19 +243,27 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
           children: [
             TextField(
               controller: amtCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'المبلغ', prefixIcon: Icon(Icons.attach_money_rounded)),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                  labelText: 'المبلغ',
+                  prefixIcon: Icon(Icons.attach_money_rounded)),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: noteCtrl,
-              decoration: const InputDecoration(labelText: 'ملاحظة', prefixIcon: Icon(Icons.notes_rounded)),
+              decoration: const InputDecoration(
+                  labelText: 'ملاحظة', prefixIcon: Icon(Icons.notes_rounded)),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حفظ')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('حفظ')),
         ],
       ),
     );
@@ -250,8 +272,8 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
       if (parsed != null && parsed > 0) {
         controller.setOverride(amount: parsed, note: noteCtrl.text);
       } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('قيمة غير صالحة')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('قيمة غير صالحة')));
       }
     }
   }
@@ -285,7 +307,8 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
     buf.writeln('─────────────────');
     for (final e in entries.reversed) {
       final time = DateFormat('HH:mm').format(e.time);
-      buf.writeln('✅ ${e.studentName}  •  ${FormatHelper.formatCurrency(e.amount)}  ($time)');
+      buf.writeln(
+          '✅ ${e.studentName}  •  ${FormatHelper.formatCurrency(e.amount)}  ($time)');
     }
     buf.writeln('─────────────────');
     buf.writeln('👥 عدد الطلاب: ${entries.length}');
@@ -315,14 +338,17 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
               ? GestureDetector(
                   onTap: _showSessionLog,
                   child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    margin:
+                        const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.green,
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Row(children: [
-                      const Icon(Icons.check_rounded, size: 14, color: Colors.white),
+                      const Icon(Icons.check_rounded,
+                          size: 14, color: Colors.white),
                       const SizedBox(width: 4),
                       Text('${_session.count}',
                           style: const TextStyle(
@@ -341,16 +367,22 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
               final code = await showDialog<String>(
                 context: context,
                 builder: (ctx) => AlertDialog(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                   title: const Text('أدخل كود الطالب'),
                   content: TextField(
                     controller: c,
                     autofocus: true,
-                    decoration: const InputDecoration(hintText: 'الكود', prefixIcon: Icon(Icons.qr_code)),
+                    decoration: const InputDecoration(
+                        hintText: 'الكود', prefixIcon: Icon(Icons.qr_code)),
                   ),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
-                    ElevatedButton(onPressed: () => Navigator.pop(ctx, c.text.trim()), child: const Text('تأكيد')),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('إلغاء')),
+                    ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, c.text.trim()),
+                        child: const Text('تأكيد')),
                   ],
                 ),
               );
@@ -371,8 +403,12 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.white54,
                 tabs: const [
-                  Tab(icon: Icon(Icons.qr_code_scanner_rounded), text: 'مسح QR'),
-                  Tab(icon: Icon(Icons.person_search_rounded), text: 'بحث يدوي'),
+                  Tab(
+                      icon: Icon(Icons.qr_code_scanner_rounded),
+                      text: 'مسح QR'),
+                  Tab(
+                      icon: Icon(Icons.person_search_rounded),
+                      text: 'بحث يدوي'),
                 ],
               ),
       ),
@@ -426,7 +462,9 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
                             builder: (_, state, __) {
                               final on = state.torchState == TorchState.on;
                               return _IconCircleBtn(
-                                icon: on ? Icons.flash_on_rounded : Icons.flash_off_rounded,
+                                icon: on
+                                    ? Icons.flash_on_rounded
+                                    : Icons.flash_off_rounded,
                                 label: on ? 'إطفاء' : 'إضاءة',
                                 onTap: () => scannerController.toggleTorch(),
                               );
@@ -460,22 +498,23 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
                         controller.scannedStudent.value = null;
                         _lastScan = null;
                         _lastScanAt = null;
-                        Future.delayed(const Duration(milliseconds: 300),
-                            () { if (mounted) _safeStartScanner(); });
+                        Future.delayed(const Duration(milliseconds: 300), () {
+                          if (mounted) _safeStartScanner();
+                        });
                       },
                     );
                   }
                   return _PaymentPanel(
-                          student: student,
-                          controller: controller,
-                          db: _db,
-                          onConfirm: () => _confirmPayment(student),
-                          onOverride: _showOverrideDialog,
-                          onClear: () {
-                            controller.scannedStudent.value = null;
-                            _safeStartScanner();
-                          },
-                        );
+                    student: student,
+                    controller: controller,
+                    db: _db,
+                    onConfirm: () => _confirmPayment(student),
+                    onOverride: _showOverrideDialog,
+                    onClear: () {
+                      controller.scannedStudent.value = null;
+                      _safeStartScanner();
+                    },
+                  );
                 }),
               ),
             ],
@@ -529,21 +568,27 @@ class _SessionStatsBar extends StatelessWidget {
         color: Colors.green.shade800,
         child: Row(
           children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 16),
+            const Icon(Icons.check_circle_rounded,
+                color: Colors.white, size: 16),
             const SizedBox(width: 8),
             Text(
               '$count طالب دفعوا اليوم',
               style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13),
             ),
             const Spacer(),
             Text(
               FormatHelper.formatCurrency(total),
               style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14),
             ),
             const SizedBox(width: 6),
-            const Icon(Icons.chevron_right_rounded, color: Colors.white70, size: 16),
+            const Icon(Icons.chevron_right_rounded,
+                color: Colors.white70, size: 16),
           ],
         ),
       ),
@@ -634,9 +679,13 @@ class _ManualTab extends StatelessWidget {
                 suffixIcon: searchCtrl.text.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.clear_rounded),
-                        onPressed: () { searchCtrl.clear(); onSearch(''); })
+                        onPressed: () {
+                          searchCtrl.clear();
+                          onSearch('');
+                        })
                     : null,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                 filled: true,
                 fillColor: AppTheme.primaryColor.withValues(alpha: 0.05),
               ),
@@ -654,7 +703,9 @@ class _ManualTab extends StatelessWidget {
                       final g = groupController.groups
                           .firstWhereOrNull((g) => g.id == s.groupId);
                       return _StudentSearchCard(
-                          student: s, group: g, onSelect: () => onSelectStudent(s));
+                          student: s,
+                          group: g,
+                          onSelect: () => onSelectStudent(s));
                     },
                   ),
           ),
@@ -686,8 +737,12 @@ class _PaymentPanel extends StatelessWidget {
   final VoidCallback onClear;
   final bool showBackButton;
 
-  // حالة الدفع للشهر الحالي
+  // حالة الدفع للشهر الحالي — لمجموعات "بالحصة" مفيش مفهوم "شهر مدفوع"
+  // أصلاً، وأثناء تحميل بيانات المجموعة/الحضور مبنقولش أي استنتاج لحد
+  // ما البيانات توصل بالكامل (راجع QRController.isPreparingPayment).
   String _paymentStatus() {
+    if (controller.isPreparingPayment.value) return 'جارِ التحميل';
+    if (controller.isPerSessionGroup) return 'بالحصة';
     final months = controller.upcomingMonths;
     if (months.isEmpty) return 'مدفوع بالكامل';
     final now = DateTime.now();
@@ -699,20 +754,45 @@ class _PaymentPanel extends StatelessWidget {
 
   Color _statusColor(String status) {
     switch (status) {
-      case 'لم يدفع': return Colors.red;
-      case 'مدفوع بالكامل': return Colors.blue;
-      case 'مدفوع': return Colors.green;
-      default: return Colors.orange;
+      case 'لم يدفع':
+        return Colors.red;
+      case 'مدفوع بالكامل':
+        return Colors.blue;
+      case 'مدفوع':
+        return Colors.green;
+      case 'بالحصة':
+        return Colors.teal;
+      case 'جارِ التحميل':
+        return Colors.grey;
+      default:
+        return Colors.orange;
     }
   }
 
   IconData _statusIcon(String status) {
     switch (status) {
-      case 'لم يدفع': return Icons.cancel_rounded;
-      case 'مدفوع بالكامل': return Icons.check_circle_rounded;
-      case 'مدفوع': return Icons.check_circle_rounded;
-      default: return Icons.warning_amber_rounded;
+      case 'لم يدفع':
+        return Icons.cancel_rounded;
+      case 'مدفوع بالكامل':
+        return Icons.check_circle_rounded;
+      case 'مدفوع':
+        return Icons.check_circle_rounded;
+      case 'بالحصة':
+        return Icons.flash_on_rounded;
+      case 'جارِ التحميل':
+        return Icons.hourglass_top_rounded;
+      default:
+        return Icons.warning_amber_rounded;
     }
+  }
+
+  String _formatSessionDateLabel(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    if (date == today) return 'اليوم';
+    if (date == yesterday) return 'إمبارح';
+    return DateFormat('d MMMM', 'ar').format(date);
   }
 
   @override
@@ -728,7 +808,6 @@ class _PaymentPanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-
             // ── Student info card ──────────────────────────────
             FutureBuilder<Group?>(
               future: db.getGroup(student.groupId),
@@ -737,7 +816,8 @@ class _PaymentPanel extends StatelessWidget {
                 final groupColor = group?.color != null
                     ? Color(group!.color!)
                     : AppTheme.primaryColor;
-                final isSiblings = student.siblingId != null && student.siblingsTotal != null;
+                final isSiblings =
+                    student.siblingId != null && student.siblingsTotal != null;
                 final price = isSiblings
                     ? (student.siblingsTotal ?? student.price)
                     : student.price;
@@ -751,7 +831,8 @@ class _PaymentPanel extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: groupColor.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: groupColor.withValues(alpha: 0.2)),
+                      border:
+                          Border.all(color: groupColor.withValues(alpha: 0.2)),
                     ),
                     child: Row(
                       children: [
@@ -762,7 +843,8 @@ class _PaymentPanel extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: groupColor.withValues(alpha: 0.15),
                             shape: BoxShape.circle,
-                            border: Border.all(color: groupColor.withValues(alpha: 0.3)),
+                            border: Border.all(
+                                color: groupColor.withValues(alpha: 0.3)),
                           ),
                           child: Center(
                             child: Text(
@@ -795,11 +877,13 @@ class _PaymentPanel extends StatelessWidget {
                         ),
                         // Payment status badge
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: sColor.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: sColor.withValues(alpha: 0.3)),
+                            border: Border.all(
+                                color: sColor.withValues(alpha: 0.3)),
                           ),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
                             Icon(_statusIcon(status), size: 13, color: sColor),
@@ -817,12 +901,16 @@ class _PaymentPanel extends StatelessWidget {
                           child: Container(
                             padding: const EdgeInsets.all(5),
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.white12 : Colors.grey.shade200,
+                              color: isDark
+                                  ? Colors.white12
+                                  : Colors.grey.shade200,
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
-                              showBackButton ? Icons.arrow_back_rounded : Icons.close_rounded,
-                              size: 14),
+                                showBackButton
+                                    ? Icons.arrow_back_rounded
+                                    : Icons.close_rounded,
+                                size: 14),
                           ),
                         ),
                       ],
@@ -856,138 +944,257 @@ class _PaymentPanel extends StatelessWidget {
             // ── مجموعة بالحصة: مفيش "اختيار شهور" خالص — دفع حصة مباشرة ──
             // (Obx عشان تتحدّث فور ما بيانات المجموعة توصل من قاعدة
             // البيانات — مش قيمة المجموعة القديمة لطالب سابق).
-            Obx(() => controller.isPerSessionGroup
-              ? GestureDetector(
-                onTap: controller.quickPayOneSession,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.teal.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(14),
-                    border:
-                        Border.all(color: Colors.teal.withValues(alpha: 0.3)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.flash_on_rounded,
-                          size: 16, color: Colors.teal),
-                      const SizedBox(width: 6),
-                      Text(
-                        'دفع حصة اليوم (${FormatHelper.formatCurrency(student.price)})',
-                        style: const TextStyle(
-                            color: Colors.teal,
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : Obx(() {
-                final months = controller.upcomingMonths;
-                final selected = controller.selectedMonths;
+            Obx(
+              () => controller.isPreparingPayment.value
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(
+                          child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2))),
+                    )
+                  : controller.isPerSessionGroup
+                      ? Obx(() {
+                          final fullyPaid = controller.fullyPaidUp;
+                          final unpaid = controller.unpaidSessionsCount;
+                          final count = controller.effectiveSessionsSelected;
+                          final unpaidDates = controller.unpaidSessionDates;
+                          final now = DateTime.now();
+                          final today = DateTime(now.year, now.month, now.day);
+                          final includesToday = unpaidDates.contains(today);
+                          final color = fullyPaid ? Colors.grey : Colors.teal;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // لو فيه أكتر من حصة متأخرة، بنسيب المدرس يختار
+                              // كام حصة يدفع دلوقتي بدل ما يكون إجباري يدفعهم
+                              // كلهم مع بعض (زي ولي أمر جاي يدفع حصة واحدة بس).
+                              if (!fullyPaid && unpaid > 1)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text('عدد الحصص المدفوعة دلوقتي:',
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              color: onSurface.withValues(
+                                                  alpha: 0.6))),
+                                      const SizedBox(width: 8),
+                                      _StepperBtn(
+                                        icon: Icons.remove_rounded,
+                                        onTap: count > 1
+                                            ? () => controller
+                                                .setSessionsToPay(count - 1)
+                                            : null,
+                                      ),
+                                      Container(
+                                        margin: const EdgeInsets.symmetric(
+                                            horizontal: 6),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.teal
+                                              .withValues(alpha: 0.12),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: Text('$count',
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.teal)),
+                                      ),
+                                      _StepperBtn(
+                                        icon: Icons.add_rounded,
+                                        onTap: count < unpaid
+                                            ? () => controller
+                                                .setSessionsToPay(count + 1)
+                                            : null,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              GestureDetector(
+                                onTap: fullyPaid
+                                    ? null
+                                    : controller.payAllUnpaidSessions,
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                        color: color.withValues(alpha: 0.3)),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                          fullyPaid
+                                              ? Icons.check_circle_rounded
+                                              : Icons.flash_on_rounded,
+                                          size: 16,
+                                          color: color),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        fullyPaid
+                                            ? 'تم تسجيل دفعة لكل الحصص المستحقة'
+                                            : count > 1
+                                                ? 'دفع $count حصص (${FormatHelper.formatCurrency(student.price * count)})'
+                                                : includesToday
+                                                    ? 'دفع حصة اليوم (${FormatHelper.formatCurrency(student.price)})'
+                                                    : 'دفع حصة متأخرة (${FormatHelper.formatCurrency(student.price)})',
+                                        style: TextStyle(
+                                            color: color,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              // توضيح تاريخ الحصة/الحصص المستحقة بالظبط — عشان
+                              // المدرس ميفتكرش إن "حصة واحدة مستحقة" معناها
+                              // بالضرورة حصة النهاردة لو الطالب كان غايب اليوم
+                              // وليه حصة متأخرة من يوم قبل كده.
+                              if (!fullyPaid && unpaidDates.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Text(
+                                    'الحصص المستحقة: ${unpaidDates.map(_formatSessionDateLabel).join('، ')}',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color:
+                                            onSurface.withValues(alpha: 0.5)),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                            ],
+                          );
+                        })
+                      : Obx(() {
+                          final months = controller.upcomingMonths;
+                          final selected = controller.selectedMonths;
 
-                if (months.isEmpty) {
-                  return Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
-                    ),
-                    child: const Row(children: [
-                      Icon(Icons.check_circle_rounded, color: Colors.blue, size: 16),
-                      SizedBox(width: 8),
-                      Text('مدفوع بالكامل لهذا الشهر',
-                          style: TextStyle(color: Colors.blue, fontSize: 13)),
-                    ]),
-                  );
-                }
+                          if (months.isEmpty) {
+                            return Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: Colors.blue.withValues(alpha: 0.2)),
+                              ),
+                              child: const Row(children: [
+                                Icon(Icons.check_circle_rounded,
+                                    color: Colors.blue, size: 16),
+                                SizedBox(width: 8),
+                                Text('مدفوع بالكامل لهذا الشهر',
+                                    style: TextStyle(
+                                        color: Colors.blue, fontSize: 13)),
+                              ]),
+                            );
+                          }
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header row with Quick Pay button
-                    Row(
-                      children: [
-                        Text('اختر الشهور',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                                color: onSurface)),
-                        const Spacer(),
-                        // Quick Pay — الشهر الحالي فوراً
-                        GestureDetector(
-                          onTap: () {
-                            controller.selectFirstMonth();
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: Colors.green.withValues(alpha: 0.3)),
-                            ),
-                            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(Icons.bolt_rounded, size: 14, color: Colors.green),
-                              SizedBox(width: 4),
-                              Text('هذا الشهر فقط',
-                                  style: TextStyle(
-                                      color: Colors.green,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold)),
-                            ]),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        // Select all
-                        GestureDetector(
-                          onTap: () => controller.selectAllUpcoming(),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryColor.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: AppTheme.primaryColor.withValues(alpha: 0.2)),
-                            ),
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(Icons.done_all_rounded,
-                                  size: 14, color: AppTheme.primaryColor),
-                              const SizedBox(width: 4),
-                              Text('الكل',
-                                  style: TextStyle(
-                                      color: AppTheme.primaryColor,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold)),
-                            ]),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 7,
-                      runSpacing: 7,
-                      children: months.map((m) {
-                        final isSel = selected.any(
-                            (s) => s.year == m.year && s.month == m.month);
-                        final label = DateFormat('MMM yyyy', 'ar').format(m);
-                        return _MonthChip(
-                            label: label,
-                            selected: isSel,
-                            onTap: () => controller.toggleMonth(m));
-                      }).toList(),
-                    ),
-                  ],
-                );
-              }),
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Header row with Quick Pay button
+                              Row(
+                                children: [
+                                  Text('اختر الشهور',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                          color: onSurface)),
+                                  const Spacer(),
+                                  // Quick Pay — الشهر الحالي فوراً
+                                  GestureDetector(
+                                    onTap: () {
+                                      controller.selectFirstMonth();
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green
+                                            .withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                            color: Colors.green
+                                                .withValues(alpha: 0.3)),
+                                      ),
+                                      child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.bolt_rounded,
+                                                size: 14, color: Colors.green),
+                                            SizedBox(width: 4),
+                                            Text('هذا الشهر فقط',
+                                                style: TextStyle(
+                                                    color: Colors.green,
+                                                    fontSize: 11,
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                          ]),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  // Select all
+                                  GestureDetector(
+                                    onTap: () => controller.selectAllUpcoming(),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryColor
+                                            .withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                            color: AppTheme.primaryColor
+                                                .withValues(alpha: 0.2)),
+                                      ),
+                                      child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.done_all_rounded,
+                                                size: 14,
+                                                color: AppTheme.primaryColor),
+                                            const SizedBox(width: 4),
+                                            Text('الكل',
+                                                style: TextStyle(
+                                                    color:
+                                                        AppTheme.primaryColor,
+                                                    fontSize: 11,
+                                                    fontWeight:
+                                                        FontWeight.bold)),
+                                          ]),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 7,
+                                runSpacing: 7,
+                                children: months.map((m) {
+                                  final isSel = selected.any((s) =>
+                                      s.year == m.year && s.month == m.month);
+                                  final label =
+                                      DateFormat('MMM yyyy', 'ar').format(m);
+                                  return _MonthChip(
+                                      label: label,
+                                      selected: isSel,
+                                      onTap: () => controller.toggleMonth(m));
+                                }).toList(),
+                              ),
+                            ],
+                          );
+                        }),
             ),
 
             const SizedBox(height: 10),
@@ -1002,11 +1209,13 @@ class _PaymentPanel extends StatelessWidget {
                     final sibName = snap.data?.name ?? '—';
                     return Container(
                       margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
                         color: Colors.purple.withValues(alpha: 0.07),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.purple.withValues(alpha: 0.2)),
+                        border: Border.all(
+                            color: Colors.purple.withValues(alpha: 0.2)),
                       ),
                       child: Row(children: [
                         const Icon(Icons.family_restroom_rounded,
@@ -1015,7 +1224,8 @@ class _PaymentPanel extends StatelessWidget {
                         Expanded(
                           child: Text(
                             'عرض الإخوة مع: $sibName  •  نصيب كل: ${FormatHelper.formatCurrency(total / 2)}',
-                            style: const TextStyle(fontSize: 11, color: Colors.purple),
+                            style: const TextStyle(
+                                fontSize: 11, color: Colors.purple),
                           ),
                         ),
                       ]),
@@ -1056,7 +1266,7 @@ class _PaymentPanel extends StatelessWidget {
                         if (selectedCount > 0)
                           Text(
                               controller.isPerSessionGroup
-                                  ? '${controller.selectedSessionsCount} حصة'
+                                  ? '${controller.effectiveSessionsSelected} حصة'
                                   : '$selectedCount شهر',
                               style: TextStyle(
                                   fontSize: 10,
@@ -1090,20 +1300,24 @@ class _PaymentPanel extends StatelessWidget {
 
             // Override note
             Obx(() {
-              if (controller.overrideNote.value.isEmpty) return const SizedBox.shrink();
+              if (controller.overrideNote.value.isEmpty)
+                return const SizedBox.shrink();
               return Container(
                 margin: const EdgeInsets.only(top: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: Colors.orange.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(children: [
-                  const Icon(Icons.notes_rounded, size: 13, color: Colors.orange),
+                  const Icon(Icons.notes_rounded,
+                      size: 13, color: Colors.orange),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(controller.overrideNote.value,
-                        style: const TextStyle(fontSize: 11, color: Colors.orange)),
+                        style: const TextStyle(
+                            fontSize: 11, color: Colors.orange)),
                   ),
                 ]),
               );
@@ -1115,35 +1329,59 @@ class _PaymentPanel extends StatelessWidget {
             Obx(() {
               final selectedCount = controller.selectedMonths.length;
               final processing = controller.isProcessing.value;
+              final blockedNoSessions = controller.isPerSessionGroup &&
+                  controller.selectedSessionsCount == 0 &&
+                  controller.overrideAmount.value == null;
+              final blockedAlreadyPaid = controller.fullyPaidUp;
+              // بالحصة لازم يتحدد المبلغ عن طريق "دفع الحصص المستحقة" الأول —
+              // التأكيد المباشر من غيره ممكن يحسب إجمالي كل حصص الشهر
+              // تاني من غير ما يخصم أي دفعات سابقة (راجع QRController.confirmPayment).
+              final needsQuickPayFirst = controller.isPerSessionGroup &&
+                  controller.overrideAmount.value == null &&
+                  !blockedNoSessions &&
+                  !blockedAlreadyPaid;
+              final canConfirm = selectedCount > 0 &&
+                  !processing &&
+                  !blockedNoSessions &&
+                  !blockedAlreadyPaid &&
+                  !needsQuickPayFirst;
               return SizedBox(
                 height: 50,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: selectedCount > 0
+                    backgroundColor: canConfirm
                         ? AppTheme.primaryColor
                         : Colors.grey.shade400,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14)),
                   ),
-                  onPressed: selectedCount > 0 && !processing ? onConfirm : null,
+                  onPressed: canConfirm ? onConfirm : null,
                   icon: processing
                       ? const SizedBox(
-                          width: 16, height: 16,
+                          width: 16,
+                          height: 16,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.payments_rounded, size: 18),
                   label: Text(
                     processing
                         ? 'جاري التسجيل...'
-                        : selectedCount > 0
-                            ? controller.isPerSessionGroup
-                                ? 'تأكيد الدفع  (${controller.selectedSessionsCount} حصة)'
-                                : 'تأكيد الدفع  ($selectedCount شهر)'
-                            : controller.isPerSessionGroup
-                                ? 'اضغط دفع حصة اليوم'
-                                : 'اختر شهراً للدفع',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        : blockedAlreadyPaid
+                            ? 'تم تسجيل دفعة لكل الحصص المستحقة'
+                            : blockedNoSessions
+                                ? 'لسه متسجلش حضور لأي حصة'
+                                : needsQuickPayFirst
+                                    ? 'اضغط "دفع الحصص المستحقة" الأول'
+                                    : selectedCount > 0
+                                        ? controller.isPerSessionGroup
+                                            ? 'تأكيد الدفع  (${controller.effectiveSessionsSelected} حصة)'
+                                            : 'تأكيد الدفع  ($selectedCount شهر)'
+                                        : controller.isPerSessionGroup
+                                            ? 'اضغط دفع حصة اليوم'
+                                            : 'اختر شهراً للدفع',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                 ),
               );
@@ -1192,7 +1430,8 @@ class _SessionLogSheet extends StatelessWidget {
             Center(
               child: Container(
                 margin: const EdgeInsets.only(top: 10, bottom: 6),
-                width: 40, height: 4,
+                width: 40,
+                height: 4,
                 decoration: BoxDecoration(
                     color: Colors.grey.shade300,
                     borderRadius: BorderRadius.circular(2)),
@@ -1320,7 +1559,7 @@ class _SessionLogSheet extends StatelessWidget {
                                             fontWeight: FontWeight.bold,
                                             fontSize: 14)),
                                     Text(
-                                      '${e.monthCount} شهر  •  ${timeFmt.format(e.time)}',
+                                      '${e.monthCount} ${e.isPerSession ? "حصة" : "شهر"}  •  ${timeFmt.format(e.time)}',
                                       style: TextStyle(
                                           fontSize: 11,
                                           color: Colors.grey.shade500),
@@ -1352,8 +1591,33 @@ class _SessionLogSheet extends StatelessWidget {
 //  Small widgets
 // ══════════════════════════════════════════════════════════════════
 
+class _StepperBtn extends StatelessWidget {
+  const _StepperBtn({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          color: Colors.teal.withValues(alpha: enabled ? 0.12 : 0.05),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon,
+            size: 16, color: enabled ? Colors.teal : Colors.grey.shade400),
+      ),
+    );
+  }
+}
+
 class _MonthChip extends StatelessWidget {
-  const _MonthChip({required this.label, required this.selected, required this.onTap});
+  const _MonthChip(
+      {required this.label, required this.selected, required this.onTap});
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -1378,7 +1642,9 @@ class _MonthChip extends StatelessWidget {
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(
-            selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+            selected
+                ? Icons.check_circle_rounded
+                : Icons.radio_button_unchecked_rounded,
             size: 14,
             color: selected ? Colors.white : AppTheme.primaryColor,
           ),
@@ -1398,14 +1664,16 @@ class _MonthChip extends StatelessWidget {
 }
 
 class _StudentSearchCard extends StatelessWidget {
-  const _StudentSearchCard({required this.student, required this.group, required this.onSelect});
+  const _StudentSearchCard(
+      {required this.student, required this.group, required this.onSelect});
   final Student student;
   final Group? group;
   final VoidCallback onSelect;
 
   @override
   Widget build(BuildContext context) {
-    final groupColor = group?.color != null ? Color(group!.color!) : AppTheme.primaryColor;
+    final groupColor =
+        group?.color != null ? Color(group!.color!) : AppTheme.primaryColor;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -1423,22 +1691,28 @@ class _StudentSearchCard extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 40, height: 40,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-                color: groupColor.withValues(alpha: 0.12), shape: BoxShape.circle),
+                color: groupColor.withValues(alpha: 0.12),
+                shape: BoxShape.circle),
             child: Center(
               child: Text(
                 student.name.isNotEmpty ? student.name[0] : '؟',
                 style: TextStyle(
-                    color: groupColor, fontWeight: FontWeight.bold, fontSize: 16),
+                    color: groupColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16),
               ),
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(student.name,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 14)),
               Text(
                 '${student.code}  ·  ${group?.name ?? "—"}',
                 style: TextStyle(
@@ -1456,7 +1730,8 @@ class _StudentSearchCard extends StatelessWidget {
               backgroundColor: groupColor,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             child: const Text('اختيار', style: TextStyle(fontSize: 13)),
           ),
@@ -1536,7 +1811,8 @@ class _CameraError extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.error_outline_rounded, size: 44, color: Colors.white54),
+        const Icon(Icons.error_outline_rounded,
+            size: 44, color: Colors.white54),
         const SizedBox(height: 10),
         const Text('تعذّر الوصول للكاميرا',
             style: TextStyle(color: Colors.white70)),
@@ -1548,7 +1824,8 @@ class _CameraError extends StatelessWidget {
 }
 
 class _IconCircleBtn extends StatelessWidget {
-  const _IconCircleBtn({required this.icon, required this.label, required this.onTap});
+  const _IconCircleBtn(
+      {required this.icon, required this.label, required this.onTap});
   final IconData icon;
   final String label;
   final VoidCallback onTap;
@@ -1559,7 +1836,8 @@ class _IconCircleBtn extends StatelessWidget {
       onTap: onTap,
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
-          width: 42, height: 42,
+          width: 42,
+          height: 42,
           decoration: BoxDecoration(
             color: Colors.black45,
             shape: BoxShape.circle,
@@ -1599,7 +1877,8 @@ class _ExemptPanel extends StatelessWidget {
             spreadRadius: 2,
           ),
         ],
-        border: Border.all(color: exemptColor.withValues(alpha: 0.4), width: 1.5),
+        border:
+            Border.all(color: exemptColor.withValues(alpha: 0.4), width: 1.5),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1612,10 +1891,12 @@ class _ExemptPanel extends StatelessWidget {
             decoration: BoxDecoration(
               color: exemptColor.withValues(alpha: 0.1),
               shape: BoxShape.circle,
-              border: Border.all(color: exemptColor.withValues(alpha: 0.4), width: 2),
+              border: Border.all(
+                  color: exemptColor.withValues(alpha: 0.4), width: 2),
             ),
             child: const Center(
-              child: Icon(Icons.volunteer_activism_rounded, color: exemptColor, size: 34),
+              child: Icon(Icons.volunteer_activism_rounded,
+                  color: exemptColor, size: 34),
             ),
           ),
           const SizedBox(height: 14),
@@ -1660,7 +1941,8 @@ class _ExemptPanel extends StatelessWidget {
             ),
           ),
           // Reason card
-          if (student.exemptReason != null && student.exemptReason!.isNotEmpty) ...[
+          if (student.exemptReason != null &&
+              student.exemptReason!.isNotEmpty) ...[
             const SizedBox(height: 14),
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -1673,7 +1955,8 @@ class _ExemptPanel extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.info_outline_rounded, color: exemptColor, size: 16),
+                  const Icon(Icons.info_outline_rounded,
+                      color: exemptColor, size: 16),
                   const SizedBox(width: 8),
                   Text(
                     'السبب: ${student.exemptReason}',
@@ -1768,8 +2051,10 @@ class _ScannerOverlayPainter extends CustomPainter {
     canvas.drawLine(Offset(left + s, top), Offset(left + s, top + len), p);
     canvas.drawLine(Offset(left + len, top), Offset(left, top), p);
     canvas.drawLine(Offset(left, top), Offset(left, top + len), p);
-    canvas.drawLine(Offset(left + s - len, top + s), Offset(left + s, top + s), p);
-    canvas.drawLine(Offset(left + s, top + s - len), Offset(left + s, top + s), p);
+    canvas.drawLine(
+        Offset(left + s - len, top + s), Offset(left + s, top + s), p);
+    canvas.drawLine(
+        Offset(left + s, top + s - len), Offset(left + s, top + s), p);
     canvas.drawLine(Offset(left + len, top + s), Offset(left, top + s), p);
     canvas.drawLine(Offset(left, top + s - len), Offset(left, top + s), p);
   }
