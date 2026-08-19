@@ -614,7 +614,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             : '••',
                         label: 'المجموعات',
                         gradient: const [Color(0xFFFF4D7A), Color(0xFFFF6B9D)],
-                        onTap: () => _showGroupsListDialog(context, isDark),
+                        onTap: () => Get.toNamed(ROUTE_GROUPS),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -627,8 +627,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             : '••',
                         label: 'الطلاب',
                         gradient: const [Color(0xFF4F46E5), Color(0xFF6366F1)],
-                        onTap: () => _showStudentsListDialog(context, isDark,
-                            exemptOnly: false),
+                        onTap: () => Get.toNamed(ROUTE_STUDENTS),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -2687,73 +2686,9 @@ class StudentSearchDelegate extends SearchDelegate<Student?> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// كارت "المجموعات" في الملخص السريع — قائمة كل المجموعات وعدد طلابها
-// ─────────────────────────────────────────────────────────────────────────────
-void _showGroupsListDialog(BuildContext context, bool isDark) {
-  showDialog(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      title: const Text('كل المجموعات'),
-      content: SizedBox(
-        width: 480,
-        child: FutureBuilder(
-          future: Future.wait(
-              [DatabaseService().getAllGroups(), DatabaseService().getAllStudents()]),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            final groups = (snapshot.data![0] as List<Group>).toList()
-              ..sort((a, b) => a.name.compareTo(b.name));
-            final students = snapshot.data![1] as List<Student>;
-            final countByGroup = <int, int>{};
-            for (final s in students) {
-              countByGroup.update(s.groupId, (v) => v + 1, ifAbsent: () => 1);
-            }
-            if (groups.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('لا توجد مجموعات'),
-              );
-            }
-            return ListView.separated(
-              shrinkWrap: true,
-              itemCount: groups.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (_, i) {
-                final g = groups[i];
-                return ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.groups_rounded,
-                      color: Color(0xFFFF4D7A), size: 20),
-                  title: Text(g.name,
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: g.code != null && g.code!.isNotEmpty
-                      ? Text('كود: ${g.code}')
-                      : null,
-                  trailing: Text('${countByGroup[g.id] ?? 0} طالب',
-                      style: TextStyle(
-                          fontSize: 12, color: Colors.grey.shade500)),
-                );
-              },
-            );
-          },
-        ),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق')),
-      ],
-    ),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// كارتي "الطلاب" و"معفيون" في الملخص السريع — نفس القائمة بفلتر اختياري
+// كارت "معفيون" في الملخص السريع — قائمة الطلاب المعفيين باسمهم ومجموعتهم
+// وكودهم ونسبة إعفائهم. (كارتي "المجموعات" و"الطلاب" بيودّوا لصفحاتهم
+// الأصلية مباشرة زي اختصارات الأقسام الرئيسية، مش لازمة لموديل هنا).
 // ─────────────────────────────────────────────────────────────────────────────
 void _showStudentsListDialog(BuildContext context, bool isDark,
     {required bool exemptOnly}) {
