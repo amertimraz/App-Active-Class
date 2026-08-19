@@ -142,6 +142,39 @@ class ReportController extends GetxController {
     }).toList();
   }
 
+  // ─── تفصيل الحصص (بس للمجموعات "بالحصة") ────────────────────────────────────
+  /// كل تاريخ حضور فيه الشهر ده لطلاب المجموعة دي — سطر لكل حصة، بعدد
+  /// الحاضرين والمتوقع منها (سعر كل طالب حاضر × نسبة إعفائه)، عشان
+  /// المدرس يتابع أول بأول بدل ما يستنى رقم شهري مجمّع في آخر الشهر.
+  List<SessionDay> sessionBreakdownForGroup(int groupId) {
+    final group = allGroups.firstWhereOrNull((g) => g.id == groupId);
+    if (group == null || !group.isPerSession) return [];
+
+    final students =
+        _studentsActiveInMonth.where((s) => s.groupId == groupId).toList();
+    final studentById = {for (final s in students) s.id: s};
+
+    final byDate = <DateTime, List<Attendance>>{};
+    for (final a in monthAttendance) {
+      if (a.status != 'حاضر') continue;
+      if (!studentById.containsKey(a.studentId)) continue;
+      final d = DateTime(a.date.year, a.date.month, a.date.day);
+      byDate.putIfAbsent(d, () => []).add(a);
+    }
+
+    final result = byDate.entries.map((e) {
+      final amount = e.value.fold<double>(0, (s, a) {
+        final st = studentById[a.studentId];
+        if (st == null) return s;
+        return s + st.price * (1 - st.exemptPercent / 100);
+      });
+      return SessionDay(
+          date: e.key, presentCount: e.value.length, expectedAmount: amount);
+    }).toList();
+    result.sort((a, b) => a.date.compareTo(b.date));
+    return result;
+  }
+
   // ─── At-risk students (unpaid this month) ──────────────────────────────────
 
   List<AtRiskStudent> get unpaidStudents {
@@ -298,6 +331,17 @@ class GroupMonthSummary {
 
   double get collectionRate =>
       expectedIncome == 0 ? 1.0 : collectedIncome / expectedIncome;
+}
+
+class SessionDay {
+  final DateTime date;
+  final int presentCount;
+  final double expectedAmount;
+  const SessionDay({
+    required this.date,
+    required this.presentCount,
+    required this.expectedAmount,
+  });
 }
 
 class AtRiskStudent {

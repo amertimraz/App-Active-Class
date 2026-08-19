@@ -10,6 +10,7 @@ import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/views/reports/session_breakdown_page.dart';
 
 // نفس منطق تطبيع رقم التليفون المستخدم في group_details_page.dart — بيحوّل
 // أي شكل مكتوب بيه الرقم (بمسافات/+/00/صفر البداية) لصيغة wa.me الصحيحة.
@@ -424,7 +425,12 @@ class _GroupSummaryCard extends StatelessWidget {
                 ? Colors.orange
                 : Colors.red;
 
-    return Container(
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: !summary.group.isPerSession
+          ? null
+          : () => Get.to(() => SessionBreakdownPage(group: summary.group)),
+      child: Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -468,6 +474,11 @@ class _GroupSummaryCard extends StatelessWidget {
                 '${summary.studentCount} طالب',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
               ),
+              if (summary.group.isPerSession) ...[
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_left_rounded,
+                    size: 18, color: Colors.grey.shade400),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -585,6 +596,7 @@ class _GroupSummaryCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
       ),
     );
   }
