@@ -16,9 +16,9 @@ import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:intl/intl.dart';
 
-/// يتحقق من وجود مواعيد متداخلة في نفس اليوم داخل نص الجدول
-/// (صيغة "اليوم HH:MM-HH:MM,...") — بيرجّع true لو فيه تداخل.
-bool _hasScheduleOverlap(String raw) {
+/// يحوّل نص الجدول (صيغة "اليوم HH:MM-HH:MM,...") لخريطة يوم -> نطاقات
+/// زمنية بالدقائق، لاستخدامها في فحص التداخل داخل المجموعة أو بين المجموعات.
+Map<String, List<(int, int)>> _parseDaySlots(String raw) {
   final byDay = <String, List<(int, int)>>{};
   for (final part in raw.split(',')) {
     final s = part.trim();
@@ -42,6 +42,12 @@ bool _hasScheduleOverlap(String raw) {
         .putIfAbsent(day, () => [])
         .add((from.hour * 60 + from.minute, to.hour * 60 + to.minute));
   }
+  return byDay;
+}
+
+/// يتحقق من وجود مواعيد متداخلة في نفس اليوم داخل نص الجدول نفسه.
+bool _hasScheduleOverlap(String raw) {
+  final byDay = _parseDaySlots(raw);
   for (final ranges in byDay.values) {
     ranges.sort((a, b) => a.$1.compareTo(b.$1));
     for (var i = 1; i < ranges.length; i++) {
@@ -49,6 +55,29 @@ bool _hasScheduleOverlap(String raw) {
     }
   }
   return false;
+}
+
+bool _rangesOverlap((int, int) a, (int, int) b) => a.$1 < b.$2 && b.$1 < a.$2;
+
+/// يبحث عن مجموعة من [others] بيتعارض ميعادها مع [raw]، ويرجّع أول مجموعة
+/// متعارضة أو null لو مفيش تعارض.
+Group? _findConflictingGroup(String raw, List<Group> others) {
+  final mySlots = _parseDaySlots(raw);
+  for (final other in others) {
+    final otherRaw = other.schedule;
+    if (otherRaw == null || otherRaw.trim().isEmpty) continue;
+    final otherSlots = _parseDaySlots(otherRaw);
+    for (final entry in mySlots.entries) {
+      final otherRanges = otherSlots[entry.key];
+      if (otherRanges == null) continue;
+      for (final mine in entry.value) {
+        for (final theirs in otherRanges) {
+          if (_rangesOverlap(mine, theirs)) return other;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 class GroupsPage extends StatefulWidget {
@@ -442,6 +471,12 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
             g.id != widget.group?.id &&
             (g.code?.trim().toLowerCase() ?? '') == code.toLowerCase());
 
+    // تعارض مع ميعاد مجموعة أخرى (نفس اليوم ونطاق وقت متداخل)
+    final otherGroups = widget.existingGroups.where((g) => g.id != widget.group?.id).toList();
+    final conflictingGroup = slots >= 1 && !_hasScheduleOverlap(_scheduleCtrl.text)
+        ? _findConflictingGroup(_scheduleCtrl.text, otherGroups)
+        : null;
+
     // Inline validation
     setState(() {
       _nameError     = name.isEmpty      ? 'مطلوب'
@@ -455,6 +490,8 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
       _scheduleError = slots < 1         ? 'أضف موعد واحد على الأقل'
                      : _hasScheduleOverlap(_scheduleCtrl.text)
                                            ? 'فيه موعدين متداخلين في نفس اليوم'
+                     : conflictingGroup != null
+                                           ? 'الميعاد ده متعارض مع ميعاد مجموعة "${conflictingGroup.name}"'
                      : null;
     });
 

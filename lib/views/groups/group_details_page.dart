@@ -703,6 +703,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       backgroundColor: Colors.transparent,
       builder: (_) => _GroupEditSheet(
         group: g,
+        existingGroups: groupController.groups,
         onSave: (updated) async {
           final ok = await groupController.updateGroup(updated);
           if (ok) {
@@ -1102,13 +1103,66 @@ String? _validateScheduleText(String raw) {
   return null;
 }
 
+Map<String, List<(int, int)>> _parseDaySlotsGD(String raw) {
+  final byDay = <String, List<(int, int)>>{};
+  for (final part in raw.split(',')) {
+    final s = part.trim();
+    if (s.isEmpty) continue;
+    final sp = s.split(' ');
+    if (sp.length < 2) continue;
+    final day = sp.first;
+    final range = s.substring(day.length).trim().split('-');
+    if (range.length != 2) continue;
+    TimeOfDay? parseT(String v) {
+      final p = v.trim().split(':');
+      if (p.length != 2) return null;
+      final h = int.tryParse(p[0]), m = int.tryParse(p[1]);
+      if (h == null || m == null) return null;
+      return TimeOfDay(hour: h, minute: m);
+    }
+    final from = parseT(range[0]);
+    final to = parseT(range[1]);
+    if (from == null || to == null) continue;
+    byDay
+        .putIfAbsent(day, () => [])
+        .add((from.hour * 60 + from.minute, to.hour * 60 + to.minute));
+  }
+  return byDay;
+}
+
+/// يبحث عن مجموعة تانية بيتعارض ميعادها مع [raw] (نفس اليوم ونطاق وقت
+/// متداخل)، ويرجّع أول مجموعة متعارضة أو null.
+Group? _findConflictingGroupGD(String raw, List<Group> others) {
+  final mySlots = _parseDaySlotsGD(raw);
+  for (final other in others) {
+    final otherRaw = other.schedule;
+    if (otherRaw == null || otherRaw.trim().isEmpty) continue;
+    final otherSlots = _parseDaySlotsGD(otherRaw);
+    for (final entry in mySlots.entries) {
+      final otherRanges = otherSlots[entry.key];
+      if (otherRanges == null) continue;
+      for (final mine in entry.value) {
+        for (final theirs in otherRanges) {
+          if (mine.$1 < theirs.$2 && theirs.$1 < mine.$2) return other;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // تعديل المجموعة (bottom sheet بسيط — يعيد استخدام _GroupFormSheet من groups_page)
 // ─────────────────────────────────────────────────────────────────────────────
 class _GroupEditSheet extends StatefulWidget {
   final Group group;
+  final List<Group> existingGroups;
   final Future<bool> Function(Group) onSave;
-  const _GroupEditSheet({required this.group, required this.onSave});
+  const _GroupEditSheet({
+    required this.group,
+    required this.existingGroups,
+    required this.onSave,
+  });
 
   @override
   State<_GroupEditSheet> createState() => _GroupEditSheetState();
@@ -1159,6 +1213,16 @@ class _GroupEditSheetState extends State<_GroupEditSheet> {
     final scheduleErr = _validateScheduleText(_scheduleCtrl.text);
     if (scheduleErr != null) {
       ToastHelper.error(scheduleErr);
+      return;
+    }
+    final others = widget.existingGroups
+        .where((g) => g.id != widget.group.id)
+        .toList();
+    final conflictingGroup =
+        _findConflictingGroupGD(_scheduleCtrl.text, others);
+    if (conflictingGroup != null) {
+      ToastHelper.error(
+          'الميعاد ده متعارض مع ميعاد مجموعة "${conflictingGroup.name}"');
       return;
     }
 
