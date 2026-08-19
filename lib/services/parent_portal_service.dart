@@ -92,21 +92,41 @@ class ParentPortalService {
     }, SetOptions(merge: true));
   }
 
-  /// بينشر ملخص طالب واحد. بيتجاهل بصمت لو الميزة مش مفعّلة أو رقم
-  /// ولي الأمر مش موجود/قصير — مفيش داعي نزعج المستخدم برسائل خطأ
-  /// لعملية خلفية اختيارية.
+  /// بيبني بيانات ملخص طالب (من غير أي كتابة) — مستخدمة في النشر الفردي
+  /// والجماعي مع بعض، عشان منكررش نفس منطق الحساب في مكانين.
+  Map<String, dynamic>? _buildSummaryData(
+    Student student, {
+    required int present,
+    required int absent,
+    required double totalPaid,
+    required String groupName,
+  }) {
+    final last4 = _last4(student.guardianPhone);
+    if (last4 == null) return null;
+    final code = student.code.toUpperCase();
+    if (code.isEmpty) return null;
+    return {
+      '_docId': '${code}_$last4',
+      'name': student.name,
+      'groupName': groupName,
+      'present': present,
+      'absent': absent,
+      'totalPaid': totalPaid,
+      'price': student.price,
+      'exemptPercent': student.exemptPercent,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  /// بينشر ملخص طالب واحد — بتُستخدم بعد إضافة/تعديل/حذف فردي (حضور،
+  /// دفعة، بيانات طالب)، مش للنشر الجماعي (شوف publishAllStudents).
+  /// بتتجاهل بصمت لو الميزة مش مفعّلة أو رقم ولي الأمر مش موجود/قصير —
+  /// مفيش داعي نزعج المستخدم برسائل خطأ لعملية خلفية اختيارية.
   Future<void> pushStudentSummary(int studentId) async {
     if (!LicenseController.to.parentPortalEnabled.value) return;
     try {
       final student = await _dbService.getStudent(studentId);
       if (student == null) return;
-      final last4 = _last4(student.guardianPhone);
-      if (last4 == null) return;
-      // صفحة المتابعة العامة بتحوّل الكود اللي ولي الأمر بيكتبه لحروف
-      // كبيرة قبل البحث — لازم نطابقها هنا، وإلا كود بحروف صغيرة (لو
-      // كود المجموعة نفسه متكتب بحروف صغيرة) مستحيل يتطابق مع أي بحث.
-      final code = student.code.toUpperCase();
-      if (code.isEmpty) return;
 
       final attendanceRecords = await _dbService.getAttendanceByStudent(studentId);
       final present =
@@ -118,27 +138,23 @@ class ParentPortalService {
       final totalPaid = payments.fold<double>(0, (s, p) => s + p.amount);
 
       final group = await _dbService.getGroup(student.groupId);
+      final data = _buildSummaryData(student,
+          present: present,
+          absent: absent,
+          totalPaid: totalPaid,
+          groupName: group?.name ?? '');
+      if (data == null) return;
+      final docId = data.remove('_docId') as String;
 
       await _ensureAuth();
       final slug = await ensureSlug();
-      await _publishProfile(slug);
 
-      final docId = '${code}_$last4';
       await _db
           .collection('parent_portal')
           .doc(slug)
           .collection('students')
           .doc(docId)
-          .set({
-        'name': student.name,
-        'groupName': group?.name ?? '',
-        'present': present,
-        'absent': absent,
-        'totalPaid': totalPaid,
-        'price': student.price,
-        'exemptPercent': student.exemptPercent,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+          .set(data);
     } catch (_) {
       // best-effort — مش هنعطّل أي حاجة في التطبيق بسبب فشل نشر خلفي
     }
@@ -168,17 +184,70 @@ class ParentPortalService {
 
   /// نشر شامل لكل الطلاب — بيتنادى أول مرة الميزة تتفعّل، أو يدويًا من
   /// الإعدادات لو المدرس عايز "يحدّث كل حاجة دلوقتي".
+  ///
+  /// عمدًا مش بينادي pushStudentSummary لكل طالب لوحده — كانت بتعمل
+  /// طلب شبكة منفصل (زائد قراءة قاعدة بيانات منفصلة للحضور/المدفوعات)
+  /// لكل طالب، يعني لمدرس عنده 100+ طالب كانت بتاخد دقايق وممكن تتقطع
+  /// في النص (يسيب الطلاب اللي بعدها من غير نشر خالص). هنا بنقرا كل
+  /// الحضور/المدفوعات/المجموعات مرة واحدة بس، ونبعت التحديثات كلها في
+  /// دفعة Firestore واحدة (WriteBatch) — طلب شبكة واحد تقريبًا بدل
+  /// مئات.
   Future<int> publishAllStudents() async {
     if (!LicenseController.to.parentPortalEnabled.value) return 0;
     await publishProfile();
+
     final students = await _dbService.getAllStudents();
+    final allAttendance = await _dbService.getAllAttendance();
+    final allPayments = await _dbService.getAllPayments();
+    final allGroups = await _dbService.getAllGroups();
+
+    final groupNameById = {for (final g in allGroups) g.id: g.name};
+    final presentByStudent = <int, int>{};
+    final absentByStudent = <int, int>{};
+    for (final a in allAttendance) {
+      if (a.status == ATTENDANCE_PRESENT) {
+        presentByStudent.update(a.studentId, (v) => v + 1, ifAbsent: () => 1);
+      } else if (a.status == ATTENDANCE_ABSENT) {
+        absentByStudent.update(a.studentId, (v) => v + 1, ifAbsent: () => 1);
+      }
+    }
+    final paidByStudent = <int, double>{};
+    for (final p in allPayments) {
+      paidByStudent.update(p.studentId, (v) => v + p.amount,
+          ifAbsent: () => p.amount);
+    }
+
+    await _ensureAuth();
+    final slug = await ensureSlug();
+    final col = _db.collection('parent_portal').doc(slug).collection('students');
+
+    // Firestore بتحدّد أقصى 500 عملية لكل batch — بنقسّم كل 400 طالب
+    // لدفعة منفصلة عشان نفضل بعيد عن الحد الأقصى بهامش أمان.
+    var batch = _db.batch();
+    var opsInBatch = 0;
     var count = 0;
     for (final s in students) {
       if (s.id == null) continue;
-      final before = _last4(s.guardianPhone);
-      if (before == null) continue;
-      await pushStudentSummary(s.id!);
+      final data = _buildSummaryData(
+        s,
+        present: presentByStudent[s.id] ?? 0,
+        absent: absentByStudent[s.id] ?? 0,
+        totalPaid: paidByStudent[s.id] ?? 0,
+        groupName: groupNameById[s.groupId] ?? '',
+      );
+      if (data == null) continue;
+      final docId = data.remove('_docId') as String;
+      batch.set(col.doc(docId), data);
+      opsInBatch++;
       count++;
+      if (opsInBatch >= 400) {
+        await batch.commit();
+        batch = _db.batch();
+        opsInBatch = 0;
+      }
+    }
+    if (opsInBatch > 0) {
+      await batch.commit();
     }
     return count;
   }
