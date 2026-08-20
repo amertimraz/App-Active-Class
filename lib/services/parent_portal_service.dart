@@ -30,8 +30,23 @@ class ParentPortalService {
   FirebaseFirestore get _db => FirebaseFirestore.instance;
   FirebaseAuth get _auth => FirebaseAuth.instance;
   final DatabaseService _dbService = DatabaseService();
+  Worker? _profileWorker;
 
   static const String _kSlugKey = 'parent_portal_slug';
+
+  /// بتتابع اسم/جنس المدرس وتعيد النشر أول ما يتغيّروا — من غيرها،
+  /// البروفايل كان بينشر مرة واحدة بس أول ما شاشة الإعدادات تتفتح،
+  /// فلو المدرس غيّر اسمه بعد كده، صفحة المتابعة تفضل باسمه القديم
+  /// لحد ما يقفل الإعدادات ويفتحها تاني بالصدفة.
+  void _watchProfileChanges() {
+    if (_profileWorker != null) return;
+    if (!Get.isRegistered<SettingsController>()) return;
+    final settings = Get.find<SettingsController>();
+    _profileWorker = everAll(
+      [settings.teacherFullName, settings.teacherGender],
+      (_) => publishProfile(),
+    );
+  }
 
   Future<void> _ensureAuth() async {
     if (_auth.currentUser == null) {
@@ -73,6 +88,7 @@ class ParentPortalService {
   /// تفضل من غير اسم المدرس وكأنها رابط عام مش رابط المدرس ده تحديدًا.
   Future<void> publishProfile() async {
     if (!LicenseController.to.parentPortalEnabled.value) return;
+    _watchProfileChanges();
     try {
       await _ensureAuth();
       final slug = await ensureSlug();
