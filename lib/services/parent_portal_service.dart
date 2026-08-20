@@ -164,6 +164,10 @@ class ParentPortalService {
 
       await _ensureAuth();
       final slug = await ensureSlug();
+      // لازم مستند البروفايل يكون موجود الأول — قاعدة أمان الطلاب
+      // بتتحقق منه بـ get()، ولو مش موجود أصلاً الكتابة بترفض. الكتابة
+      // دي merge رخيصة لو كانت موجودة بالفعل، مش إعادة إنشاء.
+      await _publishProfile(slug);
 
       await _db
           .collection('parent_portal')
