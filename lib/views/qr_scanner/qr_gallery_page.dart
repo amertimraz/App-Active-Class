@@ -412,6 +412,12 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
       } catch (_) {}
     }
 
+    // MediaStore.saveFile() يحذف الملف المؤقت الأصلي بعد نسخه إلى
+    // التنزيلات، فلازم نعيد كتابته حتى تقدر شاشة المشاركة تستخدمه.
+    if (savedToDownloads && !await tmpFile.exists()) {
+      await tmpFile.writeAsBytes(bytes, flush: true);
+    }
+
     if (!mounted) return;
     if (savedToDownloads) {
       ToastHelper.success('تم حفظ PDF في التنزيلات ✓');
@@ -484,6 +490,12 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
           );
           savedToDownloads = info?.uri != null;
         } catch (_) {}
+      }
+
+      // MediaStore.saveFile() يحذف الملف المؤقت الأصلي بعد نسخه إلى
+      // التنزيلات، فلازم نعيد كتابته حتى تقدر شاشة المشاركة تستخدمه.
+      if (savedToDownloads && !await tmpFile.exists()) {
+        await tmpFile.writeAsBytes(zipBytes, flush: true);
       }
 
       if (!mounted) return;
@@ -2013,9 +2025,11 @@ Future<Uint8List> _buildQrPdfBytes(_QrPdfBuildArgs args) async {
       build: (ctx) {
         const cardSpacing = 8.0;
         final availableWidth = PdfPageFormat.a4.width - args.pageMargin * 2;
+        final availableHeight = PdfPageFormat.a4.height - args.pageMargin * 2;
         final cellWidth =
             (availableWidth - cardSpacing * (args.perRow - 1)) / args.perRow;
-        final cardHeight = cellWidth * 1.5;
+        final cardHeight =
+            (availableHeight - cardSpacing * (args.perCol - 1)) / args.perCol;
         return pw.Wrap(
           spacing: cardSpacing,
           runSpacing: cardSpacing,
