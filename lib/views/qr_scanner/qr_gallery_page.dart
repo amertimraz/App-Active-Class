@@ -1952,10 +1952,18 @@ class _ShareResultSheet extends StatelessWidget {
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: () async {
-                await Share.shareXFiles(
-                  [XFile(filePath, mimeType: mimeType)],
-                  subject: fileName,
-                );
+                try {
+                  if (!await File(filePath).exists()) {
+                    ToastHelper.error('الملف لم يعد موجودًا، جرّب تصدّره تاني');
+                    return;
+                  }
+                  await Share.shareXFiles(
+                    [XFile(filePath, mimeType: mimeType)],
+                    subject: fileName,
+                  );
+                } catch (e) {
+                  ToastHelper.error('تعذرت المشاركة: $e');
+                }
               },
               icon: const Icon(Icons.share_rounded),
               label: const Text('مشاركة الملف',
