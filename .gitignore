@@ -83,4 +83,8 @@ build
 # نسخ APK/AAB مبنية يدويًا — بتترفع للسيرفر مباشرة، مش لازم في الـ git
 /*.apk
 /*.aab
+/release_assets/
+
+# Firebase config — فيه API key، ملهوش داعي في الريبو
+google-services.json
 
