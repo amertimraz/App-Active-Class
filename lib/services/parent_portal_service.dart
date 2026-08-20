@@ -20,6 +20,8 @@ import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/models/attendance_model.dart';
+import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/services/database_service.dart';
 
 class ParentPortalService {
@@ -110,17 +112,32 @@ class ParentPortalService {
 
   /// بيبني بيانات ملخص طالب (من غير أي كتابة) — مستخدمة في النشر الفردي
   /// والجماعي مع بعض، عشان منكررش نفس منطق الحساب في مكانين.
+  ///
+  /// بيبعت آخر 20 سجل حضور وآخر 15 دفعة بس (مش التاريخ كله) — عشان
+  /// المستند يفضل خفيف حتى لطالب قديم عنده سنين من السجلات، ولأن
+  /// ولي الأمر أصلاً مهتم بالأحدث مش بأرشيف كامل.
   Map<String, dynamic>? _buildSummaryData(
     Student student, {
-    required int present,
-    required int absent,
-    required double totalPaid,
+    required List<Attendance> attendance,
+    required List<Payment> payments,
     required String groupName,
   }) {
     final last4 = _last4(student.guardianPhone);
     if (last4 == null) return null;
     final code = student.code.toUpperCase();
     if (code.isEmpty) return null;
+
+    final present =
+        attendance.where((a) => a.status == ATTENDANCE_PRESENT).length;
+    final absent =
+        attendance.where((a) => a.status == ATTENDANCE_ABSENT).length;
+    final totalPaid = payments.fold<double>(0, (s, p) => s + p.amount);
+
+    final sortedAttendance = [...attendance]
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final sortedPayments = [...payments]
+      ..sort((a, b) => b.date.compareTo(a.date));
+
     return {
       '_docId': '${code}_$last4',
       'name': student.name,
@@ -130,6 +147,15 @@ class ParentPortalService {
       'totalPaid': totalPaid,
       'price': student.price,
       'exemptPercent': student.exemptPercent,
+      'attendanceHistory': sortedAttendance.take(20).map((a) => {
+            'date': a.date.toIso8601String(),
+            'status': a.status,
+          }).toList(),
+      'paymentHistory': sortedPayments.take(15).map((p) => {
+            'date': p.date.toIso8601String(),
+            'amount': p.amount,
+            'note': p.note ?? '',
+          }).toList(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -145,19 +171,11 @@ class ParentPortalService {
       if (student == null) return;
 
       final attendanceRecords = await _dbService.getAttendanceByStudent(studentId);
-      final present =
-          attendanceRecords.where((a) => a.status == ATTENDANCE_PRESENT).length;
-      final absent =
-          attendanceRecords.where((a) => a.status == ATTENDANCE_ABSENT).length;
-
       final payments = await _dbService.getPaymentsByStudent(studentId);
-      final totalPaid = payments.fold<double>(0, (s, p) => s + p.amount);
-
       final group = await _dbService.getGroup(student.groupId);
       final data = _buildSummaryData(student,
-          present: present,
-          absent: absent,
-          totalPaid: totalPaid,
+          attendance: attendanceRecords,
+          payments: payments,
           groupName: group?.name ?? '');
       if (data == null) return;
       final docId = data.remove('_docId') as String;
@@ -222,19 +240,13 @@ class ParentPortalService {
     final allGroups = await _dbService.getAllGroups();
 
     final groupNameById = {for (final g in allGroups) g.id: g.name};
-    final presentByStudent = <int, int>{};
-    final absentByStudent = <int, int>{};
+    final attendanceByStudent = <int, List<Attendance>>{};
     for (final a in allAttendance) {
-      if (a.status == ATTENDANCE_PRESENT) {
-        presentByStudent.update(a.studentId, (v) => v + 1, ifAbsent: () => 1);
-      } else if (a.status == ATTENDANCE_ABSENT) {
-        absentByStudent.update(a.studentId, (v) => v + 1, ifAbsent: () => 1);
-      }
+      attendanceByStudent.putIfAbsent(a.studentId, () => []).add(a);
     }
-    final paidByStudent = <int, double>{};
+    final paymentsByStudent = <int, List<Payment>>{};
     for (final p in allPayments) {
-      paidByStudent.update(p.studentId, (v) => v + p.amount,
-          ifAbsent: () => p.amount);
+      paymentsByStudent.putIfAbsent(p.studentId, () => []).add(p);
     }
 
     await _ensureAuth();
@@ -250,9 +262,8 @@ class ParentPortalService {
       if (s.id == null) continue;
       final data = _buildSummaryData(
         s,
-        present: presentByStudent[s.id] ?? 0,
-        absent: absentByStudent[s.id] ?? 0,
-        totalPaid: paidByStudent[s.id] ?? 0,
+        attendance: attendanceByStudent[s.id] ?? const [],
+        payments: paymentsByStudent[s.id] ?? const [],
         groupName: groupNameById[s.groupId] ?? '',
       );
       if (data == null) continue;

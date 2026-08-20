@@ -8,45 +8,43 @@
 <meta name="robots" content="noindex" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
   :root{
     --primary:#10B981;
     --primary-dark:#059669;
-    --bg:#F7F8FF;
+    --accent:#4F46E5;
+    --bg-top:#ECFDF5;
+    --bg-bottom:#F7F8FF;
     --card-bg:#FFFFFF;
     --text:#111827;
     --text-muted:#6B7280;
     --border:#E5E7EB;
     --danger:#EF4444;
-    --radius:18px;
+    --radius:20px;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;overflow-x:hidden;max-width:100%;}
   body{
     font-family:'Cairo', sans-serif;
-    background:var(--bg);
+    background:linear-gradient(180deg,var(--bg-top) 0%,var(--bg-bottom) 260px);
     min-height:100vh;
     width:100%;
     color:var(--text);
     display:flex;
     flex-direction:column;
     align-items:center;
-    padding:40px 14px 60px;
+    padding:36px 14px 60px;
   }
-  .wrap{width:100%;max-width:440px;}
+  .wrap{width:100%;max-width:460px;}
 
-  .hero{
-    text-align:center;
-    margin-bottom:22px;
-  }
+  .hero{text-align:center;margin-bottom:22px;}
   .hero-icon{
-    width:64px;height:64px;border-radius:50%;
+    width:60px;height:60px;border-radius:50%;
     background:linear-gradient(135deg,var(--primary),var(--primary-dark));
     display:flex;align-items:center;justify-content:center;
-    margin:0 auto 12px;
-    font-size:28px;
-    box-shadow:0 8px 20px rgba(16,185,129,.28);
+    margin:0 auto 12px;font-size:26px;color:#fff;
+    box-shadow:0 8px 22px rgba(16,185,129,.3);
   }
   .hero-title{font-size:18px;font-weight:800;margin:0 0 4px;}
   .hero-sub{font-size:13px;color:var(--text-muted);margin:0;}
@@ -54,59 +52,98 @@
   .card{
     background:var(--card-bg);
     border-radius:var(--radius);
-    box-shadow:0 10px 30px rgba(17,24,39,.06);
+    box-shadow:0 12px 34px rgba(17,24,39,.07);
     border:1px solid var(--border);
     padding:22px;
+    animation:fadeIn .25s ease;
   }
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px;}
   .field input{
-    width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid var(--border);
-    font-family:'Cairo';font-size:15px;background:#F9FAFB;
+    width:100%;padding:13px 14px;border-radius:12px;border:1.5px solid var(--border);
+    font-family:'Cairo';font-size:16px;background:#F9FAFB;
     text-align:center;letter-spacing:1px;
   }
   .field input:focus{outline:none;border-color:var(--primary);background:#fff;}
   .btn{
-    width:100%;padding:13px;border-radius:12px;border:none;
-    background:var(--primary);color:#fff;font-family:'Cairo';font-weight:800;font-size:15px;
-    cursor:pointer;transition:opacity .15s;
+    width:100%;padding:14px;border-radius:12px;border:none;
+    background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+    color:#fff;font-family:'Cairo';font-weight:800;font-size:15px;
+    cursor:pointer;transition:opacity .15s,transform .1s;
   }
   .btn:disabled{opacity:.6;cursor:default;}
-  .btn:not(:disabled):active{opacity:.85;}
+  .btn:not(:disabled):active{opacity:.85;transform:scale(.99);}
   .err{
     background:#FEF2F2;border:1px solid #FECACA;color:var(--danger);
     padding:10px 12px;border-radius:10px;font-size:12px;margin-bottom:14px;text-align:center;
   }
 
-  /* ── نتيجة الطالب ──────────────── */
-  .result-name{font-size:19px;font-weight:800;margin:0 0 2px;}
-  .result-group{font-size:12px;color:var(--text-muted);margin:0 0 18px;}
-  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+  /* ── ترحيب ولي الأمر ──────────────── */
+  .welcome-row{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
+  .avatar{
+    width:52px;height:52px;border-radius:50%;flex-shrink:0;
+    background:linear-gradient(135deg,var(--accent),#6366F1);
+    color:#fff;display:flex;align-items:center;justify-content:center;
+    font-size:20px;font-weight:800;
+  }
+  .welcome-title{font-size:13px;color:var(--text-muted);margin:0 0 2px;}
+  .result-name{font-size:19px;font-weight:900;margin:0;}
+  .result-group{
+    display:inline-block;margin-top:4px;font-size:11px;font-weight:700;
+    color:var(--accent);background:rgba(79,70,229,.08);
+    padding:3px 10px;border-radius:20px;
+  }
+
+  .section-title{
+    font-size:12px;font-weight:800;color:var(--text-muted);
+    margin:20px 0 10px;display:flex;align-items:center;gap:6px;
+  }
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .stat{
-    background:#F9FAFB;border-radius:12px;padding:14px 10px;text-align:center;
+    background:#F9FAFB;border-radius:14px;padding:14px 10px;text-align:center;
     border:1px solid var(--border);
   }
-  .stat .n{font-size:22px;font-weight:900;}
+  .stat .n{font-size:24px;font-weight:900;}
   .stat .l{font-size:11px;color:var(--text-muted);margin-top:2px;}
   .stat.present .n{color:var(--primary);}
   .stat.absent .n{color:var(--danger);}
+
   .money-row{
     display:flex;justify-content:space-between;align-items:center;
-    padding:12px 14px;background:#F9FAFB;border-radius:12px;margin-bottom:8px;
+    padding:13px 14px;background:#F9FAFB;border-radius:12px;margin-bottom:8px;
     font-size:13px;border:1px solid var(--border);
   }
   .money-row b{font-size:15px;}
   .exempt-badge{
     display:inline-block;background:#ECFDF5;color:var(--primary-dark);
-    font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;margin-top:6px;
+    font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;margin-top:8px;
   }
+
+  .history-list{display:flex;flex-direction:column;gap:6px;}
+  .history-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 12px;border-radius:10px;background:#F9FAFB;
+    border:1px solid var(--border);font-size:12.5px;
+  }
+  .history-row .date{color:var(--text);font-weight:700;}
+  .history-row .note{color:var(--text-muted);font-size:11px;margin-top:2px;}
+  .badge-present{color:var(--primary-dark);font-weight:800;font-size:12px;}
+  .badge-absent{color:var(--danger);font-weight:800;font-size:12px;}
+  .amount{color:var(--primary-dark);font-weight:800;font-size:13px;}
+  .empty-hint{
+    text-align:center;font-size:12px;color:var(--text-muted);
+    padding:14px 0;
+  }
+
   .back-btn{
-    display:block;text-align:center;margin-top:16px;font-size:12px;color:var(--text-muted);
+    display:block;text-align:center;margin-top:18px;font-size:12px;color:var(--text-muted);
     text-decoration:none;cursor:pointer;
   }
   .spinner{
-    width:24px;height:24px;border:3px solid #E5E7EB;border-top-color:var(--primary);
-    border-radius:50%;animation:spin .7s linear infinite;margin:20px auto;
+    width:26px;height:26px;border:3px solid #E5E7EB;border-top-color:var(--primary);
+    border-radius:50%;animation:spin .7s linear infinite;margin:24px auto;
   }
   @keyframes spin{to{transform:rotate(360deg);}}
 </style>
@@ -139,6 +176,7 @@
   const card = document.getElementById('card');
   const teacherTitle = document.getElementById('teacherTitle');
   const teacherSub = document.getElementById('teacherSub');
+  const defaultTeacherSub = 'أدخل بيانات ابنك لعرض الحضور والمدفوعات';
 
   function getSlug() {
     const parts = window.location.pathname.split('/').filter(Boolean);
@@ -157,9 +195,17 @@
     return (n ?? 0).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
   }
 
+  function fmtDate(iso){
+    try {
+      return new Date(iso).toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch (e) { return iso; }
+  }
+
   const slug = getSlug();
 
   function renderForm(errorMsg){
+    teacherTitle.textContent = window.__teacherName || 'متابعة الطالب';
+    teacherSub.textContent = defaultTeacherSub;
     card.innerHTML = `
       ${errorMsg ? `<div class="err">${escapeHtml(errorMsg)}</div>` : ''}
       <div class="field">
@@ -213,17 +259,60 @@
     const effectivePrice = price * (1 - exemptPercent / 100);
     const totalPaid = Number(d.totalPaid) || 0;
     const remaining = Math.max(0, effectivePrice - totalPaid);
+    const initial = (d.name || '؟').trim().charAt(0);
+    const attendanceHistory = Array.isArray(d.attendanceHistory) ? d.attendanceHistory : [];
+    const paymentHistory = Array.isArray(d.paymentHistory) ? d.paymentHistory : [];
+
+    teacherTitle.textContent = `أهلًا بك، ولي أمر ${d.name}`;
+    teacherSub.textContent = 'تابع حضور ومدفوعات ابنك أول بأول';
+
+    const attendanceRows = attendanceHistory.length
+      ? attendanceHistory.map(a => `
+          <div class="history-row">
+            <span class="date">${fmtDate(a.date)}</span>
+            <span class="${a.status === 'حاضر' ? 'badge-present' : 'badge-absent'}">
+              ${a.status === 'حاضر' ? '✅ حاضر' : '❌ غائب'}
+            </span>
+          </div>`).join('')
+      : `<div class="empty-hint">لا توجد سجلات حضور بعد</div>`;
+
+    const paymentRows = paymentHistory.length
+      ? paymentHistory.map(p => `
+          <div class="history-row">
+            <div>
+              <div class="date">${fmtDate(p.date)}</div>
+              ${p.note ? `<div class="note">${escapeHtml(p.note)}</div>` : ''}
+            </div>
+            <span class="amount">${fmtMoney(p.amount)} جنيه</span>
+          </div>`).join('')
+      : `<div class="empty-hint">لا توجد مدفوعات بعد</div>`;
 
     card.innerHTML = `
-      <p class="result-name">${escapeHtml(d.name)}</p>
-      <p class="result-group">${escapeHtml(d.groupName || '')}</p>
-      <div class="stat-grid">
-        <div class="stat present"><div class="n">${d.present ?? 0}</div><div class="l">حاضر</div></div>
-        <div class="stat absent"><div class="n">${d.absent ?? 0}</div><div class="l">غائب</div></div>
+      <div class="welcome-row">
+        <div class="avatar">${escapeHtml(initial)}</div>
+        <div>
+          <p class="welcome-title">بيانات الطالب</p>
+          <p class="result-name">${escapeHtml(d.name)}</p>
+          ${d.groupName ? `<span class="result-group">${escapeHtml(d.groupName)}</span>` : ''}
+        </div>
       </div>
+
+      <div class="stat-grid">
+        <div class="stat present"><div class="n">${d.present ?? 0}</div><div class="l">حصص حاضرة</div></div>
+        <div class="stat absent"><div class="n">${d.absent ?? 0}</div><div class="l">حصص غائبة</div></div>
+      </div>
+
+      <div class="section-title">💰 الحالة المالية</div>
       <div class="money-row"><span>إجمالي المدفوع</span><b>${fmtMoney(totalPaid)} جنيه</b></div>
       ${effectivePrice > 0 ? `<div class="money-row"><span>المتبقي</span><b style="color:${remaining > 0 ? 'var(--danger)' : 'var(--primary-dark)'}">${fmtMoney(remaining)} جنيه</b></div>` : ''}
-      ${exemptPercent > 0 ? `<div style="text-align:center;"><span class="exempt-badge">إعفاء ${exemptPercent}%</span></div>` : ''}
+      ${exemptPercent > 0 ? `<div style="text-align:center;"><span class="exempt-badge">🎗️ إعفاء ${exemptPercent}%</span></div>` : ''}
+
+      <div class="section-title">🧾 آخر المدفوعات</div>
+      <div class="history-list">${paymentRows}</div>
+
+      <div class="section-title">📅 آخر الحصص</div>
+      <div class="history-list">${attendanceRows}</div>
+
       <a class="back-btn" id="backBtn">🔍 البحث عن طالب تاني</a>
     `;
     document.getElementById('backBtn').onclick = () => renderForm();
@@ -238,8 +327,7 @@
         const title = p.teacherGender === 'female' ? 'مس' : 'مستر';
         const name = p.teacherName ? `${title} ${p.teacherName}` : '';
         if (name) {
-          teacherTitle.textContent = name;
-          teacherSub.textContent = 'أدخل بيانات ابنك لعرض الحضور والمدفوعات';
+          window.__teacherName = name;
           document.getElementById('pageTitle').textContent = `متابعة الطلاب — ${name}`;
         }
       }
