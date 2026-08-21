@@ -413,8 +413,11 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
     }
 
     // MediaStore.saveFile() يحذف الملف المؤقت الأصلي بعد نسخه إلى
-    // التنزيلات، فلازم نعيد كتابته حتى تقدر شاشة المشاركة تستخدمه.
-    if (savedToDownloads && !await tmpFile.exists()) {
+    // التنزيلات — بغض النظر عن قيمة savedToDownloads (اللي ممكن
+    // تطلع غلط في نسخة الـ release بسبب تشويه أسماء الحقول عند تصغير
+    // الكود؛ ده بيكسر تحويل JSON بتاع المكتبة). فبنتأكد من وجود
+    // الملف مباشرة بدل ما نعتمد على الفلاج.
+    if (!await tmpFile.exists()) {
       await tmpFile.writeAsBytes(bytes, flush: true);
     }
 
@@ -493,8 +496,11 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
       }
 
       // MediaStore.saveFile() يحذف الملف المؤقت الأصلي بعد نسخه إلى
-      // التنزيلات، فلازم نعيد كتابته حتى تقدر شاشة المشاركة تستخدمه.
-      if (savedToDownloads && !await tmpFile.exists()) {
+      // التنزيلات — بغض النظر عن قيمة savedToDownloads (اللي ممكن
+      // تطلع غلط في نسخة الـ release بسبب تشويه أسماء الحقول عند تصغير
+      // الكود؛ ده بيكسر تحويل JSON بتاع المكتبة). فبنتأكد من وجود
+      // الملف مباشرة بدل ما نعتمد على الفلاج.
+      if (!await tmpFile.exists()) {
         await tmpFile.writeAsBytes(zipBytes, flush: true);
       }
 
