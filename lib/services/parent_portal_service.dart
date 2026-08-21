@@ -21,6 +21,7 @@ import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
+import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/services/database_service.dart';
 
@@ -120,6 +121,7 @@ class ParentPortalService {
     Student student, {
     required List<Attendance> attendance,
     required List<Payment> payments,
+    required List<Homework> homework,
     required String groupName,
   }) {
     final last4 = _last4(student.guardianPhone);
@@ -132,10 +134,15 @@ class ParentPortalService {
     final absent =
         attendance.where((a) => a.status == ATTENDANCE_ABSENT).length;
     final totalPaid = payments.fold<double>(0, (s, p) => s + p.amount);
+    final homeworkDone = homework.where((h) => h.status == HOMEWORK_DONE).length;
+    final homeworkNotDone =
+        homework.where((h) => h.status == HOMEWORK_NOT_DONE).length;
 
     final sortedAttendance = [...attendance]
       ..sort((a, b) => b.date.compareTo(a.date));
     final sortedPayments = [...payments]
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final sortedHomework = [...homework]
       ..sort((a, b) => b.date.compareTo(a.date));
 
     return {
@@ -147,6 +154,8 @@ class ParentPortalService {
       'totalPaid': totalPaid,
       'price': student.price,
       'exemptPercent': student.exemptPercent,
+      'homeworkDone': homeworkDone,
+      'homeworkNotDone': homeworkNotDone,
       'attendanceHistory': sortedAttendance.take(20).map((a) => {
             'date': a.date.toIso8601String(),
             'status': a.status,
@@ -155,6 +164,10 @@ class ParentPortalService {
             'date': p.date.toIso8601String(),
             'amount': p.amount,
             'note': p.note ?? '',
+          }).toList(),
+      'homeworkHistory': sortedHomework.take(20).map((h) => {
+            'date': h.date.toIso8601String(),
+            'status': h.status,
           }).toList(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -172,10 +185,12 @@ class ParentPortalService {
 
       final attendanceRecords = await _dbService.getAttendanceByStudent(studentId);
       final payments = await _dbService.getPaymentsByStudent(studentId);
+      final homework = await _dbService.getHomeworkByStudent(studentId);
       final group = await _dbService.getGroup(student.groupId);
       final data = _buildSummaryData(student,
           attendance: attendanceRecords,
           payments: payments,
+          homework: homework,
           groupName: group?.name ?? '');
       if (data == null) return;
       final docId = data.remove('_docId') as String;
@@ -237,6 +252,7 @@ class ParentPortalService {
     final students = await _dbService.getAllStudents();
     final allAttendance = await _dbService.getAllAttendance();
     final allPayments = await _dbService.getAllPayments();
+    final allHomework = await _dbService.getAllHomework();
     final allGroups = await _dbService.getAllGroups();
 
     final groupNameById = {for (final g in allGroups) g.id: g.name};
@@ -247,6 +263,10 @@ class ParentPortalService {
     final paymentsByStudent = <int, List<Payment>>{};
     for (final p in allPayments) {
       paymentsByStudent.putIfAbsent(p.studentId, () => []).add(p);
+    }
+    final homeworkByStudent = <int, List<Homework>>{};
+    for (final h in allHomework) {
+      homeworkByStudent.putIfAbsent(h.studentId, () => []).add(h);
     }
 
     await _ensureAuth();
@@ -264,6 +284,7 @@ class ParentPortalService {
         s,
         attendance: attendanceByStudent[s.id] ?? const [],
         payments: paymentsByStudent[s.id] ?? const [],
+        homework: homeworkByStudent[s.id] ?? const [],
         groupName: groupNameById[s.groupId] ?? '',
       );
       if (data == null) continue;

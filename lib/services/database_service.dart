@@ -8,6 +8,7 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
+import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
@@ -33,6 +34,11 @@ class DataSummary {
 const String _attendanceDayUniqueIndexSql = '''
   CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_ATTENDANCE}_${COL_ATTENDANCE_STUDENT_ID}_day
   ON $TABLE_ATTENDANCE($COL_ATTENDANCE_STUDENT_ID, substr($COL_ATTENDANCE_DATE, 1, 10))
+''';
+
+const String _homeworkDayUniqueIndexSql = '''
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_HOMEWORK}_${COL_HOMEWORK_STUDENT_ID}_day
+  ON $TABLE_HOMEWORK($COL_HOMEWORK_STUDENT_ID, substr($COL_HOMEWORK_DATE, 1, 10))
 ''';
 
 class DatabaseService {
@@ -122,6 +128,22 @@ class DatabaseService {
     // ما بيمنعش فعليًا تكرار حضور نفس الطالب في نفس اليوم. الفهرس ده بياخد
     // أول 10 حروف بس من التاريخ (yyyy-MM-dd) فيمنع التكرار على مستوى اليوم فعليًا.
     await db.execute(_attendanceDayUniqueIndexSql);
+
+    // الواجب — تسجيل حالة (عمل/لم يعمل) بس لكل طالب في كل تاريخ، من غير
+    // نص الواجب نفسه (ده فاضل في الكشكول الورقي عمدًا، مش جوه التطبيق).
+    await db.execute('''
+      CREATE TABLE $TABLE_HOMEWORK (
+        $COL_HOMEWORK_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+        $COL_HOMEWORK_STUDENT_ID INTEGER NOT NULL,
+        $COL_HOMEWORK_DATE TEXT NOT NULL,
+        $COL_HOMEWORK_STATUS TEXT NOT NULL CHECK($COL_HOMEWORK_STATUS IN ('$HOMEWORK_DONE', '$HOMEWORK_NOT_DONE')),
+        $COL_HOMEWORK_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
+        $COL_SYNC_UPDATED_AT TEXT,
+        $COL_SYNC_REMOTE_ID TEXT,
+        FOREIGN KEY($COL_HOMEWORK_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(_homeworkDayUniqueIndexSql);
 
     // Payments
     await db.execute('''
@@ -363,6 +385,21 @@ class DatabaseService {
         )
       ''');
       await db.execute(_attendanceDayUniqueIndexSql);
+    }
+    if (oldVersion < 15) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $TABLE_HOMEWORK (
+          $COL_HOMEWORK_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+          $COL_HOMEWORK_STUDENT_ID INTEGER NOT NULL,
+          $COL_HOMEWORK_DATE TEXT NOT NULL,
+          $COL_HOMEWORK_STATUS TEXT NOT NULL CHECK($COL_HOMEWORK_STATUS IN ('$HOMEWORK_DONE', '$HOMEWORK_NOT_DONE')),
+          $COL_HOMEWORK_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
+          $COL_SYNC_UPDATED_AT TEXT,
+          $COL_SYNC_REMOTE_ID TEXT,
+          FOREIGN KEY($COL_HOMEWORK_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
+        )
+      ''');
+      await db.execute(_homeworkDayUniqueIndexSql);
     }
   }
 
@@ -853,6 +890,58 @@ class DatabaseService {
     _notifyChanged();
     await _queueDelete(TABLE_ATTENDANCE, id, remoteId);
     return n;
+  }
+
+  // ========== HOMEWORK ==========
+  // ملحوظة: عمدًا مش جوّه سجل مزامنة وضع الفريق (_queueSync) دلوقتي —
+  // ميزة جديدة، لو المدرس عايز المساعد يشوف حالة الواجب كمان لازم
+  // نضيفها لجدول المزامنة المشتركة كمهمة منفصلة لاحقًا.
+  Future<int> insertHomework(Homework homework) async {
+    final db = await database;
+    final map = homework.toMap();
+    final id = await db.insert(TABLE_HOMEWORK, map);
+    _notifyChanged();
+    return id;
+  }
+
+  Future<int> updateHomework(Homework homework) async {
+    final db = await database;
+    final n = await db.update(
+      TABLE_HOMEWORK,
+      homework.toMap(),
+      where: '$COL_HOMEWORK_ID = ?',
+      whereArgs: [homework.id],
+    );
+    _notifyChanged();
+    return n;
+  }
+
+  Future<int> deleteHomework(int id) async {
+    final db = await database;
+    final n = await db.delete(
+      TABLE_HOMEWORK,
+      where: '$COL_HOMEWORK_ID = ?',
+      whereArgs: [id],
+    );
+    _notifyChanged();
+    return n;
+  }
+
+  Future<List<Homework>> getHomeworkByStudent(int studentId) async {
+    final db = await database;
+    final result = await db.query(
+      TABLE_HOMEWORK,
+      where: '$COL_HOMEWORK_STUDENT_ID = ?',
+      whereArgs: [studentId],
+      orderBy: '$COL_HOMEWORK_DATE DESC',
+    );
+    return result.map((map) => Homework.fromMap(map)).toList();
+  }
+
+  Future<List<Homework>> getAllHomework() async {
+    final db = await database;
+    final result = await db.query(TABLE_HOMEWORK, orderBy: '$COL_HOMEWORK_DATE DESC');
+    return result.map((map) => Homework.fromMap(map)).toList();
   }
 
   // ========== PAYMENTS ==========

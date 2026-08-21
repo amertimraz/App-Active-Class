@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 14;
+const int DATABASE_VERSION = 15;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -122,6 +122,17 @@ const String COL_ATTENDANCE_DATE = 'date';
 const String COL_ATTENDANCE_STATUS = 'status';
 const String COL_ATTENDANCE_NOTES = 'notes';
 const String COL_ATTENDANCE_CREATED_AT = 'created_at';
+
+// Column Names - Homework (تسجيل حالة الواجب بس — النص نفسه بيفضل في
+// الكشكول الورقي، هنا بس بنسجّل عمل/محضرش لكل طالب في كل تاريخ)
+const String TABLE_HOMEWORK = 'homework';
+const String COL_HOMEWORK_ID = 'id';
+const String COL_HOMEWORK_STUDENT_ID = 'student_id';
+const String COL_HOMEWORK_DATE = 'date';
+const String COL_HOMEWORK_STATUS = 'status';
+const String COL_HOMEWORK_CREATED_AT = 'created_at';
+const String HOMEWORK_DONE = 'عمل';
+const String HOMEWORK_NOT_DONE = 'لم يعمل';
 
 // Column Names - Payments
 const String COL_PAYMENT_ID = 'id';

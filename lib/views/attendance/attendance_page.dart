@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/controllers/homework_controller.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
@@ -35,6 +36,7 @@ class _AttendancePageState extends State<AttendancePage>
   final AttendanceController controller   = Get.put(AttendanceController());
   final StudentController studentCtrl     = Get.put(StudentController());
   final GroupController   groupCtrl       = Get.put(GroupController());
+  final HomeworkController homeworkCtrl   = Get.put(HomeworkController());
   late final TabController _tabController;
   DateTime _selectedDay = DateTime.now();
 
@@ -50,6 +52,7 @@ class _AttendancePageState extends State<AttendancePage>
     await groupCtrl.loadGroups();
     await controller.loadAttendance();
     controller.buildStudentMaps(studentCtrl.students);
+    await homeworkCtrl.loadHomework();
   }
 
   @override
@@ -101,6 +104,7 @@ class _AttendancePageState extends State<AttendancePage>
                 controller: controller,
                 studentCtrl: studentCtrl,
                 groupCtrl: groupCtrl,
+                homeworkCtrl: homeworkCtrl,
                 selectedDay: _selectedDay,
                 onDayChanged: (d) => setState(() => _selectedDay = d),
               ),
@@ -159,6 +163,7 @@ class _RegisterTab extends StatelessWidget {
   final AttendanceController controller;
   final StudentController studentCtrl;
   final GroupController   groupCtrl;
+  final HomeworkController homeworkCtrl;
   final DateTime selectedDay;
   final ValueChanged<DateTime> onDayChanged;
 
@@ -166,6 +171,7 @@ class _RegisterTab extends StatelessWidget {
     required this.controller,
     required this.studentCtrl,
     required this.groupCtrl,
+    required this.homeworkCtrl,
     required this.selectedDay,
     required this.onDayChanged,
   });
@@ -257,6 +263,7 @@ class _RegisterTab extends StatelessWidget {
                           attendanceRate: gRate,
                           selectedDay: selectedDay,
                           controller: controller,
+                          homeworkCtrl: homeworkCtrl,
                         );
                       },
                     ),
@@ -420,6 +427,7 @@ class _GroupAttendanceCard extends StatelessWidget {
   final double attendanceRate;
   final DateTime selectedDay;
   final AttendanceController controller;
+  final HomeworkController homeworkCtrl;
 
   const _GroupAttendanceCard({
     required this.isDark,
@@ -432,6 +440,7 @@ class _GroupAttendanceCard extends StatelessWidget {
     required this.attendanceRate,
     required this.selectedDay,
     required this.controller,
+    required this.homeworkCtrl,
   });
 
   @override
@@ -560,11 +569,14 @@ class _GroupAttendanceCard extends StatelessWidget {
                 final status = statusMap[s.id];
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: _StudentAttendanceChip(
-                    student: s,
-                    status: status,
-                    onTap: () => controller.toggleAttendance(s.id!, selectedDay),
-                  ),
+                  child: Obx(() => _StudentAttendanceChip(
+                        student: s,
+                        status: status,
+                        onTap: () => controller.toggleAttendance(s.id!, selectedDay),
+                        homeworkStatus: homeworkCtrl.statusFor(s.id!, selectedDay),
+                        onHomeworkTap: () =>
+                            homeworkCtrl.toggleHomework(s.id!, selectedDay),
+                      )),
                 );
               }).toList(),
             ),
@@ -581,11 +593,15 @@ class _StudentAttendanceChip extends StatelessWidget {
   final Student student;
   final String? status;
   final VoidCallback onTap;
+  final String? homeworkStatus;
+  final VoidCallback? onHomeworkTap;
 
   const _StudentAttendanceChip({
     required this.student,
     required this.status,
     required this.onTap,
+    this.homeworkStatus,
+    this.onHomeworkTap,
   });
 
   @override
@@ -670,7 +686,56 @@ class _StudentAttendanceChip extends StatelessWidget {
             ),
           ),
           Icon(icon, color: color, size: 18),
+          if (onHomeworkTap != null) ...[
+            const SizedBox(width: 6),
+            _HomeworkBadge(status: homeworkStatus, onTap: onHomeworkTap!),
+          ],
         ]),
+      ),
+    );
+  }
+}
+
+// ── شارة صغيرة لحالة الواجب — جنب أيقونة الحضور، نفس ارتفاع الصف بالظبط ──
+class _HomeworkBadge extends StatelessWidget {
+  final String? status;
+  final VoidCallback onTap;
+  const _HomeworkBadge({required this.status, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = status == HOMEWORK_DONE;
+    final isNotDone = status == HOMEWORK_NOT_DONE;
+    final color = isDone
+        ? const Color(0xFF2563EB)
+        : isNotDone
+            ? const Color(0xFFF59E0B)
+            : Colors.grey;
+    final icon = isDone
+        ? Icons.menu_book_rounded
+        : isNotDone
+            ? Icons.menu_book_outlined
+            : Icons.menu_book_outlined;
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Tooltip(
+        message: isDone
+            ? 'عمل الواجب'
+            : isNotDone
+                ? 'لم يعمل الواجب'
+                : 'حالة الواجب — اضغط للتسجيل',
+        child: Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: isDone || isNotDone ? 0.14 : 0.08),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withValues(alpha: 0.35)),
+          ),
+          child: Icon(icon, color: color, size: 14),
+        ),
       ),
     );
   }

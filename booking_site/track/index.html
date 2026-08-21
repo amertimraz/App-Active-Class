@@ -109,6 +109,8 @@
   .stat .l{font-size:11px;color:var(--text-muted);margin-top:2px;}
   .stat.present .n{color:var(--primary);}
   .stat.absent .n{color:var(--danger);}
+  .stat.hw-done .n{color:var(--accent);}
+  .stat.hw-not .n{color:#F59E0B;}
 
   .money-row{
     display:flex;justify-content:space-between;align-items:center;
@@ -131,6 +133,8 @@
   .history-row .note{color:var(--text-muted);font-size:11px;margin-top:2px;}
   .badge-present{color:var(--primary-dark);font-weight:800;font-size:12px;}
   .badge-absent{color:var(--danger);font-weight:800;font-size:12px;}
+  .badge-hw-done{color:var(--accent);font-weight:800;font-size:12px;}
+  .badge-hw-not{color:#F59E0B;font-weight:800;font-size:12px;}
   .amount{color:var(--primary-dark);font-weight:800;font-size:13px;}
   .empty-hint{
     text-align:center;font-size:12px;color:var(--text-muted);
@@ -262,6 +266,7 @@
     const initial = (d.name || '؟').trim().charAt(0);
     const attendanceHistory = Array.isArray(d.attendanceHistory) ? d.attendanceHistory : [];
     const paymentHistory = Array.isArray(d.paymentHistory) ? d.paymentHistory : [];
+    const homeworkHistory = Array.isArray(d.homeworkHistory) ? d.homeworkHistory : [];
 
     teacherTitle.textContent = `أهلًا بك، ولي أمر ${d.name}`;
     teacherSub.textContent = 'تابع حضور ومدفوعات ابنك أول بأول';
@@ -286,6 +291,18 @@
             <span class="amount">${fmtMoney(p.amount)} جنيه</span>
           </div>`).join('')
       : `<div class="empty-hint">لا توجد مدفوعات بعد</div>`;
+
+    const homeworkRows = homeworkHistory.length
+      ? homeworkHistory.map(h => `
+          <div class="history-row">
+            <span class="date">${fmtDate(h.date)}</span>
+            <span class="${h.status === 'عمل' ? 'badge-hw-done' : 'badge-hw-not'}">
+              ${h.status === 'عمل' ? '📗 عمل الواجب' : '📙 لم يعمل الواجب'}
+            </span>
+          </div>`).join('')
+      : `<div class="empty-hint">لا توجد سجلات واجب بعد</div>`;
+
+    const hasHomework = (d.homeworkDone ?? 0) > 0 || (d.homeworkNotDone ?? 0) > 0 || homeworkHistory.length > 0;
 
     card.innerHTML = `
       <div class="welcome-row">
@@ -312,6 +329,16 @@
 
       <div class="section-title">📅 آخر الحصص</div>
       <div class="history-list">${attendanceRows}</div>
+
+      ${hasHomework ? `
+      <div class="stat-grid" style="margin-top:20px;">
+        <div class="stat hw-done"><div class="n">${d.homeworkDone ?? 0}</div><div class="l">مرات عمل الواجب</div></div>
+        <div class="stat hw-not"><div class="n">${d.homeworkNotDone ?? 0}</div><div class="l">مرات لم يعمل الواجب</div></div>
+      </div>
+
+      <div class="section-title">📖 آخر الواجبات</div>
+      <div class="history-list">${homeworkRows}</div>
+      ` : ''}
 
       <a class="back-btn" id="backBtn">🔍 البحث عن طالب تاني</a>
     `;
