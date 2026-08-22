@@ -690,7 +690,10 @@ class SettingsPage extends StatelessWidget {
               );
             }
 
-            return Row(
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
               children: [
                 // ── الصورة ──────────────────────────────────────────
                 GestureDetector(
@@ -792,6 +795,20 @@ class SettingsPage extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+              ],
+                ),
+                const SizedBox(height: 14),
+                // ── التخصص — بيتكتب في رسائل الواتساب اللي بتتبعت لأولياء الأمور ──
+                _buildTextField(
+                  isDark,
+                  label: 'التخصص',
+                  value: settings.teacherSpecialization.value,
+                  icon: Icons.school_rounded,
+                  onChanged: (v) async {
+                    settings.setTeacherSpecialization(v);
+                    await settings.saveTeacherInfo();
+                  },
                 ),
               ],
             );

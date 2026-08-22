@@ -301,12 +301,24 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                     month: DateTime(now.year, now.month),
                     allAttendance: attendanceController.attendance));
 
+        // عدد الحصص المسجلة فعليًا للمجموعة دي — أي تاريخ (يوم كامل)
+        // فيه على الأقل سجل حضور واحد لطالب من طلابها، بغض النظر هل
+        // اليوم ده مطابق لجدول المجموعة بالحرف ولا لأ (المدرس ممكن
+        // يسجّل حصة تعويضية في يوم غير الجدول المعتاد).
+        final studentIds = allStudents.map((s) => s.id).toSet();
+        final recordedSessions = attendanceController.attendance
+            .where((a) => studentIds.contains(a.studentId))
+            .map((a) =>
+                DateTime(a.date.year, a.date.month, a.date.day))
+            .toSet()
+            .length;
+
         return CustomScrollView(
           slivers: [
             // ── Header ─────────────────────────────────────────────────────
             SliverToBoxAdapter(
-                child: _buildHeader(
-                    context, g, allStudents, totalFees, primary, isDark)),
+                child: _buildHeader(context, g, allStudents, totalFees,
+                    recordedSessions, primary, isDark)),
 
             // ── Action buttons ──────────────────────────────────────────────
             SliverToBoxAdapter(
@@ -412,8 +424,14 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   }
 
   // ─── Header widget ────────────────────────────────────────────────────────
-  Widget _buildHeader(BuildContext context, Group g, List<Student> students,
-      double totalFees, Color primary, bool isDark) {
+  Widget _buildHeader(
+      BuildContext context,
+      Group g,
+      List<Student> students,
+      double totalFees,
+      int recordedSessions,
+      Color primary,
+      bool isDark) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       decoration: BoxDecoration(
@@ -520,6 +538,11 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                             : '-'),
                     icon: Icons.monetization_on_rounded,
                     locked: !_canSeeFinancials),
+                const SizedBox(width: 12),
+                _HeaderStat(
+                    label: 'حصص مسجلة',
+                    value: '$recordedSessions',
+                    icon: Icons.event_available_rounded),
               ],
             ),
           ],
@@ -705,15 +728,63 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         group: g,
         existingGroups: groupController.groups,
         onSave: (updated) async {
+          final oldPrice = g.price;
           final ok = await groupController.updateGroup(updated);
           if (ok) {
             _refreshGroup();
             ToastHelper.success('تم حفظ التعديلات', title: 'تم');
+            if (updated.price != null &&
+                oldPrice != null &&
+                updated.price != oldPrice &&
+                g.id != null &&
+                context.mounted) {
+              await _offerBulkStudentPriceUpdate(
+                  context, g.id!, oldPrice, updated.price!);
+            }
           }
           return ok;
         },
       ),
     );
+  }
+
+  // سعر المجموعة العام لا يلمس سعر أي طالب تلقائيًا (كل طالب سعره
+  // مستقل من وقت إضافته). بعد تعديل السعر العام، نعرض على المدرس
+  // فرصة يحدّث بيه بس الطلاب اللي سعرهم لسه مطابق للسعر القديم —
+  // أي طالب اتخصّص سعره (خصم، اتفاق خاص) بيفضل من غير أي تغيير.
+  Future<void> _offerBulkStudentPriceUpdate(
+      BuildContext context, int groupId, double oldPrice, double newPrice) async {
+    final count = studentController.countStudentsAtGroupPrice(
+        groupId: groupId, price: oldPrice);
+    if (count == 0) return;
+    if (!mounted || !context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('تحديث سعر الطلاب؟'),
+        content: Text(
+            'فيه $count طالب سعرهم لسه ${FormatHelper.formatCurrency(oldPrice)} '
+            '(السعر القديم للمجموعة). عايز تحدّث سعرهم للسعر الجديد '
+            '${FormatHelper.formatCurrency(newPrice)}؟\n\n'
+            'أي طالب سعره مختلف عن ده (خصم أو اتفاق خاص) مش هيتأثر.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('لا، سيبهم زي ما هما')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('تحديث السعر')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final updatedCount = await studentController.bulkUpdatePriceForGroupDefault(
+        groupId: groupId, oldPrice: oldPrice, newPrice: newPrice);
+    if (updatedCount > 0) {
+      ToastHelper.success('تم تحديث سعر $updatedCount طالب');
+      _loadPaidStudents();
+    }
   }
 
   void _showAddStudentSheet(BuildContext context, Group g) {

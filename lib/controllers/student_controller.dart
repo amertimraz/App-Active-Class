@@ -115,6 +115,42 @@ class StudentController extends GetxController {
     return '$groupPrefix${next.toString().padLeft(2, '0')}';
   }
 
+  /// عدد الطلاب في المجموعة اللي سعرهم لسه مطابق للسعر العام القديم
+  /// للمجموعة (يعني معملهاش أي تخصيص/خصم يدوي) — بيُستخدم لعرض عدد
+  /// دقيق قبل تعديل جماعي، بدل ما نفاجئ المدرس بعدد غير متوقع.
+  int countStudentsAtGroupPrice({required int groupId, required double price}) {
+    return students
+        .where((s) => s.groupId == groupId && s.price == price)
+        .length;
+  }
+
+  /// تحديث سعر المجموعة العام لا يلمس سعر أي طالب تلقائيًا — كل طالب
+  /// بيحتفظ بسعره المستقل من وقت إضافته (ممكن يكون اتعدّل يدويًا
+  /// لخصم أو حالة خاصة). الدالة دي بتحدّث بس الطلاب اللي سعرهم لسه
+  /// *مطابق تمامًا* للسعر القديم للمجموعة (يعني عمرهم ما اتخصّصوا)،
+  /// وبتسيب أي طالب سعره مختلف (خصم، إعفاء بيتحسب كنسبة منفصلة أصلاً
+  /// فمش محتاج استثناء، أو اتفاق خاص) من غير أي تغيير.
+  Future<int> bulkUpdatePriceForGroupDefault({
+    required int groupId,
+    required double oldPrice,
+    required double newPrice,
+  }) async {
+    final targets = students
+        .where((s) => s.groupId == groupId && s.price == oldPrice)
+        .toList();
+    for (final s in targets) {
+      final updated = s.copyWith(price: newPrice);
+      await _dbService.updateStudent(updated);
+      final idx = students.indexWhere((x) => x.id == s.id);
+      if (idx != -1) students[idx] = updated;
+      if (updated.id != null) {
+        unawaited(ParentPortalService().pushStudentSummary(updated.id!));
+      }
+    }
+    filterStudents();
+    return targets.length;
+  }
+
   // ── تعديل طالب ──────────────────────────────────────────────────
   Future<void> updateStudent(Student student) async {
     try {
