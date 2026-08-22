@@ -2,7 +2,7 @@
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -645,6 +645,46 @@ class _DistributionChart extends StatelessWidget {
   }
 }
 
+// ─── تحويل الأرقام العربية/الفارسية والفاصلة العشرية العربية لأرقام
+// إنجليزية أثناء الكتابة — كيبورد سامسونج العربي بيطلع أرقام عربية
+// (١٢٣) حتى في حقول الأرقام أحيانًا، و double.tryParse مش بيتعرف
+// عليها خالص فبترجع null بصمت (من غير أي رسالة خطأ)، فالدرجة كانت
+// بتضيع تمامًا من غير ما المدرس ياخد باله — شكلها بتتكتب عادي في
+// الحقل بس مبتتحفظش أبداً.
+class _ArabicDigitsInputFormatter extends TextInputFormatter {
+  static const _easternArabic = '٠١٢٣٤٥٦٧٨٩';
+  static const _persian = '۰۱۲۳۴۵۶۷۸۹';
+
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final buffer = StringBuffer();
+    for (final ch in newValue.text.split('')) {
+      final eastern = _easternArabic.indexOf(ch);
+      final persian = _persian.indexOf(ch);
+      if (eastern != -1) {
+        buffer.write(eastern.toString());
+      } else if (persian != -1) {
+        buffer.write(persian.toString());
+      } else if (ch == '٫') {
+        buffer.write('.');
+      } else {
+        buffer.write(ch);
+      }
+    }
+    final converted = buffer.toString();
+    if (converted == newValue.text) return newValue;
+    final lengthDiff = newValue.text.length - converted.length;
+    return newValue.copyWith(
+      text: converted,
+      selection: TextSelection.collapsed(
+        offset: (newValue.selection.baseOffset - lengthDiff)
+            .clamp(0, converted.length),
+      ),
+    );
+  }
+}
+
 // ─── صف درجة طالب ─────────────────────────────────────────────────────────────
 class _GradeRow extends StatefulWidget {
   final ExamGrade grade;
@@ -679,6 +719,13 @@ class _GradeRowState extends State<_GradeRow> {
   String _lastSavedNotes = '';
   late final FocusNode _gradeFocusNode;
   late final FocusNode _notesFocusNode;
+  // شبكة أمان مستقلة عن أحداث الفوكس تمامًا: بتحفظ لوحدها بعد وقفة
+  // قصيرة من الكتابة، بغض النظر هل الحقل فقد التركيز فعليًا ولا لأ —
+  // الاعتماد على أحداث الفوكس بس (فقدان التركيز/إغلاق الشاشة) طلع
+  // مش موثوق بالشكل الكافي على بعض الأجهزة/الكيبوردات، وكان بيسيب
+  // درجات متسجّلة محليًا في الحقل بس من غير ما توصل لقاعدة البيانات.
+  Timer? _gradeDebounce;
+  Timer? _notesDebounce;
 
   @override
   void initState() {
@@ -696,22 +743,47 @@ class _GradeRowState extends State<_GradeRow> {
 
   void _onGradeFocusChange() {
     if (_gradeFocusNode.hasFocus) return;
+    _saveGradeNow();
+  }
+
+  void _onNotesFocusChange() {
+    if (_notesFocusNode.hasFocus) return;
+    _saveNotesNow();
+  }
+
+  void _saveGradeNow() {
+    _gradeDebounce?.cancel();
     final current = widget.ctrl.text;
     if (current == _lastSaved) return;
     _lastSaved = current;
     _runSave(() => widget.onSaved(current));
   }
 
-  void _onNotesFocusChange() {
-    if (_notesFocusNode.hasFocus) return;
+  void _saveNotesNow() {
+    _notesDebounce?.cancel();
     final current = widget.notesCtrl.text;
     if (current == _lastSavedNotes) return;
     _lastSavedNotes = current;
     _runSave(() => widget.onNotesSaved());
   }
 
+  // شبكة الأمان: بعد وقفة قصيرة من الكتابة، بتحفظ لوحدها من غير ما
+  // تستنى فقدان التركيز خالص.
+  void _onGradeChanged() {
+    setState(() {});
+    _gradeDebounce?.cancel();
+    _gradeDebounce = Timer(const Duration(milliseconds: 700), _saveGradeNow);
+  }
+
+  void _onNotesChanged() {
+    _notesDebounce?.cancel();
+    _notesDebounce = Timer(const Duration(milliseconds: 700), _saveNotesNow);
+  }
+
   @override
   void dispose() {
+    _gradeDebounce?.cancel();
+    _notesDebounce?.cancel();
     _gradeFocusNode.dispose();
     _notesFocusNode.dispose();
     super.dispose();
@@ -720,7 +792,7 @@ class _GradeRowState extends State<_GradeRow> {
   /// ينفّذ عملية حفظ (درجة أو غياب) ويضمن إن الـ spinner يقفل دايماً،
   /// حتى لو فشل الحفظ فعلياً — بدل ما يفضل معلّق للأبد بصمت.
   Future<void> _runSave(Future<void> Function() action) async {
-    setState(() => _saving = true);
+    if (mounted) setState(() => _saving = true);
     try {
       await action();
     } catch (e) {
@@ -905,6 +977,7 @@ class _GradeRowState extends State<_GradeRow> {
                       enabled: !widget.grade.isAbsent,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [_ArabicDigitsInputFormatter()],
                       textAlign: TextAlign.center,
                       style: TextStyle(
                           fontFamily: 'Cairo',
@@ -926,7 +999,7 @@ class _GradeRowState extends State<_GradeRow> {
                             ? cs.onSurface.withValues(alpha: 0.05)
                             : Colors.white,
                       ),
-                      onChanged: (_) => setState(() {}),
+                      onChanged: (_) => _onGradeChanged(),
                       onSubmitted: (_) => _gradeFocusNode.unfocus(),
                       onTapOutside: (_) => _gradeFocusNode.unfocus(),
                     ),
@@ -1001,6 +1074,7 @@ class _GradeRowState extends State<_GradeRow> {
                       borderSide:
                           const BorderSide(color: AppTheme.primaryColor)),
                 ),
+                onChanged: (_) => _onNotesChanged(),
                 onSubmitted: (_) => _notesFocusNode.unfocus(),
                 onTapOutside: (_) => _notesFocusNode.unfocus(),
               ),
