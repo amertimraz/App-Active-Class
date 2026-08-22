@@ -7,8 +7,10 @@ import 'package:get/get.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/controllers/homework_controller.dart';
 import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/models/attendance_model.dart';
+import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
@@ -56,6 +58,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
   final AttendanceController attendanceController =
       Get.put(AttendanceController());
   final PaymentController paymentController = Get.put(PaymentController());
+  final HomeworkController homeworkController = Get.put(HomeworkController());
 
   Student? student;
   Group? _group;
@@ -71,10 +74,11 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
   void initState() {
     super.initState();
     student = Get.arguments as Student?;
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     if (attendanceController.attendance.isEmpty)
       attendanceController.loadAttendance();
     if (paymentController.payments.isEmpty) paymentController.loadPayments();
+    if (homeworkController.homework.isEmpty) homeworkController.loadHomework();
     _loadGroup();
   }
 
@@ -127,17 +131,27 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
             !p.date.isBefore(start) &&
             !p.date.isAfter(end))
         .toList();
+    final hw = homeworkController.homework
+        .where((h) =>
+            h.studentId == s.id &&
+            !h.date.isBefore(start) &&
+            !h.date.isAfter(end))
+        .toList();
 
     final present = atts.where((a) => a.status == ATTENDANCE_PRESENT).length;
     final absent = atts.where((a) => a.status == ATTENDANCE_ABSENT).length;
     final total = present + absent;
     final percent = total == 0 ? 0.0 : (present / total) * 100.0;
     final totalPaid = pays.fold<double>(0.0, (sum, p) => sum + p.amount);
+    final homeworkDone = hw.where((h) => h.status == HOMEWORK_DONE).length;
+    final homeworkNotDone =
+        hw.where((h) => h.status == HOMEWORK_NOT_DONE).length;
     final monthLabel = DateFormat('MMMM yyyy', 'ar').format(start);
     final groupName = _group?.name ?? '-';
 
     final attsSorted = List.of(atts)..sort((a, b) => b.date.compareTo(a.date));
     final paysSorted = List.of(pays)..sort((a, b) => b.date.compareTo(a.date));
+    final hwSorted = List.of(hw)..sort((a, b) => b.date.compareTo(a.date));
 
     final buffer = StringBuffer()
       ..writeln('🧾 تقرير الشهر: $monthLabel')
@@ -158,6 +172,17 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
       }
       if (attsSorted.length > 10)
         buffer.writeln('• … ${attsSorted.length - 10} سجلات إضافية');
+    }
+
+    if (hwSorted.isNotEmpty) {
+      buffer.writeln(
+          '\n📖 الواجب: عمل $homeworkDone • لم يعمل $homeworkNotDone');
+      for (final h in hwSorted.take(10)) {
+        buffer.writeln(
+            '• ${DateFormat('yyyy-MM-dd').format(h.date)} — ${h.status == HOMEWORK_DONE ? '📗 عمل' : '📙 لم يعمل'}');
+      }
+      if (hwSorted.length > 10)
+        buffer.writeln('• … ${hwSorted.length - 10} سجلات إضافية');
     }
 
     if (_canSeeFinancials) {
@@ -276,6 +301,9 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
         final studentPays = paymentController.payments
             .where((p) => p.studentId == s.id)
             .toList();
+        final studentHomework = homeworkController.homework
+            .where((h) => h.studentId == s.id)
+            .toList();
         final presentCount =
             studentAtts.where((a) => a.status == ATTENDANCE_PRESENT).length;
         final absentCount =
@@ -309,6 +337,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                   absentCount: absentCount,
                   attRate: attRate,
                   accentColor: primary),
+              _HomeworkTab(homework: studentHomework, accentColor: primary),
               _canSeeFinancials
                   ? _PaymentsTab(
                       payments: studentPays,
@@ -512,6 +541,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
               const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           tabs: [
             const Tab(text: 'سجل الحضور'),
+            const Tab(text: 'الواجب'),
             Tab(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1012,6 +1042,188 @@ class _AttendanceTab extends StatelessWidget {
                           child: Text(a.status,
                               style: TextStyle(
                                   color: isPresent ? Colors.green : Colors.red,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ]);
+        }),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Homework tab
+// ─────────────────────────────────────────────────────────────────────────────
+class _HomeworkTab extends StatelessWidget {
+  final List<Homework> homework;
+  final Color accentColor;
+
+  const _HomeworkTab({
+    required this.homework,
+    required this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sorted = List.of(homework)..sort((a, b) => b.date.compareTo(a.date));
+
+    final doneCount = sorted.where((h) => h.status == HOMEWORK_DONE).length;
+    final notDoneCount =
+        sorted.where((h) => h.status == HOMEWORK_NOT_DONE).length;
+    final total = doneCount + notDoneCount;
+    final rate = total == 0 ? 0.0 : (doneCount / total) * 100;
+
+    final Map<String, List<Homework>> byMonth = {};
+    for (final h in sorted) {
+      final label = DateFormat('MMMM yyyy', 'ar').format(h.date);
+      (byMonth[label] ??= []).add(h);
+    }
+    final months = byMonth.keys.toList();
+
+    if (sorted.isEmpty) {
+      return const Center(
+        child: EmptyState(
+          icon: Icons.menu_book_outlined,
+          title: 'لا توجد سجلات واجب',
+          subtitle: 'سيظهر هنا سجل الواجب عند التسجيل',
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1A2540) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: isDark
+                ? []
+                : [
+                    BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 8)
+                  ],
+          ),
+          child: Column(children: [
+            Row(children: [
+              Expanded(child: _MiniStat('عمل', '$doneCount', Colors.blue)),
+              Expanded(
+                  child: _MiniStat('لم يعمل', '$notDoneCount', Colors.orange)),
+              Expanded(
+                  child: _MiniStat(
+                      'النسبة',
+                      '${rate.toStringAsFixed(0)}%',
+                      rate >= 75
+                          ? Colors.green
+                          : rate >= 50
+                              ? Colors.orange
+                              : Colors.red)),
+            ]),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: total == 0 ? 0 : rate / 100,
+                minHeight: 8,
+                backgroundColor: Colors.orange.withValues(alpha: 0.15),
+                valueColor: AlwaysStoppedAnimation(rate >= 75
+                    ? Colors.green
+                    : rate >= 50
+                        ? Colors.orange
+                        : Colors.red),
+              ),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        ...months.map((month) {
+          final list = byMonth[month]!;
+          final mDone = list.where((h) => h.status == HOMEWORK_DONE).length;
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8, top: 4),
+                  child: Row(children: [
+                    Text(month,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 14)),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text('$mDone/${list.length}',
+                          style: const TextStyle(
+                              color: Colors.blue,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  ]),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1A2540) : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: isDark
+                        ? []
+                        : [
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 8)
+                          ],
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 0, indent: 56),
+                    itemBuilder: (_, i) {
+                      final h = list[i];
+                      final isDone = h.status == HOMEWORK_DONE;
+                      return ListTile(
+                        leading: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: (isDone ? Colors.blue : Colors.orange)
+                                .withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isDone
+                                ? Icons.menu_book_rounded
+                                : Icons.menu_book_outlined,
+                            color: isDone ? Colors.blue : Colors.orange,
+                            size: 18,
+                          ),
+                        ),
+                        title: Text(FormatHelper.formatFullDate(h.date),
+                            style: const TextStyle(fontSize: 13)),
+                        trailing: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: (isDone ? Colors.blue : Colors.orange)
+                                .withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(h.status,
+                              style: TextStyle(
+                                  color: isDone ? Colors.blue : Colors.orange,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700)),
                         ),

@@ -20,6 +20,7 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
+import 'package:active_class/controllers/homework_controller.dart';
 import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/services/database_service.dart';
@@ -65,6 +66,7 @@ class SyncEngine {
     TABLE_STUDENTS,
     TABLE_ATTENDANCE,
     TABLE_PAYMENTS,
+    TABLE_HOMEWORK,
   ];
 
   final DatabaseService _dbService = DatabaseService();
@@ -79,6 +81,7 @@ class SyncEngine {
         TABLE_STUDENTS => COL_STUDENT_ID,
         TABLE_ATTENDANCE => COL_ATTENDANCE_ID,
         TABLE_PAYMENTS => COL_PAYMENT_ID,
+        TABLE_HOMEWORK => COL_HOMEWORK_ID,
         _ => throw ArgumentError('جدول غير قابل للمزامنة: $table'),
       };
 
@@ -293,6 +296,20 @@ class SyncEngine {
           'date': payload[COL_PAYMENT_DATE],
           'amount': payload[COL_PAYMENT_AMOUNT],
           'note': payload[COL_PAYMENT_NOTE],
+        };
+      case TABLE_HOMEWORK:
+        final studentLocalId = payload[COL_HOMEWORK_STUDENT_ID] as int?;
+        String? studentRemoteId;
+        if (studentLocalId != null) {
+          studentRemoteId = await _localRemoteId(
+              TABLE_STUDENTS, COL_STUDENT_ID, studentLocalId);
+          if (studentRemoteId == null) return null;
+        }
+        return {
+          ...base,
+          'student_remote_id': studentRemoteId,
+          'date': payload[COL_HOMEWORK_DATE],
+          'status': payload[COL_HOMEWORK_STATUS],
         };
     }
     return null;
@@ -522,6 +539,11 @@ class SyncEngine {
           Get.find<PaymentController>().loadPayments();
         }
         break;
+      case TABLE_HOMEWORK:
+        if (Get.isRegistered<HomeworkController>()) {
+          Get.find<HomeworkController>().loadHomework();
+        }
+        break;
     }
     if (Get.isRegistered<DashboardController>()) {
       Get.find<DashboardController>().loadDashboardData();
@@ -634,6 +656,26 @@ class SyncEngine {
           if (dup.isNotEmpty) {
             debugPrint(
                 'SyncEngine: تجاهل صف حضور مكرر (طالب $studentId، يوم $dayPrefix) وارد من جهاز تاني');
+            return;
+          }
+        }
+      }
+      // نفس منطق التكرار اليومي بالظبط، لكن لجدول الواجب (نفس الفهرس
+      // الفريد المحلي: طالب واحد + يوم واحد).
+      if (table == TABLE_HOMEWORK) {
+        final studentId = localMap[COL_HOMEWORK_STUDENT_ID];
+        final date = localMap[COL_HOMEWORK_DATE] as String?;
+        if (studentId != null && date != null && date.length >= 10) {
+          final dayPrefix = date.substring(0, 10);
+          final dup = await db.query(
+            table,
+            where: '$COL_HOMEWORK_STUDENT_ID = ? AND substr($COL_HOMEWORK_DATE, 1, 10) = ?',
+            whereArgs: [studentId, dayPrefix],
+            limit: 1,
+          );
+          if (dup.isNotEmpty) {
+            debugPrint(
+                'SyncEngine: تجاهل صف واجب مكرر (طالب $studentId، يوم $dayPrefix) وارد من جهاز تاني');
             return;
           }
         }
@@ -784,6 +826,21 @@ class SyncEngine {
           COL_PAYMENT_DATE: remote['date'],
           COL_PAYMENT_AMOUNT: remote['amount'],
           COL_PAYMENT_NOTE: remote['note'],
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_HOMEWORK:
+        final studentRemoteId = remote['student_remote_id'] as String?;
+        final localStudentId = studentRemoteId != null
+            ? await _localIdForRemote(
+                TABLE_STUDENTS, COL_STUDENT_ID, studentRemoteId,
+                executor: executor)
+            : null;
+        if (studentRemoteId != null && localStudentId == null) return null;
+        return {
+          COL_HOMEWORK_STUDENT_ID: localStudentId,
+          COL_HOMEWORK_DATE: remote['date'],
+          COL_HOMEWORK_STATUS: remote['status'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };

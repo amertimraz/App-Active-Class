@@ -534,6 +534,36 @@ class _GroupSummaryCard extends StatelessWidget {
               ),
             ],
           ),
+          if (summary.totalHomeworkDone > 0 || summary.totalHomeworkNotDone > 0) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _StatBox(
+                  label: 'عمل الواجب',
+                  child: Text(
+                    summary.totalHomeworkDone.toString(),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        color: Colors.blue),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                _StatBox(
+                  label: 'لم يعمل الواجب',
+                  child: Text(
+                    summary.totalHomeworkNotDone.toString(),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        color: Colors.orange),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 10),
           // Collection rate bar
           Row(
@@ -932,6 +962,23 @@ void _showExportMenu(BuildContext context, ReportController ctrl) {
                 return;
               }
               ctrl.exportAttendancePDF();
+            },
+          ),
+          const SizedBox(height: 10),
+          _ExportOption(
+            icon: Icons.menu_book_rounded,
+            color: const Color(0xFF2563EB),
+            title: 'تقرير الواجب',
+            subtitle: 'جدول تفصيلي بحالة الواجب لكل طالب',
+            onTap: () {
+              Navigator.pop(ctx);
+              if (!requireLicenseFeature(
+                  context,
+                  Get.find<LicenseController>().canExport,
+                  'تصدير التقارير غير متاح في الفترة التجريبية — قم بالترقية')) {
+                return;
+              }
+              ctrl.exportHomeworkPDF();
             },
           ),
           const SizedBox(height: 10),

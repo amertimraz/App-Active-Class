@@ -5,6 +5,7 @@ import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/utils/helpers.dart';
 
 class HomeworkController extends GetxController {
   final DatabaseService _dbService = DatabaseService();
@@ -45,6 +46,73 @@ class HomeworkController extends GetxController {
       await loadHomework();
       unawaited(ParentPortalService().pushStudentSummary(studentId));
     } catch (_) {}
+  }
+
+  /// نفس منطق "حضر الكل" بالظبط: لو كله متعمَّل بالفعل، الضغطة بتلغي
+  /// التسجيل عن الكل؛ غير كده بتسجّل "عمل" للكل. المدرس بعدها يقدر
+  /// يستثني طالب أو اتنين بالضغط على أيقونة الواجب بتاعتهم لوحدهم
+  /// (تتحول لـ"لم يعمل").
+  Future<void> markGroupAllHomeworkDone(
+      List<int> studentIds, DateTime day) async {
+    if (studentIds.isEmpty) return;
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
+    final recordsByStudent = <int, Homework>{
+      for (final h in homework)
+        if (!h.date.isBefore(dayStart) && !h.date.isAfter(dayEnd))
+          h.studentId: h,
+    };
+
+    final allAlreadyDone = studentIds
+        .every((id) => recordsByStudent[id]?.status == HOMEWORK_DONE);
+
+    var succeeded = 0;
+    var failed = 0;
+    if (allAlreadyDone) {
+      for (final id in studentIds) {
+        final record = recordsByStudent[id];
+        if (record == null) continue;
+        try {
+          await _dbService.deleteHomework(record.id!);
+          succeeded++;
+        } catch (e) {
+          failed++;
+        }
+      }
+    } else {
+      for (final id in studentIds) {
+        final record = recordsByStudent[id];
+        try {
+          if (record == null) {
+            await _dbService.insertHomework(Homework(
+              studentId: id,
+              date: DateTime(day.year, day.month, day.day,
+                  DateTime.now().hour, DateTime.now().minute),
+              status: HOMEWORK_DONE,
+            ));
+          } else if (record.status != HOMEWORK_DONE) {
+            await _dbService.updateHomework(
+                record.copyWith(status: HOMEWORK_DONE));
+          }
+          succeeded++;
+        } catch (e) {
+          failed++;
+        }
+      }
+    }
+
+    await loadHomework();
+    for (final id in studentIds) {
+      unawaited(ParentPortalService().pushStudentSummary(id));
+    }
+    if (failed == 0) {
+      ToastHelper.success(
+          allAlreadyDone ? 'تم إلغاء تسجيل الواجب للكل' : 'تم تسجيل الواجب للكل');
+    } else if (succeeded == 0) {
+      ToastHelper.error('فشل تسجيل الواجب — حاول تاني');
+    } else {
+      ToastHelper.error('اتسجّل لـ $succeeded طالب — فشل $failed');
+    }
   }
 
   String? statusFor(int studentId, DateTime day) {

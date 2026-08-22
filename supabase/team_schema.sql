@@ -369,10 +369,26 @@ create table if not exists public.payments (
   unique (team_id, origin_device_id, local_id)
 );
 
+-- الواجب — نفس شكل جدول الحضور بالظبط (حالة عمل/لم يعمل لكل طالب في
+-- كل تاريخ)، وبيستخدم صلاحية "حذف الحضور" (delete_attendance) بدل ما
+-- نضيف صلاحية مستقلة جديدة له.
+create table if not exists public.homework (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams(id) on delete cascade,
+  origin_device_id text not null,
+  local_id integer not null,
+  student_remote_id uuid references public.students(id) on delete cascade,
+  date text, status text,
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  unique (team_id, origin_device_id, local_id)
+);
+
 alter table public.groups     enable row level security;
 alter table public.students   enable row level security;
 alter table public.attendance enable row level security;
 alter table public.payments   enable row level security;
+alter table public.homework   enable row level security;
 
 -- ملحوظة: is_team_license_active(team_id) لازم تتفحص هنا كمان — لو
 -- الترخيص الحقيقي (Firebase) بتاع المدرس خلص/اتوقف، is_team_member
@@ -404,6 +420,13 @@ create policy "payments_select" on public.payments for select
 create policy "payments_insert" on public.payments for insert
   with check (public.is_team_member(team_id) and public.is_team_license_active(team_id));
 create policy "payments_update" on public.payments for update
+  using (public.is_team_member(team_id) and public.is_team_license_active(team_id));
+
+create policy "homework_select" on public.homework for select
+  using (public.is_team_member(team_id) and public.is_team_license_active(team_id));
+create policy "homework_insert" on public.homework for insert
+  with check (public.is_team_member(team_id) and public.is_team_license_active(team_id));
+create policy "homework_update" on public.homework for update
   using (public.is_team_member(team_id) and public.is_team_license_active(team_id));
 
 -- لا يوجد DELETE policy عمدًا على الأربعة جداول دي — الحذف بيتم عن
@@ -472,6 +495,21 @@ drop trigger if exists trg_check_delete_payments on public.payments;
 create trigger trg_check_delete_payments before update on public.payments
   for each row execute function public.check_delete_payments();
 
+create or replace function public.check_delete_homework()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if NEW.deleted_at is not null and OLD.deleted_at is null then
+    if not public.team_permission(NEW.team_id, 'delete_attendance') then
+      raise exception 'not authorized to delete this homework record';
+    end if;
+  end if;
+  return NEW;
+end;
+$$;
+drop trigger if exists trg_check_delete_homework on public.homework;
+create trigger trg_check_delete_homework before update on public.homework
+  for each row execute function public.check_delete_homework();
+
 -- ── تفعيل Realtime على الجداول المشتركة ────────────────────────────
 do $$
 begin
@@ -484,7 +522,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['groups','students','attendance','payments','team_members']
+  foreach t in array array['groups','students','attendance','payments','homework','team_members']
   loop
     if not exists (
       select 1 from pg_publication_tables

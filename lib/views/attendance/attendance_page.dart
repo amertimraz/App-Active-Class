@@ -515,32 +515,56 @@ class _GroupAttendanceCard extends StatelessWidget {
                       fontSize: 13),
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 4),
               // الكل حاضر ← لو كله متحضّر بالفعل، الضغطة بتلغي التحضير
               Builder(builder: (context) {
                 final allPresent = totalCount > 0 &&
                     students.every(
                         (s) => statusMap[s.id] == ATTENDANCE_PRESENT);
-                return TextButton.icon(
-                  onPressed: () => controller.markGroupAllPresent(
-                    students.map((s) => s.id!).toList(),
-                    selectedDay,
-                  ),
-                  icon: Icon(
-                      allPresent
-                          ? Icons.remove_done_rounded
-                          : Icons.done_all_rounded,
-                      size: 15),
-                  label: Text(allPresent ? 'إلغاء الكل' : 'حاضر'),
-                  style: TextButton.styleFrom(
+                return Tooltip(
+                  message: allPresent ? 'إلغاء تحضير الكل' : 'تحضير الكل',
+                  child: IconButton(
                     visualDensity: VisualDensity.compact,
-                    foregroundColor: allPresent
+                    onPressed: () => controller.markGroupAllPresent(
+                      students.map((s) => s.id!).toList(),
+                      selectedDay,
+                    ),
+                    icon: Icon(
+                        allPresent
+                            ? Icons.remove_done_rounded
+                            : Icons.done_all_rounded,
+                        size: 20),
+                    color: allPresent
                         ? Colors.grey.shade600
                         : const Color(0xFF10B981),
-                    textStyle: const TextStyle(
-                        fontFamily: 'Cairo',
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12),
+                  ),
+                );
+              }),
+              // الواجب للكل ← نفس المنطق: لو كله متعمَّل، الضغطة بتلغي
+              // التسجيل عن الكل؛ غير كده بتسجّل "عمل" للكل (وبعدين يقدر
+              // المدرس يستثني طالب أو اتنين بالضغط على أيقونتهم لوحدهم).
+              Obx(() {
+                final allHomeworkDone = totalCount > 0 &&
+                    students.every((s) =>
+                        homeworkCtrl.statusFor(s.id!, selectedDay) ==
+                        HOMEWORK_DONE);
+                return Tooltip(
+                  message:
+                      allHomeworkDone ? 'إلغاء واجب الكل' : 'تسجيل واجب الكل',
+                  child: IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => homeworkCtrl.markGroupAllHomeworkDone(
+                      students.map((s) => s.id!).toList(),
+                      selectedDay,
+                    ),
+                    icon: Icon(
+                        allHomeworkDone
+                            ? Icons.menu_book_rounded
+                            : Icons.menu_book_outlined,
+                        size: 20),
+                    color: allHomeworkDone
+                        ? const Color(0xFF2563EB)
+                        : Colors.grey.shade600,
                   ),
                 );
               }),

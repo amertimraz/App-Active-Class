@@ -893,37 +893,46 @@ class DatabaseService {
   }
 
   // ========== HOMEWORK ==========
-  // ملحوظة: عمدًا مش جوّه سجل مزامنة وضع الفريق (_queueSync) دلوقتي —
-  // ميزة جديدة، لو المدرس عايز المساعد يشوف حالة الواجب كمان لازم
-  // نضيفها لجدول المزامنة المشتركة كمهمة منفصلة لاحقًا.
   Future<int> insertHomework(Homework homework) async {
     final db = await database;
-    final map = homework.toMap();
+    final map = {
+      ...homework.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
     final id = await db.insert(TABLE_HOMEWORK, map);
     _notifyChanged();
+    await _queueSync(TABLE_HOMEWORK, id, 'insert',
+        payload: {...map, COL_HOMEWORK_ID: id});
     return id;
   }
 
   Future<int> updateHomework(Homework homework) async {
     final db = await database;
+    final map = {
+      ...homework.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
     final n = await db.update(
       TABLE_HOMEWORK,
-      homework.toMap(),
+      map,
       where: '$COL_HOMEWORK_ID = ?',
       whereArgs: [homework.id],
     );
     _notifyChanged();
+    await _queueSync(TABLE_HOMEWORK, homework.id!, 'update', payload: map);
     return n;
   }
 
   Future<int> deleteHomework(int id) async {
     final db = await database;
+    final remoteId = await _remoteIdOf(db, TABLE_HOMEWORK, COL_HOMEWORK_ID, id);
     final n = await db.delete(
       TABLE_HOMEWORK,
       where: '$COL_HOMEWORK_ID = ?',
       whereArgs: [id],
     );
     _notifyChanged();
+    await _queueDelete(TABLE_HOMEWORK, id, remoteId);
     return n;
   }
 

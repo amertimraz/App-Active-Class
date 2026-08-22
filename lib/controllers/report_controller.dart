@@ -5,8 +5,10 @@ import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/attendance_model.dart';
+import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/config/constants.dart';
 
 class ReportController extends GetxController {
   final DatabaseService _dbService = DatabaseService();
@@ -14,6 +16,7 @@ class ReportController extends GetxController {
   // ─── Raw data ───────────────────────────────────────────────────────────────
   final RxList<Payment> allPayments = <Payment>[].obs;
   final RxList<Attendance> allAttendance = <Attendance>[].obs;
+  final RxList<Homework> allHomework = <Homework>[].obs;
   final RxList<Student> allStudents = <Student>[].obs;
   final RxList<Group> allGroups = <Group>[].obs;
 
@@ -34,10 +37,12 @@ class ReportController extends GetxController {
     try {
       final payments = await _dbService.getAllPayments();
       final attendance = await _dbService.getAllAttendance();
+      final homework = await _dbService.getAllHomework();
       final students = await _dbService.getAllStudents();
       final groups = await _dbService.getAllGroups();
       allPayments.assignAll(payments);
       allAttendance.assignAll(attendance);
+      allHomework.assignAll(homework);
       allStudents.assignAll(students);
       allGroups.assignAll(groups);
     } catch (e) {
@@ -79,6 +84,16 @@ class ReportController extends GetxController {
   int get monthAbsentCount =>
       monthAttendance.where((a) => a.status == 'غائب').length;
 
+  List<Homework> get monthHomework {
+    final m = selectedMonth.value;
+    final start = DateTime(m.year, m.month, 1);
+    final end = DateTime(m.year, m.month + 1, 1)
+        .subtract(const Duration(microseconds: 1));
+    return allHomework
+        .where((h) => !h.date.isBefore(start) && !h.date.isAfter(end))
+        .toList();
+  }
+
   // ─── Per-group summary for selected month ──────────────────────────────────
 
   // الطلاب الذين كانوا مسجّلين قبل نهاية الشهر المحدد
@@ -112,6 +127,18 @@ class ReportController extends GetxController {
       }
     }
 
+    final homeworkDoneByStudent = <int, int>{};
+    final homeworkNotDoneByStudent = <int, int>{};
+    for (final h in monthHomework) {
+      if (h.status == HOMEWORK_DONE) {
+        homeworkDoneByStudent.update(h.studentId, (v) => v + 1,
+            ifAbsent: () => 1);
+      } else if (h.status == HOMEWORK_NOT_DONE) {
+        homeworkNotDoneByStudent.update(h.studentId, (v) => v + 1,
+            ifAbsent: () => 1);
+      }
+    }
+
     final m = selectedMonth.value;
     // بنستخدم PricingHelper بدل effectivePrice مباشرة عشان مجموعات "بالحصة"
     // تُحسَب بعدد الحصص المحضورة فعليًا الشهر ده، مش بسعر الحصة الواحدة
@@ -131,6 +158,10 @@ class ReportController extends GetxController {
       }).length;
       final totalPresent =
           students.fold<int>(0, (s, st) => s + (presentByStudent[st.id] ?? 0));
+      final totalHomeworkDone = students.fold<int>(
+          0, (s, st) => s + (homeworkDoneByStudent[st.id] ?? 0));
+      final totalHomeworkNotDone = students.fold<int>(
+          0, (s, st) => s + (homeworkNotDoneByStudent[st.id] ?? 0));
       return GroupMonthSummary(
         group: g,
         studentCount: students.length,
@@ -138,6 +169,8 @@ class ReportController extends GetxController {
         collectedIncome: collectedIncome,
         fullyPaidCount: fullyPaid,
         totalPresentSessions: totalPresent,
+        totalHomeworkDone: totalHomeworkDone,
+        totalHomeworkNotDone: totalHomeworkNotDone,
       );
     }).toList();
   }
@@ -268,6 +301,31 @@ class ReportController extends GetxController {
     }
   }
 
+  /// تصدير تقرير الواجب PDF
+  Future<void> exportHomeworkPDF() async {
+    if (isExporting.value) return;
+    isExporting(true);
+    ToastHelper.info('جاري إنشاء تقرير الواجب...');
+    try {
+      final result = await _exportSvc.exportHomeworkPDF(
+        month: selectedMonth.value,
+        students: allStudents,
+        homework: allHomework,
+        groups: allGroups,
+      );
+      if (result.success && result.path != null) {
+        ToastHelper.success('تم إنشاء التقرير بنجاح');
+        await _exportSvc.sharePDF(result.path!);
+      } else {
+        ToastHelper.error(result.error ?? 'فشل إنشاء التقرير');
+      }
+    } catch (e) {
+      ToastHelper.error('خطأ: $e');
+    } finally {
+      isExporting(false);
+    }
+  }
+
   /// تصدير ملخص المجموعات PDF
   Future<void> exportGroupsSummaryPDF() async {
     if (isExporting.value) return;
@@ -319,6 +377,8 @@ class GroupMonthSummary {
   final double collectedIncome;
   final int fullyPaidCount;
   final int totalPresentSessions;
+  final int totalHomeworkDone;
+  final int totalHomeworkNotDone;
 
   GroupMonthSummary({
     required this.group,
@@ -327,6 +387,8 @@ class GroupMonthSummary {
     required this.collectedIncome,
     required this.fullyPaidCount,
     required this.totalPresentSessions,
+    this.totalHomeworkDone = 0,
+    this.totalHomeworkNotDone = 0,
   });
 
   double get collectionRate =>

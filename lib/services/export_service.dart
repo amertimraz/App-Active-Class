@@ -13,6 +13,7 @@ import 'dart:io';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/attendance_model.dart';
+import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/pricing_helper.dart';
@@ -204,6 +205,72 @@ class ExportService {
       }
 
       return _savePdf(doc, 'attendance_${_fileMonth(month)}');
+    } catch (e) {
+      return ExportResult.fail('فشل إنشاء PDF: $e');
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  تقرير الواجب الشهري
+  // ─────────────────────────────────────────────────────────────────
+  Future<ExportResult> exportHomeworkPDF({
+    required DateTime month,
+    required List<Student> students,
+    required List<Homework> homework,
+    required List<Group> groups,
+  }) async {
+    try {
+      await _loadFonts();
+      final doc = pw.Document();
+
+      final start = DateTime(month.year, month.month, 1);
+      final end = DateTime(month.year, month.month + 1, 0);
+      final days = end.day;
+
+      final monthHw = homework
+          .where(
+              (h) => h.date.year == month.year && h.date.month == month.month)
+          .toList();
+
+      final hwMap = <int, Map<int, String>>{};
+      for (final h in monthHw) {
+        hwMap.putIfAbsent(h.studentId, () => {})[h.date.day] = h.status;
+      }
+      final groupById = {for (final g in groups) g.id: g};
+
+      final sorted = List<Student>.from(students)
+        ..sort((a, b) {
+          final gc = a.groupId.compareTo(b.groupId);
+          return gc != 0 ? gc : a.name.compareTo(b.name);
+        });
+
+      final monthLabel = DateFormat('MMMM yyyy', 'ar').format(month);
+
+      final byGroup = <int, List<Student>>{};
+      for (final s in sorted) {
+        byGroup.putIfAbsent(s.groupId, () => []).add(s);
+      }
+
+      for (final entry in byGroup.entries) {
+        final g = groupById[entry.key];
+        final gLabel = g?.name ?? 'مجموعة ${entry.key}';
+        final gStudents = entry.value;
+
+        doc.addPage(pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          textDirection: pw.TextDirection.rtl,
+          margin: const pw.EdgeInsets.all(20),
+          header: (_) => _pageHeader('تقرير الواجب — $gLabel — $monthLabel'),
+          footer: (ctx) => _pageFooter(ctx),
+          build: (ctx) => [
+            _homeworkTable(gStudents, hwMap, days, start),
+            pw.SizedBox(height: 12),
+            _homeworkSummary(gStudents, hwMap, days),
+          ],
+        ));
+      }
+
+      return _savePdf(doc, 'homework_${_fileMonth(month)}');
     } catch (e) {
       return ExportResult.fail('فشل إنشاء PDF: $e');
     }
@@ -521,6 +588,96 @@ class ExportService {
           _statBox('إجمالي الغياب', '$totalAbsent جلسة', _error),
           _statBox(
               'نسبة الحضور',
+              '${rate.toStringAsFixed(1)}%',
+              rate >= 80
+                  ? _success
+                  : rate >= 60
+                      ? _warning
+                      : _error),
+        ],
+      ),
+    );
+  }
+
+  // ── جدول الواجب ──────────────────────────────────────────────────
+  pw.Widget _homeworkTable(List<Student> students,
+      Map<int, Map<int, String>> hwMap, int days, DateTime start) {
+    final colWidths = <int, pw.TableColumnWidth>{
+      0: const pw.FlexColumnWidth(2.5),
+    };
+    for (var d = 1; d <= days; d++) {
+      colWidths[d] = const pw.FixedColumnWidth(18);
+    }
+    colWidths[days + 1] = const pw.FixedColumnWidth(30);
+    colWidths[days + 2] = const pw.FixedColumnWidth(30);
+
+    final rows = <pw.TableRow>[];
+
+    final headerCells = <pw.Widget>[_th('الاسم', size: 8)];
+    for (var d = 1; d <= days; d++) {
+      final date = DateTime(start.year, start.month, d);
+      final weekday = _weekdayShort(date.weekday);
+      headerCells.add(_thSmall('$d\n$weekday'));
+    }
+    headerCells.add(_th('عمل', size: 8));
+    headerCells.add(_th('لم يعمل', size: 8));
+    rows.add(pw.TableRow(children: headerCells));
+
+    for (var i = 0; i < students.length; i++) {
+      final s = students[i];
+      final sHw = hwMap[s.id] ?? {};
+      final isEven = i % 2 == 0;
+      int doneCount = 0;
+      int notDoneCount = 0;
+
+      final cells = <pw.Widget>[
+        _td(s.name, isEven: isEven, bold: true, size: 8),
+      ];
+      for (var d = 1; d <= days; d++) {
+        final status = sHw[d];
+        if (status == HOMEWORK_DONE) {
+          doneCount++;
+          cells.add(_attCell(true, isEven));
+        } else if (status == HOMEWORK_NOT_DONE) {
+          notDoneCount++;
+          cells.add(_attCell(false, isEven));
+        } else {
+          cells.add(_attCell(null, isEven));
+        }
+      }
+      cells.add(_td('$doneCount', isEven: isEven, color: _success, size: 9));
+      cells.add(_td('$notDoneCount', isEven: isEven, color: _error, size: 9));
+      rows.add(pw.TableRow(children: cells));
+    }
+
+    return pw.Table(columnWidths: colWidths, children: rows);
+  }
+
+  pw.Widget _homeworkSummary(
+      List<Student> students, Map<int, Map<int, String>> hwMap, int days) {
+    int totalDone = 0;
+    int totalNotDone = 0;
+    for (final s in students) {
+      final sHw = hwMap[s.id] ?? {};
+      totalDone += sHw.values.where((v) => v == HOMEWORK_DONE).length;
+      totalNotDone += sHw.values.where((v) => v == HOMEWORK_NOT_DONE).length;
+    }
+    final total = totalDone + totalNotDone;
+    final rate = total > 0 ? (totalDone / total * 100) : 0.0;
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        color: _lightGrey,
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+      ),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+        children: [
+          _statBox('إجمالي عمل الواجب', '$totalDone', _success),
+          _statBox('إجمالي لم يعمل', '$totalNotDone', _error),
+          _statBox(
+              'نسبة الالتزام',
               '${rate.toStringAsFixed(1)}%',
               rate >= 80
                   ? _success
