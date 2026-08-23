@@ -6,11 +6,17 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/auth_controller.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/views/auth/register_screen.dart';
 import 'package:active_class/utils/helpers.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  /// بتتفعّل لما الشاشة دي بتتفتح من شاشة "جدّد اشتراكك" (مفيش أي
+  /// شاشة تانية في الستاك نرجعلها) — عشان لو تسجيل الدخول نجح واتضح
+  /// إن الحساب ده مساعد في فريق نشط، نروح للرئيسية على طول بدل ما
+  /// نوديه لشاشة الحساب اللي مش هيلاقي منها طريق للتطبيق أصلاً.
+  final bool onSuccessGoHome;
+  const LoginScreen({super.key, this.onSuccessGoHome = false});
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -41,7 +47,11 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     setState(() => _loading = false);
     if (err == null) {
-      Get.offNamed(ROUTE_ACCOUNT);
+      if (widget.onSuccessGoHome && TeamModeService().isEnabled.value) {
+        Get.offAllNamed(ROUTE_HOME);
+      } else {
+        Get.offNamed(ROUTE_ACCOUNT);
+      }
     } else {
       setState(() => _error = err);
       ToastHelper.error(err);

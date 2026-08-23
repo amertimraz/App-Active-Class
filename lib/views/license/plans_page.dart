@@ -7,6 +7,7 @@ import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/models/plan_config_model.dart';
 import 'package:active_class/views/license/activation_page.dart';
+import 'package:active_class/views/auth/login_screen.dart';
 
 const String _kSupportPhone = '201096066818';
 
@@ -154,6 +155,10 @@ class _PlansPageState extends State<PlansPage> {
 
                       // ── عندك كود ────────────────────────────────
                       _ActivationCodeCard(),
+                      const SizedBox(height: 12),
+
+                      // ── مساعد لدى مدرّس ─────────────────────────
+                      _AssistantLoginCard(),
                       const SizedBox(height: 20),
 
                       // ── Pending / Form / Success ────────────────
@@ -1031,6 +1036,81 @@ class _ActivationCodeCard extends StatelessWidget {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
           ),
           child: const Text('أدخل الكود',
+              style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12)),
+        ),
+      ]),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Assistant Login Card — مساعد مرتبط بفريق مدرّس، وصل هنا لأن ترخيصه
+// الشخصي (تجربة منتهية غالبًا) مش المرجع؛ لازم مسار يوصله لتسجيل
+// الدخول حتى لو الشاشة دي مفتوحة كبديل كامل (pushReplacement) بلا
+// أي طريقة رجوع.
+// ─────────────────────────────────────────────────────────────────────────────
+class _AssistantLoginCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF141B2D) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.primaryColor.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(13),
+            gradient: LinearGradient(
+              colors: [
+                AppTheme.primaryColor.withValues(alpha: 0.18),
+                AppTheme.primaryColor.withValues(alpha: 0.06),
+              ],
+            ),
+          ),
+          child: const Icon(Icons.groups_2_rounded,
+              color: AppTheme.primaryColor, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('مساعد لدى مدرّس؟',
+                  style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: isDark ? Colors.white : Colors.black87)),
+              Text('سجّل دخولك بحسابك عشان تكمّل على ترخيص المدرّس',
+                  style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 11,
+                      color: isDark ? Colors.white38 : Colors.black45)),
+            ],
+          ),
+        ),
+        OutlinedButton(
+          onPressed: () =>
+              Get.to(() => const LoginScreen(onSuccessGoHome: true)),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primaryColor,
+            side: const BorderSide(color: AppTheme.primaryColor, width: 1.5),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+          ),
+          child: const Text('تسجيل الدخول',
               style: TextStyle(
                   fontFamily: 'Cairo',
                   fontWeight: FontWeight.w800,
