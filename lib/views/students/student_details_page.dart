@@ -211,7 +211,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
           buffer.writeln('• $dateStr — ${r.examName}: غائب');
         } else if (r.grade != null) {
           buffer.writeln(
-              '• $dateStr — ${r.examName}: ${r.grade!.toStringAsFixed(1)}/${r.maxGrade.toStringAsFixed(0)} (${r.category.label})');
+              '• $dateStr — ${r.examName}: ${FormatHelper.formatGrade(r.grade!)}/${r.maxGrade.toStringAsFixed(0)} (${r.category.label})');
         } else {
           buffer.writeln('• $dateStr — ${r.examName}: لم تُدخل الدرجة بعد');
         }

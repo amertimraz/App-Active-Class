@@ -247,7 +247,17 @@ class ParentPortalService {
   /// مئات.
   Future<int> publishAllStudents() async {
     if (!LicenseController.to.parentPortalEnabled.value) return 0;
-    await publishProfile();
+    // عمدًا مش بننادي publishProfile() هنا — بتبلع أي فشل بصمت (مصمّمة
+    // كده لاستخدامها الخلفي التفاعلي العادي)، فلو فشلت (مثلاً تسجيل
+    // الدخول المجهول فشل)، كنا بنكمل نكتب دفعة الطلاب كلها بمعرّف
+    // مستخدم مش متأكدين إنه صاحب المستند فعلاً — وده كان بيخلي قاعدة
+    // الأمان ترفض الدفعة *كلها* دفعة واحدة (Firestore batch كله أو
+    // ولا حاجة) من غير أي رسالة خطأ توصل للمدرس. هنا بنسيب أي فشل
+    // يوصل لصاحب الاستدعاء (شاشة الإعدادات) عشان يظهر له تنبيه واضح.
+    _watchProfileChanges();
+    await _ensureAuth();
+    final slug = await ensureSlug();
+    await _publishProfile(slug);
 
     final students = await _dbService.getAllStudents();
     final allAttendance = await _dbService.getAllAttendance();
@@ -269,8 +279,6 @@ class ParentPortalService {
       homeworkByStudent.putIfAbsent(h.studentId, () => []).add(h);
     }
 
-    await _ensureAuth();
-    final slug = await ensureSlug();
     final col = _db.collection('parent_portal').doc(slug).collection('students');
 
     // Firestore بتحدّد أقصى 500 عملية لكل batch — بنقسّم كل 400 طالب

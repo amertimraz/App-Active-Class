@@ -71,6 +71,11 @@ bool requireDeletePermission(BuildContext context, bool allowed) {
 
 /// أدوات تنسيق للنصوص والتواريخ
 class FormatHelper {
+  /// تنسيق درجة امتحان — بدون فاصلة عشرية لو الدرجة رقم صحيح (10 بدل
+  /// 10.0)، وبفاصلة واحدة لو فيها كسر (7.5).
+  static String formatGrade(double v) =>
+      v == v.toInt() ? v.toInt().toString() : v.toStringAsFixed(1);
+
   /// تنسيق التاريخ
   static String formatDate(DateTime? date) {
     if (date == null) return 'لم يتم التحديد';

@@ -10,6 +10,7 @@ import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
@@ -301,24 +302,41 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                     month: DateTime(now.year, now.month),
                     allAttendance: attendanceController.attendance));
 
-        // عدد الحصص المسجلة فعليًا للمجموعة دي — أي تاريخ (يوم كامل)
-        // فيه على الأقل سجل حضور واحد لطالب من طلابها، بغض النظر هل
-        // اليوم ده مطابق لجدول المجموعة بالحرف ولا لأ (المدرس ممكن
-        // يسجّل حصة تعويضية في يوم غير الجدول المعتاد).
+        // الحصص المسجلة فعليًا للمجموعة دي — أي تاريخ (يوم كامل) فيه على
+        // الأقل سجل حضور واحد لطالب من طلابها، بغض النظر هل اليوم ده
+        // مطابق لجدول المجموعة بالحرف ولا لأ (المدرس ممكن يسجّل حصة
+        // تعويضية في يوم غير الجدول المعتاد). محصورة بآخر 4 شهور (تقريبًا
+        // مدة ترم) عشان الكارت والقايمة يفضلوا معبّرين عن الفترة الحالية
+        // بدل تاريخ المجموعة بالكامل من أول يوم.
+        final fourMonthsAgo =
+            DateTime(now.year, now.month - 4, now.day);
         final studentIds = allStudents.map((s) => s.id).toSet();
-        final recordedSessions = attendanceController.attendance
-            .where((a) => studentIds.contains(a.studentId))
-            .map((a) =>
-                DateTime(a.date.year, a.date.month, a.date.day))
-            .toSet()
-            .length;
+        final groupAttendance = attendanceController.attendance
+            .where((a) =>
+                studentIds.contains(a.studentId) &&
+                !a.date.isBefore(fourMonthsAgo))
+            .toList();
+        final byDay = <DateTime, List<Attendance>>{};
+        for (final a in groupAttendance) {
+          final day = DateTime(a.date.year, a.date.month, a.date.day);
+          byDay.putIfAbsent(day, () => []).add(a);
+        }
+        final sessionDays = byDay.entries
+            .map((e) => _GDSessionDay(
+                  date: e.key,
+                  presentCount:
+                      e.value.where((a) => a.status == ATTENDANCE_PRESENT).length,
+                  totalMarked: e.value.length,
+                ))
+            .toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
 
         return CustomScrollView(
           slivers: [
             // ── Header ─────────────────────────────────────────────────────
             SliverToBoxAdapter(
                 child: _buildHeader(context, g, allStudents, totalFees,
-                    recordedSessions, primary, isDark)),
+                    sessionDays, primary, isDark)),
 
             // ── Action buttons ──────────────────────────────────────────────
             SliverToBoxAdapter(
@@ -429,7 +447,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       Group g,
       List<Student> students,
       double totalFees,
-      int recordedSessions,
+      List<_GDSessionDay> sessionDays,
       Color primary,
       bool isDark) {
     return Container(
@@ -541,8 +559,12 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                 const SizedBox(width: 12),
                 _HeaderStat(
                     label: 'حصص مسجلة',
-                    value: '$recordedSessions',
-                    icon: Icons.event_available_rounded),
+                    value: '${sessionDays.length}',
+                    icon: Icons.event_available_rounded,
+                    onTap: sessionDays.isEmpty
+                        ? null
+                        : () => _gdShowSessionsDialog(
+                            context, g.name, sessionDays)),
               ],
             ),
           ],
@@ -718,9 +740,17 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     );
   }
 
-  void _showEditGroupSheet(BuildContext context, Group g) {
+  Future<void> _showEditGroupSheet(BuildContext context, Group g) async {
     final groupController = Get.find<GroupController>();
-    showModalBottomSheet(
+    final oldPrice = g.price;
+    // بنسجّل هنا آخر سعر جديد اتحفظ بنجاح (لو حصل) عشان نعرض عرض
+    // التحديث الجماعي بعد ما الشيت يتقفل تمامًا — مش وإحنا لسه جوّاه.
+    // لو الديالوج ده اتعرض واتنفّذ *جوّه* onSave (اللي بتستناه _GroupEditSheet
+    // قبل ما تقفل نفسها)، الشيت كانت بتفضل عالقة في حالة "بيحفظ" لحد
+    // ما المدرس يرد على الديالوج ويخلص التحديث الجماعي كله — بيبان
+    // وكأن الشاشة "علّقت".
+    double? savedNewPrice;
+    await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -728,24 +758,24 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         group: g,
         existingGroups: groupController.groups,
         onSave: (updated) async {
-          final oldPrice = g.price;
           final ok = await groupController.updateGroup(updated);
           if (ok) {
             _refreshGroup();
             ToastHelper.success('تم حفظ التعديلات', title: 'تم');
-            if (updated.price != null &&
-                oldPrice != null &&
-                updated.price != oldPrice &&
-                g.id != null &&
-                context.mounted) {
-              await _offerBulkStudentPriceUpdate(
-                  context, g.id!, oldPrice, updated.price!);
-            }
+            savedNewPrice = updated.price;
           }
           return ok;
         },
       ),
     );
+    if (!context.mounted) return;
+    if (savedNewPrice != null &&
+        oldPrice != null &&
+        savedNewPrice != oldPrice &&
+        g.id != null) {
+      await _offerBulkStudentPriceUpdate(
+          context, g.id!, oldPrice, savedNewPrice!);
+    }
   }
 
   // سعر المجموعة العام لا يلمس سعر أي طالب تلقائيًا (كل طالب سعره
@@ -2228,6 +2258,50 @@ class _SendStatBadge extends StatelessWidget {
                   color: color)),
         ]),
       );
+}
+
+// ─── يوم حصة مسجّلة (لكارت "حصص مسجلة" في هيدر تفاصيل المجموعة) ───────────────
+class _GDSessionDay {
+  final DateTime date;
+  final int presentCount;
+  final int totalMarked;
+  const _GDSessionDay(
+      {required this.date, required this.presentCount, required this.totalMarked});
+}
+
+void _gdShowSessionsDialog(
+    BuildContext context, String groupName, List<_GDSessionDay> sessionDays) {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: Text('الحصص المسجلة (آخر 4 شهور) — $groupName'),
+      content: SizedBox(
+        width: 420,
+        child: ListView.separated(
+          shrinkWrap: true,
+          itemCount: sessionDays.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (_, i) {
+            final d = sessionDays[i];
+            return ListTile(
+              dense: true,
+              leading: const Icon(Icons.event_available_rounded,
+                  color: AppTheme.primaryColor),
+              title: Text(DateFormat('EEEE، d MMMM yyyy', 'ar').format(d.date)),
+              trailing: Text('${d.presentCount}/${d.totalMarked} حاضر',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, color: Colors.green)),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق')),
+      ],
+    ),
+  );
 }
 
 class _GDResumeObserver extends WidgetsBindingObserver {

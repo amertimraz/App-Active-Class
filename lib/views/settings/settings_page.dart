@@ -27,6 +27,7 @@ import 'package:active_class/services/parent_portal_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/views/license/trial_banner.dart';
 import 'package:active_class/widgets/update_dialog.dart';
 
@@ -1610,6 +1611,51 @@ class SettingsPage extends StatelessWidget {
           }
         }
 
+        final hw = await db.getHomeworkByStudent(s.id!);
+        final hwMonth = hw
+            .where((h) => !h.date.isBefore(start) && !h.date.isAfter(monthEnd))
+            .toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
+        if (hwMonth.isNotEmpty) {
+          final hwDone = hwMonth.where((h) => h.status == HOMEWORK_DONE).length;
+          final hwNotDone =
+              hwMonth.where((h) => h.status == HOMEWORK_NOT_DONE).length;
+          buffer
+            ..writeln('')
+            ..writeln('📖 الواجب: عمل $hwDone • لم يعمل $hwNotDone');
+          for (final h in hwMonth.take(10)) {
+            final d = DateFormat('yyyy-MM-dd').format(h.date);
+            final st = h.status == HOMEWORK_DONE ? '📗 عمل' : '📙 لم يعمل';
+            buffer.writeln('• $d — $st');
+          }
+          if (hwMonth.length > 10) {
+            buffer.writeln('• … ${hwMonth.length - 10} سجلات إضافية');
+          }
+        }
+
+        final examsMonth = (await db.getStudentExamHistory(s.id!))
+            .where((r) =>
+                !r.examDate.isBefore(start) && !r.examDate.isAfter(monthEnd))
+            .toList()
+          ..sort((a, b) => b.examDate.compareTo(a.examDate));
+        if (examsMonth.isNotEmpty) {
+          buffer
+            ..writeln('')
+            ..writeln('📝 الامتحانات:');
+          for (final r in examsMonth) {
+            final d = DateFormat('yyyy-MM-dd').format(r.examDate);
+            if (r.isAbsent) {
+              buffer.writeln('• $d — ${r.examName}: غائب');
+            } else if (r.grade != null) {
+              buffer.writeln('• $d — ${r.examName}: '
+                  '${FormatHelper.formatGrade(r.grade!)}/${r.maxGrade.toStringAsFixed(0)} '
+                  '(${r.category.label})');
+            } else {
+              buffer.writeln('• $d — ${r.examName}: لم تُدخل الدرجة بعد');
+            }
+          }
+        }
+
         buffer
           ..writeln('')
           ..writeln(
@@ -2296,10 +2342,20 @@ class _ParentPortalTileState extends State<_ParentPortalTile> {
 
   Future<void> _publishAll() async {
     setState(() => _publishing = true);
-    final count = await ParentPortalService().publishAllStudents();
-    if (!mounted) return;
-    setState(() => _publishing = false);
-    ToastHelper.success('اتنشرت بيانات $count طالب (اللي عندهم رقم ولي أمر)');
+    try {
+      final count = await ParentPortalService().publishAllStudents();
+      if (!mounted) return;
+      ToastHelper.success('اتنشرت بيانات $count طالب (اللي عندهم رقم ولي أمر)');
+    } catch (e) {
+      // لو النشر فشل (اتصال ضعيف، أو صف واحد بس رفضته قاعدة الأمان)
+      // Firestore بترجع الـ batch كله بالفشل من غير ما تنفّذ ولا صف —
+      // من غير catch هنا، الزرار كان بيفضل "بينشر..." للأبد من غير أي
+      // رسالة، وده اللي كان بيبان وكأن التطبيق "علّق".
+      if (!mounted) return;
+      ToastHelper.error('فشل النشر — تأكد من الاتصال بالإنترنت وحاول تاني');
+    } finally {
+      if (mounted) setState(() => _publishing = false);
+    }
   }
 
   @override
