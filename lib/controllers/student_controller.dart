@@ -124,6 +124,25 @@ class StudentController extends GetxController {
         .length;
   }
 
+  /// أكتر سعر متكرر بين طلاب المجموعة (غير السعر الجديد) — ده "السعر
+  /// القديم الفعلي" اللي المفروض نعرض تحديثه، بدل ما نعتمد على سعر
+  /// المجموعة نفسه كمرجع. الاعتماد على سعر المجموعة بس كان بيكسر
+  /// الاكتشاف بعد أول مرة المدرس يرفض فيها التحديث الجماعي (أو بعد أي
+  /// تعديل ما اتأكدش): سعر المجموعة كان بيفضل يتغيّر مع كل تعديل، لكن
+  /// سعر الطلاب الفعلي بيفضل زي ما هو، فالمقارنة بينهم كانت بتفضل تكبر
+  /// وتفضل السعر الفعلي مايتكتشفش تاني. الاعتماد على أكتر سعر متكرر
+  /// فعليًا بين الطلاب بيخلي الاكتشاف يشتغل صح مهما اتكرر التعديل.
+  double? mostCommonPriceForGroup(int groupId, {double? excludePrice}) {
+    final counts = <double, int>{};
+    for (final s in students) {
+      if (s.groupId != groupId) continue;
+      if (excludePrice != null && s.price == excludePrice) continue;
+      counts[s.price] = (counts[s.price] ?? 0) + 1;
+    }
+    if (counts.isEmpty) return null;
+    return counts.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+  }
+
   /// تحديث سعر المجموعة العام لا يلمس سعر أي طالب تلقائيًا — كل طالب
   /// بيحتفظ بسعره المستقل من وقت إضافته (ممكن يكون اتعدّل يدويًا
   /// لخصم أو حالة خاصة). الدالة دي بتحدّث بس الطلاب اللي سعرهم لسه

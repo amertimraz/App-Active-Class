@@ -12,6 +12,7 @@ import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
+import 'package:active_class/utils/group_price_helper.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:intl/intl.dart';
@@ -311,8 +312,9 @@ class _GroupsPageState extends State<GroupsPage> {
     );
   }
 
-  void _showGroupFormDialog(BuildContext context, {Group? group}) {
-    showDialog(
+  Future<void> _showGroupFormDialog(BuildContext context, {Group? group}) async {
+    double? savedNewPrice;
+    await showDialog(
       context: context,
       barrierDismissible: true,
       builder: (ctx) {
@@ -332,17 +334,28 @@ class _GroupsPageState extends State<GroupsPage> {
               onSave: (newGroup) => group == null
                   ? controller.addGroup(newGroup)
                   : controller.updateGroup(newGroup),
-              onSaved: (name) {
+              onSaved: (name, newPrice) {
                 ToastHelper.success('تم حفظ "$name"', title: 'تم');
                 // إعادة مزامنة إشعارات مواعيد الحصص عشان تعكس الجدول
                 // الجديد/المعدَّل فورًا من غير ما المدرس يعمل أي حاجة.
                 NotificationService().syncAllScheduledNotifications();
+                savedNewPrice = newPrice;
               },
             ),
           ),
         );
       },
     );
+    if (!context.mounted) return;
+    final oldPrice = group?.price;
+    final groupId = group?.id;
+    if (savedNewPrice != null &&
+        oldPrice != null &&
+        groupId != null &&
+        savedNewPrice != oldPrice) {
+      await offerBulkStudentPriceUpdate(
+          context, Get.find<StudentController>(), groupId, savedNewPrice!);
+    }
   }
 }
 
@@ -354,7 +367,7 @@ class _GroupFormSheet extends StatefulWidget {
   final Group? group;
   final List<Group> existingGroups;
   final Future<bool> Function(Group) onSave;
-  final void Function(String groupName) onSaved;
+  final void Function(String groupName, double newPrice) onSaved;
 
   const _GroupFormSheet({
     required this.group,
@@ -514,7 +527,7 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
       ));
       if (!mounted) return;
       if (success) {
-        widget.onSaved(name);
+        widget.onSaved(name, price);
         Navigator.of(context).pop();
       }
       // لو فشل: الـcontroller أظهر رسالة الخطأ بالفعل، خلّي الشيت مفتوح

@@ -39,11 +39,24 @@ class _AttendancePageState extends State<AttendancePage>
   final HomeworkController homeworkCtrl   = Get.put(HomeworkController());
   late final TabController _tabController;
   DateTime _selectedDay = DateTime.now();
+  // بيحرّك إعادة رسم العداد التنازلي لحصص المجموعات الشغالة دلوقتي —
+  // مش محتاج دقة أعلى من كده لعداد بيتقاس بالدقايق (زي _statsTimer في
+  // exam_grades_page.dart بالظبط).
+  Timer? _countdownTimer;
+  // مجموعات اترسل تقريرها النهاردة بالفعل — مش بتمنع إعادة الإرسال
+  // (لو المدرس عدّل الحضور بعدين وحب يبعت تاني)، بس بتغيّر شكل الزرار
+  // لتلميح "اتبعت" بدل ما يفضل شايل زي أول مرة. في الذاكرة بس، بتتصفّر
+  // تلقائيًا لو الصفحة اتقفلت وفتحت تاني.
+  final Set<int> _reportSentGroupIds = {};
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
+    _countdownTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
     _reload();
   }
 
@@ -57,6 +70,7 @@ class _AttendancePageState extends State<AttendancePage>
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -107,6 +121,9 @@ class _AttendancePageState extends State<AttendancePage>
                 homeworkCtrl: homeworkCtrl,
                 selectedDay: _selectedDay,
                 onDayChanged: (d) => setState(() => _selectedDay = d),
+                reportSentGroupIds: _reportSentGroupIds,
+                onReportSent: (groupId) =>
+                    setState(() => _reportSentGroupIds.add(groupId)),
               ),
               _RecordsTab(
                 controller: controller,
@@ -166,6 +183,8 @@ class _RegisterTab extends StatelessWidget {
   final HomeworkController homeworkCtrl;
   final DateTime selectedDay;
   final ValueChanged<DateTime> onDayChanged;
+  final Set<int> reportSentGroupIds;
+  final ValueChanged<int> onReportSent;
 
   const _RegisterTab({
     required this.controller,
@@ -174,6 +193,8 @@ class _RegisterTab extends StatelessWidget {
     required this.homeworkCtrl,
     required this.selectedDay,
     required this.onDayChanged,
+    required this.reportSentGroupIds,
+    required this.onReportSent,
   });
 
   bool get _isToday {
@@ -264,6 +285,9 @@ class _RegisterTab extends StatelessWidget {
                           selectedDay: selectedDay,
                           controller: controller,
                           homeworkCtrl: homeworkCtrl,
+                          alreadySentReport:
+                              reportSentGroupIds.contains(group.id),
+                          onReportSent: () => onReportSent(group.id!),
                         );
                       },
                     ),
@@ -428,6 +452,8 @@ class _GroupAttendanceCard extends StatelessWidget {
   final DateTime selectedDay;
   final AttendanceController controller;
   final HomeworkController homeworkCtrl;
+  final bool alreadySentReport;
+  final VoidCallback onReportSent;
 
   const _GroupAttendanceCard({
     required this.isDark,
@@ -441,6 +467,8 @@ class _GroupAttendanceCard extends StatelessWidget {
     required this.selectedDay,
     required this.controller,
     required this.homeworkCtrl,
+    required this.alreadySentReport,
+    required this.onReportSent,
   });
 
   @override
@@ -488,6 +516,8 @@ class _GroupAttendanceCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(group.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             fontFamily: 'Cairo',
                             fontWeight: FontWeight.w800,
@@ -499,6 +529,41 @@ class _GroupAttendanceCard extends StatelessWidget {
                   ],
                 ),
               ),
+              // العداد التنازلي — بيظهر بس لو حصة المجموعة دي شغالة فعلاً
+              // دلوقتي (بناءً على جدولها)، وبيتحدّث كل 30 ثانية مع
+              // _countdownTimer في الصفحة الأب.
+              Builder(builder: (context) {
+                final remaining =
+                    controller.remainingSessionTime(group, DateTime.now());
+                if (remaining == null) return const SizedBox.shrink();
+                final mins = remaining.inMinutes;
+                final label = mins >= 60
+                    ? '${mins ~/ 60}س ${mins % 60}د متبقية'
+                    : '$mins د متبقية';
+                return Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: const Color(0xFFF59E0B).withValues(alpha: 0.35)),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.timer_outlined,
+                          size: 12, color: Color(0xFFF59E0B)),
+                      const SizedBox(width: 4),
+                      Text(label,
+                          style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFF59E0B))),
+                    ]),
+                  ),
+                );
+              }),
               // نسبة الحضور
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -544,8 +609,12 @@ class _GroupAttendanceCard extends StatelessWidget {
               // التسجيل عن الكل؛ غير كده بتسجّل "عمل" للكل (وبعدين يقدر
               // المدرس يستثني طالب أو اتنين بالضغط على أيقونتهم لوحدهم).
               Obx(() {
-                final allHomeworkDone = totalCount > 0 &&
-                    students.every((s) =>
+                homeworkCtrl.homework.length; // يربط الـ Obx بالقائمة التفاعلية حتى لو مفيش طلاب حاضرين
+                final presentStudents = students
+                    .where((s) => statusMap[s.id] == ATTENDANCE_PRESENT)
+                    .toList();
+                final allHomeworkDone = presentStudents.isNotEmpty &&
+                    presentStudents.every((s) =>
                         homeworkCtrl.statusFor(s.id!, selectedDay) ==
                         HOMEWORK_DONE);
                 return Tooltip(
@@ -553,10 +622,12 @@ class _GroupAttendanceCard extends StatelessWidget {
                       allHomeworkDone ? 'إلغاء واجب الكل' : 'تسجيل واجب الكل',
                   child: IconButton(
                     visualDensity: VisualDensity.compact,
-                    onPressed: () => homeworkCtrl.markGroupAllHomeworkDone(
-                      students.map((s) => s.id!).toList(),
-                      selectedDay,
-                    ),
+                    onPressed: presentStudents.isEmpty
+                        ? null
+                        : () => homeworkCtrl.markGroupAllHomeworkDone(
+                              presentStudents.map((s) => s.id!).toList(),
+                              selectedDay,
+                            ),
                     icon: Icon(
                         allHomeworkDone
                             ? Icons.menu_book_rounded
@@ -605,10 +676,205 @@ class _GroupAttendanceCard extends StatelessWidget {
               }).toList(),
             ),
           ),
+          // زرار إرسال تقرير واتساب — بيظهر بس لو الإعداد مفعّل من
+          // الإعدادات، والتاريخ المعروض هو النهاردة فعلاً، وكل طلاب
+          // المجموعة ليهم حالة حضور مسجّلة (مش وسط التسجيل).
+          Obx(() {
+            final settings = Get.find<SettingsController>();
+            if (!settings.reportOnCompletionEnabled.value) {
+              return const SizedBox.shrink();
+            }
+            final today = DateTime.now();
+            final isToday = selectedDay.year == today.year &&
+                selectedDay.month == today.month &&
+                selectedDay.day == today.day;
+            if (!isToday) return const SizedBox.shrink();
+            if (!controller.isAttendanceCompleteForGroupToday(
+                group, students)) {
+              return const SizedBox.shrink();
+            }
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => _showSendReportConfirm(
+                    context, group, students, controller, homeworkCtrl,
+                    onSent: onReportSent),
+                child: Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: (alreadySentReport
+                            ? Colors.green
+                            : const Color(0xFF25D366))
+                        .withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: (alreadySentReport
+                                ? Colors.green
+                                : const Color(0xFF25D366))
+                            .withValues(alpha: 0.35)),
+                  ),
+                  child: Row(children: [
+                    Icon(
+                        alreadySentReport
+                            ? Icons.check_circle_rounded
+                            : Icons.chat_rounded,
+                        size: 16,
+                        color: alreadySentReport
+                            ? Colors.green
+                            : const Color(0xFF25D366)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                          alreadySentReport
+                              ? 'تم إرسال التقرير — اضغط لإعادة الإرسال'
+                              : 'إرسال تقرير واتساب لأولياء الأمور',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: alreadySentReport
+                                  ? Colors.green.shade800
+                                  : const Color(0xFF128C7E))),
+                    ),
+                  ]),
+                ),
+              ),
+            );
+          }),
         ],
       ),
     );
   }
+}
+
+// ── إرسال تقرير واتساب لأولياء الأمور بعد اكتمال الحضور ─────────────────────
+// نفس نمط الإرسال الجماعي الموجود أصلاً في settings_page.dart: رابط
+// wa.me لكل ولي أمر، بيُفتح واحد ورا التاني بعد ما التطبيق يرجع من
+// الخلفية (المستخدم يرجع من واتساب لحد ما التطبيق يفتح تاني).
+
+Future<void> _showSendReportConfirm(
+  BuildContext context,
+  Group group,
+  List<Student> students,
+  AttendanceController controller,
+  HomeworkController homeworkCtrl, {
+  required VoidCallback onSent,
+}) async {
+  final selectedDay = DateTime.now();
+  final withPhone = <Student>[];
+  final skipped = <Student>[];
+  for (final s in students) {
+    final phone = s.guardianPhone?.trim() ?? '';
+    if (phone.isEmpty) {
+      skipped.add(s);
+    } else {
+      withPhone.add(s);
+    }
+  }
+
+  if (withPhone.isEmpty) {
+    if (context.mounted) {
+      AppToast.error(context, 'مفيش أي طالب في المجموعة عنده رقم ولي أمر مسجّل');
+    }
+    return;
+  }
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: const Text('إرسال تقرير واتساب؟'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('هيتبعت تقرير حضور وواجب النهاردة لـ ${withPhone.length} '
+                'ولي أمر في مجموعة "${group.name}".'),
+            if (skipped.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                  '${skipped.length} طالب هيتم تخطّيهم (مفيش رقم ولي أمر): '
+                  '${skipped.map((s) => s.name).join('، ')}',
+                  style: TextStyle(fontSize: 12, color: Colors.orange.shade800)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء')),
+        FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('إرسال')),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  if (!context.mounted) return;
+
+  String normalizePhone(String input, String defaultDial) {
+    var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (p.startsWith('+')) p = p.substring(1);
+    if (p.startsWith('00')) p = p.substring(2);
+    if (p.startsWith(defaultDial)) return p;
+    if (RegExp(r'^[1-9][0-9]{6,}$').hasMatch(p)) return p;
+    return defaultDial + p.replaceFirst(RegExp(r'^0+'), '');
+  }
+
+  final settings = Get.find<SettingsController>();
+  final countryDial = settings.countryDial.value;
+  final teacherName = settings.teacherFullName.value.trim();
+  final teacherSpecialization = settings.teacherSpecialization.value.trim();
+
+  for (final s in withPhone) {
+    final attStatus = controller.attendance
+        .firstWhereOrNull((a) =>
+            a.studentId == s.id &&
+            a.date.year == selectedDay.year &&
+            a.date.month == selectedDay.month &&
+            a.date.day == selectedDay.day)
+        ?.status;
+    if (attStatus == null) continue; // احتياطي: مفروض مستحيل لو الزرار ظاهر
+    final hwStatus = homeworkCtrl.statusFor(s.id!, selectedDay);
+    final message = controller.buildGuardianReportMessage(
+      student: s,
+      attendanceStatus: attStatus,
+      homeworkStatus: hwStatus,
+      teacherName: teacherName,
+      teacherSpecialization: teacherSpecialization,
+    );
+    final phone = normalizePhone(s.guardianPhone!.trim(), countryDial);
+    final uri =
+        Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    await _atWaitForResume();
+  }
+  onSent();
+}
+
+class _ATResumeObserver extends WidgetsBindingObserver {
+  final void Function() onResume;
+  _ATResumeObserver(this.onResume);
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) onResume();
+  }
+}
+
+Future<void> _atWaitForResume() {
+  final c = Completer<void>();
+  late _ATResumeObserver obs;
+  obs = _ATResumeObserver(() {
+    WidgetsBinding.instance.removeObserver(obs);
+    if (!c.isCompleted) c.complete();
+  });
+  WidgetsBinding.instance.addObserver(obs);
+  return c.future;
 }
 
 // ── بطاقة الطالب الكبيرة ────────────────────────────────────────────────────

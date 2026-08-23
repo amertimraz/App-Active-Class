@@ -210,3 +210,13 @@ const String SETTING_TEAM_ID = 'team_mode_team_id';
 // عشان disable() يقدر يعرف يمسح بيانات المساعد المتزامنة محليًا حتى
 // لو اتنادى قبل ما isOwner/teamId يتملّوا في الذاكرة للجلسة الحالية.
 const String SETTING_TEAM_IS_OWNER = 'team_mode_is_owner';
+
+// app_settings key — تفعيل/تعطيل إرسال تقرير واتساب تلقائي لأولياء
+// الأمور بعد اكتمال تسجيل حضور المجموعة (افتراضيًا معطّل).
+const String SETTING_REPORT_ON_COMPLETION_ENABLED =
+    'attendance_report_on_completion_enabled';
+
+// المدة الافتراضية للحصة (بالدقايق) لما جدول المجموعة يحدد ميعاد
+// البداية بس من غير مدة صريحة — بتُستخدم لحساب وقت نهاية الحصة
+// وبالتالي العداد التنازلي.
+const int DEFAULT_SESSION_MINUTES = 60;

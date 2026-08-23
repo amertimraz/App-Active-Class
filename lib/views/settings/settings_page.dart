@@ -328,6 +328,21 @@ class SettingsPage extends StatelessWidget {
                               ),
                             ]);
                           }),
+                          _buildDivider(isDark),
+                          // ── تقرير حضور/واجب تلقائي بعد اكتمال التحضير ──
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.mark_chat_read_rounded,
+                                iconColor: const Color(0xFF25D366),
+                                title: 'تقرير واتساب بعد اكتمال الحضور',
+                                subtitle: settings.reportOnCompletionEnabled.value
+                                    ? 'هيظهر زرار إرسال تقرير في كارت المجموعة أول ما تحضير النهاردة يكتمل'
+                                    : 'معطّل — مفيش زرار إرسال هيظهر',
+                                rxValue: settings.reportOnCompletionEnabled,
+                                onChanged: (v) async =>
+                                    await settings.setReportOnCompletionEnabled(v),
+                              )),
                         ],
                       ),
                       const SizedBox(height: 14),

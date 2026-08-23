@@ -82,6 +82,10 @@ class SettingsController extends GetxController {
   final RxBool hideQrInPayment = false.obs;
   final RxBool hideQrInAttendance = false.obs;
 
+  // إرسال تقرير واتساب تلقائي لأولياء الأمور بعد اكتمال تسجيل حضور
+  // المجموعة — افتراضيًا معطّل، المدرس يفعّله بنفسه من الإعدادات.
+  final RxBool reportOnCompletionEnabled = false.obs;
+
   /// هل وصل اليوم المحدد للإرسال في الشهر الحالي؟
   bool get isWhatsappDayReached =>
       DateTime.now().day >= whatsappSendDay.value;
@@ -120,6 +124,7 @@ class SettingsController extends GetxController {
       _loadTeacherInfo(),
       _loadWhatsappSettings(),
       _loadHideQrSettings(),
+      _loadReportOnCompletionSetting(),
     ]);
   }
 
@@ -203,6 +208,20 @@ class SettingsController extends GetxController {
     whatsappEnabled.value = v;
     try {
       await _dbSet(_keyWaEnabled, v ? '1' : '0');
+    } catch (_) {}
+  }
+
+  Future<void> _loadReportOnCompletionSetting() async {
+    try {
+      reportOnCompletionEnabled.value =
+          await _migrateBool(SETTING_REPORT_ON_COMPLETION_ENABLED) ?? false;
+    } catch (_) {}
+  }
+
+  Future<void> setReportOnCompletionEnabled(bool v) async {
+    reportOnCompletionEnabled.value = v;
+    try {
+      await _dbSet(SETTING_REPORT_ON_COMPLETION_ENABLED, v ? '1' : '0');
     } catch (_) {}
   }
 

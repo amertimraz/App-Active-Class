@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/license_controller.dart';
+import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/views/home_page.dart';
 import 'package:active_class/views/license/plans_page.dart';
 import 'package:active_class/views/onboarding/onboarding_page.dart';
@@ -46,6 +48,29 @@ class _SplashPageState extends State<SplashPage> {
       case LicenseState.trialExpired:
       case LicenseState.expired:
       case LicenseState.suspended:
+        // لو الجهاز ده مساعد (أو مدرس) في فريق كان مفعّل قبل كده،
+        // ترخيصه الشخصي (تجربة منتهية مثلاً) مش المرجع — ترخيص صاحب
+        // الفريق هو اللي بيتحقق منه فعليًا على السيرفر. نستنى شوية
+        // (TeamModeService.init() بيشتغل في الخلفية من main.dart) قبل
+        // ما نحكم بعرض شاشة التجديد، بدل ما نعرضها فورًا لمجرد إن
+        // تجربته الشخصية خلصت.
+        final wasTeamModeOn =
+            await DatabaseService().getSetting(SETTING_TEAM_MODE_ENABLED) ==
+                'true';
+        if (wasTeamModeOn) {
+          final tm = TeamModeService();
+          int waitedTeam = 0;
+          while (!tm.isEnabled.value && waitedTeam < 5000) {
+            await Future.delayed(const Duration(milliseconds: 200));
+            waitedTeam += 200;
+          }
+          if (!mounted) return;
+          if (tm.isEnabled.value) {
+            await _goHomeOrOnboarding();
+            break;
+          }
+        }
+        if (!mounted) return;
         Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const PlansPage()));
         break;

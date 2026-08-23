@@ -538,6 +538,94 @@ class AttendanceController extends GetxController {
     return null;
   }
 
+  // الوقت المتبقي لحصة المجموعة الحالية، لو فيه حصة شغالة فعلاً دلوقتي
+  // — بيرجّع null لو مفيش حصة شغالة (قبل الميعاد، أو بعد النهاية، أو
+  // مفيش جدول أصلاً). صيغة الجدول القياسية "اليوم HH:mm-HH:mm" (زي ما
+  // بيفرضها محرر الجدول في شاشة تفاصيل المجموعة) فيها نهاية صريحة
+  // دايمًا، لكن بيانات قديمة/غير قياسية ممكن يكون فيها بداية بس —
+  // في الحالة دي بنستخدم DEFAULT_SESSION_MINUTES كنهاية افتراضية.
+  Duration? remainingSessionTime(Group group, DateTime now) {
+    final timesText = sessionTimeForGroupOnDay(group, now);
+    if (timesText == null) return null;
+
+    TimeOfDay? parseTime(String v) {
+      final p = v.trim().split(':');
+      if (p.length != 2) return null;
+      final h = int.tryParse(p[0]);
+      final m = int.tryParse(p[1]);
+      if (h == null || m == null) return null;
+      return TimeOfDay(hour: h, minute: m);
+    }
+
+    final range = timesText.split('-');
+    final startTod = parseTime(range.first);
+    if (startTod == null) return null;
+
+    final start =
+        DateTime(now.year, now.month, now.day, startTod.hour, startTod.minute);
+    final endTod = range.length == 2 ? parseTime(range[1]) : null;
+    final end = endTod != null
+        ? DateTime(now.year, now.month, now.day, endTod.hour, endTod.minute)
+        : start.add(const Duration(minutes: DEFAULT_SESSION_MINUTES));
+
+    if (now.isBefore(start) || !now.isBefore(end)) return null;
+    return end.difference(now);
+  }
+
+  // هل كل طلاب المجموعة دي ليهم حالة حضور مسجّلة (حاضر أو غايب)
+  // اليوم؟ بيُستخدم عشان نعرف نظهر زرار "إرسال تقرير واتساب" بس لما
+  // التحضير يكون مكتمل، مش وسط التسجيل.
+  bool isAttendanceCompleteForGroupToday(
+      Group group, List<Student> groupStudents) {
+    if (groupStudents.isEmpty) return false;
+    final now = DateTime.now();
+    final dayStart = DateTime(now.year, now.month, now.day);
+    final dayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    final markedIds = attendance
+        .where((a) => !a.date.isBefore(dayStart) && !a.date.isAfter(dayEnd))
+        .map((a) => a.studentId)
+        .toSet();
+    return groupStudents.every((s) => markedIds.contains(s.id));
+  }
+
+  // رسالة تقرير ولي الأمر — حضور وواجب النهاردة لطالب واحد. نفس نمط
+  // الرسائل التانية اللي التطبيق بيبعتها للأهالي (student_details_page.dart،
+  // settings_page.dart) عشان تفضل متسقة.
+  String buildGuardianReportMessage({
+    required Student student,
+    required String attendanceStatus,
+    String? homeworkStatus,
+    String? teacherName,
+    String? teacherSpecialization,
+  }) {
+    final dateLabel = DateFormat('d MMMM yyyy', 'ar').format(DateTime.now());
+    final attLabel =
+        attendanceStatus == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غائب';
+    final hwLabel = homeworkStatus == null
+        ? 'لم يُسجَّل'
+        : (homeworkStatus == HOMEWORK_DONE ? '📗 عمل' : '📙 لم يعمل');
+
+    final buffer = StringBuffer()
+      ..writeln('🧾 تقرير اليوم — $dateLabel')
+      ..writeln('👤 الطالب: ${student.name}')
+      ..writeln('')
+      ..writeln('📊 الحضور: $attLabel')
+      ..writeln('📖 الواجب: $hwLabel');
+
+    final tName = teacherName?.trim() ?? '';
+    final tSpec = teacherSpecialization?.trim() ?? '';
+    if (tName.isNotEmpty || tSpec.isNotEmpty) {
+      buffer
+        ..writeln('')
+        ..writeln('👨‍🏫 المعلم: ${tName.isNotEmpty ? tName : '-'}')
+        ..writeln('📘 التخصص: ${tSpec.isNotEmpty ? tSpec : '-'}');
+    }
+    buffer
+      ..writeln('')
+      ..writeln('تم الإرسال من تطبيق Active Class');
+    return buffer.toString();
+  }
+
   // ملخص حضور طالب واحد لشهر معيّن: عدد أيام الحضور وتواريخ الغياب
   StudentMonthAttendance getStudentMonthAttendance(int studentId, DateTime month) {
     final start = DateTime(month.year, month.month, 1);

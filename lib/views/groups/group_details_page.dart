@@ -10,6 +10,7 @@ import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/group_price_helper.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
@@ -773,47 +774,9 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         oldPrice != null &&
         savedNewPrice != oldPrice &&
         g.id != null) {
-      await _offerBulkStudentPriceUpdate(
-          context, g.id!, oldPrice, savedNewPrice!);
-    }
-  }
-
-  // سعر المجموعة العام لا يلمس سعر أي طالب تلقائيًا (كل طالب سعره
-  // مستقل من وقت إضافته). بعد تعديل السعر العام، نعرض على المدرس
-  // فرصة يحدّث بيه بس الطلاب اللي سعرهم لسه مطابق للسعر القديم —
-  // أي طالب اتخصّص سعره (خصم، اتفاق خاص) بيفضل من غير أي تغيير.
-  Future<void> _offerBulkStudentPriceUpdate(
-      BuildContext context, int groupId, double oldPrice, double newPrice) async {
-    final count = studentController.countStudentsAtGroupPrice(
-        groupId: groupId, price: oldPrice);
-    if (count == 0) return;
-    if (!mounted || !context.mounted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text('تحديث سعر الطلاب؟'),
-        content: Text(
-            'فيه $count طالب سعرهم لسه ${FormatHelper.formatCurrency(oldPrice)} '
-            '(السعر القديم للمجموعة). عايز تحدّث سعرهم للسعر الجديد '
-            '${FormatHelper.formatCurrency(newPrice)}؟\n\n'
-            'أي طالب سعره مختلف عن ده (خصم أو اتفاق خاص) مش هيتأثر.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('لا، سيبهم زي ما هما')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('تحديث السعر')),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    final updatedCount = await studentController.bulkUpdatePriceForGroupDefault(
-        groupId: groupId, oldPrice: oldPrice, newPrice: newPrice);
-    if (updatedCount > 0) {
-      ToastHelper.success('تم تحديث سعر $updatedCount طالب');
-      _loadPaidStudents();
+      await offerBulkStudentPriceUpdate(
+          context, studentController, g.id!, savedNewPrice!,
+          onUpdated: _loadPaidStudents);
     }
   }
 

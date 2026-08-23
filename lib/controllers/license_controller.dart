@@ -719,8 +719,15 @@ class LicenseController extends GetxController {
   // ── Feature Gates ─────────────────────────────────────────────────────────
   _Limits get _limits => _remoteLimits[plan.value]!;
 
+  /// لو الجهاز ده مساعد (أو مدرس) في فريق مفعّل ومتحقق منه فعليًا من
+  /// السيرفر (teamModeBypassLimits)، حالة ترخيصه الشخصي (تجربة منتهية
+  /// مثلاً) متبقاش مهمة — ترخيص المدرس صاحب الفريق هو المرجع الحقيقي،
+  /// والفحص ده اتعمل خلاص على مستوى السيرفر (Supabase RLS) وقت
+  /// الانضمام/الاستعادة، مش مجرد علم محلي اختياري.
   bool get isActive =>
-      state.value == LicenseState.active || state.value == LicenseState.trial;
+      teamModeBypassLimits ||
+      state.value == LicenseState.active ||
+      state.value == LicenseState.trial;
 
   /// بتتحدد من TeamModeService لحظة تفعيل/الانضمام لوضع الفريق —
   /// الترخيص وقتها اتحقق منه خلاص على مستوى المدرس (صاحب الفريق)،
@@ -753,10 +760,16 @@ class LicenseController extends GetxController {
     return null;
   }
 
-  bool get canBackup => isActive && _limits.canBackup;
-  bool get canExport => isActive && _limits.canExport;
-  bool get canWhatsApp => isActive && _limits.canWhatsApp;
-  bool get canBooking => isActive && _limits.canBooking;
+  // ملحوظة: _limits بيتحدد بباقة الجهاز الشخصية (plan.value)، وده صح
+  // للمدرس نفسه، لكن غلط للمساعد — لأن باقته الشخصية (تجربة منتهية
+  // غالبًا) مالهاش علاقة بباقة المدرس صاحب الفريق الحقيقية. لو
+  // teamModeBypassLimits مفعّلة (يعني اتحقق من السيرفر إن الجهاز ده
+  // فعلاً جزء من فريق مرخّص)، بنعتبر كل الميزات متاحة بدل ما نطبّق
+  // حدود باقة شخصية مالهاش معنى هنا.
+  bool get canBackup => isActive && (teamModeBypassLimits || _limits.canBackup);
+  bool get canExport => isActive && (teamModeBypassLimits || _limits.canExport);
+  bool get canWhatsApp => isActive && (teamModeBypassLimits || _limits.canWhatsApp);
+  bool get canBooking => isActive && (teamModeBypassLimits || _limits.canBooking);
 
   int get maxGroupsAllowed => _limits.maxGroups;
   int get maxStudentsAllowed => _limits.maxStudents;
