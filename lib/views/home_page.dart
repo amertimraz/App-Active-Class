@@ -357,8 +357,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             : _settingsController.teacherFullName.value.trim();
         final teacherAvatar =
             _settingsController.teacherAvatarPath.value.trim();
-        final genderSource =
-            isAssistant ? team.ownerTeacherGender.value : _settingsController.teacherGender.value;
+        final genderSource = isAssistant
+            ? team.ownerTeacherGender.value
+            : _settingsController.teacherGender.value;
         final title = genderSource == 'female' ? 'مس' : 'مستر';
         final isFemale = genderSource == 'female';
         final displayName = teacherName.isNotEmpty ? teacherName : 'المعلم';
@@ -590,12 +591,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             final absent = _dashboardController.todayAbsent.value;
             final todayExpected = _dashboardController.todayExpected.value;
             final attRate = _dashboardController.todayAttendanceRate.value;
-            final sessionRevenue = _dashboardController.todaySessionRevenue.value;
-            final sessionRevenueCount = _dashboardController.todaySessionRevenueCount.value;
-            final sessionRevenueExpected = _dashboardController.todaySessionRevenueExpected.value;
-            final sessionRevenueExpectedCount = _dashboardController.todaySessionRevenueExpectedCount.value;
-            final todayPaymentsTotal = _dashboardController.todayPaymentsTotal.value;
-            final todayPaymentsCount = _dashboardController.todayPaymentsCount.value;
+            final sessionRevenue =
+                _dashboardController.todaySessionRevenue.value;
+            final sessionRevenueCount =
+                _dashboardController.todaySessionRevenueCount.value;
+            final sessionRevenueExpected =
+                _dashboardController.todaySessionRevenueExpected.value;
+            final sessionRevenueExpectedCount =
+                _dashboardController.todaySessionRevenueExpectedCount.value;
+            final todayPaymentsTotal =
+                _dashboardController.todayPaymentsTotal.value;
+            final todayPaymentsCount =
+                _dashboardController.todayPaymentsCount.value;
 
             String fmtMoney(double v) => v >= 1000
                 ? '${(v / 1000).toStringAsFixed(1)}k $currency'
@@ -710,18 +717,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   LockBadge(
                     locked: !canSeeFinancials,
                     child: _SessionRevenueHint(
-                    locked: !canSeeFinancials,
-                    actualLabel: !canSeeFinancials
-                        ? '🔒'
-                        : (_statsVisible ? fmtMoney(sessionRevenue) : '••••'),
-                    actualCount: sessionRevenueCount,
-                    expectedLabel: !canSeeFinancials
-                        ? '🔒'
-                        : (_statsVisible
-                            ? fmtMoney(sessionRevenueExpected)
-                            : '••••'),
-                    expectedCount: sessionRevenueExpectedCount,
-                  ),
+                      locked: !canSeeFinancials,
+                      actualLabel: !canSeeFinancials
+                          ? '🔒'
+                          : (_statsVisible ? fmtMoney(sessionRevenue) : '••••'),
+                      actualCount: sessionRevenueCount,
+                      expectedLabel: !canSeeFinancials
+                          ? '🔒'
+                          : (_statsVisible
+                              ? fmtMoney(sessionRevenueExpected)
+                              : '••••'),
+                      expectedCount: sessionRevenueExpectedCount,
+                    ),
                   ),
                 ],
               ],
@@ -948,7 +955,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             child: Row(
               children: [
                 Icon(Icons.lock_rounded,
-                    size: 16, color: isDark ? Colors.white38 : Colors.grey.shade500),
+                    size: 16,
+                    color: isDark ? Colors.white38 : Colors.grey.shade500),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1731,7 +1739,9 @@ class _SessionRevenueHint extends StatelessWidget {
             children: [
               Expanded(
                 child: _RevenueMiniStat(
-                  label: locked ? 'محصّل فعليًا' : 'محصّل فعليًا ($actualCount دفعة)',
+                  label: locked
+                      ? 'محصّل فعليًا'
+                      : 'محصّل فعليًا ($actualCount دفعة)',
                   value: actualLabel,
                   color: color,
                 ),
@@ -1818,96 +1828,106 @@ class _AttendanceCard extends StatelessWidget {
                 ? const Color(0xFFF59E0B)
                 : const Color(0xFFEF4444);
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF131D31) : Colors.white,
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.06)
-              : Colors.grey.shade200,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.how_to_reg_rounded, size: 16, color: barColor),
-              const SizedBox(width: 6),
-              Text(
-                'حضور اليوم',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: isDark ? Colors.white : const Color(0xFF111827),
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: barColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  expected == 0 ? '—' : '$pct%',
-                  style: TextStyle(
-                    color: barColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: expected == 0 ? 0 : rate.clamp(0.0, 1.0),
-              minHeight: 8,
-              backgroundColor: isDark ? Colors.white12 : Colors.grey.shade200,
-              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+        onTap: () => Get.toNamed(ROUTE_ATTENDANCE),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF131D31) : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.grey.shade200,
             ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 14,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _AttStat(
-                icon: Icons.check_circle_outline_rounded,
-                color: const Color(0xFF10B981),
-                label: visible ? '$present حضر' : '••',
-              ),
-              _AttStat(
-                icon: Icons.cancel_outlined,
-                color: const Color(0xFFEF4444),
-                label: visible ? '$absent غاب' : '••',
-              ),
-              Text(
-                expected == 0
-                    ? 'لا مجموعات اليوم'
-                    : (visible ? 'من $expected طالب' : '••'),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white38 : Colors.grey.shade500,
-                ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
-        ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.how_to_reg_rounded, size: 16, color: barColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    'حضور اليوم',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: isDark ? Colors.white : const Color(0xFF111827),
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: barColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      expected == 0 ? '—' : '$pct%',
+                      style: TextStyle(
+                        color: barColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: expected == 0 ? 0 : rate.clamp(0.0, 1.0),
+                  minHeight: 8,
+                  backgroundColor:
+                      isDark ? Colors.white12 : Colors.grey.shade200,
+                  valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 14,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _AttStat(
+                    icon: Icons.check_circle_outline_rounded,
+                    color: const Color(0xFF10B981),
+                    label: visible ? '$present حضر' : '••',
+                  ),
+                  _AttStat(
+                    icon: Icons.cancel_outlined,
+                    color: const Color(0xFFEF4444),
+                    label: visible ? '$absent غاب' : '••',
+                  ),
+                  Text(
+                    expected == 0
+                        ? 'لا مجموعات اليوم'
+                        : (visible ? 'من $expected طالب' : '••'),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white38 : Colors.grey.shade500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2170,12 +2190,14 @@ class _PaymentProgressCard extends StatelessWidget {
                       children: [
                         Icon(Icons.lock_rounded,
                             size: 13,
-                            color: isDark ? Colors.white38 : Colors.grey.shade600),
+                            color:
+                                isDark ? Colors.white38 : Colors.grey.shade600),
                         const SizedBox(width: 4),
                         Text(
                           'مقفول',
                           style: TextStyle(
-                            color: isDark ? Colors.white38 : Colors.grey.shade600,
+                            color:
+                                isDark ? Colors.white38 : Colors.grey.shade600,
                             fontWeight: FontWeight.bold,
                             fontSize: 11,
                           ),
@@ -2700,8 +2722,10 @@ void _showStudentsListDialog(BuildContext context, bool isDark,
       content: SizedBox(
         width: 480,
         child: FutureBuilder(
-          future: Future.wait(
-              [DatabaseService().getAllStudents(), DatabaseService().getAllGroups()]),
+          future: Future.wait([
+            DatabaseService().getAllStudents(),
+            DatabaseService().getAllGroups()
+          ]),
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const Padding(
@@ -2712,14 +2736,15 @@ void _showStudentsListDialog(BuildContext context, bool isDark,
             final allStudents = snapshot.data![0] as List<Student>;
             final groups = snapshot.data![1] as List<Group>;
             final groupNameById = {for (final g in groups) g.id: g.name};
-            final students =
-                allStudents.where((s) => !exemptOnly || s.isExempt).toList()
-                  ..sort((a, b) => a.name.compareTo(b.name));
+            final students = allStudents
+                .where((s) => !exemptOnly || s.isExempt)
+                .toList()
+              ..sort((a, b) => a.name.compareTo(b.name));
             if (students.isEmpty) {
               return Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text(
-                    exemptOnly ? 'لا يوجد طلاب معفيون' : 'لا يوجد طلاب'),
+                child:
+                    Text(exemptOnly ? 'لا يوجد طلاب معفيون' : 'لا يوجد طلاب'),
               );
             }
             return ListView.separated(
