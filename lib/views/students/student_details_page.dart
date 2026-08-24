@@ -17,6 +17,7 @@ import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
@@ -313,6 +314,12 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
             : (presentCount / studentAtts.length) * 100;
         final totalPaid =
             studentPays.fold<double>(0.0, (sum, p) => sum + p.amount);
+        final accumulatedDebt = PricingHelper.accumulatedDebt(
+          student: s,
+          group: _group,
+          allAttendance: studentAtts,
+          payments: studentPays,
+        );
 
         return NestedScrollView(
           headerSliverBuilder: (_, __) => [
@@ -342,6 +349,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                   ? _PaymentsTab(
                       payments: studentPays,
                       totalPaid: totalPaid,
+                      accumulatedDebt: accumulatedDebt,
                       accentColor: primary)
                   : const LockedSectionPlaceholder(),
             ],
@@ -1262,11 +1270,13 @@ class _MiniStat extends StatelessWidget {
 class _PaymentsTab extends StatelessWidget {
   final List<Payment> payments;
   final double totalPaid;
+  final double accumulatedDebt;
   final Color accentColor;
 
   const _PaymentsTab({
     required this.payments,
     required this.totalPaid,
+    required this.accumulatedDebt,
     required this.accentColor,
   });
 
@@ -1283,7 +1293,7 @@ class _PaymentsTab extends StatelessWidget {
     }
     final months = byMonth.keys.toList();
 
-    if (sorted.isEmpty) {
+    if (sorted.isEmpty && accumulatedDebt <= 0) {
       return const Center(
         child: EmptyState(
           icon: Icons.payments_rounded,
@@ -1307,6 +1317,42 @@ class _PaymentsTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
+        // مديونية متراكمة — بتظهر بس لو فيه فعلاً مبلغ متأخر (مجموع
+        // "المستحق - المدفوع" لكل شهر من انضمام الطالب لحد دلوقتي)
+        if (accumulatedDebt > 0) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: isDark ? 0.12 : 0.06),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
+            ),
+            child: Row(children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.report_gmailerrorred_rounded,
+                    color: Colors.red, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('مديونية متراكمة',
+                    style:
+                        TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                CurrencyText(accumulatedDebt,
+                    style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.red)),
+              ]),
+            ]),
+          ),
+          const SizedBox(height: 16),
+        ],
         // إجمالي
         Container(
           padding: const EdgeInsets.all(16),

@@ -987,22 +987,6 @@ class DatabaseService {
     return result.map((map) => Payment.fromMap(map)).toList();
   }
 
-  Future<Set<int>> getPaidStudentIdsForMonth(DateTime month) async {
-    final db = await database;
-    final start = DateTime(month.year, month.month, 1).toIso8601String();
-    final end =
-        DateTime(month.year, month.month + 1, 0, 23, 59, 59).toIso8601String();
-
-    final result = await db.query(
-      TABLE_PAYMENTS,
-      columns: [COL_PAYMENT_STUDENT_ID],
-      where: '$COL_PAYMENT_DATE >= ? AND $COL_PAYMENT_DATE <= ?',
-      whereArgs: [start, end],
-    );
-
-    return result.map((row) => row[COL_PAYMENT_STUDENT_ID] as int).toSet();
-  }
-
   Future<Payment?> getPayment(int id) async {
     final db = await database;
     final result = await db.query(

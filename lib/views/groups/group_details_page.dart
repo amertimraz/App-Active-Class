@@ -84,20 +84,46 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     _searchCtrl
         .addListener(() => studentController.searchStudents(_searchCtrl.text));
     final g = group;
-    if (g != null && g.id != null) studentController.loadStudentsByGroup(g.id!);
-    attendanceController.loadAttendance();
-    _loadPaidStudents();
+    // _loadPaidStudents بقت بتلف على studentController.students عشان
+    // تحسب المديونية المتراكمة لكل طالب — لازم تستنى تحميل طلاب
+    // المجموعة يخلص الأول (مش تتنفّذ بالتوازي زي قبل)، وإلا ممكن تلف
+    // على قائمة فاضية أو قديمة من مجموعة تانية كان المستخدم فاتحها.
+    if (g != null && g.id != null) {
+      studentController.loadStudentsByGroup(g.id!).then((_) {
+        if (mounted) _loadPaidStudents();
+      });
+    } else {
+      _loadPaidStudents();
+    }
   }
 
+  /// شارة "لم يدفع" لازم تعكس المديونية المتراكمة الحقيقية (كل الشهور
+  /// من انضمام الطالب)، مش الشهر الحالي بس — وإلا طالب عليه شهر قديم
+  /// بس دافع الشهر ده كان هيبان "دافع" في القايمة وهو لسه عليه فلوس.
+  /// لازم ننتظر تحميل الحضور الأول عشان حساب المستحق في مجموعات
+  /// "بالحصة" يبقى صحيح.
   Future<void> _loadPaidStudents() async {
-    final paid =
-        await DatabaseService().getPaidStudentIdsForMonth(DateTime.now());
-    if (mounted)
+    await attendanceController.loadAttendance();
+    final allPayments = await DatabaseService().getAllPayments();
+    final g = group;
+    final fullyPaid = <int>{};
+    for (final s in studentController.students) {
+      if (s.groupId != g?.id) continue;
+      final debt = PricingHelper.accumulatedDebt(
+        student: s,
+        group: g,
+        allAttendance: attendanceController.attendance,
+        payments: allPayments.where((p) => p.studentId == s.id).toList(),
+      );
+      if (debt <= 0) fullyPaid.add(s.id!);
+    }
+    if (mounted) {
       setState(() {
         _paidStudentIds
           ..clear()
-          ..addAll(paid);
+          ..addAll(fullyPaid);
       });
+    }
   }
 
   void _toggleSelection(int studentId) {

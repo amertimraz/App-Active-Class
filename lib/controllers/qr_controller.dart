@@ -330,6 +330,16 @@ class QRController extends GetxController {
 
       final base = _computeBaseAmount(student);
       final amount = custom ?? base;
+      // بنقارن بس لو المدرس عدّل المبلغ يدويًا (custom) — لأن base نفسها
+      // ممكن تشمل شهور قادمة لسه ماجاش وقتها لو المدرس بيدفع مقدَّم
+      // (selectAllUpcoming)، فمقارنتها بمديونية ماضية/حالية بس (accumulatedDebt)
+      // كانت هتمنع الدفع المقدَّم المشروع ده غلط. المرجع الصحيح للتعديل
+      // اليدوي هو نفسه إجمالي المستحق على الشهور المختارة (base).
+      if (custom != null && custom > base + 0.01) {
+        ToastHelper.error(
+            'المبلغ أكبر من المستحق على الشهور المختارة (${FormatHelper.formatCurrency(base)})');
+        return false;
+      }
       final extra = [
         if (custom != null) 'custom=1',
         if (customNote.isNotEmpty) 'note=$customNote',

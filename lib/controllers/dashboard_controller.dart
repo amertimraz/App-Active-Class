@@ -141,17 +141,27 @@ class DashboardController extends GetxController {
     final monthPayments = payments.where((p) =>
         !p.date.isBefore(monthStart) && !p.date.isAfter(monthEnd)).toList();
 
-    final paidIds = monthPayments.map((p) => p.studentId).toSet();
+    // مجموع مدفوع كل طالب الشهر ده — مش بس "هل عنده أي دفعة؟" اللي
+    // كان بيعتبر دفعة جزئية (ولو جنيه واحد) دفع كامل ويستبعد الطالب
+    // غلط من قائمة "لم يدفعوا هذا الشهر".
+    final paidByStudent = <int, double>{};
+    for (final p in monthPayments) {
+      paidByStudent.update(p.studentId, (v) => v + p.amount,
+          ifAbsent: () => p.amount);
+    }
 
     double expected = 0;
     double paid     = 0;
+    final unpaidStudents = <Student>[];
     for (final s in activeStudents) {
-      expected += PricingHelper.monthlyDue(
+      final due = PricingHelper.monthlyDue(
         student: s,
         group: groupById[s.groupId],
         month: monthStart,
         allAttendance: att.attendance,
       );
+      expected += due;
+      if (due > 0 && (paidByStudent[s.id] ?? 0) < due) unpaidStudents.add(s);
     }
     for (final p in monthPayments) {
       paid += p.amount;
@@ -162,12 +172,10 @@ class DashboardController extends GetxController {
     monthRemaining.value   = (expected - paid).clamp(0, double.infinity);
     monthPaymentRate.value = expected > 0 ? (paid / expected).clamp(0, 1) : 0;
 
-    paidStudentsCount.value   = paidIds.length;
-    unpaidStudentsCount.value =
-        activeStudents.where((s) => !paidIds.contains(s.id)).length;
+    paidStudentsCount.value   = activeStudents.length - unpaidStudents.length;
+    unpaidStudentsCount.value = unpaidStudents.length;
 
-    _unpaidList.assignAll(
-        activeStudents.where((s) => !paidIds.contains(s.id)).toList());
+    _unpaidList.assignAll(unpaidStudents);
   }
 
   // ── تحميل إحصائيات اليوم ────────────────────────────────────────────────

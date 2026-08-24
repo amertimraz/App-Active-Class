@@ -657,6 +657,29 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 ToastHelper.error('أدخل مبلغ صحيح');
                 return;
               }
+              // نفس سقف "تسجيل دفع" — بنستبعد الدفعة دي نفسها من حساب
+              // المديونية قبل المقارنة، عشان قيمتها القديمة (المحسوبة
+              // أصلاً كمدفوعة) ماتمنعش زيادتها لحد المستحق الحقيقي.
+              final student = studentController.students
+                  .firstWhereOrNull((s) => s.id == p.studentId);
+              if (student != null) {
+                final group = groupController.groups
+                    .firstWhereOrNull((g) => g.id == student.groupId);
+                final otherPayments = ctrl.payments
+                    .where((x) => x.studentId == p.studentId && x.id != p.id)
+                    .toList();
+                final remaining = PricingHelper.accumulatedDebt(
+                  student: student,
+                  group: group,
+                  allAttendance: attendanceController.attendance,
+                  payments: otherPayments,
+                );
+                if (amount > remaining + 0.01) {
+                  ToastHelper.error(
+                      'المبلغ أكبر من المستحق على الطالب (${FormatHelper.formatCurrency(remaining)})');
+                  return;
+                }
+              }
               Navigator.pop(ctx);
               final ok = await ctrl.updatePayment(Payment(
                 id: p.id,
@@ -701,10 +724,27 @@ class _PaymentsPageState extends State<PaymentsPage> {
     }
 
     final month = controller.selectedMonth.value ?? DateTime.now();
-    // المتبقي فعليًا بعد خصم أي دفعات سابقة هذا الشهر — مش المستحق الكامل،
-    // عشان مانعبّيش الحقل بمبلغ زيادة لطالب دفع جزء بالفعل.
+    // إجمالي المديونية المتراكمة (كل الشهور غير المدفوعة، مش بس الشهر
+    // ده) — عشان الحقل يتعبّى بالمبلغ الحقيقي المطلوب من الطالب، ولو
+    // عليه شهر قديم يبان معاه.
     double? dueFor(Student? student) {
       if (student == null) return null;
+      final group = groupController.groups
+          .firstWhereOrNull((g) => g.id == student.groupId);
+      return PricingHelper.accumulatedDebt(
+        student: student,
+        group: group,
+        allAttendance: attendanceController.attendance,
+        payments:
+            controller.payments.where((p) => p.studentId == student.id).toList(),
+      );
+    }
+
+    // المتبقي فعليًا على *الشهر المختار بس* بعد خصم دفعاته — مختلف عن
+    // dueFor (اللي بقى إجمالي متراكم لكل الشهور) عشان فحص "دفع مكرر"
+    // تحت لازم يبص على الشهر ده تحديدًا، مش على مديونية قديمة ممكن
+    // تخلّي الإجمالي أكبر من صفر حتى لو الشهر ده مدفوع بالكامل.
+    double thisMonthRemaining(Student student) {
       final group = groupController.groups
           .firstWhereOrNull((g) => g.id == student.groupId);
       final due = PricingHelper.monthlyDue(
@@ -739,7 +779,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
             '${student.name} لسه متسجلش حضور لأي حصة الشهر ده — سجّل الحضور الأول قبل الدفع');
         return true;
       }
-      if ((dueFor(student) ?? 0) <= 0) {
+      if (thisMonthRemaining(student) <= 0) {
         ToastHelper.error(
             '${student.name} مدفوع بالكامل عن كل الحصص اللي حضرها بالفعل');
         return true;
@@ -1308,11 +1348,41 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
     super.dispose();
   }
 
+  /// إجمالي المديونية المتراكمة الحقيقية على الطالب دلوقتي — بيُحسب هنا
+  /// من غير الاعتماد على defaultAmount اللي ممكن يكون مبلغ شهر واحد بس
+  /// (لو الشيت اتفتحت من صف "لم يدفع" لشهر معيّن)، عشان السقف يفضل
+  /// صحيح حتى لو الطالب عليه أكتر من شهر.
+  double? _remainingDebt() {
+    final student = Get.find<StudentController>()
+        .students
+        .firstWhereOrNull((s) => s.id == widget.studentId);
+    if (student == null) return null;
+    final group = Get.find<GroupController>()
+        .groups
+        .firstWhereOrNull((g) => g.id == student.groupId);
+    return PricingHelper.accumulatedDebt(
+      student: student,
+      group: group,
+      allAttendance: widget.attendanceController.attendance,
+      payments: widget.controller.payments
+          .where((p) => p.studentId == widget.studentId)
+          .toList(),
+    );
+  }
+
   Future<void> _save() async {
     final text = _amountCtrl.text.trim();
     final parsed = double.tryParse(text);
     if (text.isEmpty || parsed == null || parsed <= 0) {
       if (mounted) AppToast.error(context, 'يرجى إدخال مبلغ صحيح');
+      return;
+    }
+    final remaining = _remainingDebt();
+    if (remaining != null && parsed > remaining + 0.01) {
+      if (mounted) {
+        AppToast.error(context,
+            'المبلغ أكبر من المستحق على الطالب (${FormatHelper.formatCurrency(remaining)})');
+      }
       return;
     }
     setState(() => _saving = true);
