@@ -151,6 +151,7 @@ class LicenseController extends GetxController {
   static const _kCode = 'lic_code';
   static const _kFirstLaunch = 'lic_first_launch';
   static const _kPlan = 'lic_plan';
+  static const _kExpiresAt = 'lic_expires_at'; // مخزّنة عشان وضع الأوفلاين (grace period)
   static const _kHasRequest = 'lic_has_request';
   static const _kLastVerified = 'lic_last_verified'; // آخر تحقق ناجح من السيرفر
   static const kTrialDays = 7;
@@ -409,6 +410,11 @@ class LicenseController extends GetxController {
       expiresAt.value = effectiveExpiresAt; // null = مدى الحياة
       state.value = LicenseState.active;
       await prefs.setString(_kPlan, planStr);
+      if (effectiveExpiresAt != null) {
+        await prefs.setInt(_kExpiresAt, effectiveExpiresAt.millisecondsSinceEpoch);
+      } else {
+        await prefs.remove(_kExpiresAt);
+      }
 
       // ابدأ الاستماع للتغييرات في real-time
       _watchLicense(code, prefs);
@@ -437,6 +443,10 @@ class LicenseController extends GetxController {
       if (daysSinceVerified <= _kGraceDays) {
         plan.value = _parsePlan(cachedPlan);
         licenseCode.value = code;
+        final cachedExpiresMs = prefs.getInt(_kExpiresAt);
+        expiresAt.value = cachedExpiresMs != null
+            ? DateTime.fromMillisecondsSinceEpoch(cachedExpiresMs)
+            : null;
         state.value = LicenseState.active;
       } else {
         // انتهت مهلة الاستخدام بدون اتصال — لازم يتأكد من السيرفر تاني
@@ -459,6 +469,7 @@ class LicenseController extends GetxController {
         // ✅ الترخيص اتحذف من الـ admin
         await prefs.remove(_kCode);
         await prefs.remove(_kPlan);
+        await prefs.remove(_kExpiresAt);
         licenseCode.value = null;
         expiresAt.value = null;
         parentPortalEnabled.value = false;
@@ -485,6 +496,11 @@ class LicenseController extends GetxController {
         expiresAt.value = exp;
         state.value = LicenseState.active;
         await prefs.setString(_kPlan, planStr);
+        if (exp != null) {
+          await prefs.setInt(_kExpiresAt, exp.millisecondsSinceEpoch);
+        } else {
+          await prefs.remove(_kExpiresAt);
+        }
       }
     }, onError: (e) {
       // القراءة اتقطعت (مثلاً صلاحيات Firestore اتغيّرت) — سجّل الخطأ
