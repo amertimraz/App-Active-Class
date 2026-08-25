@@ -106,16 +106,18 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     await attendanceController.loadAttendance();
     final allPayments = await DatabaseService().getAllPayments();
     final g = group;
+    final graceDays = Get.find<SettingsController>().paymentGraceDays.value;
     final fullyPaid = <int>{};
     for (final s in studentController.students) {
       if (s.groupId != g?.id) continue;
-      final debt = PricingHelper.accumulatedDebt(
+      final overdue = PricingHelper.isOverdue(
         student: s,
         group: g,
         allAttendance: attendanceController.attendance,
         payments: allPayments.where((p) => p.studentId == s.id).toList(),
+        graceDays: graceDays,
       );
-      if (debt <= 0) fullyPaid.add(s.id!);
+      if (!overdue) fullyPaid.add(s.id!);
     }
     if (mounted) {
       setState(() {

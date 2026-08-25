@@ -153,7 +153,16 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
 
   // ── Confirm payment ──────────────────────────────────────────
   Future<void> _confirmPayment(Student student) async {
-    if (student.siblingId != null && student.siblingsTotal != null) {
+    // لازم يطابق بالظبط نفس الشرط اللي القaller (confirmPayment في
+    // QrController) بيستخدمه عشان ياخد مسار عرض الإخوة — وإلا ممكن
+    // نعرض حوار "عرض الإخوة" لطالب مش هيتطبّق عليه العرض فعليًا (لو
+    // مجموعته بالحصة، أو معفى بالكامل)، أو العكس نستثنيه غلط من فحص
+    // "المبلغ أكبر من المستحق".
+    final isSiblingSplit = student.siblingId != null &&
+        student.siblingsTotal != null &&
+        !controller.isPerSessionGroup &&
+        !student.isFullyExempt;
+    if (isSiblingSplit) {
       final sib = await _db.getStudent(student.siblingId!);
       if (!mounted) return;
       final total = controller.totalAmount.value;
@@ -177,6 +186,39 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
         ),
       );
       if (ok != true) return;
+    }
+
+    // المبلغ المُعدَّل يدويًا أكبر من المستحق الفعلي على الشهور المختارة —
+    // بنعرض تأكيد إضافي بدل ما نرفض على طول، عشان لو المدرس فعلاً قاصد
+    // كده (خصم متفَق عليه، أو تصحيح مبلغ) يقدر يكمّل. مش بتتطبّق على
+    // عرض الإخوة — ده أصلاً ليه حوار تأكيده الخاص فوق، والمقارنة هنا
+    // (baseAmountForSelection) بتحسب مستحق طالب واحد مش الإجمالي
+    // المقسوم بين الاتنين، فمكانتش هتبقى مقارنة صح لحالته.
+    if (!mounted) return;
+    if (!isSiblingSplit && controller.overrideExceedsDue) {
+      final due = controller.baseAmountForSelection;
+      final amount = controller.totalAmount.value;
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('المبلغ أكبر من المستحق'),
+          content: Text(
+              'المبلغ (${FormatHelper.formatCurrency(amount)}) أكبر من '
+              'المستحق على الشهور المختارة (${FormatHelper.formatCurrency(due)}).'
+              ' متأكد إنك عايز تسجّل الدفعة دي؟'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('إلغاء')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('تسجيل على أي حال')),
+          ],
+        ),
+      );
+      if (!mounted || proceed != true) return;
     }
 
     // بنلقط النوع والعدد قبل confirmPayment لأنها بتصفّر بيانات الطالب
@@ -737,29 +779,33 @@ class _PaymentPanel extends StatelessWidget {
   final VoidCallback onClear;
   final bool showBackButton;
 
-  // حالة الدفع للشهر الحالي — لمجموعات "بالحصة" مفيش مفهوم "شهر مدفوع"
-  // أصلاً، وأثناء تحميل بيانات المجموعة/الحضور مبنقولش أي استنتاج لحد
-  // ما البيانات توصل بالكامل (راجع QRController.isPreparingPayment).
+  // حالة الدفع — بتستخدم نفس مصدر المديونية المتراكمة المستخدم في كل
+  // شاشات الدفع التانية (PricingHelper.accumulatedDebt/isOverdue)، بدل
+  // حساب منفصل خاص بشاشة الـQR كان بيدّي نتيجة مختلفة (ومغلوطة أحيانًا)
+  // عن باقي التطبيق. لمجموعات "بالحصة" مفيش مفهوم "شهر مدفوع" أصلاً،
+  // وأثناء تحميل بيانات المجموعة/الحضور مبنقولش أي استنتاج لحد ما
+  // البيانات توصل بالكامل (راجع QRController.isPreparingPayment).
   String _paymentStatus() {
     if (controller.isPreparingPayment.value) return 'جارِ التحميل';
     if (controller.isPerSessionGroup) return 'بالحصة';
-    final months = controller.upcomingMonths;
-    if (months.isEmpty) return 'مدفوع بالكامل';
-    final now = DateTime.now();
-    final first = months.first;
-    if (first.year == now.year && first.month == now.month) return 'لم يدفع';
-    if (first.isAfter(now)) return 'متأخر';
-    return 'مدفوع';
+    if (student.isFullyExempt) return 'معفى';
+    final debt = controller.scannedStudentDebt;
+    if (debt <= 0.01) return 'مدفوع بالكامل';
+    return controller.scannedStudentOverdue ? 'متأخر' : 'لم يدفع';
   }
 
   Color _statusColor(String status) {
     switch (status) {
       case 'لم يدفع':
         return Colors.red;
+      case 'متأخر':
+        return Colors.orange;
       case 'مدفوع بالكامل':
         return Colors.blue;
       case 'مدفوع':
         return Colors.green;
+      case 'معفى':
+        return Colors.purple;
       case 'بالحصة':
         return Colors.teal;
       case 'جارِ التحميل':
@@ -773,10 +819,14 @@ class _PaymentPanel extends StatelessWidget {
     switch (status) {
       case 'لم يدفع':
         return Icons.cancel_rounded;
+      case 'متأخر':
+        return Icons.warning_amber_rounded;
       case 'مدفوع بالكامل':
         return Icons.check_circle_rounded;
       case 'مدفوع':
         return Icons.check_circle_rounded;
+      case 'معفى':
+        return Icons.volunteer_activism_rounded;
       case 'بالحصة':
         return Icons.flash_on_rounded;
       case 'جارِ التحميل':
@@ -940,6 +990,56 @@ class _PaymentPanel extends StatelessWidget {
                 ])),
 
             const SizedBox(height: 10),
+
+            // ── تنبيه معلوماتي بحالة المديونية — نفس اللي في شاشة
+            // "تسجيل دفع" العادية، عشان المعلومة تبقى واحدة في كل شاشات
+            // الدفع. مش بيظهر لمجموعات بالحصة (مفيش مفهوم "مديونية شهر"
+            // ليها) ولا وإحنا لسه بنحمّل بيانات الطالب.
+            if (!controller.isPerSessionGroup && !student.isFullyExempt)
+              Obx(() {
+                if (controller.isPreparingPayment.value) {
+                  return const SizedBox.shrink();
+                }
+                final debt = controller.scannedStudentDebt;
+                final paidUp = debt <= 0.01;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: (paidUp ? Colors.green : Colors.orange)
+                          .withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: (paidUp ? Colors.green : Colors.orange)
+                              .withValues(alpha: 0.3)),
+                    ),
+                    child: Row(children: [
+                      Icon(
+                          paidUp
+                              ? Icons.check_circle_rounded
+                              : Icons.info_rounded,
+                          size: 16,
+                          color: paidUp ? Colors.green : Colors.orange),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          paidUp
+                              ? 'الطالب مفيهوش أي مديونية حاليًا'
+                              : 'متبقي عليه: ${FormatHelper.formatCurrency(debt)}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: paidUp
+                                  ? Colors.green.shade800
+                                  : Colors.orange.shade800),
+                        ),
+                      ),
+                    ]),
+                  ),
+                );
+              }),
 
             // ── مجموعة بالحصة: مفيش "اختيار شهور" خالص — دفع حصة مباشرة ──
             // (Obx عشان تتحدّث فور ما بيانات المجموعة توصل من قاعدة

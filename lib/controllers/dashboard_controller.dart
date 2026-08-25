@@ -7,6 +7,7 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 
 enum ActivityType { attendance, payment }
@@ -150,6 +151,13 @@ class DashboardController extends GetxController {
           ifAbsent: () => p.amount);
     }
 
+    // مهلة السماح — بتأخّر ظهور الطالب في قائمة "لم يدفعوا هذا الشهر"
+    // بس (مش حساب الإجمالي المتوقع/المحصّل، اللي المفروض يفضل دقيق).
+    final graceDays = Get.isRegistered<SettingsController>()
+        ? Get.find<SettingsController>().paymentGraceDays.value
+        : 0;
+    final withinGrace = graceDays > 0 && now.day <= graceDays;
+
     double expected = 0;
     double paid     = 0;
     final unpaidStudents = <Student>[];
@@ -161,7 +169,9 @@ class DashboardController extends GetxController {
         allAttendance: att.attendance,
       );
       expected += due;
-      if (due > 0 && (paidByStudent[s.id] ?? 0) < due) unpaidStudents.add(s);
+      if (due > 0 && (paidByStudent[s.id] ?? 0) < due && !withinGrace) {
+        unpaidStudents.add(s);
+      }
     }
     for (final p in monthPayments) {
       paid += p.amount;

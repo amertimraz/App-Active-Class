@@ -675,11 +675,30 @@ class _PaymentsPageState extends State<PaymentsPage> {
                   payments: otherPayments,
                 );
                 if (amount > remaining + 0.01) {
-                  ToastHelper.error(
-                      'المبلغ أكبر من المستحق على الطالب (${FormatHelper.formatCurrency(remaining)})');
-                  return;
+                  final proceed = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx2) => AlertDialog(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      title: const Text('المبلغ أكبر من المستحق'),
+                      content: Text(
+                          'المبلغ (${FormatHelper.formatCurrency(amount)}) أكبر من '
+                          'المستحق على الطالب (${FormatHelper.formatCurrency(remaining)}).'
+                          ' متأكد إنك عايز تسجّل الدفعة دي؟'),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(ctx2, false),
+                            child: const Text('إلغاء')),
+                        ElevatedButton(
+                            onPressed: () => Navigator.pop(ctx2, true),
+                            child: const Text('تسجيل على أي حال')),
+                      ],
+                    ),
+                  );
+                  if (proceed != true) return;
                 }
               }
+              if (!ctx.mounted) return;
               Navigator.pop(ctx);
               final ok = await ctrl.updatePayment(Payment(
                 id: p.id,
@@ -1379,11 +1398,27 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
     }
     final remaining = _remainingDebt();
     if (remaining != null && parsed > remaining + 0.01) {
-      if (mounted) {
-        AppToast.error(context,
-            'المبلغ أكبر من المستحق على الطالب (${FormatHelper.formatCurrency(remaining)})');
-      }
-      return;
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('المبلغ أكبر من المستحق'),
+          content: Text(
+              'المبلغ (${FormatHelper.formatCurrency(parsed)}) أكبر من '
+              'المستحق على الطالب (${FormatHelper.formatCurrency(remaining)}).'
+              ' متأكد إنك عايز تسجّل الدفعة دي؟'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('إلغاء')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('تسجيل على أي حال')),
+          ],
+        ),
+      );
+      if (!mounted || proceed != true) return;
     }
     setState(() => _saving = true);
     try {
@@ -1478,6 +1513,51 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
               ),
             ),
             const Divider(height: 1),
+
+            // تنبيه معلوماتي بحالة المديونية — قبل ما المدرس يكتب أي
+            // مبلغ، يعرف على طول لو الطالب دافع بالفعل أو لسه عليه فلوس.
+            Builder(builder: (context) {
+              final remaining = _remainingDebt();
+              if (remaining == null) return const SizedBox.shrink();
+              final paidUp = remaining <= 0.01;
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: (paidUp ? Colors.green : Colors.orange)
+                        .withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: (paidUp ? Colors.green : Colors.orange)
+                            .withValues(alpha: 0.3)),
+                  ),
+                  child: Row(children: [
+                    Icon(
+                        paidUp
+                            ? Icons.check_circle_rounded
+                            : Icons.info_rounded,
+                        size: 18,
+                        color: paidUp ? Colors.green : Colors.orange),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        paidUp
+                            ? 'الطالب مفيهوش أي مديونية حاليًا'
+                            : 'متبقي عليه: ${FormatHelper.formatCurrency(remaining)}',
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: paidUp
+                                ? Colors.green.shade800
+                                : Colors.orange.shade800),
+                      ),
+                    ),
+                  ]),
+                ),
+              );
+            }),
 
             // Form
             Padding(

@@ -61,6 +61,9 @@ class SettingsController extends GetxController {
   static const String _keyHideQrPayment = 'hide_qr_payment';
   static const String _keyHideQrAttendance = 'hide_qr_attendance';
 
+  // مهلة السماح قبل ما الطالب يتعتبر "متأخر" عن دفع الشهر الحالي
+  static const String _keyPaymentGraceDays = 'payment_grace_days';
+
   // Teacher info keys
   static const String _keyTeacherFullName = 'teacher_full_name';
   static const String _keyTeacherAvatar = 'teacher_avatar_path';
@@ -85,6 +88,12 @@ class SettingsController extends GetxController {
   // إرسال تقرير واتساب تلقائي لأولياء الأمور بعد اكتمال تسجيل حضور
   // المجموعة — افتراضيًا معطّل، المدرس يفعّله بنفسه من الإعدادات.
   final RxBool reportOnCompletionEnabled = false.obs;
+
+  // مهلة السماح (بالأيام) في أول الشهر قبل ما شارات/تنبيهات "متأخر"
+  // تظهر — افتراضيًا 0 (زي السلوك القديم بالظبط: يظهر من أول يوم).
+  // ملحوظة: المديونية الفعلية (المبلغ المستحق) بتتحسب صح من أول يوم
+  // دايمًا — المهلة دي بتأخّر ظهور "تنبيه" بس، مش حساب الفلوس.
+  final RxInt paymentGraceDays = 0.obs;
 
   /// هل وصل اليوم المحدد للإرسال في الشهر الحالي؟
   bool get isWhatsappDayReached =>
@@ -125,6 +134,7 @@ class SettingsController extends GetxController {
       _loadWhatsappSettings(),
       _loadHideQrSettings(),
       _loadReportOnCompletionSetting(),
+      _loadPaymentGraceDays(),
     ]);
   }
 
@@ -222,6 +232,20 @@ class SettingsController extends GetxController {
     reportOnCompletionEnabled.value = v;
     try {
       await _dbSet(SETTING_REPORT_ON_COMPLETION_ENABLED, v ? '1' : '0');
+    } catch (_) {}
+  }
+
+  Future<void> _loadPaymentGraceDays() async {
+    try {
+      paymentGraceDays.value = await _migrateInt(_keyPaymentGraceDays) ?? 0;
+    } catch (_) {}
+  }
+
+  Future<void> setPaymentGraceDays(int days) async {
+    final d = days.clamp(0, 28);
+    paymentGraceDays.value = d;
+    try {
+      await _dbSet(_keyPaymentGraceDays, d.toString());
     } catch (_) {}
   }
 

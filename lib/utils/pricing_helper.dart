@@ -56,6 +56,51 @@ class PricingHelper {
     required List<Attendance> allAttendance,
     required List<Payment> payments,
   }) {
+    return _remainingThrough(
+      student: student,
+      group: group,
+      allAttendance: allAttendance,
+      payments: payments,
+      lastMonth: DateTime(DateTime.now().year, DateTime.now().month, 1),
+    );
+  }
+
+  /// زي [accumulatedDebt] بالظبط، لكن بيُستخدم بس لتحديد وقت ظهور
+  /// تنبيه/شارة "متأخر" — مش لحساب المبلغ المستحق نفسه. لو المدرس
+  /// حدّد "مهلة سماح" (graceDays) ولسه في أول الشهر (مايتعدّاش يوم
+  /// المهلة)، بنستثني الشهر الحالي من الحساب هنا (بس هنا)، فطالب
+  /// مديونيته كلها من الشهر الحالي بس هيفضل مايتعتبرش "متأخر" لحد ما
+  /// المهلة تخلص — لكن لو عليه شهر أقدم برضو، هيتعتبر متأخر فورًا
+  /// (المهلة بتغطي بس الشهر الحالي).
+  static bool isOverdue({
+    required Student student,
+    required Group? group,
+    required List<Attendance> allAttendance,
+    required List<Payment> payments,
+    required int graceDays,
+  }) {
+    final now = DateTime.now();
+    final withinGrace = graceDays > 0 && now.day <= graceDays;
+    final lastMonth = withinGrace
+        ? DateTime(now.year, now.month - 1, 1)
+        : DateTime(now.year, now.month, 1);
+    return _remainingThrough(
+          student: student,
+          group: group,
+          allAttendance: allAttendance,
+          payments: payments,
+          lastMonth: lastMonth,
+        ) >
+        0;
+  }
+
+  static double _remainingThrough({
+    required Student student,
+    required Group? group,
+    required List<Attendance> allAttendance,
+    required List<Payment> payments,
+    required DateTime lastMonth,
+  }) {
     if (student.isFullyExempt) return 0;
     // attendanceStart هو تاريخ الانضمام الفعلي اللي المدرّس بيحدده يدوي
     // (ممكن يكون قبل تاريخ إضافة السجل نفسه على التطبيق) — نفس المرجع
@@ -64,13 +109,11 @@ class PricingHelper {
     final start = student.attendanceStart ?? student.createdAt;
     if (start == null) return 0;
 
-    final now = DateTime.now();
     var cursor = DateTime(start.year, start.month, 1);
-    final last = DateTime(now.year, now.month, 1);
-    if (cursor.isAfter(last)) return 0;
+    if (cursor.isAfter(lastMonth)) return 0;
 
     double totalDue = 0;
-    while (!cursor.isAfter(last)) {
+    while (!cursor.isAfter(lastMonth)) {
       totalDue += monthlyDue(
           student: student,
           group: group,

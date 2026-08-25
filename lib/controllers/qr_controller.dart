@@ -10,6 +10,7 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 
 enum QRMode { attendance, payment }
@@ -330,16 +331,6 @@ class QRController extends GetxController {
 
       final base = _computeBaseAmount(student);
       final amount = custom ?? base;
-      // بنقارن بس لو المدرس عدّل المبلغ يدويًا (custom) — لأن base نفسها
-      // ممكن تشمل شهور قادمة لسه ماجاش وقتها لو المدرس بيدفع مقدَّم
-      // (selectAllUpcoming)، فمقارنتها بمديونية ماضية/حالية بس (accumulatedDebt)
-      // كانت هتمنع الدفع المقدَّم المشروع ده غلط. المرجع الصحيح للتعديل
-      // اليدوي هو نفسه إجمالي المستحق على الشهور المختارة (base).
-      if (custom != null && custom > base + 0.01) {
-        ToastHelper.error(
-            'المبلغ أكبر من المستحق على الشهور المختارة (${FormatHelper.formatCurrency(base)})');
-        return false;
-      }
       final extra = [
         if (custom != null) 'custom=1',
         if (customNote.isNotEmpty) 'note=$customNote',
@@ -410,6 +401,48 @@ class QRController extends GetxController {
       return;
     }
     totalAmount.value = _computeBaseAmount(s);
+  }
+
+  // المستحق الفعلي على الشهور المختارة (من غير أي تعديل يدوي) — بيُستخدم
+  // في الواجهة لمقارنة المبلغ المُعدَّل يدويًا بيه وعرض تأكيد لو زاد
+  // عنه، بدل رفض الحفظ مباشرة.
+  double get baseAmountForSelection => _computeBaseAmount(scannedStudent.value);
+
+  /// هل المبلغ المُعدَّل يدويًا (overrideAmount) أكبر من المستحق الفعلي
+  /// على الشهور المختارة؟ الواجهة بتستخدمها عشان تعرض تأكيد إضافي قبل
+  /// الحفظ بدل ما ترفضه على طول.
+  bool get overrideExceedsDue =>
+      overrideAmount.value != null &&
+      overrideAmount.value! > baseAmountForSelection + 0.01;
+
+  // نفس مصدر المديونية المتراكمة المستخدم في كل شاشات الدفع التانية
+  // (تفاصيل المجموعة، تفاصيل الطالب، شاشة تسجيل الدفع) — عشان الحالة
+  // المعروضة هنا تتطابق دايمًا مع باقي التطبيق، بدل حساب منفصل خاص
+  // بشاشة الـQR كان بيدّي نتيجة مختلفة أحيانًا.
+  double get scannedStudentDebt {
+    final s = scannedStudent.value;
+    if (s == null) return 0;
+    return PricingHelper.accumulatedDebt(
+      student: s,
+      group: _scannedGroup.value,
+      allAttendance: _scannedAttendance,
+      payments: _scannedPayments,
+    );
+  }
+
+  bool get scannedStudentOverdue {
+    final s = scannedStudent.value;
+    if (s == null) return false;
+    final graceDays = Get.isRegistered<SettingsController>()
+        ? Get.find<SettingsController>().paymentGraceDays.value
+        : 0;
+    return PricingHelper.isOverdue(
+      student: s,
+      group: _scannedGroup.value,
+      allAttendance: _scannedAttendance,
+      payments: _scannedPayments,
+      graceDays: graceDays,
+    );
   }
 
   // المستحق الأساسي (بدون تعديل يدوي/إخوة): شهري ثابت، أو بالحصة على حسب

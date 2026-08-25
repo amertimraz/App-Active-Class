@@ -343,6 +343,35 @@ class SettingsPage extends StatelessWidget {
                                 onChanged: (v) async =>
                                     await settings.setReportOnCompletionEnabled(v),
                               )),
+                          _buildDivider(isDark),
+                          // ── مهلة السماح قبل اعتبار الطالب "متأخر" ──
+                          Obx(() => _buildDropdownTile<int>(
+                                context,
+                                isDark,
+                                icon: Icons.hourglass_bottom_rounded,
+                                iconColor: const Color(0xFFEF4444),
+                                title: 'مهلة السماح قبل "متأخر"',
+                                value: settings.paymentGraceDays.value,
+                                items: List.generate(15, (i) => i)
+                                    .map((d) => DropdownMenuItem(
+                                          value: d,
+                                          child: Text(d == 0
+                                              ? 'بدون مهلة (من أول يوم)'
+                                              : 'بعد $d يوم من بداية الشهر'),
+                                        ))
+                                    .toList(),
+                                onChanged: (d) async {
+                                  if (d != null) {
+                                    await settings.setPaymentGraceDays(d);
+                                    ToastHelper.success(
+                                      d == 0
+                                          ? 'هيظهر الطالب "متأخر" من أول يوم في الشهر'
+                                          : 'هيظهر الطالب "متأخر" بعد $d يوم من بداية الشهر',
+                                      title: 'تم التغيير',
+                                    );
+                                  }
+                                },
+                              )),
                         ],
                       ),
                       const SizedBox(height: 14),
