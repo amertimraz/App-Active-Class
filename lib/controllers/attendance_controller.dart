@@ -95,6 +95,27 @@ class AttendanceController extends GetxController {
     }
   }
 
+  // حذف مجموعة سجلات دفعة واحدة (مثلاً كل سجلات يوم بعينه اتسجّل بالغلط)
+  Future<void> deleteAttendanceRecords(List<int> ids) async {
+    if (ids.isEmpty) return;
+    try {
+      final studentIds = ids
+          .map((id) => attendance.firstWhereOrNull((a) => a.id == id)?.studentId)
+          .whereType<int>()
+          .toSet();
+      for (final id in ids) {
+        await _dbService.deleteAttendance(id);
+      }
+      await loadAttendance();
+      for (final studentId in studentIds) {
+        unawaited(ParentPortalService().pushStudentSummary(studentId));
+      }
+      ToastHelper.success('تم حذف الحصة بنجاح');
+    } catch (e) {
+      ToastHelper.error('حدث خطأ في حذف الحصة');
+    }
+  }
+
   /// تعديل تاريخ سجل حضور موجود (عملية ذرية واحدة، بدل حذف يدوي + إضافة
   /// يدوية في تبويبين مختلفين، وده كان بيخلي المدرّس ينسى يحذف السجل
   /// القديم فيفضل الطالب "مستحق عليه" شهر اتصحّح أصلاً).

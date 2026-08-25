@@ -356,6 +356,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                   presentCount:
                       e.value.where((a) => a.status == ATTENDANCE_PRESENT).length,
                   totalMarked: e.value.length,
+                  recordIds: e.value.map((a) => a.id!).toList(),
                 ))
             .toList()
           ..sort((a, b) => b.date.compareTo(a.date));
@@ -2256,8 +2257,12 @@ class _GDSessionDay {
   final DateTime date;
   final int presentCount;
   final int totalMarked;
+  final List<int> recordIds;
   const _GDSessionDay(
-      {required this.date, required this.presentCount, required this.totalMarked});
+      {required this.date,
+      required this.presentCount,
+      required this.totalMarked,
+      required this.recordIds});
 }
 
 void _gdShowSessionsDialog(
@@ -2280,9 +2285,49 @@ void _gdShowSessionsDialog(
               leading: const Icon(Icons.event_available_rounded,
                   color: AppTheme.primaryColor),
               title: Text(DateFormat('EEEE، d MMMM yyyy', 'ar').format(d.date)),
-              trailing: Text('${d.presentCount}/${d.totalMarked} حاضر',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, color: Colors.green)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('${d.presentCount}/${d.totalMarked} حاضر',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, color: Colors.green)),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.delete_outline_rounded,
+                        color: Colors.red, size: 20),
+                    tooltip: 'حذف الحصة',
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: ctx,
+                        builder: (c) => AlertDialog(
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                          title: const Text('حذف الحصة'),
+                          content: Text(
+                              'هل تريد حذف كل سجلات الحضور المسجّلة يوم '
+                              '${DateFormat('EEEE، d MMMM yyyy', 'ar').format(d.date)}؟ '
+                              '(${d.totalMarked} سجل)'),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(c, false),
+                                child: const Text('إلغاء')),
+                            ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.red),
+                                onPressed: () => Navigator.pop(c, true),
+                                child: const Text('حذف')),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        await Get.find<AttendanceController>()
+                            .deleteAttendanceRecords(d.recordIds);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      }
+                    },
+                  ),
+                ],
+              ),
             );
           },
         ),
