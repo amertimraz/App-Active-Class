@@ -109,23 +109,23 @@ class _PaymentsPageState extends State<PaymentsPage> {
               .toList()
             ..sort((a, b) => a.name.compareTo(b.name));
 
-          final List<Payment> monthlyPayments = controller.payments
-              .where((p) =>
-                  p.date.year == month.year && p.date.month == month.month)
-              .toList();
-
-          final Map<int, double> paidByStudent = {};
-          for (final p in monthlyPayments) {
-            paidByStudent.update(p.studentId, (v) => v + p.amount,
-                ifAbsent: () => p.amount);
+          // مديونية متراكمة بدل مدفوعات الشهر ده بس — نفس منطق PricingHelper
+          // المستخدم في باقي التطبيق، عشان طالب دافع مقدَّمًا شهر فات ميظهرش
+          // "متأخر" غلط، وطالب عليه شهر قديم ميظهرش "مدفوع بالكامل" غلط.
+          final Map<int, List<Payment>> paymentsByStudent = {};
+          for (final p in controller.payments) {
+            paymentsByStudent.putIfAbsent(p.studentId, () => []).add(p);
           }
 
           final rows = <_StudentMonthRow>[];
           for (final s in scopedStudents) {
-            final paid = paidByStudent[s.id!] ?? 0.0;
-            final due = PricingHelper.monthlyDue(
+            final group = groupById[s.groupId];
+            final studentPayments = paymentsByStudent[s.id] ?? const [];
+            final paid = studentPayments.fold<double>(
+                0.0, (sum, p) => sum + p.amount);
+            final due = PricingHelper.totalDueThrough(
               student: s,
-              group: groupById[s.groupId],
+              group: group,
               month: month,
               allAttendance: attendanceController.attendance,
             );
@@ -133,7 +133,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 (due - paid).clamp(0.0, double.infinity).toDouble();
             final status = s.isFullyExempt
                 ? 'مُعفى'
-                : paid >= due
+                : remaining <= 0
                     ? 'مدفوع بالكامل'
                     : paid > 0
                         ? 'جزئي'

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
@@ -142,13 +143,13 @@ class DashboardController extends GetxController {
     final monthPayments = payments.where((p) =>
         !p.date.isBefore(monthStart) && !p.date.isAfter(monthEnd)).toList();
 
-    // مجموع مدفوع كل طالب الشهر ده — مش بس "هل عنده أي دفعة؟" اللي
-    // كان بيعتبر دفعة جزئية (ولو جنيه واحد) دفع كامل ويستبعد الطالب
-    // غلط من قائمة "لم يدفعوا هذا الشهر".
-    final paidByStudent = <int, double>{};
-    for (final p in monthPayments) {
-      paidByStudent.update(p.studentId, (v) => v + p.amount,
-          ifAbsent: () => p.amount);
+    // كل مدفوعات كل طالب (بغض النظر عن تاريخها) — عشان قائمة "لم يدفعوا"
+    // تعتمد على المديونية المتراكمة الفعلية (PricingHelper.isOverdue)
+    // بدل مقارنة مدفوعات الشهر ده بس بمستحق الشهر ده بس، اللي كان بيوهم
+    // إن طالب دافع مقدَّمًا الشهر اللي فات "لسه مايدفعش".
+    final paymentsByStudent = <int, List<Payment>>{};
+    for (final p in payments) {
+      paymentsByStudent.putIfAbsent(p.studentId, () => []).add(p);
     }
 
     // مهلة السماح — بتأخّر ظهور الطالب في قائمة "لم يدفعوا هذا الشهر"
@@ -156,20 +157,27 @@ class DashboardController extends GetxController {
     final graceDays = Get.isRegistered<SettingsController>()
         ? Get.find<SettingsController>().paymentGraceDays.value
         : 0;
-    final withinGrace = graceDays > 0 && now.day <= graceDays;
 
     double expected = 0;
     double paid     = 0;
     final unpaidStudents = <Student>[];
     for (final s in activeStudents) {
+      final group = groupById[s.groupId];
       final due = PricingHelper.monthlyDue(
         student: s,
-        group: groupById[s.groupId],
+        group: group,
         month: monthStart,
         allAttendance: att.attendance,
       );
       expected += due;
-      if (due > 0 && (paidByStudent[s.id] ?? 0) < due && !withinGrace) {
+      final isOverdue = PricingHelper.isOverdue(
+        student: s,
+        group: group,
+        allAttendance: att.attendance,
+        payments: paymentsByStudent[s.id] ?? const [],
+        graceDays: graceDays,
+      );
+      if (isOverdue) {
         unpaidStudents.add(s);
       }
     }
