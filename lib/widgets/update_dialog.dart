@@ -193,6 +193,14 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
   final progress = ValueNotifier<double>(0);
   final cancelToken = CancelToken();
   var cancelled = false;
+  // الحوار ممكن يتقفل من مكانين مختلفين (زرار الإلغاء، أو نهاية التحميل
+  // عادي/بالخطأ) — العلم ده بيمنع محاولة قفل حوار مقفول بالفعل مرتين.
+  var dialogClosed = false;
+  void closeDialogOnce() {
+    if (dialogClosed) return;
+    dialogClosed = true;
+    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+  }
 
   showDialog<void>(
     context: context,
@@ -202,6 +210,12 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
       onCancel: () {
         cancelled = true;
         cancelToken.cancel();
+        // بنقفل الحوار فورًا من هنا، مش هنستنى استثناء الإلغاء يرجع من
+        // dio.download — لو التحميل علّق لأي سبب (اتصال فاتح من غير
+        // إغلاق صريح من السيرفر مثلاً)، إلغاء الـtoken وحده مش هيضمن
+        // إن الكود يوصل لسطر إقفال الحوار خالص، وكان ده اللي بيخلي
+        // زرار "إلغاء" يبان وكأنه مش شغال.
+        closeDialogOnce();
       },
     ),
   );
@@ -214,22 +228,33 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
     final path = '${dir.path}/active_class_${info.version}.apk';
     // مهلات صريحة عشان لو الاتصال توقّف فجأة (شبكة ضعيفة/انقطعت)، التحميل
     // يفشل برسالة واضحة بدل ما يفضل الحوار عالق للأبد بدون أي طريقة
-    // للخروج منه (وده كان بيضطر المعلم يقفل التطبيق بالقوة).
+    // للخروج منه (وده كان بيضطر المعلم يقفل التطبيق بالقوة). receiveTimeout
+    // بتاعة Dio مهلة بين كل حزمة بيانات والتانية بس — لو السيرفر فضل
+    // الاتصال مفتوح بعد آخر بايت من غير ما يقفله بشكل نضيف (بيحصل مع
+    // بعض الـCDNs)، ممكن التحميل يوصل 100% ويفضل عالق للأبد من غير أي
+    // استثناء أصلاً. مهلة إجمالية هنا (90 ثانية) هي الضمان الحقيقي.
     final dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 20),
     ));
-    await dio.download(
-      info.apkUrl!,
-      path,
-      cancelToken: cancelToken,
-      onReceiveProgress: (received, total) {
-        if (total > 0) {
-          expectedBytes = total;
-          progress.value = received / total;
-        }
-      },
-    );
+    await dio
+        .download(
+          info.apkUrl!,
+          path,
+          cancelToken: cancelToken,
+          onReceiveProgress: (received, total) {
+            if (total > 0) {
+              expectedBytes = total;
+              progress.value = received / total;
+            }
+          },
+        )
+        .timeout(const Duration(seconds: 90), onTimeout: () {
+      cancelToken.cancel();
+      throw TimeoutException('انتهت مهلة التحميل');
+    });
+
+    if (cancelled) return; // اتلغى بالفعل — الحوار مقفول أصلاً
 
     // تأكيد إن الملف اتحمّل كامل قبل ما نفتح المثبّت — لو الاتصال اتقطع في
     // آخر لحظة من غير ما Dio يرمي استثناء، بيفضل ملف ناقص على الجهاز
@@ -237,12 +262,12 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
     // نفتحه، فبنكتشف النقص هنا ونطلب من المعلم يعيد المحاولة بدل كده.
     final downloadedBytes = await File(path).length();
     if (expectedBytes > 0 && downloadedBytes < expectedBytes) {
-      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      closeDialogOnce();
       ToastHelper.error('التحميل لم يكتمل — تحقق من الاتصال وحاول تاني');
       return;
     }
 
-    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+    closeDialogOnce();
 
     // بنحدد نوع الملف صراحةً (APK) بدل ما نسيب أندرويد يخمّنه من
     // الامتداد — لو التخمين فشل (بيحصل على بعض الأجهزة)، أندرويد بيفتح
@@ -253,7 +278,7 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
       ToastHelper.error('تعذر فتح مثبّت التحديث — حاول تاني');
     }
   } catch (_) {
-    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+    closeDialogOnce();
     if (!cancelled) {
       ToastHelper.error('فشل تحميل التحديث — تحقق من الاتصال بالإنترنت');
     }
