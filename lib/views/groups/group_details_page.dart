@@ -2445,9 +2445,7 @@ void _gdShowFeesBreakdownDialog(
         pairs.forEach((t, c) => expected += t * c);
 
         int paidCount = 0;
-        double paidAmount = 0;
-        final key =
-            '${monthStart.year.toString().padLeft(4, '0')}-${monthStart.month.toString().padLeft(2, '0')}';
+        double paidAmount = 0; // كاش محصّل فعليًا مؤرَّخ في نطاق الشهر ده (تدفق نقدي)
         final List<Student> unpaidStudents = [];
         // مفيش أي مستحق أصلاً (معفى بالكامل، أو بالحصة ولسه محضرش أي
         // حصة الشهر ده) — مش هيتحسب لا مدفوع ولا غير مدفوع.
@@ -2459,32 +2457,29 @@ void _gdShowFeesBreakdownDialog(
           if (due <= 0) continue;
           applicableCount++;
           final list = await db.getPaymentsByStudent(id);
-          bool isPaid = false;
-          double stuPaid = 0;
-          for (final p in list) {
-            if (!p.date.isBefore(monthStart) && !p.date.isAfter(monthEnd)) {
-              stuPaid += p.amount;
-              isPaid = true;
-            } else {
-              final note = p.note ?? '';
-              if (note.startsWith('months=') &&
-                  note
-                      .split(';')
-                      .first
-                      .substring(7)
-                      .split(',')
-                      .map((e) => e.trim())
-                      .contains(key)) {
-                stuPaid += p.amount;
-                isPaid = true;
-              }
-            }
-          }
-          if (isPaid)
+
+          paidAmount += list
+              .where((p) =>
+                  !p.date.isBefore(monthStart) && !p.date.isAfter(monthEnd))
+              .fold<double>(0, (sum, p) => sum + p.amount);
+
+          // "مين لسه عليه فلوس لحد الشهر ده" لازم يعتمد على المديونية
+          // المتراكمة (كل الشهور مطروح منها كل المدفوعات بغض النظر عن
+          // تاريخها)، نفس منطق PricingHelper المستخدم في باقي التطبيق —
+          // بدل مطابقة تاريخ/ملاحظة الدفعة يدويًا، اللي كانت ممكن تفوّت
+          // طالب دافع فعلاً (بس مش بالتاريخ/الوسم المتوقَّع) أو العكس.
+          final remaining = PricingHelper.accumulatedDebtThrough(
+            student: s,
+            group: group,
+            allAttendance: attCtrl.attendance,
+            payments: list,
+            month: monthStart,
+          );
+          if (remaining <= 0) {
             paidCount++;
-          else
+          } else {
             unpaidStudents.add(s);
-          paidAmount += stuPaid;
+          }
         }
 
         return {
@@ -2495,7 +2490,6 @@ void _gdShowFeesBreakdownDialog(
           'unpaidCount': applicableCount - paidCount,
           'paidAmount': paidAmount,
           'month': DateFormat('MMMM yyyy', 'ar').format(monthStart),
-          'key': key,
           'allowedTotal': applicableCount,
           'unpaidStudents': unpaidStudents,
         };
