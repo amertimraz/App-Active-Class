@@ -1501,6 +1501,53 @@ class DatabaseService {
     );
   }
 
+  /// نفس [getExamProgress] لكن لكل الامتحانات مرة واحدة (استعلامين
+  /// مجمَّعين GROUP BY بدل استعلامين لكل امتحان على حدة) — صفحة قائمة
+  /// الامتحانات كانت بتلف على كل امتحان وتستنى استعلامه لحاله، فمع مدرّس
+  /// متراكم عنده امتحانات كتير كان بياخد وقت محسوس (شبه تعليق) كل ما
+  /// الصفحة تفتح أو امتحان يتضاف/يتعدّل/يتحذف.
+  Future<Map<int, ExamProgress>> getAllExamsProgress() async {
+    final db = await database;
+
+    final totalRows = await db.rawQuery('''
+      SELECT eg.$COL_EG_EXAM_ID AS exam_id,
+             COUNT(DISTINCT s.$COL_STUDENT_ID) AS total
+      FROM $TABLE_EXAM_GROUPS eg
+      INNER JOIN $TABLE_STUDENTS s ON s.$COL_STUDENT_GROUP_ID = eg.$COL_EG_GROUP_ID
+      GROUP BY eg.$COL_EG_EXAM_ID
+    ''');
+
+    final gradeRows = await db.rawQuery('''
+      SELECT $COL_GRADE_EXAM_ID AS exam_id,
+             COUNT(CASE WHEN $COL_GRADE_VALUE IS NOT NULL THEN 1 END) AS entered,
+             COUNT(CASE WHEN $COL_GRADE_IS_ABSENT = 1 THEN 1 END)     AS absent
+      FROM $TABLE_EXAM_GRADES
+      GROUP BY $COL_GRADE_EXAM_ID
+    ''');
+
+    final totalByExam = <int, int>{
+      for (final r in totalRows) r['exam_id'] as int: (r['total'] as int?) ?? 0
+    };
+    final gradesByExam = <int, (int, int)>{
+      for (final r in gradeRows)
+        r['exam_id'] as int: (
+          (r['entered'] as int?) ?? 0,
+          (r['absent'] as int?) ?? 0
+        )
+    };
+
+    final examIds = {...totalByExam.keys, ...gradesByExam.keys};
+    return {
+      for (final examId in examIds)
+        examId: ExamProgress(
+          examId: examId,
+          totalStudents: totalByExam[examId] ?? 0,
+          enteredGrades: gradesByExam[examId]?.$1 ?? 0,
+          absentStudents: gradesByExam[examId]?.$2 ?? 0,
+        )
+    };
+  }
+
   /// سجل أداء طالب في جميع الامتحانات
   Future<List<StudentExamRecord>> getStudentExamHistory(int studentId) async {
     final db = await database;

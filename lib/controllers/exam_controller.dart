@@ -109,6 +109,9 @@ class ExamController extends GetxController {
   Future<ExamProgress> getExamProgress(int examId) =>
       _db.getExamProgress(examId);
 
+  Future<Map<int, ExamProgress>> getAllExamsProgress() =>
+      _db.getAllExamsProgress();
+
   // ── Student History ───────────────────────────────────────────────────────
 
   Future<List<StudentExamRecord>> getStudentHistory(int studentId) =>

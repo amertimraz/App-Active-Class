@@ -97,11 +97,13 @@ class _ExamsPageState extends State<ExamsPage> {
   }
 
   Future<void> _loadAllProgress() async {
-    for (final e in _ec.exams.toList()) {
-      if (e.id == null) continue;
-      final p = await _ec.getExamProgress(e.id!);
-      _progress[e.id!] = p;
-    }
+    // استعلامين مجمَّعين لكل الامتحانات مرة واحدة بدل استعلام منفصل لكل
+    // امتحان — مع مدرّس متراكم عنده امتحانات كتير كان اللف التسلسلي ده
+    // بياخد وقت محسوس (شبه تعليق) كل ما الصفحة تفتح.
+    final progress = await _ec.getAllExamsProgress();
+    _progress
+      ..clear()
+      ..addAll(progress);
     if (mounted) setState(() {});
   }
 
