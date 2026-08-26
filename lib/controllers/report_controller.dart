@@ -146,16 +146,31 @@ class ReportController extends GetxController {
     double dueFor(Student st, Group group) => PricingHelper.monthlyDue(
         student: st, group: group, month: m, allAttendance: allAttendance);
 
+    // "دافع بالكامل" لازم يعتمد على المديونية المتراكمة (كل الشهور لحد
+    // الشهر ده مطروح منها كل المدفوعات، مش دفعات الشهر ده بس) — وإلا
+    // طالب دافع مقدَّمًا الشهر اللي فات هيظهر "لسه مايدفعش" غلط، وطالب
+    // عليه شهر قديم لكن دفع الشهر ده هيتحسب "مسدد" غلط.
+    bool isFullyPaid(Student st, Group group) {
+      final totalDue = PricingHelper.totalDueThrough(
+          student: st, group: group, allAttendance: allAttendance, month: m);
+      if (totalDue <= 0) return false;
+      final remaining = PricingHelper.accumulatedDebtThrough(
+        student: st,
+        group: group,
+        allAttendance: allAttendance,
+        payments: allPayments.where((p) => p.studentId == st.id).toList(),
+        month: m,
+      );
+      return remaining <= 0;
+    }
+
     return allGroups.map((g) {
       final students = studentsByGroup[g.id] ?? [];
       final expectedIncome =
           students.fold<double>(0, (s, st) => s + dueFor(st, g));
       final collectedIncome =
           students.fold<double>(0, (s, st) => s + (paidByStudent[st.id] ?? 0));
-      final fullyPaid = students.where((s) {
-        final due = dueFor(s, g);
-        return due > 0 && (paidByStudent[s.id] ?? 0) >= due;
-      }).length;
+      final fullyPaid = students.where((s) => isFullyPaid(s, g)).length;
       final totalPresent =
           students.fold<int>(0, (s, st) => s + (presentByStudent[st.id] ?? 0));
       final totalHomeworkDone = students.fold<int>(
@@ -208,29 +223,37 @@ class ReportController extends GetxController {
     return result;
   }
 
-  // ─── At-risk students (unpaid this month) ──────────────────────────────────
+  // ─── At-risk students (مديونية متراكمة لحد الشهر ده) ────────────────────────
 
+  /// بيعتمد على المديونية المتراكمة (كل الشهور لحد الشهر المختار مطروح
+  /// منها كل المدفوعات) بدل مدفوعات الشهر ده بس — نفس منطق PricingHelper
+  /// المستخدم في باقي التطبيق (الداشبورد، تفاصيل المجموعة/الطالب، الـQR).
+  /// وإلا طالب دفع مقدَّمًا شهر سابق كان هيظهر هنا "متأخر" غلط.
   List<AtRiskStudent> get unpaidStudents {
     final m = selectedMonth.value;
-    final paidByStudent = <int, double>{};
-    for (final p in monthPayments) {
-      paidByStudent.update(p.studentId, (v) => v + p.amount,
-          ifAbsent: () => p.amount);
+    final paymentsByStudent = <int, List<Payment>>{};
+    for (final p in allPayments) {
+      paymentsByStudent.putIfAbsent(p.studentId, () => []).add(p);
     }
     final groupById = {for (final g in allGroups) g.id: g};
     final result = <AtRiskStudent>[];
     for (final s in _studentsActiveInMonth) {
-      final due = PricingHelper.monthlyDue(
-          student: s,
-          group: groupById[s.groupId],
-          month: m,
-          allAttendance: allAttendance);
+      final group = groupById[s.groupId];
+      final due = PricingHelper.totalDueThrough(
+          student: s, group: group, allAttendance: allAttendance, month: m);
       if (due <= 0) continue;
-      final paid = paidByStudent[s.id] ?? 0;
-      if (paid < due) {
+      final remaining = PricingHelper.accumulatedDebtThrough(
+        student: s,
+        group: group,
+        allAttendance: allAttendance,
+        payments: paymentsByStudent[s.id] ?? const [],
+        month: m,
+      );
+      if (remaining > 0) {
+        final paid = due - remaining;
         result.add(AtRiskStudent(
           student: s,
-          group: groupById[s.groupId],
+          group: group,
           paid: paid,
           due: due,
           month: m,

@@ -56,13 +56,60 @@ class PricingHelper {
     required List<Attendance> allAttendance,
     required List<Payment> payments,
   }) {
+    return accumulatedDebtThrough(
+      student: student,
+      group: group,
+      allAttendance: allAttendance,
+      payments: payments,
+      month: DateTime.now(),
+    );
+  }
+
+  /// زي [accumulatedDebt] بالظبط لكن بيحسب المديونية "لحد" شهر معيّن
+  /// بدل شهر النهاردة دايمًا — مستخدَمة في شاشات التقارير اللي المدرس
+  /// بيتصفّح فيها شهور سابقة (فمينفعش نفترض إن المقصود دايمًا "دلوقتي").
+  static double accumulatedDebtThrough({
+    required Student student,
+    required Group? group,
+    required List<Attendance> allAttendance,
+    required List<Payment> payments,
+    required DateTime month,
+  }) {
     return _remainingThrough(
       student: student,
       group: group,
       allAttendance: allAttendance,
       payments: payments,
-      lastMonth: DateTime(DateTime.now().year, DateTime.now().month, 1),
+      lastMonth: DateTime(month.year, month.month, 1),
     );
+  }
+
+  /// إجمالي المستحق (بدون خصم أي دفعات) من شهر انضمام الطالب لحد شهر
+  /// معيّن — مفيد لعرض "الإجمالي" لوحده منفصل عن "المتبقي" (زي شريط
+  /// التقدّم في تقرير الطلاب المتأخرين).
+  static double totalDueThrough({
+    required Student student,
+    required Group? group,
+    required List<Attendance> allAttendance,
+    required DateTime month,
+  }) {
+    if (student.isFullyExempt) return 0;
+    final start = student.attendanceStart ?? student.createdAt;
+    if (start == null) return 0;
+    final lastMonth = DateTime(month.year, month.month, 1);
+    var cursor = DateTime(start.year, start.month, 1);
+    if (cursor.isAfter(lastMonth)) return 0;
+
+    double totalDue = 0;
+    while (!cursor.isAfter(lastMonth)) {
+      totalDue += monthlyDue(
+          student: student,
+          group: group,
+          month: cursor,
+          allAttendance: allAttendance);
+      cursor = DateTime(cursor.year, cursor.month + 1, 1);
+    }
+    return totalDue;
   }
 
   /// زي [accumulatedDebt] بالظبط، لكن بيُستخدم بس لتحديد وقت ظهور
@@ -102,25 +149,11 @@ class PricingHelper {
     required DateTime lastMonth,
   }) {
     if (student.isFullyExempt) return 0;
-    // attendanceStart هو تاريخ الانضمام الفعلي اللي المدرّس بيحدده يدوي
-    // (ممكن يكون قبل تاريخ إضافة السجل نفسه على التطبيق) — نفس المرجع
-    // المستخدم في باقي التطبيق (تقرير المدفوعات، معرض QR..). createdAt
-    // بديل احتياطي بس لو مفيش تاريخ انضمام محدَّد.
-    final start = student.attendanceStart ?? student.createdAt;
-    if (start == null) return 0;
-
-    var cursor = DateTime(start.year, start.month, 1);
-    if (cursor.isAfter(lastMonth)) return 0;
-
-    double totalDue = 0;
-    while (!cursor.isAfter(lastMonth)) {
-      totalDue += monthlyDue(
-          student: student,
-          group: group,
-          month: cursor,
-          allAttendance: allAttendance);
-      cursor = DateTime(cursor.year, cursor.month + 1, 1);
-    }
+    final totalDue = totalDueThrough(
+        student: student,
+        group: group,
+        allAttendance: allAttendance,
+        month: lastMonth);
     final totalPaid = payments.fold<double>(0, (s, p) => s + p.amount);
     final remaining = totalDue - totalPaid;
     return remaining > 0 ? remaining : 0;
