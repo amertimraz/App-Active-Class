@@ -44,7 +44,6 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
   // طابور بدل قفل: لو فيه حفظ شغال لنفس الطالب، الطلب الجديد بينتظره
   // يخلص الأول بدل ما يتجاهَل (منع فقدان تعديلات لو المستخدم كان سريع).
   final Map<int, Future<void>> _pending = {};
-  Timer? _statsTimer; // debounce إحصائيات
 
   @override
   void initState() {
@@ -55,7 +54,6 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
 
   @override
   void dispose() {
-    _statsTimer?.cancel();
     _searchCtrl.dispose();
     for (final c in _ctrls.values) {
       c.dispose();
@@ -74,14 +72,79 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
         .toList();
   }
 
-  // ── تحديث الإحصائيات بعد 1.5 ثانية من آخر حفظ (debounce) ─────────────────
-  void _scheduleStatsRefresh() {
-    _statsTimer?.cancel();
-    _statsTimer = Timer(const Duration(milliseconds: 1500), () async {
-      final stats =
-          await _ec.getStats(widget.exam.id!, widget.groupId, widget.groupName);
-      if (mounted) setState(() => _stats = stats);
-    });
+  // ── إحصائيات فورية من القائمة المحلية (بدون استعلام DB) ──────────────────
+  ExamGroupStats _computeStatsFromGrades(List<ExamGrade> grades) {
+    final absentList = grades.where((g) => g.isAbsent).toList();
+    final entered = grades.where((g) => g.grade != null).toList();
+    final maxGrade = widget.exam.maxGrade;
+    final passingGrade = widget.exam.passingGrade;
+
+    final passed = entered.where((g) => g.grade! >= passingGrade).length;
+    final values = entered.map((g) => g.grade!).toList();
+
+    final passingPct = maxGrade > 0 ? (passingGrade / maxGrade) * 100 : 60;
+    int excellent = 0, veryGood = 0, good = 0, pass = 0, fail = 0;
+    for (final g in entered) {
+      final pct = maxGrade > 0 ? (g.grade! / maxGrade) * 100 : 0;
+      if (pct >= 90) {
+        excellent++;
+      } else if (pct >= 80) {
+        veryGood++;
+      } else if (pct >= 70) {
+        good++;
+      } else if (pct >= passingPct) {
+        pass++;
+      } else {
+        fail++;
+      }
+    }
+
+    return ExamGroupStats(
+      examId: widget.exam.id!,
+      groupId: widget.groupId,
+      groupName: widget.groupName,
+      total: grades.length,
+      entered: entered.length,
+      passed: passed,
+      failed: entered.length - passed,
+      absent: absentList.length,
+      average:
+          values.isEmpty ? 0 : values.reduce((a, b) => a + b) / values.length,
+      highest: values.isEmpty ? 0 : values.reduce((a, b) => a > b ? a : b),
+      lowest: values.isEmpty ? 0 : values.reduce((a, b) => a < b ? a : b),
+      distribution: GradeDistribution(
+        excellent: excellent,
+        veryGood: veryGood,
+        good: good,
+        pass: pass,
+        fail: fail,
+        absent: absentList.length,
+      ),
+    );
+  }
+
+  // ── ضمان حفظ أي تعديل لسه ماوصلش لقاعدة البيانات قبل الخروج من الشاشة ─────
+  // بيقارن نص كل خانة (درجة/ملاحظة) بآخر قيمة معروفة في _grades — بغض
+  // النظر عن حالة الفوكس، عشان الاعتماد على أحداث فقدان التركيز وحده طلع
+  // مش موثوق بالشكل الكافي لما المستخدم يخرج من الشاشة (زرار الرجوع) قبل
+  // ما مهلة الحفظ التلقائي (debounce) تخلص.
+  Future<void> _flushPendingEdits() async {
+    final futures = <Future<void>>[..._pending.values];
+    for (final g in _grades) {
+      final ctrl = _ctrls[g.studentId];
+      if (ctrl == null) continue;
+      final expectedGradeText =
+          g.isAbsent ? '' : (g.grade != null ? _fmt(g.grade!) : '');
+      final expectedNotesText = g.notes ?? '';
+      final notesCtrl = _notes[g.studentId];
+      final gradeDirty = ctrl.text.trim() != expectedGradeText.trim();
+      final notesDirty =
+          (notesCtrl?.text.trim() ?? '') != expectedNotesText.trim();
+      if (gradeDirty || notesDirty) {
+        futures.add(_saveGrade(g.studentId, ctrl.text, absent: g.isAbsent));
+      }
+    }
+    if (futures.isNotEmpty) await Future.wait(futures);
   }
 
   Future<void> _load() async {
@@ -101,14 +164,13 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
         _notes[g.studentId] = TextEditingController(text: g.notes ?? '');
       }
     }
-    final stats =
-        await _ec.getStats(widget.exam.id!, widget.groupId, widget.groupName);
-    if (mounted)
+    if (mounted) {
       setState(() {
         _grades = grades;
-        _stats = stats;
+        _stats = _computeStatsFromGrades(grades);
         _loading = false;
       });
+    }
   }
 
   String _fmt(double v) =>
@@ -168,11 +230,14 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
               grade: isAbsent ? null : val,
               notes: notesValue,
               isAbsent: isAbsent);
+          // إحصائيات فورية من نفس القائمة المحلية بدل استعلام DB مؤجَّل —
+          // كان بيعتمد على مهلة 1.5 ث بعد آخر حفظ، فلو المدرّس دخل درجات
+          // كتير بسرعة (أقل من 1.5 ث بين كل طالب والتاني) أو خرج من
+          // الشاشة قبل ما المهلة تخلص، الإحصائيات كانت تفضل واقفة عند
+          // قيمتها الأولى وميتحدّثش شكلها خالص خلال الجلسة.
+          _stats = _computeStatsFromGrades(_grades);
         });
       }
-
-      // تحديث الإحصائيات بعد توقف 1.5 ث (لا تُوقف الإدخال)
-      _scheduleStatsRefresh();
     } catch (e) {
       if (mounted) ToastHelper.error('فشل حفظ الدرجة — حاول تاني');
       rethrow; // يوصل الخطأ للـ _GradeRowState._runSave عشان يقفل الـ spinner
@@ -378,7 +443,14 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await _flushPendingEdits();
+        if (context.mounted) Navigator.of(context).pop(result);
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -480,6 +552,7 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
                 ),
               ],
             ),
+      ),
     );
   }
 }
