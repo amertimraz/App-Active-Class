@@ -180,7 +180,9 @@ class DatabaseService {
         $COL_EXAM_DATE          TEXT NOT NULL,
         $COL_EXAM_MAX_GRADE     REAL NOT NULL DEFAULT 100,
         $COL_EXAM_PASSING_GRADE REAL NOT NULL DEFAULT 50,
-        $COL_EXAM_CREATED_AT    TEXT DEFAULT CURRENT_TIMESTAMP
+        $COL_EXAM_CREATED_AT    TEXT DEFAULT CURRENT_TIMESTAMP,
+        $COL_SYNC_UPDATED_AT    TEXT,
+        $COL_SYNC_REMOTE_ID     TEXT
       )
     ''');
 
@@ -190,6 +192,8 @@ class DatabaseService {
         $COL_EG_ID       INTEGER PRIMARY KEY AUTOINCREMENT,
         $COL_EG_EXAM_ID  INTEGER NOT NULL,
         $COL_EG_GROUP_ID INTEGER NOT NULL,
+        $COL_SYNC_UPDATED_AT TEXT,
+        $COL_SYNC_REMOTE_ID  TEXT,
         UNIQUE($COL_EG_EXAM_ID, $COL_EG_GROUP_ID),
         FOREIGN KEY($COL_EG_EXAM_ID)  REFERENCES $TABLE_EXAMS($COL_EXAM_ID)   ON DELETE CASCADE,
         FOREIGN KEY($COL_EG_GROUP_ID) REFERENCES $TABLE_GROUPS($COL_GROUP_ID) ON DELETE CASCADE
@@ -206,6 +210,8 @@ class DatabaseService {
         $COL_GRADE_NOTES      TEXT,
         $COL_GRADE_IS_ABSENT  INTEGER NOT NULL DEFAULT 0,
         $COL_GRADE_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
+        $COL_SYNC_UPDATED_AT  TEXT,
+        $COL_SYNC_REMOTE_ID   TEXT,
         UNIQUE($COL_GRADE_EXAM_ID, $COL_GRADE_STUDENT_ID),
         FOREIGN KEY($COL_GRADE_EXAM_ID)    REFERENCES $TABLE_EXAMS($COL_EXAM_ID)       ON DELETE CASCADE,
         FOREIGN KEY($COL_GRADE_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
@@ -400,6 +406,26 @@ class DatabaseService {
         )
       ''');
       await db.execute(_homeworkDayUniqueIndexSql);
+    }
+    if (oldVersion < 16) {
+      // مشاركة الامتحانات ودرجاتها في "وضع الفريق" — أعمدة مزامنة
+      // إضافية على جداول الامتحانات، زي ما حصل مع باقي الجداول
+      // المشتركة (v13) والواجب (v15). لا تأثير على أي حد لسه مفعّلش
+      // وضع الفريق — الأعمدة بتفضل null.
+      for (final table in [
+        TABLE_EXAMS,
+        TABLE_EXAM_GROUPS,
+        TABLE_EXAM_GRADES,
+      ]) {
+        try {
+          await db
+              .execute('ALTER TABLE $table ADD COLUMN $COL_SYNC_UPDATED_AT TEXT');
+        } catch (_) {}
+        try {
+          await db
+              .execute('ALTER TABLE $table ADD COLUMN $COL_SYNC_REMOTE_ID TEXT');
+        } catch (_) {}
+      }
     }
   }
 
@@ -1243,23 +1269,42 @@ class DatabaseService {
   /// إنشاء امتحان جديد وربطه بالمجموعات المختارة
   Future<int> insertExam(Exam exam, List<int> groupIds) async {
     final db = await database;
-    return await db.transaction((txn) async {
+    final now = DateTime.now().toIso8601String();
+    final egRows = <Map<String, int>>[]; // {egId, groupId}
+
+    final examId = await db.transaction((txn) async {
       final examId = await txn.insert(TABLE_EXAMS, {
         COL_EXAM_NAME: exam.name,
         COL_EXAM_DATE: exam.date.toIso8601String(),
         COL_EXAM_MAX_GRADE: exam.maxGrade,
         COL_EXAM_PASSING_GRADE: exam.passingGrade,
+        COL_SYNC_UPDATED_AT: now,
       });
 
       for (final gId in groupIds) {
-        await txn.insert(TABLE_EXAM_GROUPS, {
+        final egId = await txn.insert(TABLE_EXAM_GROUPS, {
           COL_EG_EXAM_ID: examId,
           COL_EG_GROUP_ID: gId,
+          COL_SYNC_UPDATED_AT: now,
         });
+        egRows.add({'egId': egId, 'groupId': gId});
       }
       _notifyChanged();
       return examId;
     });
+
+    await _queueSync(TABLE_EXAMS, examId, 'insert', payload: {
+      ...exam.copyWith(id: examId).toMap(),
+      COL_SYNC_UPDATED_AT: now,
+    });
+    for (final eg in egRows) {
+      await _queueSync(TABLE_EXAM_GROUPS, eg['egId']!, 'insert', payload: {
+        COL_EG_EXAM_ID: examId,
+        COL_EG_GROUP_ID: eg['groupId'],
+        COL_SYNC_UPDATED_AT: now,
+      });
+    }
+    return examId;
   }
 
   /// جلب كل الامتحانات مع قوائم مجموعاتها
@@ -1317,7 +1362,17 @@ class DatabaseService {
 
   Future<int> updateExam(Exam exam, List<int> groupIds) async {
     final db = await database;
-    return await db.transaction((txn) async {
+    final now = DateTime.now().toIso8601String();
+
+    // لازم نلقط remote_id بتاع صفوف exam_groups القديمة قبل ما نحذفها —
+    // وإلا محرك المزامنة مش هيعرف يستهدف الصف الصح عند الطرف التاني
+    // (راجع _queueDelete).
+    final oldEg = await db.query(TABLE_EXAM_GROUPS,
+        columns: [COL_EG_ID, COL_SYNC_REMOTE_ID],
+        where: '$COL_EG_EXAM_ID = ?', whereArgs: [exam.id]);
+    final egRows = <Map<String, int>>[]; // {egId, groupId}
+
+    await db.transaction((txn) async {
       await txn.update(
           TABLE_EXAMS,
           {
@@ -1325,6 +1380,7 @@ class DatabaseService {
             COL_EXAM_DATE: exam.date.toIso8601String(),
             COL_EXAM_MAX_GRADE: exam.maxGrade,
             COL_EXAM_PASSING_GRADE: exam.passingGrade,
+            COL_SYNC_UPDATED_AT: now,
           },
           where: '$COL_EXAM_ID = ?',
           whereArgs: [exam.id]);
@@ -1332,21 +1388,66 @@ class DatabaseService {
       await txn.delete(TABLE_EXAM_GROUPS,
           where: '$COL_EG_EXAM_ID = ?', whereArgs: [exam.id]);
       for (final gId in groupIds) {
-        await txn.insert(TABLE_EXAM_GROUPS, {
+        final egId = await txn.insert(TABLE_EXAM_GROUPS, {
           COL_EG_EXAM_ID: exam.id,
           COL_EG_GROUP_ID: gId,
+          COL_SYNC_UPDATED_AT: now,
         });
+        egRows.add({'egId': egId, 'groupId': gId});
       }
       _notifyChanged();
-      return exam.id!;
     });
+
+    await _queueSync(TABLE_EXAMS, exam.id!, 'update', payload: {
+      ...exam.toMap(),
+      COL_SYNC_UPDATED_AT: now,
+    });
+    for (final old in oldEg) {
+      await _queueDelete(TABLE_EXAM_GROUPS, old[COL_EG_ID] as int,
+          old[COL_SYNC_REMOTE_ID] as String?);
+    }
+    for (final eg in egRows) {
+      await _queueSync(TABLE_EXAM_GROUPS, eg['egId']!, 'insert', payload: {
+        COL_EG_EXAM_ID: exam.id,
+        COL_EG_GROUP_ID: eg['groupId'],
+        COL_SYNC_UPDATED_AT: now,
+      });
+    }
+    return exam.id!;
   }
 
   Future<void> deleteExam(int examId) async {
     final db = await database;
+
+    // لازم نلقط remote_id بتاع الامتحان نفسه وكل صفوف exam_groups/
+    // exam_grades التابعة له قبل الحذف — الحذف المحلي هيمسحهم كلهم
+    // بالـcascade، وبعدين مش هنقدر نعرف remote_id بتوعهم عشان نبلّغ
+    // الطرف التاني يحذفهم هو كمان.
+    final examRow = await db.query(TABLE_EXAMS,
+        columns: [COL_SYNC_REMOTE_ID],
+        where: '$COL_EXAM_ID = ?', whereArgs: [examId], limit: 1);
+    final examRemoteId =
+        examRow.isNotEmpty ? examRow.first[COL_SYNC_REMOTE_ID] as String? : null;
+    final egRows = await db.query(TABLE_EXAM_GROUPS,
+        columns: [COL_EG_ID, COL_SYNC_REMOTE_ID],
+        where: '$COL_EG_EXAM_ID = ?', whereArgs: [examId]);
+    final gradeRows = await db.query(TABLE_EXAM_GRADES,
+        columns: [COL_GRADE_ID, COL_SYNC_REMOTE_ID],
+        where: '$COL_GRADE_EXAM_ID = ?', whereArgs: [examId]);
+
     await db
         .delete(TABLE_EXAMS, where: '$COL_EXAM_ID = ?', whereArgs: [examId]);
     _notifyChanged();
+
+    for (final row in gradeRows) {
+      await _queueDelete(TABLE_EXAM_GRADES, row[COL_GRADE_ID] as int,
+          row[COL_SYNC_REMOTE_ID] as String?);
+    }
+    for (final row in egRows) {
+      await _queueDelete(TABLE_EXAM_GROUPS, row[COL_EG_ID] as int,
+          row[COL_SYNC_REMOTE_ID] as String?);
+    }
+    await _queueDelete(TABLE_EXAMS, examId, examRemoteId);
   }
 
   // ========== EXAM GRADES ==========
@@ -1400,18 +1501,39 @@ class DatabaseService {
     bool isAbsent = false,
   }) async {
     final db = await database;
+    final now = DateTime.now().toIso8601String();
     await db.rawInsert('''
       INSERT INTO $TABLE_EXAM_GRADES
         ($COL_GRADE_EXAM_ID, $COL_GRADE_STUDENT_ID, $COL_GRADE_VALUE,
-         $COL_GRADE_NOTES, $COL_GRADE_IS_ABSENT)
-      VALUES (?, ?, ?, ?, ?)
+         $COL_GRADE_NOTES, $COL_GRADE_IS_ABSENT, $COL_SYNC_UPDATED_AT)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT($COL_GRADE_EXAM_ID, $COL_GRADE_STUDENT_ID)
       DO UPDATE SET
         $COL_GRADE_VALUE     = excluded.$COL_GRADE_VALUE,
         $COL_GRADE_NOTES     = excluded.$COL_GRADE_NOTES,
-        $COL_GRADE_IS_ABSENT = excluded.$COL_GRADE_IS_ABSENT
-    ''', [examId, studentId, isAbsent ? null : grade, notes, isAbsent ? 1 : 0]);
+        $COL_GRADE_IS_ABSENT = excluded.$COL_GRADE_IS_ABSENT,
+        $COL_SYNC_UPDATED_AT = excluded.$COL_SYNC_UPDATED_AT
+    ''', [examId, studentId, isAbsent ? null : grade, notes, isAbsent ? 1 : 0, now]);
     _notifyChanged();
+
+    // last_insert_rowid() مش موثوق فيه هنا لو الصف كان موجود بالفعل
+    // ودخل مسار DO UPDATE بدل INSERT — بنجيب الـid بالاستعلام المباشر
+    // بمفتاح (examId, studentId) بدل ما نعتمد عليه.
+    final row = await db.query(TABLE_EXAM_GRADES,
+        columns: [COL_GRADE_ID],
+        where: '$COL_GRADE_EXAM_ID = ? AND $COL_GRADE_STUDENT_ID = ?',
+        whereArgs: [examId, studentId],
+        limit: 1);
+    if (row.isEmpty) return;
+    final gradeId = row.first[COL_GRADE_ID] as int;
+    await _queueSync(TABLE_EXAM_GRADES, gradeId, 'insert', payload: {
+      COL_GRADE_EXAM_ID: examId,
+      COL_GRADE_STUDENT_ID: studentId,
+      COL_GRADE_VALUE: isAbsent ? null : grade,
+      COL_GRADE_NOTES: notes,
+      COL_GRADE_IS_ABSENT: isAbsent ? 1 : 0,
+      COL_SYNC_UPDATED_AT: now,
+    });
   }
 
   /// إحصائيات امتحان لمجموعة معينة (مع التوزيع)

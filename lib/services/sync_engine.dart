@@ -19,6 +19,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
+import 'package:active_class/controllers/exam_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/homework_controller.dart';
 import 'package:active_class/controllers/payment_controller.dart';
@@ -67,6 +68,11 @@ class SyncEngine {
     TABLE_ATTENDANCE,
     TABLE_PAYMENTS,
     TABLE_HOMEWORK,
+    // الترتيب مهم: exams لازم تتطبّق قبل exam_groups/exam_grades (الاتنين
+    // محتاجين exam_remote_id بتاع الامتحان الأب موجود بالفعل).
+    TABLE_EXAMS,
+    TABLE_EXAM_GROUPS,
+    TABLE_EXAM_GRADES,
   ];
 
   final DatabaseService _dbService = DatabaseService();
@@ -82,6 +88,9 @@ class SyncEngine {
         TABLE_ATTENDANCE => COL_ATTENDANCE_ID,
         TABLE_PAYMENTS => COL_PAYMENT_ID,
         TABLE_HOMEWORK => COL_HOMEWORK_ID,
+        TABLE_EXAMS => COL_EXAM_ID,
+        TABLE_EXAM_GROUPS => COL_EG_ID,
+        TABLE_EXAM_GRADES => COL_GRADE_ID,
         _ => throw ArgumentError('جدول غير قابل للمزامنة: $table'),
       };
 
@@ -310,6 +319,53 @@ class SyncEngine {
           'student_remote_id': studentRemoteId,
           'date': payload[COL_HOMEWORK_DATE],
           'status': payload[COL_HOMEWORK_STATUS],
+        };
+      case TABLE_EXAMS:
+        return {
+          ...base,
+          'name': payload[COL_EXAM_NAME],
+          'exam_date': payload[COL_EXAM_DATE],
+          'max_grade': payload[COL_EXAM_MAX_GRADE],
+          'passing_grade': payload[COL_EXAM_PASSING_GRADE],
+        };
+      case TABLE_EXAM_GROUPS:
+        final examLocalId = payload[COL_EG_EXAM_ID] as int?;
+        final groupLocalId = payload[COL_EG_GROUP_ID] as int?;
+        String? examRemoteId, groupRemoteId;
+        if (examLocalId != null) {
+          examRemoteId = await _localRemoteId(TABLE_EXAMS, COL_EXAM_ID, examLocalId);
+          if (examRemoteId == null) return null;
+        }
+        if (groupLocalId != null) {
+          groupRemoteId =
+              await _localRemoteId(TABLE_GROUPS, COL_GROUP_ID, groupLocalId);
+          if (groupRemoteId == null) return null;
+        }
+        return {
+          ...base,
+          'exam_remote_id': examRemoteId,
+          'group_remote_id': groupRemoteId,
+        };
+      case TABLE_EXAM_GRADES:
+        final examLocalId = payload[COL_GRADE_EXAM_ID] as int?;
+        final studentLocalId = payload[COL_GRADE_STUDENT_ID] as int?;
+        String? examRemoteId, studentRemoteId;
+        if (examLocalId != null) {
+          examRemoteId = await _localRemoteId(TABLE_EXAMS, COL_EXAM_ID, examLocalId);
+          if (examRemoteId == null) return null;
+        }
+        if (studentLocalId != null) {
+          studentRemoteId = await _localRemoteId(
+              TABLE_STUDENTS, COL_STUDENT_ID, studentLocalId);
+          if (studentRemoteId == null) return null;
+        }
+        return {
+          ...base,
+          'exam_remote_id': examRemoteId,
+          'student_remote_id': studentRemoteId,
+          'grade': payload[COL_GRADE_VALUE],
+          'notes': payload[COL_GRADE_NOTES],
+          'is_absent': (payload[COL_GRADE_IS_ABSENT] as int? ?? 0) == 1,
         };
     }
     return null;
@@ -544,6 +600,13 @@ class SyncEngine {
           Get.find<HomeworkController>().loadHomework();
         }
         break;
+      case TABLE_EXAMS:
+      case TABLE_EXAM_GROUPS:
+      case TABLE_EXAM_GRADES:
+        if (Get.isRegistered<ExamController>()) {
+          Get.find<ExamController>().loadExams();
+        }
+        break;
     }
     if (Get.isRegistered<DashboardController>()) {
       Get.find<DashboardController>().loadDashboardData();
@@ -676,6 +739,39 @@ class SyncEngine {
           if (dup.isNotEmpty) {
             debugPrint(
                 'SyncEngine: تجاهل صف واجب مكرر (طالب $studentId، يوم $dayPrefix) وارد من جهاز تاني');
+            return;
+          }
+        }
+      }
+      // نفس المنطق: مجموعة اتضافت للامتحان من الجهازين قبل ما تتم
+      // المزامنة (الفهرس الفريد المحلي: امتحان واحد + مجموعة واحدة).
+      if (table == TABLE_EXAM_GROUPS) {
+        final examId = localMap[COL_EG_EXAM_ID];
+        final groupId = localMap[COL_EG_GROUP_ID];
+        if (examId != null && groupId != null) {
+          final dup = await db.query(table,
+              where: '$COL_EG_EXAM_ID = ? AND $COL_EG_GROUP_ID = ?',
+              whereArgs: [examId, groupId], limit: 1);
+          if (dup.isNotEmpty) {
+            debugPrint(
+                'SyncEngine: تجاهل ربط امتحان/مجموعة مكرر (امتحان $examId، مجموعة $groupId) وارد من جهاز تاني');
+            return;
+          }
+        }
+      }
+      // نفس المنطق: درجة اتسجّلت لنفس الطالب في نفس الامتحان من
+      // الجهازين قبل ما تتم المزامنة (الفهرس الفريد المحلي: امتحان
+      // واحد + طالب واحد).
+      if (table == TABLE_EXAM_GRADES) {
+        final examId = localMap[COL_GRADE_EXAM_ID];
+        final studentId = localMap[COL_GRADE_STUDENT_ID];
+        if (examId != null && studentId != null) {
+          final dup = await db.query(table,
+              where: '$COL_GRADE_EXAM_ID = ? AND $COL_GRADE_STUDENT_ID = ?',
+              whereArgs: [examId, studentId], limit: 1);
+          if (dup.isNotEmpty) {
+            debugPrint(
+                'SyncEngine: تجاهل درجة مكررة (امتحان $examId، طالب $studentId) وارد من جهاز تاني');
             return;
           }
         }
@@ -841,6 +937,57 @@ class SyncEngine {
           COL_HOMEWORK_STUDENT_ID: localStudentId,
           COL_HOMEWORK_DATE: remote['date'],
           COL_HOMEWORK_STATUS: remote['status'],
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_EXAMS:
+        return {
+          COL_EXAM_NAME: remote['name'],
+          COL_EXAM_DATE: remote['exam_date'],
+          COL_EXAM_MAX_GRADE: remote['max_grade'],
+          COL_EXAM_PASSING_GRADE: remote['passing_grade'],
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_EXAM_GROUPS:
+        final examRemoteId = remote['exam_remote_id'] as String?;
+        final localExamId = examRemoteId != null
+            ? await _localIdForRemote(TABLE_EXAMS, COL_EXAM_ID, examRemoteId,
+                executor: executor)
+            : null;
+        if (examRemoteId != null && localExamId == null) return null;
+        final groupRemoteId = remote['group_remote_id'] as String?;
+        final localGroupId = groupRemoteId != null
+            ? await _localIdForRemote(TABLE_GROUPS, COL_GROUP_ID, groupRemoteId,
+                executor: executor)
+            : null;
+        if (groupRemoteId != null && localGroupId == null) return null;
+        return {
+          COL_EG_EXAM_ID: localExamId,
+          COL_EG_GROUP_ID: localGroupId,
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_EXAM_GRADES:
+        final examRemoteId = remote['exam_remote_id'] as String?;
+        final localExamId = examRemoteId != null
+            ? await _localIdForRemote(TABLE_EXAMS, COL_EXAM_ID, examRemoteId,
+                executor: executor)
+            : null;
+        if (examRemoteId != null && localExamId == null) return null;
+        final studentRemoteId = remote['student_remote_id'] as String?;
+        final localStudentId = studentRemoteId != null
+            ? await _localIdForRemote(
+                TABLE_STUDENTS, COL_STUDENT_ID, studentRemoteId,
+                executor: executor)
+            : null;
+        if (studentRemoteId != null && localStudentId == null) return null;
+        return {
+          COL_GRADE_EXAM_ID: localExamId,
+          COL_GRADE_STUDENT_ID: localStudentId,
+          COL_GRADE_VALUE: remote['grade'],
+          COL_GRADE_NOTES: remote['notes'],
+          COL_GRADE_IS_ABSENT: (remote['is_absent'] as bool? ?? false) ? 1 : 0,
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };

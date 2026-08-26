@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 15;
+const int DATABASE_VERSION = 16;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
