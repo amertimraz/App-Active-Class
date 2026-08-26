@@ -13,6 +13,12 @@ import 'package:active_class/utils/pricing_helper.dart';
 
 enum ActivityType { attendance, payment }
 
+class UnpaidStudentEntry {
+  final Student student;
+  final double amountDue; // المديونية المتراكمة الفعلية، مش سعر حصة/شهر واحد بس
+  const UnpaidStudentEntry({required this.student, required this.amountDue});
+}
+
 class TodayPaymentEntry {
   final String studentName;
   final String studentCode;
@@ -74,8 +80,8 @@ class DashboardController extends GetxController {
   final RxList<RecentActivity> recentActivities = <RecentActivity>[].obs;
 
   // ── قائمة غير المدفوعين (للشيت) ─────────────────────────────────────────
-  RxList<Student> get unpaidList => _unpaidList;
-  final RxList<Student> _unpaidList = <Student>[].obs;
+  RxList<UnpaidStudentEntry> get unpaidList => _unpaidList;
+  final RxList<UnpaidStudentEntry> _unpaidList = <UnpaidStudentEntry>[].obs;
 
   // ── للتوافق مع الكود القديم ───────────────────────────────────────────────
   RxInt    get totalPaymentsInt => paidStudentsCount;
@@ -160,7 +166,7 @@ class DashboardController extends GetxController {
 
     double expected = 0;
     double paid     = 0;
-    final unpaidStudents = <Student>[];
+    final unpaidStudents = <UnpaidStudentEntry>[];
     for (final s in activeStudents) {
       final group = groupById[s.groupId];
       final due = PricingHelper.monthlyDue(
@@ -170,15 +176,26 @@ class DashboardController extends GetxController {
         allAttendance: att.attendance,
       );
       expected += due;
+      final studentPayments = paymentsByStudent[s.id] ?? const [];
       final isOverdue = PricingHelper.isOverdue(
         student: s,
         group: group,
         allAttendance: att.attendance,
-        payments: paymentsByStudent[s.id] ?? const [],
+        payments: studentPayments,
         graceDays: graceDays,
       );
       if (isOverdue) {
-        unpaidStudents.add(s);
+        // المديونية المتراكمة الفعلية (كل الشهور غير المدفوعة)، مش سعر
+        // حصة/شهر واحد بس — طالب عليه حصتين أو تلاتة كان بيظهر بنفس
+        // مبلغ طالب عليه حصة واحدة بس.
+        final accumulatedDebt = PricingHelper.accumulatedDebt(
+          student: s,
+          group: group,
+          allAttendance: att.attendance,
+          payments: studentPayments,
+        );
+        unpaidStudents
+            .add(UnpaidStudentEntry(student: s, amountDue: accumulatedDebt));
       }
     }
     for (final p in monthPayments) {

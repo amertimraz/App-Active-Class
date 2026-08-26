@@ -1303,7 +1303,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 itemCount: students.length,
                 itemBuilder: (_, i) {
-                  final s = students[i];
+                  final entry = students[i];
+                  final s = entry.student;
                   return ListTile(
                     leading: CircleAvatar(
                       backgroundColor:
@@ -1320,7 +1321,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         style: const TextStyle(fontWeight: FontWeight.w600)),
                     subtitle: Text(s.code),
                     trailing: Text(
-                      s.effectivePrice.toStringAsFixed(0),
+                      entry.amountDue.toStringAsFixed(0),
                       style: const TextStyle(
                         color: Color(0xFFEF4444),
                         fontWeight: FontWeight.bold,
