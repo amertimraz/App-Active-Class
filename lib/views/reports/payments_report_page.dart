@@ -9,7 +9,6 @@ import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
-import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -99,11 +98,6 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
           if (g.id != null) g.id!: g
       };
 
-      final List<Payment> monthlyPayments = paymentController.payments
-          .where(
-              (p) => p.date.year == month.year && p.date.month == month.month)
-          .toList();
-
       final DateTime monthEnd = DateTime(month.year, month.month + 1, 0);
 
       final List<Student> consideredStudents = students.where((s) {
@@ -112,8 +106,14 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
         return !start.isAfter(monthEnd);
       }).toList();
 
+      // إجمالي كل مدفوعات الطالب (بغض النظر عن تاريخها) مقابل إجمالي
+      // المستحق من شهر انضمامه لحد الشهر المختار — نفس منطق المديونية
+      // المتراكمة (PricingHelper) المستخدم في باقي التطبيق، بدل مقارنة
+      // مدفوعات الشهر ده بس بمستحق الشهر ده بس (كان بيوهم إن طالب دافع
+      // مقدَّمًا "لسه مايدفعش"، وطالب سدد شهر قديم بمبلغ كبير "دافع بالكامل"
+      // وهو لسه عليه شهر تاني).
       final Map<int, double> paidByStudent = {};
-      for (final p in monthlyPayments) {
+      for (final p in paymentController.payments) {
         paidByStudent.update(p.studentId, (v) => v + p.amount,
             ifAbsent: () => p.amount);
       }
@@ -134,7 +134,7 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
       for (final s in nonExemptStudents) {
         // بيستخدم PricingHelper بدل effectivePrice مباشرة عشان مجموعات
         // "بالحصة" تُحسَب بعدد الحصص المحضورة فعليًا الشهر ده.
-        final due = PricingHelper.monthlyDue(
+        final due = PricingHelper.totalDueThrough(
             student: s,
             group: groupById[s.groupId],
             month: month,
@@ -243,7 +243,7 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                       int groupFullyPaid = 0;
                       for (final s in groupStudents) {
                         if (s.isFullyExempt) continue; // لا يُحسب في المطلوب
-                        final due = PricingHelper.monthlyDue(
+                        final due = PricingHelper.totalDueThrough(
                             student: s,
                             group: g,
                             month: month,
@@ -255,7 +255,7 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                       }
                       final groupUnpaid = groupStudents.where((s) {
                         if (s.isFullyExempt) return false;
-                        final due = PricingHelper.monthlyDue(
+                        final due = PricingHelper.totalDueThrough(
                             student: s,
                             group: g,
                             month: month,
@@ -731,7 +731,7 @@ extension on _PaymentsReportPageState {
                 final s = unpaid[i];
                 final g = groupById[s.groupId];
                 final paid = paidByStudent[s.id ?? -1] ?? 0.0;
-                final due = PricingHelper.monthlyDue(
+                final due = PricingHelper.totalDueThrough(
                     student: s,
                     group: g,
                     month: month,
