@@ -10,6 +10,7 @@ import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/views/exams/exam_grades_page.dart';
 import 'package:active_class/views/exams/leaderboard_page.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
 
 // ─── حالة الامتحان ────────────────────────────────────────────────────────────
@@ -142,6 +143,21 @@ class _ExamsPageState extends State<ExamsPage> {
         title: const Text('الامتحانات والدرجات',
             style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
         actions: [
+          // زرار مزامنة الامتحانات القديمة — بيظهر بس لو وضع الفريق شغّال،
+          // عشان يبعت الامتحانات اللي اتعملت قبل ما المزامنة دي تتوصّل
+          // أصلاً (التحميل الأولي بيحصل مرة واحدة بس وقت تفعيل الفريق).
+          if (TeamModeService().isEnabled.value)
+            IconButton(
+              icon: const Icon(Icons.sync_rounded),
+              tooltip: 'مزامنة الامتحانات القديمة مع الفريق',
+              onPressed: () async {
+                final ok = await TeamModeService().resyncExams();
+                if (!context.mounted) return;
+                ok
+                    ? ToastHelper.success('جاري مزامنة الامتحانات القديمة...')
+                    : ToastHelper.error('وضع الفريق مش شغّال');
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.emoji_events_rounded),
             tooltip: 'الأوائل',

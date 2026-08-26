@@ -394,9 +394,20 @@ class SyncEngine {
   /// كل الصفوف المحلية الموجودة فعلاً وقت ما المدرس يفعّل وضع الفريق
   /// لأول مرة — نضيفهم لطابور الإرسال (بترتيب الجداول: مجموعات قبل
   /// طلاب قبل حضور/مدفوعات، عشان الآباء يتزامنوا قبل الأبناء).
-  Future<void> enqueueAllExistingLocalRows() async {
+  Future<void> enqueueAllExistingLocalRows() =>
+      _enqueueExistingRows(_tables);
+
+  /// إعادة إرسال الامتحانات/الدرجات الموجودة محليًا بالفعل — لمدرّس كان
+  /// شغّال بالفعل بوضع الفريق قبل ما الامتحانات تتوصّل بالمزامنة أصلاً
+  /// (enqueueAllExistingLocalRows بتتنادى مرة واحدة بس وقت أول تفعيل،
+  /// فامتحاناته القديمة فاتها الركب). زرار "مزامنة الامتحانات القديمة"
+  /// في صفحة الامتحانات بينادي عليها يدويًا.
+  Future<void> enqueueExistingExams() =>
+      _enqueueExistingRows([TABLE_EXAMS, TABLE_EXAM_GROUPS, TABLE_EXAM_GRADES]);
+
+  Future<void> _enqueueExistingRows(List<String> tables) async {
     final db = await _dbService.database;
-    for (final table in _tables) {
+    for (final table in tables) {
       final pkCol = _pkCol(table);
       final rows = await db.query(table);
       for (final row in rows) {
@@ -417,6 +428,7 @@ class SyncEngine {
         });
       }
     }
+    unawaited(drainOutbox());
   }
 
   // ── Pull: أول تحميل كامل (وقت ما مساعد ينضم لفريق) ────────────────

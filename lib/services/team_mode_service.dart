@@ -140,6 +140,16 @@ class TeamModeService {
     }
   }
 
+  /// بيبعت الامتحانات/الدرجات الموجودة محليًا بالفعل لطابور المزامنة —
+  /// لمدرّس أو مساعد كان شغّال بوضع الفريق قبل ما الامتحانات تتوصّل
+  /// بالمزامنة أصلاً (التحميل الأولي بيحصل مرة واحدة بس وقت أول تفعيل).
+  /// بترجع false لو وضع الفريق مش شغّال أصلاً.
+  Future<bool> resyncExams() async {
+    if (!isEnabled.value || _engine == null) return false;
+    await _engine!.enqueueExistingExams();
+    return true;
+  }
+
   Future<String?> joinWithInvite(String code) async {
     final client = await _auth.ensureClient();
     if (client == null || client.auth.currentUser == null) {
