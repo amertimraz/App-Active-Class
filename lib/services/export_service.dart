@@ -88,13 +88,13 @@ class ExportService {
       await _loadFonts();
       final doc = pw.Document();
 
-      final monthPayments = payments
-          .where(
-              (p) => p.date.year == month.year && p.date.month == month.month)
-          .toList();
-
+      // إجمالي كل مدفوعات الطالب (بغض النظر عن تاريخها) مقابل إجمالي
+      // المستحق من شهر انضمامه لحد الشهر ده — نفس منطق المديونية المتراكمة
+      // (PricingHelper) المستخدم في باقي التطبيق، عشان عمود "الحالة" هنا
+      // ميقولش "لم يدفع" على طالب دافع مقدَّمًا شهر فات، أو "مكتمل" على
+      // طالب لسه عليه شهر قديم.
       final paidMap = <int, double>{};
-      for (final p in monthPayments) {
+      for (final p in payments) {
         paidMap.update(p.studentId, (v) => v + p.amount,
             ifAbsent: () => p.amount);
       }
@@ -111,7 +111,7 @@ class ExportService {
       double totalPaid = 0;
       for (final s in sorted) {
         if (!s.isFullyExempt) {
-          totalExpected += PricingHelper.monthlyDue(
+          totalExpected += PricingHelper.totalDueThrough(
             student: s,
             group: groupById[s.groupId],
             month: month,
@@ -290,17 +290,15 @@ class ExportService {
       await _loadFonts();
       final doc = pw.Document();
 
-      final monthPayments = payments
-          .where(
-              (p) => p.date.year == month.year && p.date.month == month.month)
-          .toList();
       final monthAtt = attendance
           .where(
               (a) => a.date.year == month.year && a.date.month == month.month)
           .toList();
 
+      // إجمالي كل مدفوعات الطالب لحد الآن، لا مدفوعات الشهر ده بس — نفس
+      // منطق المديونية المتراكمة في باقي التطبيق.
       final paidMap = <int, double>{};
-      for (final p in monthPayments) {
+      for (final p in payments) {
         paidMap.update(p.studentId, (v) => v + p.amount,
             ifAbsent: () => p.amount);
       }
@@ -460,7 +458,7 @@ class ExportService {
       final s = students[i];
       final group = groupById[s.groupId];
       final paid = paidMap[s.id] ?? 0;
-      final due = PricingHelper.monthlyDue(
+      final due = PricingHelper.totalDueThrough(
         student: s,
         group: group,
         month: month,
@@ -739,7 +737,7 @@ class ExportService {
           0,
           (s, st) =>
               s +
-              PricingHelper.monthlyDue(
+              PricingHelper.totalDueThrough(
                   student: st,
                   group: g,
                   month: month,
