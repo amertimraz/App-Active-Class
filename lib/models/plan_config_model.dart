@@ -47,8 +47,12 @@ class PlanConfigModel {
   // القيم الافتراضية (fallback)
   static List<PlanConfigModel> get defaults => [
     const PlanConfigModel(
+      // مفيش أرقام سعر/عملة معروضة عمدًا — Google Play بيطبّق قواعد
+      // "سياسة الاشتراكات" (توافق العملة) على أي شاشة شكلها بائع باقات
+      // بأسعار ثابتة، حتى لو الدفع الفعلي بيتم يدويًا برة المتجر (واتساب).
+      // نفس المنطق مطبَّق على بيانات Firestore الحية (plans_config).
       id: 'monthly', nameAr: 'الباقة الشهرية',
-      price: '99 جنيه', originalPrice: '',
+      price: '', originalPrice: '',
       period: 'شهرياً',
       features: [
         '✅ مجموعات وطلاب غير محدودين',
@@ -59,7 +63,7 @@ class PlanConfigModel {
     ),
     const PlanConfigModel(
       id: 'four_months', nameAr: 'باقة 4 شهور',
-      price: '349 جنيه', originalPrice: '396 جنيه',
+      price: '', originalPrice: '',
       period: '4 شهور',
       features: [
         '✅ مجموعات وطلاب غير محدودين',
@@ -70,7 +74,7 @@ class PlanConfigModel {
     ),
     const PlanConfigModel(
       id: 'nine_months', nameAr: 'باقة 9 شهور',
-      price: '649 جنيه', originalPrice: '891 جنيه',
+      price: '', originalPrice: '',
       period: '9 شهور',
       features: [
         '✅ مجموعات وطلاب غير محدودين',
@@ -81,7 +85,7 @@ class PlanConfigModel {
     ),
     const PlanConfigModel(
       id: 'yearly', nameAr: 'الباقة السنوية',
-      price: '799 جنيه', originalPrice: '1188 جنيه',
+      price: '', originalPrice: '',
       period: '12 شهر',
       features: [
         '✅ مجموعات وطلاب غير محدودين',

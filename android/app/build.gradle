@@ -36,6 +36,23 @@ android {
         versionName = flutter.versionName
     }
 
+    // نسختان من نفس التطبيق بنفس applicationId — بيتفرقوا بس في صلاحية
+    // REQUEST_INSTALL_PACKAGES (شايفها في src/play/AndroidManifest.xml):
+    // "play" (لمتجر Google Play، الصلاحية دي متشالة منها لأن Google بيرفض
+    // أي إصدار فيها الصلاحية دي "غير مرتبطة بالغرض الأساسي" — التطبيق
+    // أصلاً بيتجاهل التحديث الذاتي كليًا لو اتثبّت من المتجر)، و"direct"
+    // (للتوزيع المباشر عبر GitHub، محتفظة بالصلاحية عشان ميزة تحميل
+    // وتثبيت التحديث من جوّه التطبيق تفضل شغالة).
+    flavorDimensions "distribution"
+    productFlavors {
+        play {
+            dimension "distribution"
+        }
+        direct {
+            dimension "distribution"
+        }
+    }
+
     signingConfigs {
         release {
             if (keystorePropertiesFile.exists()) {
