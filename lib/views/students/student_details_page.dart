@@ -350,7 +350,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                       payments: studentPays,
                       totalPaid: totalPaid,
                       accumulatedDebt: accumulatedDebt,
-                      accentColor: primary)
+                      accentColor: primary,
+                      onEdit: () => _editStudent(s))
                   : const LockedSectionPlaceholder(),
             ],
           ),
@@ -1272,12 +1273,14 @@ class _PaymentsTab extends StatelessWidget {
   final double totalPaid;
   final double accumulatedDebt;
   final Color accentColor;
+  final VoidCallback onEdit;
 
   const _PaymentsTab({
     required this.payments,
     required this.totalPaid,
     required this.accumulatedDebt,
     required this.accentColor,
+    required this.onEdit,
   });
 
   @override
@@ -1339,16 +1342,28 @@ class _PaymentsTab extends StatelessWidget {
                     color: Colors.red, size: 22),
               ),
               const SizedBox(width: 14),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('مديونية متراكمة',
-                    style:
-                        TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                CurrencyText(accumulatedDebt,
-                    style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.red)),
-              ]),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('مديونية متراكمة',
+                          style: TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600)),
+                      CurrencyText(accumulatedDebt,
+                          style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.red)),
+                    ]),
+              ),
+              // تعديل سريع (زي تاريخ الانضمام) من غير ما تدور على زرار
+              // التعديل في أعلى الشاشة — مفيد لو الرقم غريب وعايز تظبطه
+              // على طول (مثلاً طالب انضم في نص الشهر).
+              IconButton(
+                onPressed: onEdit,
+                tooltip: 'تعديل بيانات الطالب',
+                icon: const Icon(Icons.edit_rounded, color: Colors.red),
+              ),
             ]),
           ),
           const SizedBox(height: 16),
