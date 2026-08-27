@@ -37,6 +37,13 @@ class PricingHelper {
       final attended = sessionsAttended(
           student: student, month: month, allAttendance: allAttendance);
       base = student.price * attended;
+    } else if (student.siblingId != null && student.siblingsTotal != null) {
+      // عرض الإخوة: المستحق الشهري الفعلي على كل طالب هو نصه من
+      // الإجمالي المشترك (siblingsTotal)، مش سعره الفردي (student.price)
+      // — وإلا كان بيُحتسب عليه كل شهر سعر كامل رغم إن الدفعات الفعلية
+      // (عبر مسار الدفع بالـQR) بتسجَّل بنص السعر بس لكل واحد فيهم،
+      // فالمديونية كانت بتتراكم بلا داعي حتى مع الدفع المنتظم بالخصم.
+      base = student.siblingsTotal! / 2.0;
     } else {
       base = student.price;
     }
