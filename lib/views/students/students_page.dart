@@ -220,26 +220,33 @@ class _StudentsPageState extends State<StudentsPage>
                   label: '${_groups.length} مجموعة',
                   color: Colors.teal,
                 ),
-                const Spacer(),
-                StudentSortBar(
-                  sortBy: _sortBy,
-                  ascending: _sortAscending,
-                  onChanged: _onSortTap,
-                ),
               ],
             );
           }),
           const SizedBox(height: 12),
 
-          // Search bar
-          CustomSearchBar(
-            controller: _searchCtrl,
-            hintText: 'ابحث عن طالب...',
-            onChanged: (v) => controller.searchStudents(v),
-            onClear: () {
-              _searchCtrl.clear();
-              controller.searchStudents('');
-            },
+          // Search bar + ترتيب (السيرش قابل للانكماش عشان الأيقونات تفضل
+          // ظاهرة كاملة على الشاشات الضيقة بدل ما يحصل overflow)
+          Row(
+            children: [
+              Expanded(
+                child: CustomSearchBar(
+                  controller: _searchCtrl,
+                  hintText: 'ابحث عن طالب...',
+                  onChanged: (v) => controller.searchStudents(v),
+                  onClear: () {
+                    _searchCtrl.clear();
+                    controller.searchStudents('');
+                  },
+                ),
+              ),
+              const SizedBox(width: 4),
+              StudentSortBar(
+                sortBy: _sortBy,
+                ascending: _sortAscending,
+                onChanged: _onSortTap,
+              ),
+            ],
           ),
 
           // Group filter chips
