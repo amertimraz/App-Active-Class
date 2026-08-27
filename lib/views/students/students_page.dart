@@ -6,9 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
+import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/utils/student_sort_helper.dart';
+import 'package:active_class/widgets/student_sort_bar.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -37,9 +41,17 @@ class StudentsPage extends StatefulWidget {
 class _StudentsPageState extends State<StudentsPage>
     with WidgetsBindingObserver {
   final StudentController controller = Get.put(StudentController());
+  final AttendanceController _attCtrl = Get.isRegistered<AttendanceController>()
+      ? Get.find<AttendanceController>()
+      : Get.put(AttendanceController());
+  final PaymentController _payCtrl = Get.isRegistered<PaymentController>()
+      ? Get.find<PaymentController>()
+      : Get.put(PaymentController());
   late final TextEditingController _searchCtrl;
   List<Group> _groups = [];
   bool _gridMode = false;
+  StudentSort _sortBy = StudentSort.name;
+  bool _sortAscending = true;
 
   @override
   void initState() {
@@ -51,6 +63,19 @@ class _StudentsPageState extends State<StudentsPage>
     controller.setGroupFilter(null);
     controller.loadAllStudents();
     _loadGroups();
+    if (_attCtrl.attendance.isEmpty) _attCtrl.loadAttendance();
+    if (_payCtrl.payments.isEmpty) _payCtrl.loadPayments();
+  }
+
+  void _onSortTap(StudentSort sort) {
+    setState(() {
+      if (_sortBy == sort) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortBy = sort;
+        _sortAscending = true;
+      }
+    });
   }
 
   @override
@@ -119,7 +144,14 @@ class _StudentsPageState extends State<StudentsPage>
       body: buildSoftBackground(
         context: context,
         child: Obx(() {
-          final students = controller.filteredStudents;
+          final students = sortStudents(
+            students: controller.filteredStudents,
+            sortBy: _sortBy,
+            ascending: _sortAscending,
+            groupOf: _groupOf,
+            allAttendance: _attCtrl.attendance,
+            allPayments: _payCtrl.payments,
+          );
 
           // ── Empty ───────────────────────────────────────────────
           if (controller.students.isEmpty) {
@@ -187,6 +219,12 @@ class _StudentsPageState extends State<StudentsPage>
                   icon: Icons.groups_rounded,
                   label: '${_groups.length} مجموعة',
                   color: Colors.teal,
+                ),
+                const Spacer(),
+                StudentSortBar(
+                  sortBy: _sortBy,
+                  ascending: _sortAscending,
+                  onChanged: _onSortTap,
                 ),
               ],
             );

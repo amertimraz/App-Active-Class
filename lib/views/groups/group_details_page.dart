@@ -9,8 +9,11 @@ import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/group_price_helper.dart';
+import 'package:active_class/utils/student_sort_helper.dart';
+import 'package:active_class/widgets/student_sort_bar.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
@@ -65,6 +68,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       Get.isRegistered<AttendanceController>()
           ? Get.find<AttendanceController>()
           : Get.put(AttendanceController());
+  List<Payment> _allPayments = [];
   Group? group;
   late final TextEditingController _searchCtrl;
 
@@ -72,6 +76,19 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   final Set<int> _selectedStudents = {};
   final Set<int> _paidStudentIds = {};
   late final bool _canSeeFinancials = TeamModeService().canSeeFinancials;
+  StudentSort _sortBy = StudentSort.name;
+  bool _sortAscending = true;
+
+  void _onSortTap(StudentSort sort) {
+    setState(() {
+      if (_sortBy == sort) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortBy = sort;
+        _sortAscending = true;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -124,6 +141,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         _paidStudentIds
           ..clear()
           ..addAll(fullyPaid);
+        _allPayments = allPayments;
       });
     }
   }
@@ -317,6 +335,14 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       body: Obx(() {
         final allStudents =
             studentController.students.where((s) => s.groupId == g.id).toList();
+        final sortedStudents = sortStudents(
+          students: studentController.filteredStudents,
+          sortBy: _sortBy,
+          ascending: _sortAscending,
+          groupOf: (_) => g,
+          allAttendance: attendanceController.attendance,
+          allPayments: _allPayments,
+        );
         // بيستخدم PricingHelper بدل s.price مباشرة عشان يراعي الإعفاء
         // ومجموعات "بالحصة" (بيتحسب فيها على عدد الحصص المحضورة الشهر
         // الحالي، مش سعر الحصة الواحدة كأنه القيمة الشهرية الكاملة).
@@ -397,18 +423,32 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
               ),
             ),
 
-            // ── Search ─────────────────────────────────────────────────────
+            // ── Search + ترتيب ───────────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: CustomSearchBar(
-                  controller: _searchCtrl,
-                  hintText: 'ابحث بالاسم أو الكود...',
-                  onChanged: (v) => studentController.searchStudents(v),
-                  onClear: () {
-                    _searchCtrl.clear();
-                    studentController.searchStudents('');
-                  },
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: CustomSearchBar(
+                        controller: _searchCtrl,
+                        hintText: 'ابحث بالاسم أو الكود...',
+                        onChanged: (v) => studentController.searchStudents(v),
+                        onClear: () {
+                          _searchCtrl.clear();
+                          studentController.searchStudents('');
+                        },
+                      ),
+                    ),
+                    if (allStudents.isNotEmpty) ...[
+                      const SizedBox(width: 4),
+                      StudentSortBar(
+                        sortBy: _sortBy,
+                        ascending: _sortAscending,
+                        onChanged: _onSortTap,
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -433,7 +473,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
-                      final student = studentController.filteredStudents[index];
+                      final student = sortedStudents[index];
                       return _StudentCard(
                         student: student,
                         groupColor: primary,
@@ -461,7 +501,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                         onDelete: () => _confirmDeleteStudent(student),
                       );
                     },
-                    childCount: studentController.filteredStudents.length,
+                    childCount: sortedStudents.length,
                   ),
                 ),
               ),
