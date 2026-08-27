@@ -2292,7 +2292,8 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
     return defaultDial + p.replaceFirst(RegExp(r'^0+'), '');
   }
 
-  String _buildMessage(Student s, String groupName, String teacherName) {
+  String _buildMessage(Student s, String groupName, String teacherName,
+      String teacherSpecialization) {
     final dateStr = DateFormat('yyyy-MM-dd', 'ar').format(DateTime.now());
     final buffer = StringBuffer()
       ..writeln('⚠️ *تنبيه غياب*')
@@ -2301,6 +2302,9 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
       ..writeln('📅 $dateStr');
     if (teacherName.isNotEmpty) {
       buffer.writeln('👨‍🏫 $teacherName');
+    }
+    if (teacherSpecialization.isNotEmpty) {
+      buffer.writeln('📘 $teacherSpecialization');
     }
     return buffer.toString().trimRight();
   }
@@ -2313,7 +2317,8 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
     }
     final settings = Get.find<SettingsController>();
     final phone = _normalizePhone(rawPhone, settings.countryDial.value);
-    final msg = _buildMessage(s, groupName, settings.teacherFullName.value.trim());
+    final msg = _buildMessage(s, groupName, settings.teacherFullName.value.trim(),
+        settings.teacherSpecialization.value.trim());
     final uri =
         Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
     await launchUrl(uri, mode: LaunchMode.externalApplication);
