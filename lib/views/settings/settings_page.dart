@@ -105,9 +105,15 @@ class SettingsPage extends StatelessWidget {
 
                       // ── 1ج. بوابة متابعة أولياء الأمور (إضافة مدفوعة) ──
                       Obx(() {
-                        if (!Get.find<LicenseController>()
-                            .parentPortalEnabled
-                            .value) {
+                        final lic = Get.find<LicenseController>();
+                        // قراءة العداد دي مقصودة بس عشان الـObx يسجّل
+                        // اعتماد عليه ويعيد البناء كل 5 دقايق (الفحص
+                        // الدوري) حتى لو مفيش تغيير فعلي — بدونها،
+                        // انتهاء المدة والتطبيق فاضل مفتوح مش هيتصرف
+                        // إلا بعد حدث Firestore جديد أو إعادة فتح التطبيق.
+                        // ignore: unnecessary_statements
+                        lic.parentPortalRecheckTick.value;
+                        if (!lic.parentPortalActiveNow) {
                           return const SizedBox.shrink();
                         }
                         return Column(children: [
@@ -1573,7 +1579,10 @@ class SettingsPage extends StatelessWidget {
       final nextMonth = DateTime(now.year, now.month + 1, 1);
       final end = nextMonth.subtract(const Duration(days: 1));
 
+      // مفيش داعي نبعت رسائل واتساب جماعية لأولياء أمور طلاب مؤرشفين —
+      // ده شغل يومي نشط، مش سجل تاريخي.
       final valid = students
+          .where((s) => !s.isArchived)
           .where((s) => (s.guardianPhone ?? '').trim().isNotEmpty)
           .toList();
       if (valid.isEmpty) {

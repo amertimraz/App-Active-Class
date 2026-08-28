@@ -34,6 +34,7 @@ class ParentPortalService {
   FirebaseAuth get _auth => FirebaseAuth.instance;
   final DatabaseService _dbService = DatabaseService();
   Worker? _profileWorker;
+  Worker? _licenseWorker;
 
   static const String _kSlugKey = 'parent_portal_slug';
 
@@ -47,6 +48,22 @@ class ParentPortalService {
     final settings = Get.find<SettingsController>();
     _profileWorker = everAll(
       [settings.teacherFullName, settings.teacherGender],
+      (_) => publishProfile(),
+    );
+  }
+
+  /// بتتابع تفعيل/تعديل مدة بوابة أولياء الأمور وتعيد نشر البروفايل
+  /// (بتاريخ الانتهاء الجديد) فورًا عند أي تغيير — مهم بالذات لسيناريو
+  /// "تجديد بعد انتهاء": من غيرها، صفحة /track العامة كانت هتفضل تعرض
+  /// تاريخ الانتهاء القديم (المنتهي) لحد ما يحصل أي نشر عرضي تاني.
+  /// مسجَّلة من غير أي شرط على الحالة الحالية (فعّالة/منتهية) عشان
+  /// تلتقط التفعيل الأول والتجديد بعد الانتهاء على السواء.
+  void _watchLicenseChanges() {
+    if (_licenseWorker != null) return;
+    if (!Get.isRegistered<LicenseController>()) return;
+    final lic = LicenseController.to;
+    _licenseWorker = everAll(
+      [lic.parentPortalEnabled, lic.parentPortalExpiresAt],
       (_) => publishProfile(),
     );
   }
@@ -90,7 +107,8 @@ class ParentPortalService {
   /// رقم تليفون صحيح لسه، كان المستند ده مبيتعملش خالص، فصفحة المتابعة
   /// تفضل من غير اسم المدرس وكأنها رابط عام مش رابط المدرس ده تحديدًا.
   Future<void> publishProfile() async {
-    if (!LicenseController.to.parentPortalEnabled.value) return;
+    _watchLicenseChanges();
+    if (!LicenseController.to.parentPortalActiveNow) return;
     _watchProfileChanges();
     try {
       await _ensureAuth();
@@ -102,11 +120,24 @@ class ParentPortalService {
   Future<void> _publishProfile(String slug) async {
     final settings =
         Get.isRegistered<SettingsController>() ? Get.find<SettingsController>() : null;
+    // بننشر تاريخ انتهاء بوابة أولياء الأمور (لو موجود) جوه نفس المستند
+    // العام ده — عشان صفحة /track/{slug} (كود JS خام، بدون وصول لمجموعة
+    // licenses المحمية) تقدر تتحقق بنفسها إن المدة لسه سارية قبل ما
+    // تعرض أي بيانات طالب. null صراحةً لو مفيش تاريخ (مدى الحياة)،
+    // عشان تجديد لاحق يمسح تاريخ قديم كان منشور.
+    final expiresAt = LicenseController.to.parentPortalExpiresAt.value;
     await _db.collection('parent_portal').doc(slug).set({
       'teacherName': settings?.teacherFullName.value ?? '',
       'teacherGender': settings?.teacherGender.value ?? 'male',
       'ownerUid': _auth.currentUser?.uid,
       'deviceId': LicenseController.to.deviceId.value,
+      // .toUtc() ضروري هنا — من غيرها الـstring بيطلع بتوقيت محلي بلا
+      // علامة timezone، والمتصفح بتاع ولي الأمر (على جهاز تاني، ممكن
+      // منطقة زمنية مختلفة) كان هيفسّرها بتوقيته المحلي هو مش توقيت
+      // تليفون المدرس — ممكن يفرق ساعات في لحظة القفل الفعلية.
+      // .toUtc() بتضمن علامة 'Z' فيرجع new Date() في الجافاسكريبت
+      // يفهمها كلحظة مطلقة، بغض النظر عن توقيت أي جهاز.
+      'parentPortalExpiresAt': expiresAt?.toUtc().toIso8601String(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
@@ -178,7 +209,8 @@ class ParentPortalService {
   /// بتتجاهل بصمت لو الميزة مش مفعّلة أو رقم ولي الأمر مش موجود/قصير —
   /// مفيش داعي نزعج المستخدم برسائل خطأ لعملية خلفية اختيارية.
   Future<void> pushStudentSummary(int studentId) async {
-    if (!LicenseController.to.parentPortalEnabled.value) return;
+    _watchLicenseChanges();
+    if (!LicenseController.to.parentPortalActiveNow) return;
     try {
       final student = await _dbService.getStudent(studentId);
       if (student == null) return;
@@ -218,7 +250,7 @@ class ParentPortalService {
   /// (اسمه، حضوره، مدفوعاته) تفضل معروضة للأبد لمين يعرف الكود والرقم،
   /// حتى بعد ما يتمسح من التطبيق تمامًا.
   Future<void> removeStudentSummary(Student student) async {
-    if (!LicenseController.to.parentPortalEnabled.value) return;
+    if (!LicenseController.to.parentPortalActiveNow) return;
     try {
       final last4 = _last4(student.guardianPhone);
       if (last4 == null) return;
@@ -246,7 +278,8 @@ class ParentPortalService {
   /// دفعة Firestore واحدة (WriteBatch) — طلب شبكة واحد تقريبًا بدل
   /// مئات.
   Future<int> publishAllStudents() async {
-    if (!LicenseController.to.parentPortalEnabled.value) return 0;
+    _watchLicenseChanges();
+    if (!LicenseController.to.parentPortalActiveNow) return 0;
     // عمدًا مش بننادي publishProfile() هنا — بتبلع أي فشل بصمت (مصمّمة
     // كده لاستخدامها الخلفي التفاعلي العادي)، فلو فشلت (مثلاً تسجيل
     // الدخول المجهول فشل)، كنا بنكمل نكتب دفعة الطلاب كلها بمعرّف

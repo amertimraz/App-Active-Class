@@ -325,9 +325,15 @@ class _GroupsPageState extends State<GroupsPage> {
             horizontal: size.width * 0.04,
             vertical: size.height * 0.075,
           ),
-          child: SizedBox(
-            width: size.width * 0.92,
-            height: size.height * 0.85,
+          child: ConstrainedBox(
+            // maxHeight بدل height ثابت — الشيت بقى بيتقاس على حجم
+            // محتواه الفعلي (بيصغر لو الفورم قصير)، وبيوصل للحد الأقصى
+            // ده بس لو المحتوى فعلاً محتاج المساحة دي (يبقى قابل للتمرير).
+            constraints: BoxConstraints(
+              minWidth: size.width * 0.92,
+              maxWidth: size.width * 0.92,
+              maxHeight: size.height * 0.85,
+            ),
             child: _GroupFormSheet(
               group: group,
               existingGroups: controller.groups,
@@ -674,9 +680,15 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
             const Divider(height: 24),
 
             // ── Form ─────────────────────────────────────────────
-            Expanded(
-              child: ListView(
+            // Flexible+SingleChildScrollView بدل Expanded+ListView — كده
+            // القسم ده بياخد بس المساحة اللي محتاجها فورم قصير، ويبقى
+            // قابل للتمرير بس لو المحتوى فعلاً أطول من المساحة المتاحة.
+            Flexible(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // اسم المجموعة
                   _FormLabel('اسم المجموعة *'),
@@ -800,19 +812,20 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
                   ),
                   if (_scheduleError != null) _ErrorText(_scheduleError!),
                 ],
+                ),
               ),
             ),
 
             // ── زر الحفظ ─────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              padding: const EdgeInsets.fromLTRB(20, 6, 20, 16),
               child: FilledButton.icon(
                 onPressed: _saving ? null : _submit,
                 style: FilledButton.styleFrom(
                   backgroundColor: primary,
-                  minimumSize: const Size.fromHeight(52),
+                  minimumSize: const Size.fromHeight(46),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                      borderRadius: BorderRadius.circular(14)),
                 ),
                 icon: _saving
                     ? const SizedBox(
@@ -822,7 +835,7 @@ class _GroupFormSheetState extends State<_GroupFormSheet> {
                     : Icon(isEdit ? Icons.save_rounded : Icons.add_rounded),
                 label: Text(
                   isEdit ? 'حفظ التعديلات' : 'إضافة المجموعة',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                 ),
               ),
             ),

@@ -118,6 +118,27 @@ class LicenseController extends GetxController {
   /// إضافة مدفوعة منفصلة عن الباقة — بوابة متابعة أولياء الأمور.
   /// تتحدّث من نفس مستند الترخيص، الأدمن بيفعّلها/يلغيها لوحدها.
   final parentPortalEnabled = false.obs;
+  /// تاريخ انتهاء مستقل لبوابة أولياء الأمور بس (منفصل تمامًا عن
+  /// [expiresAt] بتاع الترخيص الأساسي) — null يعني مدى الحياة.
+  /// الأدمن بيضبطه يدويًا وقت ما المدرس يدفع رسوم الإضافة دي.
+  final parentPortalExpiresAt = Rxn<DateTime>();
+  /// عداد داخلي بيتحدّث كل 5 دقايق (راجع الفحص الدوري في onInit) —
+  /// مقصود يكون Rx *منفصل* عن parentPortalEnabled/parentPortalExpiresAt
+  /// عمدًا: أي Obx في الواجهة بيحتاج يعيد تقييم parentPortalActiveNow
+  /// دوريًا لازم يقرأ العداد ده كمان (حتى لو مش مستخدم قيمته)، بدل ما
+  /// نعمل .refresh() على parentPortalEnabled نفسه — ده كان هيشغّل أي
+  /// ever()/everAll() متسجّل عليه (زي مراقبة إعادة النشر في
+  /// ParentPortalService) كل 5 دقايق لكل مستخدمين التطبيق، حتى اللي
+  /// معندهمش بوابة أولياء أمور خالص.
+  final parentPortalRecheckTick = 0.obs;
+
+  /// "شغالة فعليًا دلوقتي" — مفعّلة أصلاً، ومدتها المستقلة (لو محددة)
+  /// لسه ماعدّتش. مقارنة زمنية مباشرة بنفس نمط فحص انتهاء الترخيص
+  /// الأساسي (راجع _validateLicense) — مش Rx، بيتقيّم عند كل استدعاء.
+  bool get parentPortalActiveNow =>
+      parentPortalEnabled.value &&
+      (parentPortalExpiresAt.value == null ||
+          parentPortalExpiresAt.value!.isAfter(DateTime.now()));
   final licenseCode = RxnString();
   final hasRequest = false.obs; // هل عنده طلب ترقية pending
   final expiresAt = Rxn<DateTime>(); // تاريخ انتهاء الترخيص
@@ -157,11 +178,27 @@ class LicenseController extends GetxController {
   static const kTrialDays = 7;
   static const int _kGraceDays = 3; // مهلة الاستخدام أوفلاين بعد آخر تحقق ناجح
 
+  // فحص دوري خفيف (بدون أي طلب شبكة) لإعادة تقييم parentPortalActiveNow —
+  // من غيره، لو التطبيق فاضل مفتوح بالظبط وقت انتهاء مدة بوابة أولياء
+  // الأمور، الواجهة مش هتعرف إلا لو حصل حدث Firestore جديد أو المستخدم
+  // قفل التطبيق وفتحه تاني (راجع research.md قرار 3).
+  Timer? _parentPortalRecheckTimer;
+  static const Duration _kParentPortalRecheckInterval = Duration(minutes: 5);
+
   // ── init ──────────────────────────────────────────────────────────────────
   @override
   void onInit() {
     super.onInit();
     _init();
+    // إعادة تقييم دورية لـ parentPortalActiveNow — زيادة عداد منفصل
+    // (مش .refresh() على parentPortalEnabled نفسه، عشان منشغّلش أي
+    // ever()/everAll() متسجّل عليه بالغلط — راجع تعليق parentPortalRecheckTick)
+    // بتبلّغ أي Obx بيقرا العداد ده إنه يعيد البناء، فيعيد حساب
+    // parentPortalActiveNow بالوقت الحالي حتى لو مفيش تغيير فعلي في القيمة.
+    _parentPortalRecheckTimer =
+        Timer.periodic(_kParentPortalRecheckInterval, (_) {
+      parentPortalRecheckTick.value++;
+    });
   }
 
   Future<void> _init() async {
@@ -362,6 +399,8 @@ class LicenseController extends GetxController {
       DateTime? effectiveExpiresAt = (data['expiresAt'] as Timestamp?)?.toDate();
       final boundDev = data['deviceId'] as String?;
       parentPortalEnabled.value = data['parentPortalEnabled'] as bool? ?? false;
+      parentPortalExpiresAt.value =
+          (data['parentPortalExpiresAt'] as Timestamp?)?.toDate();
 
       // الجهاز مربوط بجهاز آخر
       if (boundDev != null && boundDev != deviceId.value) {
@@ -473,6 +512,7 @@ class LicenseController extends GetxController {
         licenseCode.value = null;
         expiresAt.value = null;
         parentPortalEnabled.value = false;
+        parentPortalExpiresAt.value = null;
         await _checkTrial(prefs);
         return;
       }
@@ -485,6 +525,8 @@ class LicenseController extends GetxController {
       final planStr = data['plan'] as String? ?? 'basic';
       final exp = (data['expiresAt'] as Timestamp?)?.toDate();
       parentPortalEnabled.value = data['parentPortalEnabled'] as bool? ?? false;
+      parentPortalExpiresAt.value =
+          (data['parentPortalExpiresAt'] as Timestamp?)?.toDate();
 
       if (status == 'suspended') {
         state.value = LicenseState.suspended;
@@ -514,6 +556,7 @@ class LicenseController extends GetxController {
   void onClose() {
     _licenseSubscription?.cancel();
     _configSubscription?.cancel();
+    _parentPortalRecheckTimer?.cancel();
     super.onClose();
   }
 
