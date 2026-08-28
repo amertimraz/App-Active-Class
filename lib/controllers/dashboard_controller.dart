@@ -117,8 +117,11 @@ class DashboardController extends GetxController {
 
   // ── تحميل الإحصائيات العامة ──────────────────────────────────────────────
   Future<void> _loadGeneralStats() async {
-    final groups   = await _db.getAllGroups();
-    final students = await _db.getAllStudents();
+    final groups = await _db.getAllGroups();
+    // الطلاب المؤرشفين مستبعدين من كل إحصائيات الداشبورد — دول شغل يومي
+    // نشط بس، مش سجل تاريخي.
+    final students =
+        (await _db.getAllStudents()).where((s) => !s.isArchived).toList();
 
     totalGroups.value   = groups.length;
     totalStudents.value = students.length;
@@ -133,7 +136,9 @@ class DashboardController extends GetxController {
     final monthEnd   = DateTime(now.year, now.month + 1, 1)
         .subtract(const Duration(seconds: 1));
 
-    final students = await _db.getAllStudents();
+    // الطلاب المؤرشفين مستبعدين — مش من ضمن "المستحق الحالي" (FR-*)
+    final students =
+        (await _db.getAllStudents()).where((s) => !s.isArchived).toList();
     final payments = await _db.getAllPayments();
     final groups   = await _db.getAllGroups();
     final groupById = {for (final g in groups) g.id: g};
@@ -235,8 +240,9 @@ class DashboardController extends GetxController {
     // المتوقع = كل طلاب المجموعات اللي ليها حصة مجدولة النهاردة (بصرف النظر
     // عن سجلات الحضور اللي اتسجلت لحد دلوقتي)، مش عدد السجلات المُدخَلة.
     // ملحوظة: الإعفاء (isFullyExempt) خاص بالرسوم بس ومالوش دعوة بالحضور.
-    final groups   = await _db.getAllGroups();
-    final students = await _db.getAllStudents();
+    final groups = await _db.getAllGroups();
+    final students =
+        (await _db.getAllStudents()).where((s) => !s.isArchived).toList();
     final att = Get.isRegistered<AttendanceController>()
         ? Get.find<AttendanceController>()
         : Get.put(AttendanceController());

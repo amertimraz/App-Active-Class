@@ -134,6 +134,11 @@ class _StudentsPageState extends State<StudentsPage>
             icon: const Icon(Icons.qr_code_2_rounded),
             onPressed: () => Get.toNamed(ROUTE_QR_GALLERY),
           ),
+          IconButton(
+            tooltip: 'الأرشيف',
+            icon: const Icon(Icons.archive_rounded),
+            onPressed: () => Get.toNamed(ROUTE_ARCHIVED_STUDENTS),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -303,7 +308,7 @@ class _StudentsPageState extends State<StudentsPage>
         onTap: () => Get.toNamed(ROUTE_STUDENT_DETAILS, arguments: students[i]),
         onQr: () => _showQRDialog(context, students[i]),
         onEdit: () => _showEditSheet(context, students[i]),
-        onDelete: () => _confirmDelete(context, students[i]),
+        onArchive: () => _confirmArchive(context, students[i]),
       ),
     );
   }
@@ -326,7 +331,7 @@ class _StudentsPageState extends State<StudentsPage>
         onTap: () => Get.toNamed(ROUTE_STUDENT_DETAILS, arguments: students[i]),
         onQr: () => _showQRDialog(context, students[i]),
         onEdit: () => _showEditSheet(context, students[i]),
-        onDelete: () => _confirmDelete(context, students[i]),
+        onArchive: () => _confirmArchive(context, students[i]),
       ),
     );
   }
@@ -453,8 +458,8 @@ class _StudentsPageState extends State<StudentsPage>
     );
   }
 
-  // ── Delete ───────────────────────────────────────────────────────
-  void _confirmDelete(BuildContext context, Student student) {
+  // ── Archive ──────────────────────────────────────────────────────
+  void _confirmArchive(BuildContext context, Student student) {
     if (student.id == null) return;
     if (!requireDeletePermission(
         context, TeamModeService().canDeleteStudentsNow)) {
@@ -464,11 +469,12 @@ class _StudentsPageState extends State<StudentsPage>
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('حذف الطالب'),
+        title: const Text('أرشفة الطالب'),
         content: Text(
-          'هل تريد حذف "${student.name}" نهائياً؟\n'
-          'تحذير: هيتحذف معاه كل سجلات حضوره ومدفوعاته ودرجات '
-          'امتحاناته — الإجراء ده لا يمكن التراجع عنه.',
+          'هل تريد أرشفة "${student.name}"؟\n'
+          'هيختفي من كل الشاشات النشطة (القوائم، الحضور، الدفع بالـQR) لكن '
+          'بياناته وسجله (حضور، مدفوعات، درجات) هيفضلوا محفوظين كاملين، '
+          'وتقدر تسترجعه في أي وقت من شاشة "الأرشيف".',
         ),
         actions: [
           TextButton(
@@ -476,18 +482,18 @@ class _StudentsPageState extends State<StudentsPage>
             child: const Text('إلغاء'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
             onPressed: () async {
               final name = student.name;
               Navigator.of(ctx).pop();
               await Future.delayed(const Duration(milliseconds: 80));
-              final ok = await controller.deleteStudent(student.id!);
+              final ok = await controller.archiveStudent(student.id!);
               if (!context.mounted) return;
               if (ok) {
-                AppToast.success(context, 'تم حذف الطالب', subtitle: name);
+                AppToast.success(context, 'تم أرشفة الطالب', subtitle: name);
               }
             },
-            child: const Text('حذف', style: TextStyle(color: Colors.white)),
+            child: const Text('أرشفة', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -606,7 +612,7 @@ class _StudentCard extends StatelessWidget {
     required this.onTap,
     required this.onQr,
     required this.onEdit,
-    required this.onDelete,
+    required this.onArchive,
   });
 
   final Student student;
@@ -615,7 +621,7 @@ class _StudentCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onQr;
   final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final VoidCallback onArchive;
 
   @override
   Widget build(BuildContext context) {
@@ -737,7 +743,7 @@ class _StudentCard extends StatelessWidget {
                     onSelected: (v) {
                       if (v == 'qr') onQr();
                       if (v == 'edit') onEdit();
-                      if (v == 'delete') onDelete();
+                      if (v == 'archive') onArchive();
                     },
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
@@ -759,11 +765,11 @@ class _StudentCard extends StatelessWidget {
                         ]),
                       ),
                       PopupMenuItem(
-                        value: 'delete',
+                        value: 'archive',
                         child: Row(children: [
-                          Icon(Icons.delete_rounded, size: 18, color: Colors.red.shade400),
+                          Icon(Icons.archive_rounded, size: 18, color: Colors.orange.shade400),
                           const SizedBox(width: 10),
-                          Text('حذف', style: TextStyle(color: Colors.red.shade400)),
+                          Text('أرشفة', style: TextStyle(color: Colors.orange.shade400)),
                         ]),
                       ),
                     ],
@@ -807,7 +813,7 @@ class _StudentGridTile extends StatelessWidget {
     required this.onTap,
     required this.onQr,
     required this.onEdit,
-    required this.onDelete,
+    required this.onArchive,
   });
 
   final Student student;
@@ -816,7 +822,7 @@ class _StudentGridTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onQr;
   final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final VoidCallback onArchive;
 
   @override
   Widget build(BuildContext context) {
@@ -932,9 +938,9 @@ class _StudentGridTile extends StatelessWidget {
                             color: Colors.orange,
                             onTap: onEdit),
                         _GridAction(
-                            icon: Icons.delete_rounded,
-                            color: Colors.red,
-                            onTap: onDelete),
+                            icon: Icons.archive_rounded,
+                            color: Colors.deepOrange,
+                            onTap: onArchive),
                       ],
                     ),
                   ],

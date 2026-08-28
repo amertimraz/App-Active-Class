@@ -60,8 +60,10 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   Future<void> _load() async {
-    final groups   = await _db.getAllGroups();
-    final students = await _db.getAllStudents();
+    final groups = await _db.getAllGroups();
+    // عدد الطلاب هنا "حجم الفصل الحالي" — الطلاب المؤرشفين مستبعدين.
+    final students =
+        (await _db.getAllStudents()).where((s) => !s.isArchived).toList();
 
     final countByGroup = <int, int>{};
     for (final Student s in students) {

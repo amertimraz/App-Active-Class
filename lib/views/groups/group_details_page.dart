@@ -306,8 +306,12 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
           : FloatingActionButton.extended(
               onPressed: () {
                 final lic = Get.find<LicenseController>();
-                final allStudents = Get.find<StudentController>().students;
-                final err = lic.checkCanAddStudent(allStudents.length);
+                // عدد كل الطلاب (نشط + مؤرشف) — الأرشفة مش بتفضّي مكان في
+                // حد الباقة (قرار FR-013)، فمينفعش نستخدم students.length
+                // (بقت نشطين بس بعد ميزة الأرشفة).
+                final totalCount =
+                    Get.find<StudentController>().totalStudentCount;
+                final err = lic.checkCanAddStudent(totalCount);
                 if (err != null) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                     content:
@@ -498,7 +502,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                         onQr: () => _gdShowQRDialog(context, student),
                         onEdit: () =>
                             _showEditStudentSheet(context, student, g),
-                        onDelete: () => _confirmDeleteStudent(student),
+                        onArchive: () => _confirmArchiveStudent(student),
                       );
                     },
                     childCount: sortedStudents.length,
@@ -784,27 +788,27 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     );
   }
 
-  void _confirmDeleteStudent(Student student) {
+  void _confirmArchiveStudent(Student student) {
     if (!requireDeletePermission(context, TeamModeService().canDeleteStudentsNow)) {
       return;
     }
     Get.defaultDialog(
-      title: 'حذف الطالب',
-      middleText: 'هل تريد حذف ${student.name}؟\n'
-          'تحذير: هيتحذف معاه كل سجلات حضوره ومدفوعاته ودرجات '
-          'امتحاناته — الإجراء ده لا يمكن التراجع عنه.',
+      title: 'أرشفة الطالب',
+      middleText: 'هل تريد أرشفة ${student.name}؟\n'
+          'هيختفي من كل الشاشات النشطة لكن بياناته وسجله هيفضلوا محفوظين '
+          'كاملين، وتقدر تسترجعه في أي وقت من شاشة "الأرشيف".',
       textCancel: 'إلغاء',
-      textConfirm: 'حذف',
+      textConfirm: 'أرشفة',
       confirmTextColor: Colors.white,
-      buttonColor: Colors.red,
+      buttonColor: Colors.orange,
       onConfirm: () async {
         Get.back();
         if (student.id == null) return;
         await Future.delayed(const Duration(milliseconds: 80));
-        final ok = await studentController.deleteStudent(student.id!);
+        final ok = await studentController.archiveStudent(student.id!);
         if (ok) {
           NotificationService().syncAllScheduledNotifications();
-          ToastHelper.success('تم حذف الطالب');
+          ToastHelper.success('تم أرشفة الطالب');
         }
       },
     );
@@ -983,7 +987,7 @@ class _StudentCard extends StatelessWidget {
   final VoidCallback onLongPress;
   final VoidCallback onQr;
   final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final VoidCallback onArchive;
 
   const _StudentCard({
     required this.student,
@@ -996,7 +1000,7 @@ class _StudentCard extends StatelessWidget {
     required this.onLongPress,
     required this.onQr,
     required this.onEdit,
-    required this.onDelete,
+    required this.onArchive,
   });
 
   @override
@@ -1143,7 +1147,7 @@ class _StudentCard extends StatelessWidget {
                           color: Colors.grey.shade500, size: 20),
                       onSelected: (v) {
                         if (v == 'edit') onEdit();
-                        if (v == 'delete') onDelete();
+                        if (v == 'archive') onArchive();
                       },
                       itemBuilder: (_) => [
                         const PopupMenuItem(
@@ -1154,12 +1158,13 @@ class _StudentCard extends StatelessWidget {
                               Text('تعديل')
                             ])),
                         const PopupMenuItem(
-                            value: 'delete',
+                            value: 'archive',
                             child: Row(children: [
-                              Icon(Icons.delete_rounded,
-                                  size: 18, color: Colors.red),
+                              Icon(Icons.archive_rounded,
+                                  size: 18, color: Colors.orange),
                               SizedBox(width: 8),
-                              Text('حذف', style: TextStyle(color: Colors.red))
+                              Text('أرشفة',
+                                  style: TextStyle(color: Colors.orange))
                             ])),
                       ],
                     ),

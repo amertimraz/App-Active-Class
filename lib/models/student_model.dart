@@ -1,4 +1,4 @@
-﻿// lib/models/student_model.dart
+// lib/models/student_model.dart
 
 class Student {
   final int? id;
@@ -15,6 +15,8 @@ class Student {
   final DateTime? birthDate;       // تاريخ الميلاد
   final double exemptPercent;      // 0 = لا إعفاء، 100 = إعفاء كامل، 50 = 50%
   final String? exemptReason;      // سبب الإعفاء
+  final bool isArchived;           // مؤرشف؟ (بديل الحذف النهائي)
+  final DateTime? archivedAt;      // تاريخ آخر أرشفة، null لو نشط
 
   Student({
     this.id,
@@ -31,6 +33,8 @@ class Student {
     this.birthDate,
     this.exemptPercent = 0,
     this.exemptReason,
+    this.isArchived = false,
+    this.archivedAt,
   });
 
   /// هل الطالب معفى (كلياً أو جزئياً)؟
@@ -58,6 +62,8 @@ class Student {
       'birth_date': birthDate?.toIso8601String(),
       'exempt_percent': exemptPercent,
       'exempt_reason': exemptReason,
+      'is_archived': isArchived ? 1 : 0,
+      'archived_at': archivedAt?.toIso8601String(),
     };
   }
 
@@ -85,6 +91,10 @@ class Student {
           ? (map['exempt_percent'] as num).toDouble()
           : 0,
       exemptReason: map['exempt_reason'] as String?,
+      isArchived: (map['is_archived'] as int? ?? 0) == 1,
+      archivedAt: map['archived_at'] != null
+          ? DateTime.parse(map['archived_at'] as String)
+          : null,
     );
   }
 
@@ -104,6 +114,11 @@ class Student {
     double? exemptPercent,
     String? exemptReason,
     bool clearExemptReason = false,
+    bool? isArchived,
+    DateTime? archivedAt,
+    bool clearArchivedAt = false,
+    bool clearSiblingId = false,
+    bool clearSiblingsTotal = false,
   }) {
     return Student(
       id: id ?? this.id,
@@ -112,17 +127,21 @@ class Student {
       groupId: groupId ?? this.groupId,
       price: price ?? this.price,
       qrPath: qrPath ?? this.qrPath,
-      siblingId: siblingId ?? this.siblingId,
-      siblingsTotal: siblingsTotal ?? this.siblingsTotal,
+      siblingId: clearSiblingId ? null : (siblingId ?? this.siblingId),
+      siblingsTotal:
+          clearSiblingsTotal ? null : (siblingsTotal ?? this.siblingsTotal),
       createdAt: createdAt ?? this.createdAt,
       attendanceStart: attendanceStart ?? this.attendanceStart,
       guardianPhone: guardianPhone ?? this.guardianPhone,
       birthDate: birthDate ?? this.birthDate,
       exemptPercent: exemptPercent ?? this.exemptPercent,
       exemptReason: clearExemptReason ? null : (exemptReason ?? this.exemptReason),
+      isArchived: isArchived ?? this.isArchived,
+      archivedAt: clearArchivedAt ? null : (archivedAt ?? this.archivedAt),
     );
   }
 
   @override
-  String toString() => 'Student(id: $id, name: $name, code: $code, price: $price)';
+  String toString() =>
+      'Student(id: $id, name: $name, code: $code, price: $price, isArchived: $isArchived)';
 }

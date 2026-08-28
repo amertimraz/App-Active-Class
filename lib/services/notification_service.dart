@@ -172,7 +172,9 @@ class NotificationService {
         debugPrint('NotificationService: فشلت جدولة ملخص حصص اليوم — $e');
       }
 
-      final students = await _dbService.getAllStudents();
+      // معنيش نجدول تذكير عيد ميلاد لطالب مؤرشف (سايب المجموعة أصلاً).
+      final students =
+          (await _dbService.getAllStudents()).where((s) => !s.isArchived);
       for (final s in students) {
         if (s.birthDate != null) {
           try {

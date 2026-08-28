@@ -46,12 +46,22 @@ class QRController extends GetxController {
     isProcessing.value = true;
     try {
       final student = await _dbService.getStudentByCode(normalized);
-      scannedStudent.value = student;
       if (student == null) {
+        scannedStudent.value = null;
         _clearPaymentState();
         ToastHelper.error('الطالب غير موجود لهذا الكود');
         return;
       }
+      // كود QR مطبوع قديم لسه شغال فعليًا (البحث مش مفلتر) — لو الطالب
+      // اتأرشف، نرفض صراحةً بدل ما نكمل تسجيل حضور/دفع لطالب مفروض
+      // مختفي من الشغل النشط (راجع research.md قرار 5).
+      if (student.isArchived) {
+        scannedStudent.value = null;
+        _clearPaymentState();
+        ToastHelper.error('الطالب "${student.name}" مؤرشف — استرجعه أولاً من شاشة الأرشيف');
+        return;
+      }
+      scannedStudent.value = student;
       if (mode.value == QRMode.attendance) {
         await _recordAttendance(student);
       } else {

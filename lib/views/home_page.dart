@@ -2673,7 +2673,10 @@ class StudentSearchDelegate extends SearchDelegate<Student?> {
           return Center(child: Text('حدث خطأ: ${snapshot.error}'));
         }
 
+        // بحث الصفحة الرئيسية شغل يومي نشط — الطلاب المؤرشفين مستبعدين
+        // (شوفهم من شاشة الأرشيف بس).
         final results = (snapshot.data ?? [])
+            .where((student) => !student.isArchived)
             .where(
               (student) =>
                   student.name.toLowerCase().contains(query.toLowerCase()) ||
@@ -2738,6 +2741,7 @@ void _showStudentsListDialog(BuildContext context, bool isDark,
             final groups = snapshot.data![1] as List<Group>;
             final groupNameById = {for (final g in groups) g.id: g.name};
             final students = allStudents
+                .where((s) => !s.isArchived)
                 .where((s) => !exemptOnly || s.isExempt)
                 .toList()
               ..sort((a, b) => a.name.compareTo(b.name));

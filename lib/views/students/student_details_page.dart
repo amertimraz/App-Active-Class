@@ -9,6 +9,7 @@ import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/homework_controller.dart';
 import 'package:active_class/controllers/payment_controller.dart';
+import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/payment_model.dart';
@@ -244,6 +245,52 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+  // ─── أرشفة الطالب ────────────────────────────────────────────────────────
+  void _confirmArchive(Student s) {
+    if (s.id == null) return;
+    if (!requireDeletePermission(context, TeamModeService().canDeleteStudentsNow)) {
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('أرشفة الطالب'),
+        content: Text(
+          'هل تريد أرشفة "${s.name}"؟\n'
+          'هيختفي من كل الشاشات النشطة لكن بياناته وسجله هيفضلوا محفوظين '
+          'كاملين، وتقدر تسترجعه في أي وقت من شاشة "الأرشيف".',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              // نمسك الـNavigator بتاع الصفحة الأساسية قبل الـawait — استخدام
+              // context مباشرة بعده كان بيولّد تحذير use_build_context_synchronously.
+              final pageNavigator = Navigator.of(context);
+              // الصفحة دي ممكن توصلها من مسارات معملتش Get.put(StudentController())
+              // قبلها خالص (زي بحث الصفحة الرئيسية) — لازم isRegistered
+              // بدل find المباشر، وإلا هترمي استثناء.
+              final studentCtrl = Get.isRegistered<StudentController>()
+                  ? Get.find<StudentController>()
+                  : Get.put(StudentController());
+              final ok = await studentCtrl.archiveStudent(s.id!);
+              if (!ok) return;
+              ToastHelper.success('تم أرشفة الطالب');
+              pageNavigator.pop();
+            },
+            child: const Text('أرشفة', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ─── تعديل الطالب ────────────────────────────────────────────────────────
   Future<void> _editStudent(Student s) async {
     final updated = await showEditStudentSheet(
@@ -293,6 +340,12 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
             icon: const Icon(Icons.qr_code_rounded),
             onPressed: () => _showQRDialog(context, s),
           ),
+          if (!s.isArchived)
+            IconButton(
+              tooltip: 'أرشفة الطالب',
+              icon: const Icon(Icons.archive_rounded),
+              onPressed: () => _confirmArchive(s),
+            ),
         ],
       ),
       body: Obx(() {

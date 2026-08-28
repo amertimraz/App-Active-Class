@@ -36,9 +36,14 @@ Future<void> showAddStudentSheet(
           horizontal: size.width * 0.04,
           vertical: size.height * 0.075,
         ),
-        child: SizedBox(
-          width: size.width * 0.92,
-          height: size.height * 0.85,
+        child: ConstrainedBox(
+          // maxHeight بدل height ثابت — الشيت بقى بيتقاس على حجم محتواه
+          // الفعلي بدل ما ياخد 85% من الشاشة دايمًا حتى لو الفورم قصير.
+          constraints: BoxConstraints(
+            minWidth: size.width * 0.92,
+            maxWidth: size.width * 0.92,
+            maxHeight: size.height * 0.85,
+          ),
           child: _AddStudentSheet(
             controller: controller,
             preselectedGroup: preselectedGroup,
@@ -190,7 +195,8 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
 
   Future<void> _pickSibling() async {
     final all = await DatabaseService().getAllStudents();
-    final list = all.where((s) => s.id != null).toList();
+    // معنيش نربط أخ/أخت مؤرشف بطالب جديد.
+    final list = all.where((s) => s.id != null && !s.isArchived).toList();
     if (!mounted) return;
     await showDialog(
       context: context,
@@ -458,11 +464,21 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
           const Divider(height: 20),
 
           // Form
-          Expanded(
-            child: _loadingGroups
-                ? const Center(child: CircularProgressIndicator())
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          // Flexible+SingleChildScrollView بدل Expanded+ListView — كده
+          // الشيت بياخد بس المساحة اللي محتاجها فورم قصير، ويبقى قابل
+          // للتمرير بس لو المحتوى فعلاً أطول من المساحة المتاحة.
+          if (_loadingGroups)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 60),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // ── كود تلقائي ──────────────────────────────────────
                       AnimatedContainer(
@@ -855,19 +871,20 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
 
                       const SizedBox(height: 24),
                     ],
-                  ),
-          ),
+                ),
+              ),
+            ),
 
           // ── زر الإضافة ─────────────────────────────────────────────────
           Padding(
             padding: EdgeInsets.fromLTRB(
-                20, 8, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+                20, 6, 20, MediaQuery.of(context).viewInsets.bottom + 16),
             child: Row(children: [
               Expanded(
                 child: OutlinedButton(
                   onPressed: () => Navigator.of(context).pop(),
                   style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
+                    minimumSize: const Size.fromHeight(46),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14)),
                   ),
@@ -881,7 +898,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                   onPressed: _loading ? null : _submit,
                   style: FilledButton.styleFrom(
                     backgroundColor: primary,
-                    minimumSize: const Size.fromHeight(52),
+                    minimumSize: const Size.fromHeight(46),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14)),
                   ),

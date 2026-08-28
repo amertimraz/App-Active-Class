@@ -12,6 +12,7 @@ import 'package:active_class/views/groups/groups_page.dart';
 import 'package:active_class/views/groups/group_details_page.dart';
 import 'package:active_class/views/students/students_page.dart';
 import 'package:active_class/views/students/student_details_page.dart';
+import 'package:active_class/views/students/archived_students_page.dart';
 import 'package:active_class/views/attendance/attendance_page.dart';
 import 'package:active_class/views/payments/payments_page.dart';
 import 'package:active_class/views/qr_scanner/qr_scanner_attendance_page.dart';
@@ -225,6 +226,9 @@ class MyApp extends StatelessWidget {
                 name: ROUTE_QR_SCANNER_PAYMENT,
                 page: () => const QRScannerPaymentPage()),
             GetPage(name: ROUTE_QR_GALLERY, page: () => const QrGalleryPage()),
+            GetPage(
+                name: ROUTE_ARCHIVED_STUDENTS,
+                page: () => const ArchivedStudentsPage()),
             GetPage(name: ROUTE_REPORTS, page: () => const ReportsPage()),
             GetPage(name: ROUTE_SETTINGS, page: () => const SettingsPage()),
             GetPage(

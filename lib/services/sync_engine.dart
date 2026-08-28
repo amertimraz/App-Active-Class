@@ -275,6 +275,10 @@ class SyncEngine {
           'attendance_start': payload[COL_STUDENT_ATTENDANCE_START],
           'exempt_percent': payload[COL_STUDENT_EXEMPT_PERCENT],
           'exempt_reason': payload[COL_STUDENT_EXEMPT_REASON],
+          // العمود البعيد boolean بينما المحلي INTEGER (0/1) — بنفس نمط
+          // is_absent في TABLE_EXAM_GRADES.
+          'is_archived': (payload[COL_STUDENT_IS_ARCHIVED] as int? ?? 0) == 1,
+          'archived_at': payload[COL_STUDENT_ARCHIVED_AT],
         };
       case TABLE_ATTENDANCE:
         final studentLocalId = payload[COL_ATTENDANCE_STUDENT_ID] as int?;
@@ -902,6 +906,10 @@ class SyncEngine {
           COL_STUDENT_ATTENDANCE_START: remote['attendance_start'],
           COL_STUDENT_EXEMPT_PERCENT: remote['exempt_percent'],
           COL_STUDENT_EXEMPT_REASON: remote['exempt_reason'],
+          // العمود المحلي INTEGER (0/1) بينما Supabase بيرجّعه boolean —
+          // لازم تحويل صريح، مش تمرير القيمة زي ما هي، وإلا sqflite هيرفضها.
+          COL_STUDENT_IS_ARCHIVED: (remote['is_archived'] as bool? ?? false) ? 1 : 0,
+          COL_STUDENT_ARCHIVED_AT: remote['archived_at'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };

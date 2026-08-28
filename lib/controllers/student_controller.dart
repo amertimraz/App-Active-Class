@@ -14,15 +14,26 @@ import 'package:active_class/utils/helpers.dart';
 class StudentController extends GetxController {
   final DatabaseService _dbService = DatabaseService();
 
-  /// القائمة الكاملة — مصدر الحقيقة، لا تُمس إلا بـ loadAllStudents
+  /// الطلاب النشطين بس (غير المؤرشفين) — مصدر الحقيقة لكل الشاشات
+  /// النشطة (قوائم، حضور، دفع بالـQR، داشبورد). لا تُمس إلا بـ
+  /// loadAllStudents/loadStudentsByGroup.
   final RxList<Student> students = <Student>[].obs;
 
-  /// القائمة المعروضة بعد تطبيق البحث والفلتر
+  /// القائمة المعروضة بعد تطبيق البحث والفلتر (مبنية من students —
+  /// نشطين بس)
   final RxList<Student> filteredStudents = <Student>[].obs;
+
+  /// الطلاب المؤرشفين بس — لشاشة الأرشيف فقط
+  final RxList<Student> archivedStudents = <Student>[].obs;
 
   final RxBool    isLoading    = false.obs;
   final RxString  searchQuery  = ''.obs;
   final Rxn<int>  selectedGroupId = Rxn<int>();
+
+  /// عدد كل الطلاب (نشط + مؤرشف) — لفحص حد الباقة بس (راجع
+  /// LicenseController.checkCanAddStudent). لا يُستخدم لعرض أي رقم
+  /// في الشاشات النشطة العادية.
+  int totalStudentCount = 0;
 
   @override
   void onInit() {
@@ -37,8 +48,10 @@ class StudentController extends GetxController {
   Future<void> loadAllStudents() async {
     isLoading(true);
     try {
-      final loaded = await _dbService.getAllStudents();
-      students.assignAll(loaded);
+      final all = await _dbService.getAllStudents();
+      totalStudentCount = all.length;
+      students.assignAll(all.where((s) => !s.isArchived));
+      archivedStudents.assignAll(all.where((s) => s.isArchived));
       filterStudents(); // طبّق الفلتر الحالي (إن وُجد)
     } catch (e) {
       ToastHelper.error('حدث خطأ في تحميل الطلاب');
@@ -47,13 +60,29 @@ class StudentController extends GetxController {
     }
   }
 
-  /// تحميل طلاب مجموعة — يُحدِّث `students` AND يضع الفلتر
-  /// بحيث ترى `filteredStudents` طلاب المجموعة فقط
+  /// تحميل الطلاب المؤرشفين بس — لشاشة الأرشيف، بدون إعادة تحميل
+  /// قائمة النشطين (أخف وأسرع لو الشاشة دي بس اللي محتاجة تتحدّث).
+  Future<void> loadArchivedStudents() async {
+    isLoading(true);
+    try {
+      archivedStudents.assignAll(await _dbService.getArchivedStudents());
+      totalStudentCount = await _dbService.getAllStudentsCount();
+    } catch (e) {
+      ToastHelper.error('حدث خطأ في تحميل الأرشيف');
+    } finally {
+      isLoading(false);
+    }
+  }
+
+  /// تحميل طلاب مجموعة — يُحدِّث `students` (نشطين بس) AND يضع الفلتر
+  /// بحيث ترى `filteredStudents` طلاب المجموعة النشطين فقط
   Future<void> loadStudentsByGroup(int groupId) async {
     isLoading(true);
     try {
-      final loaded = await _dbService.getAllStudents();
-      students.assignAll(loaded);          // حدِّث المصدر الكامل
+      final all = await _dbService.getAllStudents();
+      totalStudentCount = all.length;
+      students.assignAll(all.where((s) => !s.isArchived));
+      archivedStudents.assignAll(all.where((s) => s.isArchived));
       selectedGroupId.value = groupId;     // ضع فلتر المجموعة
       filterStudents();
     } catch (e) {
@@ -70,9 +99,11 @@ class StudentController extends GetxController {
   // ── إضافة طالب ──────────────────────────────────────────────────
   /// نقطة الدخول الوحيدة للإضافة — فحص حد الترخيص هنا يضمن إنفاذه
   /// بغض النظر عن الشاشة اللي بينادي منها (رئيسية، طلاب، تفاصيل مجموعة).
+  /// الفحص بيحسب كل الطلاب (نشط + مؤرشف) — الأرشفة مش بتفضّي مكان في
+  /// حد الباقة (قرار FR-013).
   Future<Student?> addStudent(Student student) async {
     final licenseErr =
-        Get.find<LicenseController>().checkCanAddStudent(students.length);
+        Get.find<LicenseController>().checkCanAddStudent(totalStudentCount);
     if (licenseErr != null) {
       ToastHelper.error(licenseErr);
       return null;
@@ -81,6 +112,7 @@ class StudentController extends GetxController {
       final id = await _dbService.insertStudent(student);
       final newStudent = student.copyWith(id: id);
       students.add(newStudent);
+      totalStudentCount++;
       filterStudents(); // أعِد تطبيق الفلتر بدل الإضافة المباشرة
       unawaited(ParentPortalService().pushStudentSummary(id));
       return newStudent;
@@ -176,10 +208,9 @@ class StudentController extends GetxController {
       // لازم نعرف الكود/التليفون القديمين قبل التحديث — لو أي منهم
       // تغيّر، مستند ملخص المتابعة القديم (مبني على القيم القديمة)
       // يفضل معلّق على Firestore للأبد من غير ده.
-      final old = students.firstWhereOrNull((s) => s.id == student.id);
+      final old = _findInEitherList(student.id);
       await _dbService.updateStudent(student);
-      final index = students.indexWhere((s) => s.id == student.id);
-      if (index != -1) students[index] = student;
+      _replaceInEitherList(student);
       filterStudents();
       if (student.id != null) {
         unawaited(ParentPortalService().pushStudentSummary(student.id!));
@@ -193,6 +224,23 @@ class StudentController extends GetxController {
     } catch (e) {
       ToastHelper.error(_studentErrorMessage(e, 'تحديث'));
     }
+  }
+
+  Student? _findInEitherList(int? id) =>
+      students.firstWhereOrNull((s) => s.id == id) ??
+      archivedStudents.firstWhereOrNull((s) => s.id == id);
+
+  /// بيحدّث الطالب في أي قائمة (نشطين/مؤرشفين) هو موجود فيها فعليًا —
+  /// محتاجينها لأن شاشة الأرشيف بتقدر تعرض/تعدّل طالب مؤرشف (مش موجود
+  /// في `students`).
+  void _replaceInEitherList(Student updated) {
+    final activeIdx = students.indexWhere((s) => s.id == updated.id);
+    if (activeIdx != -1) {
+      students[activeIdx] = updated;
+      return;
+    }
+    final archivedIdx = archivedStudents.indexWhere((s) => s.id == updated.id);
+    if (archivedIdx != -1) archivedStudents[archivedIdx] = updated;
   }
 
   /// يربط طالبين كإخوة بشكل ذري — تحديث محلي للاثنين فقط لو نجحت
@@ -212,15 +260,46 @@ class StudentController extends GetxController {
     }
   }
 
+  // ── أرشفة / استعادة طالب ────────────────────────────────────────
+  /// أرشفة طالب (بديل الحذف النهائي) — بيانات وسجل الطالب يفضلوا
+  /// محفوظين كاملين، بس بيختفي من كل الشاشات النشطة. إعادة تحميل
+  /// كاملة (loadAllStudents) بدل تحديث محلي جزئي، لأن الأرشفة ممكن
+  /// تأثر على طالبين مع بعض (فك ربط عرض الإخوة — راجع
+  /// DatabaseService.archiveStudent).
+  Future<bool> archiveStudent(int id) async {
+    try {
+      await _dbService.archiveStudent(id);
+      await loadAllStudents();
+      return true;
+    } catch (e) {
+      ToastHelper.error('حدث خطأ في أرشفة الطالب');
+      return false;
+    }
+  }
+
+  /// استعادة طالب مؤرشف — يرجع نشط بسجله كامل.
+  Future<bool> unarchiveStudent(int id) async {
+    try {
+      await _dbService.unarchiveStudent(id);
+      await loadAllStudents();
+      return true;
+    } catch (e) {
+      ToastHelper.error('حدث خطأ في استعادة الطالب');
+      return false;
+    }
+  }
+
   // ── حذف طالب ────────────────────────────────────────────────────
   /// يحذف طالب نهائياً — بدون أي تأكيد داخلي (التأكيد وتوضيح حجم
   /// الحذف المتتالي مسؤولية الشاشة المستدعية، زي deleteGroup تمامًا).
   /// بيرجّع true لو نجح وبيحدّث قائمة الطلاب محلياً على طول.
   Future<bool> deleteStudent(int id) async {
     try {
-      final student = students.firstWhereOrNull((s) => s.id == id);
+      final student = _findInEitherList(id);
       await _dbService.deleteStudent(id);
       students.removeWhere((s) => s.id == id);
+      archivedStudents.removeWhere((s) => s.id == id);
+      totalStudentCount = totalStudentCount > 0 ? totalStudentCount - 1 : 0;
       filterStudents();
       if (student != null) {
         unawaited(ParentPortalService().removeStudentSummary(student));
@@ -243,7 +322,7 @@ class StudentController extends GetxController {
     filterStudents();
   }
 
-  // ── تطبيق الفلتر (يعمل دائماً على students الكاملة) ─────────────
+  // ── تطبيق الفلتر (يعمل دائماً على students النشطين) ─────────────
   void filterStudents() {
     final q   = searchQuery.value.trim().toLowerCase();
     final gid = selectedGroupId.value;

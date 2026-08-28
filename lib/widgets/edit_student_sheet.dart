@@ -34,9 +34,15 @@ Future<Student?> showEditStudentSheet(
           horizontal: size.width * 0.04,
           vertical: size.height * 0.075,
         ),
-        child: SizedBox(
-          width: size.width * 0.92,
-          height: size.height * 0.85,
+        child: ConstrainedBox(
+          // maxHeight بدل height ثابت — الشيت بقى بيتقاس على حجم محتواه
+          // الفعلي بدل ما ياخد 85% من الشاشة دايمًا حتى لو الفورم قصير
+          // (نفس تعديل شيتي إضافة المجموعة/الطالب).
+          constraints: BoxConstraints(
+            minWidth: size.width * 0.92,
+            maxWidth: size.width * 0.92,
+            maxHeight: size.height * 0.85,
+          ),
           child: EditStudentSheet(
             student: student,
             accentColor: accentColor,
@@ -165,7 +171,11 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   Future<void> _pickSibling() async {
     final all = await DatabaseService().getAllStudents();
     if (!mounted) return;
-    final list = all.where((s) => s.id != widget.student.id).toList();
+    // معنيش نربط أخ/أخت مؤرشف — الأرشفة أصلاً بتفكّ أي ربط أخوي قائم
+    // (راجع DatabaseService.archiveStudent)، فمينفعش نسمح بربط جديد له.
+    final list = all
+        .where((s) => s.id != widget.student.id && !s.isArchived)
+        .toList();
 
     final picked = await showDialog<Student>(
       context: context,
@@ -685,7 +695,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
               onPressed: _saving ? null : _save,
               style: FilledButton.styleFrom(
                 backgroundColor: primary,
-                minimumSize: const Size.fromHeight(50),
+                minimumSize: const Size.fromHeight(46),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
               ),

@@ -56,7 +56,10 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
 
   Future<void> _load() async {
     final groups = await _db.getAllGroups();
-    final students = await _db.getAllStudents();
+    // معرض QR شغل يومي نشط (طباعة/تصدير أكواد) — الطلاب المؤرشفين
+    // مستبعدين.
+    final students =
+        (await _db.getAllStudents()).where((s) => !s.isArchived).toList();
     setState(() {
       _groups = groups;
       _all = students..sort((a, b) => a.name.compareTo(b.name));

@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 16;
+const int DATABASE_VERSION = 17;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -104,6 +104,8 @@ const String COL_STUDENT_GUARDIAN_PHONE = 'guardian_phone';
 const String COL_STUDENT_BIRTH_DATE = 'birth_date';
 const String COL_STUDENT_EXEMPT_PERCENT = 'exempt_percent';
 const String COL_STUDENT_EXEMPT_REASON  = 'exempt_reason';
+const String COL_STUDENT_IS_ARCHIVED    = 'is_archived';
+const String COL_STUDENT_ARCHIVED_AT    = 'archived_at';
 
 // Exemption preset reasons
 const List<String> EXEMPT_PRESET_REASONS = [
@@ -167,6 +169,7 @@ const String ROUTE_NOTIFICATION_SETTINGS = '/notification_settings';
 const String ROUTE_STUDENT_DETAILS = '/student_details';
 const String ROUTE_GROUP_DETAILS = '/group_details';
 const String ROUTE_ADD_STUDENT = '/add_student';
+const String ROUTE_ARCHIVED_STUDENTS = '/archived_students';
 const String ROUTE_QR_GALLERY = '/qr_gallery';
 const String ROUTE_PAYMENTS_REPORT = '/payments_report';
 const String ROUTE_ACTIVATION   = '/activation';

@@ -103,6 +103,8 @@ class DatabaseService {
         $COL_STUDENT_BIRTH_DATE TEXT,
         $COL_STUDENT_EXEMPT_PERCENT REAL DEFAULT 0,
         $COL_STUDENT_EXEMPT_REASON TEXT,
+        $COL_STUDENT_IS_ARCHIVED INTEGER NOT NULL DEFAULT 0,
+        $COL_STUDENT_ARCHIVED_AT TEXT,
         $COL_SYNC_UPDATED_AT TEXT,
         $COL_SYNC_REMOTE_ID TEXT,
         FOREIGN KEY($COL_STUDENT_GROUP_ID) REFERENCES $TABLE_GROUPS($COL_GROUP_ID) ON DELETE CASCADE
@@ -426,6 +428,18 @@ class DatabaseService {
               .execute('ALTER TABLE $table ADD COLUMN $COL_SYNC_REMOTE_ID TEXT');
         } catch (_) {}
       }
+    }
+    if (oldVersion < 17) {
+      // أرشفة الطلاب (بديل الحذف النهائي) — عمودا حالة بس، بلا تأثير
+      // على أي تثبيت لسه مستخدمش الميزة (كل الطلاب الحاليين is_archived=0).
+      try {
+        await db.execute(
+            'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_IS_ARCHIVED INTEGER NOT NULL DEFAULT 0');
+      } catch (_) {}
+      try {
+        await db.execute(
+            'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_ARCHIVED_AT TEXT');
+      } catch (_) {}
     }
   }
 
@@ -832,6 +846,125 @@ class DatabaseService {
     }
     await _queueDelete(TABLE_STUDENTS, id, studentRemoteId);
     return n;
+  }
+
+  /// أرشفة طالب (بديل ناعم للحذف) — بياناته وسجله التاريخي (حضور،
+  /// مدفوعات، درجات) يفضلوا كاملين بدون حذف، بس بيختفي من الشاشات
+  /// النشطة. لو مرتبط بعرض إخوة، بيتفكّ الربط على الطرفين — وإلا
+  /// الطالب النشط الباقي كان هيتحسب عليه نصيبه من siblingsTotal (نص
+  /// السعر) رغم إنه بيدفع لوحده دلوقتي، وتتراكم عليه مديونية غلط
+  /// (نفس فئة الباج اللي اتصلح في عرض الإخوة العادي هذه الجلسة).
+  Future<void> archiveStudent(int studentId) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+
+    final rows = await db.query(TABLE_STUDENTS,
+        where: '$COL_STUDENT_ID = ?', whereArgs: [studentId], limit: 1);
+    if (rows.isEmpty) return;
+    final student = Student.fromMap(rows.first);
+
+    await db.transaction((txn) async {
+      await txn.update(
+        TABLE_STUDENTS,
+        {
+          COL_STUDENT_IS_ARCHIVED: 1,
+          COL_STUDENT_ARCHIVED_AT: now,
+          COL_SYNC_UPDATED_AT: now,
+        },
+        where: '$COL_STUDENT_ID = ?',
+        whereArgs: [studentId],
+      );
+      if (student.siblingId != null) {
+        await txn.update(
+          TABLE_STUDENTS,
+          {
+            COL_STUDENT_SIBLING_ID: null,
+            COL_STUDENT_SIBLINGS_TOTAL: null,
+            COL_SYNC_UPDATED_AT: now,
+          },
+          where: '$COL_STUDENT_ID = ?',
+          whereArgs: [studentId],
+        );
+        await txn.update(
+          TABLE_STUDENTS,
+          {
+            COL_STUDENT_SIBLING_ID: null,
+            COL_STUDENT_SIBLINGS_TOTAL: null,
+            COL_SYNC_UPDATED_AT: now,
+          },
+          where: '$COL_STUDENT_ID = ?',
+          whereArgs: [student.siblingId],
+        );
+      }
+    });
+    _notifyChanged();
+
+    await _queueSync(TABLE_STUDENTS, studentId, 'update', payload: {
+      ...student.toMap(),
+      COL_STUDENT_IS_ARCHIVED: 1,
+      COL_STUDENT_ARCHIVED_AT: now,
+      COL_STUDENT_SIBLING_ID: null,
+      COL_STUDENT_SIBLINGS_TOTAL: null,
+      COL_SYNC_UPDATED_AT: now,
+    });
+    if (student.siblingId != null) {
+      final sibRows = await db.query(TABLE_STUDENTS,
+          where: '$COL_STUDENT_ID = ?', whereArgs: [student.siblingId], limit: 1);
+      if (sibRows.isNotEmpty) {
+        await _queueSync(TABLE_STUDENTS, student.siblingId!, 'update', payload: {
+          ...Student.fromMap(sibRows.first).toMap(),
+          COL_SYNC_UPDATED_AT: now,
+        });
+      }
+    }
+  }
+
+  /// استعادة طالب مؤرشف — يرجع نشط بسجله القديم كامل زي ما كان (عرض
+  /// الإخوة اللي اتفك وقت الأرشفة مش بيترجع تلقائيًا؛ المدرس يقدر
+  /// يربطه تاني يدويًا لو لسه محتاج).
+  Future<void> unarchiveStudent(int studentId) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final map = {
+      COL_STUDENT_IS_ARCHIVED: 0,
+      COL_STUDENT_ARCHIVED_AT: null,
+      COL_SYNC_UPDATED_AT: now,
+    };
+    await db.update(TABLE_STUDENTS, map,
+        where: '$COL_STUDENT_ID = ?', whereArgs: [studentId]);
+    _notifyChanged();
+
+    final rows = await db.query(TABLE_STUDENTS,
+        where: '$COL_STUDENT_ID = ?', whereArgs: [studentId], limit: 1);
+    if (rows.isNotEmpty) {
+      await _queueSync(TABLE_STUDENTS, studentId, 'update',
+          payload: Student.fromMap(rows.first).toMap()
+            ..[COL_SYNC_UPDATED_AT] = now);
+    }
+  }
+
+  Future<List<Student>> getActiveStudents() async {
+    final db = await database;
+    final result = await db.query(TABLE_STUDENTS,
+        where: '$COL_STUDENT_IS_ARCHIVED = 0');
+    return result.map((map) => Student.fromMap(map)).toList();
+  }
+
+  Future<List<Student>> getArchivedStudents() async {
+    final db = await database;
+    final result = await db.query(TABLE_STUDENTS,
+        where: '$COL_STUDENT_IS_ARCHIVED = 1');
+    return result.map((map) => Student.fromMap(map)).toList();
+  }
+
+  /// عدد كل الطلاب (نشط + مؤرشف) — يُستخدم لفحص حد الباقة، اللي المفروض
+  /// يستمر يحسب الطالب المؤرشف زيه زي أي طالب نشط تمامًا (الأرشفة مش
+  /// بتفضّي مكان في حد الترخيص).
+  Future<int> getAllStudentsCount() async {
+    final db = await database;
+    final result =
+        await db.rawQuery('SELECT COUNT(*) as count FROM $TABLE_STUDENTS');
+    return Sqflite.firstIntValue(result) ?? 0;
   }
 
   Future<int> getGroupStudentCount(int groupId) async {

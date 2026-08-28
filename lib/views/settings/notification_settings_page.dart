@@ -55,7 +55,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
     if (mounted) setState(() => _loadingBirthdays = true);
 
     final db = DatabaseService();
-    final students = await db.getAllStudents();
+    final students =
+        (await db.getAllStudents()).where((s) => !s.isArchived).toList();
     final now   = DateTime.now();
     // اليوم بدون وقت
     final today = DateTime(now.year, now.month, now.day);
