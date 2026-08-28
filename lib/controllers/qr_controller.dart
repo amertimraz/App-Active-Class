@@ -1,4 +1,5 @@
 // lib/controllers/qr_controller.dart
+import 'dart:async';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:active_class/models/student_model.dart';
@@ -6,6 +7,7 @@ import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
@@ -331,6 +333,10 @@ class QRController extends GetxController {
           await _dbService.insertPayment(p1);
           await _dbService.insertPayment(p2);
           _refreshDashboard();
+          // مسار الدفع عن طريق QR ده بيتم من غير المرور بـ
+          // PaymentController خالص، فمن غير النداء ده كان تذكير الدفع
+          // المتأخر بيفضل مايعرفش إن الطالب دفع فعليًا.
+          unawaited(NotificationService().scheduleLatePaymentReminder());
           ToastHelper.success(
               'عرض الإخوة: ${student.name} و ${sibling.name} • $paymentLabel ✅',
               title: 'تم الدفع');
@@ -358,6 +364,7 @@ class QRController extends GetxController {
       );
       await _dbService.insertPayment(payment);
       _refreshDashboard();
+      unawaited(NotificationService().scheduleLatePaymentReminder());
       ToastHelper.success('تم دفع $paymentLabel ✅', title: 'تم الدفع');
       _clearPaymentState();
       return true;

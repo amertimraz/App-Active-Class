@@ -8,6 +8,7 @@ import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:intl/intl.dart';
 import 'package:active_class/config/constants.dart';
@@ -68,6 +69,10 @@ class AttendanceController extends GetxController {
       await _dbService.insertAttendance(att);
       await loadAttendance();
       unawaited(ParentPortalService().pushStudentSummary(att.studentId));
+      // لمجموعات "بالحصة" تحديدًا، الحضور نفسه بيغيّر المستحق (كل حصة
+      // بسعرها) — من غير التحديث ده، تذكير الدفع المتأخر كان بيفضل
+      // مايعرفش إلا لما حد يدفع أو يعدّل مجموعة/طالب.
+      unawaited(NotificationService().scheduleLatePaymentReminder());
       ToastHelper.success('تم تسجيل الحضور بنجاح');
     } catch (e) {
       // في حال خالف UNIQUE في القاعدة بسبب فرق الثواني
@@ -89,6 +94,7 @@ class AttendanceController extends GetxController {
       if (studentId != null) {
         unawaited(ParentPortalService().pushStudentSummary(studentId));
       }
+      unawaited(NotificationService().scheduleLatePaymentReminder());
       ToastHelper.success('تم حذف السجل بنجاح');
     } catch (e) {
       ToastHelper.error('حدث خطأ في حذف السجل');
@@ -110,6 +116,7 @@ class AttendanceController extends GetxController {
       for (final studentId in studentIds) {
         unawaited(ParentPortalService().pushStudentSummary(studentId));
       }
+      unawaited(NotificationService().scheduleLatePaymentReminder());
       ToastHelper.success('تم حذف الحصة بنجاح');
     } catch (e) {
       ToastHelper.error('حدث خطأ في حذف الحصة');
@@ -140,6 +147,7 @@ class AttendanceController extends GetxController {
       await _dbService.updateAttendance(updated);
       await loadAttendance();
       unawaited(ParentPortalService().pushStudentSummary(att.studentId));
+      unawaited(NotificationService().scheduleLatePaymentReminder());
       ToastHelper.success('تم تعديل تاريخ السجل بنجاح');
       return null;
     } catch (e) {
@@ -198,6 +206,7 @@ class AttendanceController extends GetxController {
       }
       await loadAttendance();
       unawaited(ParentPortalService().pushStudentSummary(studentId));
+      unawaited(NotificationService().scheduleLatePaymentReminder());
     } catch (e) {
       ToastHelper.error('حدث خطأ');
     }
@@ -228,6 +237,7 @@ class AttendanceController extends GetxController {
     }
     await loadAttendance();
     unawaited(ParentPortalService().pushStudentSummary(studentId));
+    unawaited(NotificationService().scheduleLatePaymentReminder());
   }
 
   // تحضير جميع طلاب المجموعة الغير مسجلين في يوم معين — بيتابع كل
@@ -268,6 +278,7 @@ class AttendanceController extends GetxController {
       for (final id in studentIds) {
         unawaited(ParentPortalService().pushStudentSummary(id));
       }
+      unawaited(NotificationService().scheduleLatePaymentReminder());
       if (failed == 0) {
         ToastHelper.success('تم إلغاء تحضير جميع الطلاب');
       } else if (succeeded == 0) {
@@ -298,6 +309,7 @@ class AttendanceController extends GetxController {
     for (final id in studentIds) {
       unawaited(ParentPortalService().pushStudentSummary(id));
     }
+    unawaited(NotificationService().scheduleLatePaymentReminder());
     if (failed == 0) {
       ToastHelper.success('تم تحضير جميع الطلاب');
     } else if (succeeded == 0) {

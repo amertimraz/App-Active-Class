@@ -10,6 +10,7 @@ import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/utils/pricing_helper.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -27,6 +28,32 @@ class NotificationService {
   static const int _classNotificationIdBase = 900000000;
   // إشعار ملخص "حصص اليوم" — واحد لكل يوم أسبوع، بمساحة IDs منفصلة.
   static const int _digestNotificationIdBase = 950000000;
+  // تذكير الدفع المتأخر — إشعار واحد يومي بعدد الطلاب المتأخرين.
+  static const int _latePaymentNotificationId = 990000000;
+
+  // مفاتيح app_settings للتحكم في تفعيل/تعطيل كل نوع إشعار — نفس
+  // نمط setting/getSetting الموجود بالفعل (زي payment_grace_days).
+  // كل الأنواع مفعّلة افتراضيًا (لو المفتاح مش موجود أصلاً) عشان يطابق
+  // سلوك التطبيق الأصلي قبل ما الإعدادات دي تتفعّل فعليًا.
+  static const String _keyBirthdayEnabled = 'notif_birthday_enabled';
+  static const String _keyClassEnabled = 'notif_class_enabled';
+  static const String _keyLatePaymentEnabled = 'notif_late_payment_enabled';
+
+  Future<bool> _readToggle(String key) async {
+    final v = await _dbService.getSetting(key);
+    return v == null || v == '1';
+  }
+
+  Future<bool> isBirthdayEnabled() => _readToggle(_keyBirthdayEnabled);
+  Future<bool> isClassEnabled() => _readToggle(_keyClassEnabled);
+  Future<bool> isLatePaymentEnabled() => _readToggle(_keyLatePaymentEnabled);
+
+  Future<void> setBirthdayEnabled(bool v) =>
+      _dbService.setSetting(_keyBirthdayEnabled, v ? '1' : '0');
+  Future<void> setClassEnabled(bool v) =>
+      _dbService.setSetting(_keyClassEnabled, v ? '1' : '0');
+  Future<void> setLatePaymentEnabled(bool v) =>
+      _dbService.setSetting(_keyLatePaymentEnabled, v ? '1' : '0');
 
   static const Map<String, int> _dayNameToWeekday = {
     'السبت': DateTime.saturday,
@@ -112,6 +139,27 @@ class NotificationService {
     return false;
   }
 
+  /// هل صلاحية "الجدولة الدقيقة" (Schedule exact alarms) مفعّلة فعليًا
+  /// دلوقتي — مش بس "طلبناها قبل كده". لازم يتحقق منها *مباشرة قبل*
+  /// أي جدولة، لأن دي صلاحية خاصة (مش حوار عادي) بتتفتح كشاشة إعدادات
+  /// نظام، والمستخدم ممكن يقفلها من غير ما يفعّلها فعلاً — ولو حصل كده،
+  /// كل جدولة exact كانت بتفشل بصمت (زي ما موضّح في requestPermission).
+  Future<bool> hasExactAlarmPermission() => _hasExactAlarmPermission();
+
+  Future<bool> _hasExactAlarmPermission() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final granted = await _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.canScheduleExactNotifications();
+      return granted ?? false;
+    } catch (e) {
+      debugPrint('NotificationService: تعذر التحقق من صلاحية الجدولة الدقيقة — $e');
+      return false;
+    }
+  }
+
   void _onNotificationTap(NotificationResponse response) {
     debugPrint('Notification tapped: ${response.payload}');
   }
@@ -156,37 +204,121 @@ class NotificationService {
       await cancelAllNotifications();
 
       final groups = await _dbService.getAllGroups();
-      for (final g in groups) {
-        // نلف كل مجموعة في try/catch مستقل عشان فشل جدولة مجموعة واحدة
-        // (بيانات جدول غير سليمة مثلاً) ما يوقفش جدولة باقي المجموعات.
-        try {
-          await scheduleGroupClassNotifications(g);
-        } catch (e) {
-          debugPrint('NotificationService: فشلت جدولة حصص "${g.name}" — $e');
-        }
-      }
 
-      try {
-        await scheduleDailyDigestNotifications(groups);
-      } catch (e) {
-        debugPrint('NotificationService: فشلت جدولة ملخص حصص اليوم — $e');
-      }
-
-      // معنيش نجدول تذكير عيد ميلاد لطالب مؤرشف (سايب المجموعة أصلاً).
-      final students =
-          (await _dbService.getAllStudents()).where((s) => !s.isArchived);
-      for (final s in students) {
-        if (s.birthDate != null) {
+      // كل نوع بيتحقق من مفتاحه بتاعه لوحده — تعطيل نوع واحد (زي
+      // "الدفع المتأخر") ميأثرش على الأنواع التانية.
+      if (await isClassEnabled()) {
+        for (final g in groups) {
+          // نلف كل مجموعة في try/catch مستقل عشان فشل جدولة مجموعة واحدة
+          // (بيانات جدول غير سليمة مثلاً) ما يوقفش جدولة باقي المجموعات.
           try {
-            await scheduleBirthdayNotifications(s);
+            await scheduleGroupClassNotifications(g);
           } catch (e) {
-            debugPrint('NotificationService: فشلت جدولة عيد ميلاد "${s.name}" — $e');
+            debugPrint('NotificationService: فشلت جدولة حصص "${g.name}" — $e');
           }
         }
+
+        try {
+          await scheduleDailyDigestNotifications(groups);
+        } catch (e) {
+          debugPrint('NotificationService: فشلت جدولة ملخص حصص اليوم — $e');
+        }
+      }
+
+      if (await isBirthdayEnabled()) {
+        // معنيش نجدول تذكير عيد ميلاد لطالب مؤرشف (سايب المجموعة أصلاً).
+        final students =
+            (await _dbService.getAllStudents()).where((s) => !s.isArchived);
+        for (final s in students) {
+          if (s.birthDate != null) {
+            try {
+              await scheduleBirthdayNotifications(s);
+            } catch (e) {
+              debugPrint('NotificationService: فشلت جدولة عيد ميلاد "${s.name}" — $e');
+            }
+          }
+        }
+      }
+
+      // scheduleLatePaymentReminder بتتحقق من isLatePaymentEnabled بنفسها
+      // (عشان تفضل قابلة للنداء المستقل بعد كل دفعة — راجع تعليقها).
+      try {
+        await scheduleLatePaymentReminder();
+      } catch (e) {
+        debugPrint('NotificationService: فشلت جدولة تذكير الدفع المتأخر — $e');
       }
     } catch (e) {
       debugPrint('NotificationService: فشلت مزامنة الإشعارات — $e');
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  تذكير الدفع المتأخر — إشعار يومي متكرر الساعة 9 صباحًا بعدد
+  //  الطلاب المتأخرين حاليًا في الدفع (نفس منطق "لم يدفعوا" في
+  //  الداشبورد: PricingHelper.isOverdue بمهلة السماح المحفوظة).
+  //
+  //  الدالة دي مستقلة تمامًا (مبتعتمدش على cancelAllNotifications من
+  //  syncAllScheduledNotifications) — عشان تقدر تتنادى مباشرة بعد أي
+  //  دفعة جديدة/محذوفة (PaymentController) وتحدّث العدد فورًا، من غير
+  //  ما تلغي/تعيد جدولة الحصص وأعياد الميلاد كلها معاها كل مرة حد يدفع.
+  // ─────────────────────────────────────────────────────────────────
+  Future<void> scheduleLatePaymentReminder() async {
+    if (!await isLatePaymentEnabled()) {
+      await cancelNotification(_latePaymentNotificationId);
+      return;
+    }
+
+    final students =
+        (await _dbService.getAllStudents()).where((s) => !s.isArchived).toList();
+    if (students.isEmpty) {
+      await cancelNotification(_latePaymentNotificationId);
+      return;
+    }
+
+    final allAttendance = await _dbService.getAllAttendance();
+    final allPayments = await _dbService.getAllPayments();
+    final groups = await _dbService.getAllGroups();
+    final groupById = {for (final g in groups) g.id: g};
+    final graceDays =
+        int.tryParse(await _dbService.getSetting('payment_grace_days') ?? '') ?? 0;
+
+    int overdueCount = 0;
+    for (final s in students) {
+      final studentPayments =
+          allPayments.where((p) => p.studentId == s.id).toList();
+      final isOverdue = PricingHelper.isOverdue(
+        student: s,
+        group: groupById[s.groupId],
+        allAttendance: allAttendance,
+        payments: studentPayments,
+        graceDays: graceDays,
+      );
+      if (isOverdue) overdueCount++;
+    }
+
+    // مفيش حد متأخر — لازم نلغي أي تذكير قديم صراحةً (الدالة دي بقت
+    // بتتنادى بره سياق المزامنة الشاملة، فمفيش cancelAllNotifications
+    // يمسحه تلقائيًا؛ لو سيّبناه من غير إلغاء، طالب دفع اللي عليه كان
+    // هيفضل الإشعار القديم بعدده القديم شغال).
+    if (overdueCount == 0) {
+      await cancelNotification(_latePaymentNotificationId);
+      return;
+    }
+
+    final scheduled = _nextInstanceOfTime(const TimeOfDay(hour: 9, minute: 0));
+    await _scheduleById(
+      id: _latePaymentNotificationId,
+      title: '💰 طلاب متأخرين في الدفع',
+      body: overdueCount == 1
+          ? 'يوجد طالب واحد متأخر في الدفع'
+          : 'يوجد $overdueCount طلاب متأخرين في الدفع',
+      scheduledTime: scheduled,
+      payload: 'late_payment',
+      channelId: 'late_payment_channel',
+      channelName: 'الدفع المتأخر',
+      channelDescription: 'تذكير يومي بعدد الطلاب المتأخرين في الدفع',
+      matchDateTimeComponents: DateTimeComponents.time,
+    );
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -314,6 +446,18 @@ class NotificationService {
     return scheduled;
   }
 
+  /// أقرب موعد قادم لوقت معيّن كل يوم (بدون قيد يوم أسبوع) — لإشعارات
+  /// يومية متكررة زي تذكير الدفع المتأخر.
+  tz.TZDateTime _nextInstanceOfTime(TimeOfDay time) {
+    final now = tz.TZDateTime.now(tz.local);
+    var scheduled = tz.TZDateTime(
+        tz.local, now.year, now.month, now.day, time.hour, time.minute);
+    if (scheduled.isBefore(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+    return scheduled;
+  }
+
   // Schedule birthday notification (legacy - single notification)
   Future<void> scheduleBirthdayNotification(Student student) async {
     await scheduleBirthdayNotifications(student);
@@ -391,17 +535,36 @@ class NotificationService {
     );
     final details = NotificationDetails(android: androidDetails);
 
-    await _notificationsPlugin.zonedSchedule(
-      id,
-      title,
-      body,
-      tz.TZDateTime.from(scheduledTime, tz.local),
-      details,
-      payload: payload,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: matchDateTimeComponents,
-    );
+    // لو صلاحية "الجدولة الدقيقة" مش مفعّلة، الجدولة exact كانت بتفشل
+    // بصمت (تسجّل نجاح ظاهريًا من غير ما الإشعار يظهر فعلاً أبدًا).
+    // بدل ما نسيب المستخدم من غير أي تذكير خالص، نرجع لجدولة "غير دقيقة"
+    // (ممكن تتأخر شوية عن الميعاد بالظبط، لكن هتوصل فعلاً) — أفضل بكتير
+    // من عدم الوصول نهائيًا.
+    final hasExact = await _hasExactAlarmPermission();
+    final scheduleMode = hasExact
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+
+    try {
+      await _notificationsPlugin.zonedSchedule(
+        id,
+        title,
+        body,
+        tz.TZDateTime.from(scheduledTime, tz.local),
+        details,
+        payload: payload,
+        androidScheduleMode: scheduleMode,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: matchDateTimeComponents,
+      );
+    } catch (e) {
+      // نسجّل الفشل بدل ما نخليه يوقف باقي الجدولة (المستدعيات بره
+      // أصلاً بتلف كل عنصر في try/catch مستقل)، لكن كمان بنعيد رميه
+      // عشان المستدعي يقدر يحسب عدد الإشعارات اللي فعلاً فشلت لو حابب.
+      debugPrint('NotificationService: فشلت جدولة الإشعار id=$id — $e');
+      rethrow;
+    }
   }
 
   // Cancel all notifications

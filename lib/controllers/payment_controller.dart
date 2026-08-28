@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/helpers.dart';
 
@@ -120,6 +121,10 @@ class PaymentController extends GetxController {
       await loadPayments();
       _refreshDashboard();
       unawaited(ParentPortalService().pushStudentSummary(payment.studentId));
+      // بدون كده، تذكير "الدفع المتأخر" كان بيفضل بعدده القديم لحد ما
+      // حد يعدّل مجموعة/طالب — دفعة جديدة/محذوفة هي أكتر حدث بيغيّر
+      // "مين متأخر" فعليًا، ومكانش بيحصّل تحديث خالص.
+      unawaited(NotificationService().scheduleLatePaymentReminder());
       ToastHelper.success('تم إضافة الدفع بنجاح');
     } catch (e) {
       ToastHelper.error('حدث خطأ في إضافة الدفع');
@@ -134,6 +139,7 @@ class PaymentController extends GetxController {
       await loadPayments();
       _refreshDashboard();
       unawaited(ParentPortalService().pushStudentSummary(payment.studentId));
+      unawaited(NotificationService().scheduleLatePaymentReminder());
       return true;
     } catch (e) {
       ToastHelper.error('حدث خطأ في تعديل الدفعة');
@@ -151,6 +157,7 @@ class PaymentController extends GetxController {
       if (studentId != null) {
         unawaited(ParentPortalService().pushStudentSummary(studentId));
       }
+      unawaited(NotificationService().scheduleLatePaymentReminder());
       ToastHelper.success('تم حذف الدفع بنجاح');
     } catch (e) {
       ToastHelper.error('حدث خطأ في حذف الدفع');

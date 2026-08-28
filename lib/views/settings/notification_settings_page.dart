@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -29,18 +30,71 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
   bool _loadingBirthdays = true;
   bool _schedulingAll = false;
 
+  // هل صلاحية "الجدولة الدقيقة" (Schedule exact alarms) مفعّلة فعليًا —
+  // صلاحية خاصة منفصلة عن إذن الإشعارات العادي، وغيابها كان بيخلي
+  // التذكيرات تفشل تظهر من غير أي رسالة خطأ واضحة للمدرس.
+  bool? _hasExactAlarm;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     // حمّل أعياد الميلاد فور فتح الصفحة
     _loadBirthdays();
+    _checkExactAlarmPermission();
+    _loadToggles();
     // أعِد التحميل كلما انتقل المستخدم للتاب الثاني (بعد انتهاء الانيميشن فقط)
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging && _tabController.index == 1) {
         _loadBirthdays();
       }
     });
+  }
+
+  Future<void> _checkExactAlarmPermission() async {
+    final granted = await _notificationService.hasExactAlarmPermission();
+    if (mounted) setState(() => _hasExactAlarm = granted);
+  }
+
+  /// يحمّل حالة المفاتيح التلاتة المحفوظة فعليًا — كانت قبل كده قيم
+  /// محلية بس بترجع true دايمًا من غير أي حفظ حقيقي.
+  Future<void> _loadToggles() async {
+    final birthday = await _notificationService.isBirthdayEnabled();
+    final classes = await _notificationService.isClassEnabled();
+    final latePayment = await _notificationService.isLatePaymentEnabled();
+    if (mounted) {
+      setState(() {
+        _birthdayNotifications = birthday;
+        _classNotifications = classes;
+        _latePaymentNotifications = latePayment;
+      });
+    }
+  }
+
+  /// بيحفظ المفتاح فعليًا وبعدين يعيد مزامنة الإشعارات كلها، عشان
+  /// تفعيل/تعطيل نوع معيّن ينعكس فورًا (يجدول أو يلغي على طول)، مش
+  /// بس عند أول مرة التطبيق يفتح.
+  Future<void> _onToggleChanged(
+      {required String type, required bool value}) async {
+    setState(() {
+      switch (type) {
+        case 'birthday':
+          _birthdayNotifications = value;
+        case 'class':
+          _classNotifications = value;
+        case 'late_payment':
+          _latePaymentNotifications = value;
+      }
+    });
+    switch (type) {
+      case 'birthday':
+        await _notificationService.setBirthdayEnabled(value);
+      case 'class':
+        await _notificationService.setClassEnabled(value);
+      case 'late_payment':
+        await _notificationService.setLatePaymentEnabled(value);
+    }
+    unawaited(_notificationService.syncAllScheduledNotifications());
   }
 
   @override
@@ -159,11 +213,55 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // تحذير لو صلاحية "الجدولة الدقيقة" مش مفعّلة — من غيرها، كل
+        // التذكيرات (حصص وأعياد ميلاد) بتفشل تظهر بصمت من غير أي رسالة
+        // خطأ، فالمدرس بيفتكر التطبيق عطلان من غير ما يعرف السبب.
+        if (_hasExactAlarm == false) ...[
+          Container(
+            padding: const EdgeInsets.all(14),
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('صلاحية الجدولة الدقيقة غير مفعّلة',
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                  ),
+                ]),
+                const SizedBox(height: 6),
+                const Text(
+                  'من غير الصلاحية دي، تذكيرات الحصص وأعياد الميلاد مش هتوصلك في ميعادها — دي صلاحية منفصلة عن إذن الإشعارات العادي.',
+                  style: TextStyle(fontSize: 12, color: Colors.black87),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    onPressed: () async {
+                      await _notificationService.requestPermission(requestExactAlarm: true);
+                      await _checkExactAlarmPermission();
+                    },
+                    child: const Text('تفعيل الصلاحية', style: TextStyle(color: Colors.white)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         _buildNotificationToggle(
           title: 'إشعارات أعياد الميلاد',
           subtitle: 'تنبيه يوم قبل عيد الميلاد وفي يوم العيد نفسه',
           value: _birthdayNotifications,
-          onChanged: (v) => setState(() => _birthdayNotifications = v),
+          onChanged: (v) => _onToggleChanged(type: 'birthday', value: v),
           icon: Icons.cake_rounded,
           isDark: isDark,
         ),
@@ -172,7 +270,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
           title: 'إشعارات الحصص',
           subtitle: 'تنبيه بالحصص المجدولة لليوم',
           value: _classNotifications,
-          onChanged: (v) => setState(() => _classNotifications = v),
+          onChanged: (v) => _onToggleChanged(type: 'class', value: v),
           icon: Icons.event_rounded,
           isDark: isDark,
         ),
@@ -181,7 +279,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
           title: 'إشعارات الدفع المتأخر',
           subtitle: 'تنبيه بالطلاب المتأخرين في الدفع',
           value: _latePaymentNotifications,
-          onChanged: (v) => setState(() => _latePaymentNotifications = v),
+          onChanged: (v) => _onToggleChanged(type: 'late_payment', value: v),
           icon: Icons.payment_rounded,
           isDark: isDark,
         ),
