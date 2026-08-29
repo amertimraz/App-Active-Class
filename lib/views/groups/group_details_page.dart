@@ -738,13 +738,20 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     if (!requireDeletePermission(context, TeamModeService().canDeleteStudentsNow)) {
       return;
     }
-    final count =
+    // لازم نحسب الطلاب المؤرشفين كمان — قيد المفتاح الأجنبي على الجدول
+    // بيحذفهم نهائيًا مع المجموعة زيهم زي النشطين بالظبط رغم إنهم كانوا
+    // "محفوظين للأبد" عمدًا بدل الحذف، فلازم المدرس ياخد قرار عن علم.
+    final activeCount =
         studentController.students.where((s) => s.groupId == g.id).length;
+    final archivedCount = studentController.archivedStudents
+        .where((s) => s.groupId == g.id)
+        .length;
+    final count = activeCount + archivedCount;
     Get.defaultDialog(
       title: 'حذف المجموعة',
       middleText: count > 0
-          ? 'تحذير: هيتحذف معاها $count طالب وكل سجلات حضورهم '
-              'ودفعاتهم ودرجات امتحاناتهم نهائياً — لا يمكن التراجع عن هذا الإجراء.'
+          ? 'تحذير: هيتحذف معاها $count طالب${archivedCount > 0 ? ' (منهم $archivedCount من الأرشيف)' : ''} '
+              'وكل سجلات حضورهم ودفعاتهم ودرجات امتحاناتهم نهائياً — لا يمكن التراجع عن هذا الإجراء.'
           : 'هل تريد حذف هذه المجموعة؟ لا يمكن التراجع عن هذا الإجراء.',
       textCancel: 'إلغاء',
       textConfirm: 'حذف',

@@ -1860,15 +1860,17 @@ class _AttendanceCard extends StatelessWidget {
                 children: [
                   Icon(Icons.how_to_reg_rounded, size: 16, color: barColor),
                   const SizedBox(width: 6),
-                  Text(
-                    'حضور اليوم',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: isDark ? Colors.white : const Color(0xFF111827),
+                  Expanded(
+                    child: Text(
+                      'حضور اليوم',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: isDark ? Colors.white : const Color(0xFF111827),
+                      ),
                     ),
                   ),
-                  const Spacer(),
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

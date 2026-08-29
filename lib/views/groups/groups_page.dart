@@ -113,6 +113,16 @@ class _GroupsPageState extends State<GroupsPage> {
     return studentController.students.where((s) => s.groupId == groupId).length;
   }
 
+  // عدد الطلاب المؤرشفين في المجموعة — بيُستخدم بس في تحذير حذف المجموعة
+  // (مش في شارة العدد العادية)، لأن حذف المجموعة بيمسحهم نهائيًا هما
+  // كمان بسبب قيد المفتاح الأجنبي، رغم إنهم كانوا "محفوظين للأبد" عمدًا.
+  int _archivedStudentCount(int? groupId) {
+    if (groupId == null) return 0;
+    return studentController.archivedStudents
+        .where((s) => s.groupId == groupId)
+        .length;
+  }
+
   List<Student> _groupStudents(int? groupId) {
     if (groupId == null) return [];
     return studentController.students.where((s) => s.groupId == groupId).toList();
@@ -268,6 +278,7 @@ class _GroupsPageState extends State<GroupsPage> {
                                 _GroupCard(
                                   group: items[i],
                                   studentCount: _studentCount(items[i].id),
+                                  archivedCount: _archivedStudentCount(items[i].id),
                                   students: _groupStudents(items[i].id),
                                   onEdit: () => _showGroupFormDialog(context, group: items[i]),
                                   onDelete: () {
@@ -1009,6 +1020,7 @@ class _ErrorText extends StatelessWidget {
 class _GroupCard extends StatelessWidget {
   final Group group;
   final int studentCount;
+  final int archivedCount;
   final List<Student> students;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -1018,6 +1030,7 @@ class _GroupCard extends StatelessWidget {
   const _GroupCard({
     required this.group,
     required this.studentCount,
+    this.archivedCount = 0,
     required this.students,
     required this.onEdit,
     required this.onDelete,
@@ -1134,11 +1147,13 @@ class _GroupCard extends StatelessWidget {
                     onSelected: (v) {
                       if (v == 'edit') onEdit();
                       if (v == 'delete') {
+                        final totalToDelete = studentCount + archivedCount;
                         Get.defaultDialog(
                           title: 'حذف المجموعة',
-                          middleText: studentCount > 0
+                          middleText: totalToDelete > 0
                               ? 'هل تريد حذف مجموعة "${group.name}"؟\n'
-                                  'تحذير: هيتحذف معاها $studentCount طالب '
+                                  'تحذير: هيتحذف معاها $totalToDelete طالب'
+                                  '${archivedCount > 0 ? ' (منهم $archivedCount من الأرشيف)' : ''} '
                                   'وكل سجلات حضورهم ودفعاتهم ودرجات امتحاناتهم '
                                   'نهائياً — الإجراء ده لا يمكن التراجع عنه.'
                               : 'هل تريد حذف مجموعة "${group.name}"؟ '
