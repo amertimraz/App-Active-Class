@@ -601,44 +601,55 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
 
             const SizedBox(height: 16),
 
-            // إحصائيات
-            Row(
+            // إحصائيات — شبكة 2×2 بدل صف واحد بـ4 خانات: خانة واحدة كانت
+            // بتضيق جدًا لدرجة إن كلمة زي "جنيه" أو "إجمالي الرسوم" كانت
+            // بتتقطّع نصفها بالنص (مش حتى "..." — تقطيع حرفي وسط الكلمة).
+            // مساحة كل خانة دلوقتي أكبر بالضعف تقريبًا.
+            Column(
               children: [
-                _HeaderStat(
-                    label: 'الطلاب',
-                    value: '${students.length}',
-                    icon: Icons.people_rounded),
-                const SizedBox(width: 12),
-                _HeaderStat(
-                    label: 'إجمالي الرسوم',
-                    value: _canSeeFinancials
-                        ? FormatHelper.formatCurrency(totalFees)
-                        : '🔒',
-                    icon: Icons.payments_rounded,
-                    locked: !_canSeeFinancials,
-                    onTap: students.isEmpty
-                        ? null
-                        : () =>
-                            _gdShowFeesBreakdownDialog(context, students, g)),
-                const SizedBox(width: 12),
-                _HeaderStat(
-                    label: 'اشتراك',
-                    value: !_canSeeFinancials
-                        ? '🔒'
-                        : (g.price != null
-                            ? FormatHelper.formatCurrency(g.price!)
-                            : '-'),
-                    icon: Icons.monetization_on_rounded,
-                    locked: !_canSeeFinancials),
-                const SizedBox(width: 12),
-                _HeaderStat(
-                    label: 'حصص مسجلة',
-                    value: '${sessionDays.length}',
-                    icon: Icons.event_available_rounded,
-                    onTap: sessionDays.isEmpty
-                        ? null
-                        : () => _gdShowSessionsDialog(
-                            context, g.name, sessionDays)),
+                Row(
+                  children: [
+                    _HeaderStat(
+                        label: 'الطلاب',
+                        value: '${students.length}',
+                        icon: Icons.people_rounded),
+                    const SizedBox(width: 12),
+                    _HeaderStat(
+                        label: 'إجمالي الرسوم',
+                        value: _canSeeFinancials
+                            ? FormatHelper.formatCurrency(totalFees)
+                            : '🔒',
+                        icon: Icons.payments_rounded,
+                        locked: !_canSeeFinancials,
+                        onTap: students.isEmpty
+                            ? null
+                            : () => _gdShowFeesBreakdownDialog(
+                                context, students, g)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _HeaderStat(
+                        label: 'اشتراك',
+                        value: !_canSeeFinancials
+                            ? '🔒'
+                            : (g.price != null
+                                ? FormatHelper.formatCurrency(g.price!)
+                                : '-'),
+                        icon: Icons.monetization_on_rounded,
+                        locked: !_canSeeFinancials),
+                    const SizedBox(width: 12),
+                    _HeaderStat(
+                        label: 'حصص مسجلة',
+                        value: '${sessionDays.length}',
+                        icon: Icons.event_available_rounded,
+                        onTap: sessionDays.isEmpty
+                            ? null
+                            : () => _gdShowSessionsDialog(
+                                context, g.name, sessionDays)),
+                  ],
+                ),
               ],
             ),
           ],
@@ -915,17 +926,21 @@ class _HeaderStat extends StatelessWidget {
             children: [
               Icon(icon, color: Colors.white, size: 18),
               const SizedBox(height: 4),
+              // maxLines:3 (قيم زي "2,340.00 جنيه" لسه ممكن تحتاج 3 أسطر
+              // في المساحة الضيقة دي) — عشان تظهر كاملة بدل ما تتقص بـ"...".
               Text(value,
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w900,
                       fontSize: 13),
-                  maxLines: 1,
+                  maxLines: 3,
                   overflow: TextOverflow.ellipsis),
               Text(label,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.8), fontSize: 10),
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis),
             ],
           ),
@@ -967,10 +982,14 @@ class _ActionChip extends StatelessWidget {
             children: [
               Icon(icon, color: color, size: 20),
               const SizedBox(height: 3),
+              // maxLines:2 بدل 1 — تسميات زي "تصفير الطلاب" أطول من باقي
+              // الأزرار جنبها ("حذف"، "واتساب") في نفس المساحة المتساوية،
+              // فبتلف سطرين بدل ما تتقص.
               Text(label,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                       color: color, fontSize: 11, fontWeight: FontWeight.w700),
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis),
             ],
           ),
@@ -1084,25 +1103,32 @@ class _StudentCard extends StatelessWidget {
               const SizedBox(width: 12),
 
               // Info
+              // الاسم على سطره الخاص كامل دايمًا (بدون قص) — الكود وشارة
+              // الدفع نزلوا سطر منفصل تحته بدل ما يزنقوا الاسم جنب أيقونتَي
+              // الـQR والقائمة على يمين الصف.
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Text(student.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 14),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 3),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Flexible(
-                          child: Text(student.name,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700, fontSize: 14),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
-                        ),
-                        if (!canSeeFinancials) ...[
+                        Text(student.code,
+                            style: TextStyle(
+                                color: Colors.grey.shade500, fontSize: 12)),
+                        if (!canSeeFinancials)
                           // مبنفرقش هنا بين دفع/مادفعش — عرض الشارة بس
                           // لما "لم يدفع" كانت هتبقى هي نفسها تسريب
                           // لحالة الدفع (وجودها/غيابها كان هيوضح الحالة
                           // حتى تحت قفل).
-                          const SizedBox(width: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
@@ -1112,9 +1138,8 @@ class _StudentCard extends StatelessWidget {
                             ),
                             child: Icon(Icons.lock_rounded,
                                 size: 10, color: Colors.grey.shade600),
-                          ),
-                        ] else if (!hasPaid) ...[
-                          const SizedBox(width: 6),
+                          )
+                        else if (!hasPaid)
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
@@ -1128,13 +1153,8 @@ class _StudentCard extends StatelessWidget {
                                     fontSize: 9,
                                     fontWeight: FontWeight.w700)),
                           ),
-                        ],
                       ],
                     ),
-                    const SizedBox(height: 3),
-                    Text(student.code,
-                        style: TextStyle(
-                            color: Colors.grey.shade500, fontSize: 12)),
                   ],
                 ),
               ),

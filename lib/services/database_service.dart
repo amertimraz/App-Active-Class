@@ -976,6 +976,20 @@ class DatabaseService {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
+  /// عدد الطلاب المؤرشفين في مجموعة معيّنة — يُستخدم لمنع حذف المجموعة
+  /// طالما فيها مؤرشفون (راجع specs/006-archived-group-delete-protection):
+  /// حذف المجموعة بيمسح كل طلابها نهائيًا (ON DELETE CASCADE) بما فيهم
+  /// المؤرشفين، رغم إن الأرشفة مصمَّمة كـ"بديل الحذف النهائي".
+  Future<int> getArchivedStudentCountForGroup(int groupId) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM $TABLE_STUDENTS '
+      'WHERE $COL_STUDENT_GROUP_ID = ? AND $COL_STUDENT_IS_ARCHIVED = 1',
+      [groupId],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
   // ========== ATTENDANCE ==========
   Future<int> insertAttendance(Attendance attendance) async {
     final db = await database;

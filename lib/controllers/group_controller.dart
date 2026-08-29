@@ -70,8 +70,18 @@ class GroupController extends GetxController {
   /// يحذف مجموعة نهائياً — بدون أي تأكيد داخلي (التأكيد وتوضيح حجم
   /// الحذف المتتالي مسؤولية الشاشة المستدعية). بيرجّع true لو نجح
   /// وبيحدّث قائمة المجموعات محلياً على طول.
+  /// نقطة الاستدعاء الوحيدة لحذف مجموعة من كل التطبيق — الفحص هنا (بدل
+  /// تكراره في كل شاشة) يضمن إن المنع يتطبّق بنفس الاتساق من أي مكان.
+  /// راجع specs/006-archived-group-delete-protection.
   Future<bool> deleteGroup(int id) async {
     try {
+      final archivedCount = await _dbService.getArchivedStudentCountForGroup(id);
+      if (archivedCount > 0) {
+        ToastHelper.error(
+            'لا يمكن حذف المجموعة — بها $archivedCount طالب مؤرشف. '
+            'تعامل معهم أولاً من شاشة الأرشيف.');
+        return false;
+      }
       await _dbService.deleteGroup(id);
       groups.removeWhere((g) => g.id == id);
       return true;
