@@ -604,7 +604,13 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             // إحصائيات — رجعنا لصف واحد بـ4 خانات (بدل شبكة 2×2) بخط أصغر
             // للقيمة تحديدًا، عشان الكارت ميكبرش طولاً. راجع _HeaderStat
             // لتفاصيل حجم الخط الجديد.
-            Row(
+            // IntrinsicHeight + stretch — من غيرهم كل خانة كانت بتاخد ارتفاع
+            // مستقل حسب عدد أسطر تسميتها ("حصص مسجلة"/"إجمالي الرسوم" بتلف
+            // سطرين أحيانًا بعكس "اشتراك"/"الطلاب")، فكانت الخانات تبان مش
+            // متساوية الطول رغم إنها متساوية العرض.
+            IntrinsicHeight(
+              child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _HeaderStat(
                     label: 'الطلاب',
@@ -645,6 +651,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                         : () => _gdShowSessionsDialog(
                             context, g.name, sessionDays)),
               ],
+              ),
             ),
           ],
         ),

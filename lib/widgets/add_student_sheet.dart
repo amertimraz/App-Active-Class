@@ -669,12 +669,19 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                                               color: Color(g.color!),
                                               shape: BoxShape.circle),
                                         ),
-                                      Text(
-                                        g.price != null
-                                            ? '${g.name} • ${FormatHelper.formatCurrency(g.price)}'
-                                            : g.name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                      // Expanded — من غيرها الـText كان ياخد
+                                      // عرضه الطبيعي الكامل ("الاسم • السعر")
+                                      // بدل ما يحترم عرض القائمة المنسدلة،
+                                      // فالـellipsis ميشتغلش وكان بيعمل
+                                      // overflow حقيقي بدل ما يقص بـ"...".
+                                      Expanded(
+                                        child: Text(
+                                          g.price != null
+                                              ? '${g.name} • ${FormatHelper.formatCurrency(g.price)}'
+                                              : g.name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
                                     ]),
                                   ))
