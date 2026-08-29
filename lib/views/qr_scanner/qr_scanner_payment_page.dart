@@ -158,14 +158,16 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
     // نعرض حوار "عرض الإخوة" لطالب مش هيتطبّق عليه العرض فعليًا (لو
     // مجموعته بالحصة، أو معفى بالكامل)، أو العكس نستثنيه غلط من فحص
     // "المبلغ أكبر من المستحق".
-    final isSiblingSplit = student.siblingId != null &&
+    final isSiblingSplit = student.siblingGroupId != null &&
         student.siblingsTotal != null &&
         !controller.isPerSessionGroup &&
         !student.isFullyExempt;
     if (isSiblingSplit) {
-      final sib = await _db.getStudent(student.siblingId!);
+      final others =
+          await _db.getStudentsInSiblingGroup(student.siblingGroupId!);
       if (!mounted) return;
       final total = controller.totalAmount.value;
+      final otherNames = others.map((s) => s.name).join(' و');
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -173,7 +175,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text('تأكيد عرض الإخوة'),
           content: Text(
-              'سيتم تطبيق عرض الإخوة بين ${student.name} و ${sib?.name ?? "الأخ"}'
+              'سيتم تطبيق عرض الإخوة بين ${student.name} و ${otherNames.isEmpty ? "الأخ" : otherNames}'
               ' بمبلغ إجمالي ${FormatHelper.formatCurrency(total)}'),
           actions: [
             TextButton(
@@ -866,8 +868,8 @@ class _PaymentPanel extends StatelessWidget {
                 final groupColor = group?.color != null
                     ? Color(group!.color!)
                     : AppTheme.primaryColor;
-                final isSiblings =
-                    student.siblingId != null && student.siblingsTotal != null;
+                final isSiblings = student.siblingGroupId != null &&
+                    student.siblingsTotal != null;
                 final price = isSiblings
                     ? (student.siblingsTotal ?? student.price)
                     : student.price;
@@ -1300,13 +1302,16 @@ class _PaymentPanel extends StatelessWidget {
             const SizedBox(height: 10),
 
             // ── Sibling info ───────────────────────────────────
-            if (student.siblingId != null && student.siblingsTotal != null)
+            if (student.siblingGroupId != null && student.siblingsTotal != null)
               Obx(() {
                 final total = controller.totalAmount.value;
-                return FutureBuilder<Student?>(
-                  future: DatabaseService().getStudent(student.siblingId!),
+                return FutureBuilder<List<Student>>(
+                  future: DatabaseService()
+                      .getStudentsInSiblingGroup(student.siblingGroupId!),
                   builder: (_, snap) {
-                    final sibName = snap.data?.name ?? '—';
+                    final others = snap.data ?? const <Student>[];
+                    final memberCount = others.length + 1;
+                    final names = others.map((s) => s.name).join('، ');
                     return Container(
                       margin: const EdgeInsets.only(bottom: 10),
                       padding: const EdgeInsets.symmetric(
@@ -1323,7 +1328,7 @@ class _PaymentPanel extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'عرض الإخوة مع: $sibName  •  نصيب كل: ${FormatHelper.formatCurrency(total / 2)}',
+                            'عرض الإخوة مع: ${names.isEmpty ? "—" : names}  •  نصيب كل: ${FormatHelper.formatCurrency(total / memberCount)}',
                             style: const TextStyle(
                                 fontSize: 11, color: Colors.purple),
                           ),

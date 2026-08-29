@@ -303,42 +303,42 @@ class QRController extends GetxController {
       // بالحصة (فيها كل حصة بسعرها المنفصل)، وميصحش يتطبّق على طالب معفى
       // بالكامل (كان هيتحسب عليه نص باقة رغم إعفائه). في الحالتين دول
       // بنسيب الحساب يكمل عادي على الطالب الممسوح لوحده بدل عرض الإخوة.
-      if (student.siblingId != null &&
+      if (student.siblingGroupId != null &&
           student.siblingsTotal != null &&
           !isPerSessionGroup &&
           !student.isFullyExempt) {
-        final sibling = await _dbService.getStudent(student.siblingId!);
-        if (sibling != null) {
+        // كل أعضاء المجموعة (2 أو 3) شامل الطالب الممسوح نفسه —
+        // راجع specs/007-three-sibling-support.
+        final others = await _dbService
+            .getStudentsInSiblingGroup(student.siblingGroupId!);
+        final members = [student, ...others];
+        final memberCount = members.length;
+        if (memberCount >= 2) {
           final total =
               custom ?? ((student.siblingsTotal!) * selectedMonths.length);
-          final each = total / 2.0;
+          final each = total / memberCount;
           final extra = [
             if (custom != null) 'custom=1',
             if (customNote.isNotEmpty) 'note=$customNote',
-            'siblings=2',
+            'siblings=$memberCount',
           ].join(';');
           final note = 'months=${keys.join(',')};$extra';
-          final p1 = Payment(
-              studentId: student.id!,
-              date: now,
-              amount: each,
-              note: note,
-              createdAt: now);
-          final p2 = Payment(
-              studentId: sibling.id!,
-              date: now,
-              amount: each,
-              note: note,
-              createdAt: now);
-          await _dbService.insertPayment(p1);
-          await _dbService.insertPayment(p2);
+          for (final m in members) {
+            await _dbService.insertPayment(Payment(
+                studentId: m.id!,
+                date: now,
+                amount: each,
+                note: note,
+                createdAt: now));
+          }
           _refreshDashboard();
           // مسار الدفع عن طريق QR ده بيتم من غير المرور بـ
           // PaymentController خالص، فمن غير النداء ده كان تذكير الدفع
           // المتأخر بيفضل مايعرفش إن الطالب دفع فعليًا.
           unawaited(NotificationService().scheduleLatePaymentReminder());
+          final otherNames = others.map((s) => s.name).join(' و');
           ToastHelper.success(
-              'عرض الإخوة: ${student.name} و ${sibling.name} • $paymentLabel ✅',
+              'عرض الإخوة: ${student.name} و $otherNames • $paymentLabel ✅',
               title: 'تم الدفع');
           _clearPaymentState();
           return true;
@@ -403,7 +403,7 @@ class QRController extends GetxController {
     }
     final s = scannedStudent.value;
     if (s != null &&
-        s.siblingId != null &&
+        s.siblingGroupId != null &&
         s.siblingsTotal != null &&
         !isPerSessionGroup &&
         !s.isFullyExempt) {

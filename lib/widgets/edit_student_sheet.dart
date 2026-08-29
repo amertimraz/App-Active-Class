@@ -88,7 +88,12 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   bool _codeIsManual = false;
 
   Group? _selectedGroup;
-  Student? _sibling;
+  // باقي أعضاء مجموعة إخوة الطالب ده (بحد أقصى عضوين، أي مجموعة حتى
+  // 3 مع الطالب الحالي). راجع specs/007-three-sibling-support.
+  List<Student> _siblings = [];
+  // نسخة من _siblings وقت فتح الشيت — بنقارن بيها عند الحفظ عشان نعرف
+  // مين اتشال (فك ربط جزئي لعضو واحد بس، من غير ما يأثر على الباقي).
+  List<Student> _initialSiblings = [];
 
   // الإعفاء
   bool _isExempt;
@@ -151,9 +156,27 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   }
 
   Future<void> _loadSibling() async {
+    final groupId = widget.student.siblingGroupId;
+    if (groupId != null) {
+      final members = await DatabaseService()
+          .getStudentsInSiblingGroup(groupId, excludeId: widget.student.id);
+      if (mounted) {
+        setState(() {
+          _siblings = members;
+          _initialSiblings = members;
+        });
+      }
+      return;
+    }
+    // توافق قديم: طالب لسه معندوش siblingGroupId (نادر بعد الـmigration).
     if (widget.student.siblingId != null) {
       final s = await DatabaseService().getStudent(widget.student.siblingId!);
-      if (mounted) setState(() => _sibling = s);
+      if (mounted && s != null) {
+        setState(() {
+          _siblings = [s];
+          _initialSiblings = [s];
+        });
+      }
     }
   }
 
@@ -169,12 +192,22 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   }
 
   Future<void> _pickSibling() async {
+    if (_siblings.length >= 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الحد الأقصى لمجموعة الإخوة 3 أعضاء')),
+      );
+      return;
+    }
     final all = await DatabaseService().getAllStudents();
     if (!mounted) return;
+    final pickedIds = _siblings.map((s) => s.id).toSet();
     // معنيش نربط أخ/أخت مؤرشف — الأرشفة أصلاً بتفكّ أي ربط أخوي قائم
     // (راجع DatabaseService.archiveStudent)، فمينفعش نسمح بربط جديد له.
     final list = all
-        .where((s) => s.id != widget.student.id && !s.isArchived)
+        .where((s) =>
+            s.id != widget.student.id &&
+            !s.isArchived &&
+            !pickedIds.contains(s.id))
         .toList();
 
     final picked = await showDialog<Student>(
@@ -240,8 +273,35 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
       },
     );
     if (picked != null && mounted) {
-      setState(() => _sibling = picked);
+      await _addSiblingCandidate(picked);
     }
+  }
+
+  /// يضيف طالب مختار كعضو في مجموعة الإخوة — لو كان عضو أصلاً في
+  /// مجموعة إخوة موجودة، بنضيف باقي أعضاء مجموعته كمان عشان الربط
+  /// الجديد ميكسرش رابطهم القديم، مع فرض الحد الأقصى 3 (شامل الطالب
+  /// الحالي نفسه).
+  Future<void> _addSiblingCandidate(Student picked) async {
+    var toAdd = [picked];
+    if (picked.siblingGroupId != null) {
+      toAdd = await DatabaseService()
+          .getStudentsInSiblingGroup(picked.siblingGroupId!);
+    }
+    final existingIds = _siblings.map((s) => s.id).toSet();
+    final merged = [
+      ..._siblings,
+      ...toAdd.where(
+          (s) => s.id != widget.student.id && !existingIds.contains(s.id)),
+    ];
+    if (merged.length > 2) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الحد الأقصى لمجموعة الإخوة 3 أعضاء')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _siblings = merged);
   }
 
   // ── مسح QR من كرت مطبوع مسبقاً واستبدال كود الطالب بيه ───────────
@@ -292,11 +352,11 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
       );
       return;
     }
-    if (_sibling != null) {
+    if (_siblings.isNotEmpty) {
       final total = double.tryParse(_sibTotalCtrl.text.trim());
       if (total == null || total < 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('يرجى إدخال إجمالي الأخوين')),
+          const SnackBar(content: Text('يرجى إدخال الإجمالي المشترك للإخوة')),
         );
         return;
       }
@@ -322,17 +382,18 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
 
     setState(() => _saving = true);
     try {
-      final prevSiblingId = widget.student.siblingId;
-      final newTotal =
-          _sibling != null ? double.tryParse(_sibTotalCtrl.text.trim()) : null;
+      final newTotal = _siblings.isNotEmpty
+          ? double.tryParse(_sibTotalCtrl.text.trim())
+          : null;
 
       final updated = widget.student.copyWith(
         name: name,
         code: _code,
         price: price,
         groupId: _selectedGroup?.id ?? widget.student.groupId,
-        siblingId: _sibling?.id,
-        siblingsTotal: _sibling != null ? newTotal : null,
+        siblingsTotal: _siblings.isNotEmpty ? newTotal : null,
+        clearSiblingsTotal: _siblings.isEmpty,
+        clearSiblingGroupId: _siblings.isEmpty,
         attendanceStart: _attendanceStart,
         guardianPhone:
             _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
@@ -342,34 +403,36 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
         clearExemptReason: !_isExempt,
       );
 
-      await _sc.updateStudent(updated);
-      NotificationService().syncAllScheduledNotifications();
-
       final db = DatabaseService();
-      // Clear old sibling link
-      if (prevSiblingId != null &&
-          (_sibling == null || prevSiblingId != _sibling!.id)) {
-        final prev = await db.getStudent(prevSiblingId);
-        if (prev != null) {
-          final cleared = prev.copyWith(siblingId: null, siblingsTotal: null);
-          await db.updateStudent(cleared);
-          final idx = _sc.students.indexWhere((s) => s.id == cleared.id);
-          if (idx != -1) _sc.students[idx] = cleared;
-          _sc.filterStudents();
-        }
+      // فك ربط الأعضاء اللي اتشالوا من القائمة (فك جزئي — عضو ده بس،
+      // مش هيأثر على باقي المجموعة لو فيها أكتر من واحد).
+      final currentIds = _siblings.map((s) => s.id).toSet();
+      final removed =
+          _initialSiblings.where((s) => !currentIds.contains(s.id));
+      for (final r in removed) {
+        final fresh = await db.getStudent(r.id!);
+        if (fresh == null) continue;
+        final cleared = fresh.copyWith(
+            clearSiblingsTotal: true, clearSiblingGroupId: true);
+        await db.updateStudent(cleared);
+        final idx = _sc.students.indexWhere((s) => s.id == cleared.id);
+        if (idx != -1) _sc.students[idx] = cleared;
       }
-      // Link new sibling
-      if (_sibling != null) {
-        final sib = await db.getStudent(_sibling!.id!);
-        if (sib != null) {
-          final linked = sib.copyWith(
-              siblingId: widget.student.id, siblingsTotal: newTotal);
-          await db.updateStudent(linked);
-          final idx = _sc.students.indexWhere((s) => s.id == linked.id);
-          if (idx != -1) _sc.students[idx] = linked;
-          _sc.filterStudents();
-        }
+
+      if (_siblings.isNotEmpty && newTotal != null) {
+        // اربط الطالب الحالي مع كل الأعضاء الحاليين بإجمالي موحّد —
+        // linkSiblingGroup بيحدّث الطالب الحالي كمان فمفيش داعي لـ
+        // updateStudent منفصلة له.
+        final members = [
+          updated.copyWith(siblingsTotal: newTotal),
+          for (final s in _siblings) s.copyWith(siblingsTotal: newTotal),
+        ];
+        await _sc.linkSiblingGroup(members);
+      } else {
+        await _sc.updateStudent(updated);
       }
+      NotificationService().syncAllScheduledNotifications();
+      _sc.filterStudents();
 
       if (mounted) Navigator.of(context).pop(updated);
     } catch (e) {
@@ -620,9 +683,9 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
 
             const SizedBox(height: 16),
 
-            // ربط أخ / أخت
+            // ربط إخوة (حتى 3 أعضاء، شامل الطالب الحالي)
             GestureDetector(
-              onTap: _pickSibling,
+              onTap: _siblings.length >= 2 ? null : _pickSibling,
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -635,18 +698,18 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                 ),
                 child: Row(children: [
                   Icon(Icons.group_rounded,
-                      color: _sibling != null ? primary : Colors.grey,
+                      color: _siblings.isNotEmpty ? primary : Colors.grey,
                       size: 20),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      _sibling != null
-                          ? 'الأخ/الأخت: ${_sibling!.name}'
+                      _siblings.isNotEmpty
+                          ? 'الإخوة (${_siblings.length + 1}/3)'
                           : 'ربط بطالب آخر (أخ / أخت)',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          color: _sibling != null
+                          color: _siblings.isNotEmpty
                               ? Theme.of(context).colorScheme.onSurface
                               : Theme.of(context)
                                   .colorScheme
@@ -654,23 +717,36 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                                   .withValues(alpha: 0.55)),
                     ),
                   ),
-                  if (_sibling != null)
-                    GestureDetector(
-                      onTap: () => setState(() => _sibling = null),
-                      child: const Icon(Icons.close_rounded,
-                          size: 18, color: Colors.red),
-                    )
-                  else
+                  if (_siblings.length < 2)
                     Icon(Icons.add_circle_outline_rounded,
                         color: Colors.grey.shade400, size: 18),
                 ]),
               ),
             ),
-            if (_sibling != null) ...[
-              const SizedBox(height: 10),
+            if (_siblings.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ..._siblings.map((s) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(children: [
+                      Expanded(
+                        child: Text('${s.name} (${s.code})',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13)),
+                      ),
+                      GestureDetector(
+                        onTap: () => setState(() => _siblings = _siblings
+                            .where((x) => x.id != s.id)
+                            .toList()),
+                        child: const Icon(Icons.close_rounded,
+                            size: 18, color: Colors.red),
+                      ),
+                    ]),
+                  )),
+              const SizedBox(height: 8),
               CustomTextField(
                 controller: _sibTotalCtrl,
-                label: 'إجمالي الأخوين للشهر',
+                label: 'الإجمالي المشترك للإخوة للشهر',
                 keyboardType: TextInputType.number,
               ),
             ],

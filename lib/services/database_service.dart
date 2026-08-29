@@ -97,6 +97,7 @@ class DatabaseService {
         $COL_STUDENT_QR_PATH TEXT,
         $COL_STUDENT_SIBLING_ID INTEGER,
         $COL_STUDENT_SIBLINGS_TOTAL REAL,
+        $COL_STUDENT_SIBLING_GROUP_ID INTEGER,
         $COL_STUDENT_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_STUDENT_ATTENDANCE_START TEXT,
         $COL_STUDENT_GUARDIAN_PHONE TEXT,
@@ -439,6 +440,40 @@ class DatabaseService {
       try {
         await db.execute(
             'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_ARCHIVED_AT TEXT');
+      } catch (_) {}
+    }
+    if (oldVersion < 18) {
+      // دعم ربط حتى 3 إخوة (بدل طالبين بس) — راجع specs/007-three-sibling-support.
+      // عمود جديد بدل الربط الثنائي القديم (sibling_id)، بيمثّل "مجموعة
+      // إخوة" مشتركة بين 2-3 طلاب (القيمة = أصغر id بينهم).
+      try {
+        await db.execute(
+            'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_SIBLING_GROUP_ID INTEGER');
+      } catch (_) {}
+      // تحويل تلقائي لأزواج الإخوة القديمة (sibling_id) لنفس الشكل
+      // الجديد — بلا أي تدخل يدوي من المدرس. نتجاهل بأمان أي رابط غير
+      // متبادل (بيانات غير متسقة نادرة) بدل ما نفشّل الـmigration كله.
+      try {
+        final rows = await db.query(TABLE_STUDENTS,
+            columns: [COL_STUDENT_ID, COL_STUDENT_SIBLING_ID],
+            where: '$COL_STUDENT_SIBLING_ID IS NOT NULL');
+        final handled = <int>{};
+        for (final row in rows) {
+          final id = row[COL_STUDENT_ID] as int;
+          final sibId = row[COL_STUDENT_SIBLING_ID] as int?;
+          if (sibId == null || handled.contains(id)) continue;
+          final sibRows = await db.query(TABLE_STUDENTS,
+              columns: [COL_STUDENT_ID, COL_STUDENT_SIBLING_ID],
+              where: '$COL_STUDENT_ID = ?', whereArgs: [sibId]);
+          if (sibRows.isEmpty) continue;
+          final sibOfSib = sibRows.first[COL_STUDENT_SIBLING_ID] as int?;
+          if (sibOfSib != id) continue; // رابط غير متبادل — تجاهل بأمان
+          final groupId = id < sibId ? id : sibId;
+          await db.update(TABLE_STUDENTS,
+              {COL_STUDENT_SIBLING_GROUP_ID: groupId},
+              where: '$COL_STUDENT_ID IN (?, ?)', whereArgs: [id, sibId]);
+          handled.addAll([id, sibId]);
+        }
       } catch (_) {}
     }
   }
@@ -796,24 +831,39 @@ class DatabaseService {
     return n;
   }
 
-  /// يربط طالبين كإخوة بتحديث الاثنين في عملية واحدة ذرية —
-  /// إما يتحدّثوا مع بعض أو ولا واحد، عشان ميحصلش ربط باتجاه واحد بس
-  /// لو فشل التحديث الثاني.
-  Future<void> linkSiblings(Student s1, Student s2) async {
+  /// يربط مجموعة طلاب (2 أو 3) كإخوة بإجمالي مشترك، بتحديث كل الأعضاء
+  /// في عملية واحدة ذرية — إما يتحدّثوا كلهم مع بعض أو ولا واحد. راجع
+  /// specs/007-three-sibling-support (بديل linkSiblings الثنائي القديم).
+  /// بيرفض (يرمي ArgumentError) لو العدد أقل من 2 أو أكتر من 3 (FR-007).
+  Future<void> linkSiblingGroup(List<Student> members) async {
+    if (members.length < 2 || members.length > 3) {
+      throw ArgumentError(
+          'عدد أعضاء مجموعة الإخوة لازم يكون 2 أو 3 (الحالي: ${members.length})');
+    }
     final db = await database;
-    final map1 = {...s1.toMap(), COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String()};
-    final map2 = {...s2.toMap(), COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String()};
+    final groupId =
+        members.map((s) => s.id!).reduce((a, b) => a < b ? a : b);
+    final now = DateTime.now().toIso8601String();
+    final maps = <Map<String, dynamic>>[];
     await db.transaction((txn) async {
-      await txn.update(TABLE_STUDENTS, map1,
-          where: '$COL_STUDENT_ID = ?', whereArgs: [s1.id]);
-      await txn.update(TABLE_STUDENTS, map2,
-          where: '$COL_STUDENT_ID = ?', whereArgs: [s2.id]);
+      for (final s in members) {
+        final map = {
+          ...s.toMap(),
+          COL_STUDENT_SIBLING_GROUP_ID: groupId,
+          COL_SYNC_UPDATED_AT: now,
+        };
+        maps.add(map);
+        await txn.update(TABLE_STUDENTS, map,
+            where: '$COL_STUDENT_ID = ?', whereArgs: [s.id]);
+      }
     });
     _notifyChanged();
     // كان الربط ده مش بيتبلّغ لمحرك المزامنة خالص — يفضل الإخوة مربوطين
     // على الجهاز ده بس ومش بيوصل للزميل.
-    await _queueSync(TABLE_STUDENTS, s1.id!, 'update', payload: map1);
-    await _queueSync(TABLE_STUDENTS, s2.id!, 'update', payload: map2);
+    for (var i = 0; i < members.length; i++) {
+      await _queueSync(TABLE_STUDENTS, members[i].id!, 'update',
+          payload: maps[i]);
+    }
   }
 
   Future<int> deleteStudent(int id) async {
@@ -874,26 +924,23 @@ class DatabaseService {
         where: '$COL_STUDENT_ID = ?',
         whereArgs: [studentId],
       );
-      if (student.siblingId != null) {
+      // فك ربط الطالب المؤرشف نفسه بس من مجموعة إخوته — لو كانت
+      // المجموعة 3 أعضاء، الاتنين الباقيين يفضلوا مرتبطين ببعض بنفس
+      // الإجمالي المشترك (القسمة هتحسب ديناميكيًا على العدد الجديد،
+      // راجع PricingHelper.monthlyDue). لو كانت زوج بس، الطالب التاني
+      // يفضل معاه سجل الإجمالي زي ما هو لحد ما المدرس يعدّله يدويًا
+      // (زي ما كان سلوك الربط الثنائي القديم بالظبط).
+      if (student.siblingGroupId != null || student.siblingId != null) {
         await txn.update(
           TABLE_STUDENTS,
           {
             COL_STUDENT_SIBLING_ID: null,
             COL_STUDENT_SIBLINGS_TOTAL: null,
+            COL_STUDENT_SIBLING_GROUP_ID: null,
             COL_SYNC_UPDATED_AT: now,
           },
           where: '$COL_STUDENT_ID = ?',
           whereArgs: [studentId],
-        );
-        await txn.update(
-          TABLE_STUDENTS,
-          {
-            COL_STUDENT_SIBLING_ID: null,
-            COL_STUDENT_SIBLINGS_TOTAL: null,
-            COL_SYNC_UPDATED_AT: now,
-          },
-          where: '$COL_STUDENT_ID = ?',
-          whereArgs: [student.siblingId],
         );
       }
     });
@@ -905,18 +952,9 @@ class DatabaseService {
       COL_STUDENT_ARCHIVED_AT: now,
       COL_STUDENT_SIBLING_ID: null,
       COL_STUDENT_SIBLINGS_TOTAL: null,
+      COL_STUDENT_SIBLING_GROUP_ID: null,
       COL_SYNC_UPDATED_AT: now,
     });
-    if (student.siblingId != null) {
-      final sibRows = await db.query(TABLE_STUDENTS,
-          where: '$COL_STUDENT_ID = ?', whereArgs: [student.siblingId], limit: 1);
-      if (sibRows.isNotEmpty) {
-        await _queueSync(TABLE_STUDENTS, student.siblingId!, 'update', payload: {
-          ...Student.fromMap(sibRows.first).toMap(),
-          COL_SYNC_UPDATED_AT: now,
-        });
-      }
-    }
   }
 
   /// استعادة طالب مؤرشف — يرجع نشط بسجله القديم كامل زي ما كان (عرض
@@ -947,6 +985,22 @@ class DatabaseService {
     final db = await database;
     final result = await db.query(TABLE_STUDENTS,
         where: '$COL_STUDENT_IS_ARCHIVED = 0');
+    return result.map((map) => Student.fromMap(map)).toList();
+  }
+
+  /// كل أعضاء مجموعة إخوة معيّنة (بحد أقصى 3) — راجع
+  /// specs/007-three-sibling-support. [excludeId] بيستثني طالب واحد
+  /// (بيُستخدم عادة لاستثناء الطالب الحالي نفسه وإرجاع "باقي الأعضاء" بس).
+  Future<List<Student>> getStudentsInSiblingGroup(int groupId,
+      {int? excludeId}) async {
+    final db = await database;
+    final where = excludeId != null
+        ? '$COL_STUDENT_SIBLING_GROUP_ID = ? AND $COL_STUDENT_ID != ?'
+        : '$COL_STUDENT_SIBLING_GROUP_ID = ?';
+    final whereArgs =
+        excludeId != null ? [groupId, excludeId] : [groupId];
+    final result =
+        await db.query(TABLE_STUDENTS, where: where, whereArgs: whereArgs);
     return result.map((map) => Student.fromMap(map)).toList();
   }
 

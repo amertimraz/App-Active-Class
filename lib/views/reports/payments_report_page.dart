@@ -138,7 +138,8 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
             student: s,
             group: groupById[s.groupId],
             month: month,
-            allAttendance: attendanceController.attendance);
+            allAttendance: attendanceController.attendance,
+            siblingGroupMembers: students);
         final paid = paidByStudent[s.id ?? -1] ?? 0.0;
         totalDueAll += due;
         totalPaidAll += paid;
@@ -247,7 +248,8 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                             student: s,
                             group: g,
                             month: month,
-                            allAttendance: attendanceController.attendance);
+                            allAttendance: attendanceController.attendance,
+                            siblingGroupMembers: students);
                         final paid = paidByStudent[s.id ?? -1] ?? 0.0;
                         groupDue += due;
                         groupPaid += paid;
@@ -259,7 +261,8 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                             student: s,
                             group: g,
                             month: month,
-                            allAttendance: attendanceController.attendance);
+                            allAttendance: attendanceController.attendance,
+                            siblingGroupMembers: students);
                         final paid = paidByStudent[s.id ?? -1] ?? 0.0;
                         return due > 0 && paid < due;
                       }).toList();
@@ -735,7 +738,10 @@ extension on _PaymentsReportPageState {
                     student: s,
                     group: g,
                     month: month,
-                    allAttendance: attendanceController.attendance);
+                    allAttendance: attendanceController.attendance,
+                    siblingGroupMembers: Get.isRegistered<StudentController>()
+                        ? Get.find<StudentController>().students
+                        : null);
                 final remaining =
                     (due - paid).clamp(0.0, double.infinity).toDouble();
                 return Container(

@@ -24,11 +24,26 @@ class PricingHelper {
         .length;
   }
 
+  /// عدد أعضاء مجموعة إخوة طالب معيّن (بحد أقصى 3) — لو الطالب مش
+  /// مربوط أصلاً بيرجع 1. راجع specs/007-three-sibling-support.
+  static int siblingGroupSize(Student student, List<Student> allStudents) {
+    if (student.siblingGroupId == null) return 1;
+    final count = allStudents
+        .where((s) => s.siblingGroupId == student.siblingGroupId)
+        .length;
+    return count >= 1 ? count : 1;
+  }
+
   static double monthlyDue({
     required Student student,
     required Group? group,
     required DateTime month,
     required List<Attendance> allAttendance,
+    // كل طلاب نفس مجموعة الإخوة (بما فيهم الطالب نفسه) — لازمة عشان
+    // نقسم الإجمالي المشترك على العدد الفعلي (2 أو 3) بدل /2.0 ثابتة.
+    // لو مش متبعتة (استدعاءات قديمة لسه ما اتحدّثتش)، بنفترض 2 توافقًا
+    // مع السلوك القديم.
+    List<Student>? siblingGroupMembers,
   }) {
     if (student.isFullyExempt) return 0;
 
@@ -37,12 +52,20 @@ class PricingHelper {
       final attended = sessionsAttended(
           student: student, month: month, allAttendance: allAttendance);
       base = student.price * attended;
+    } else if (student.siblingGroupId != null &&
+        student.siblingsTotal != null) {
+      // عرض الإخوة (2-3): المستحق الشهري الفعلي على كل طالب = الإجمالي
+      // المشترك (siblingsTotal) ÷ عدد الأعضاء الفعلي، مش سعره الفردي
+      // (student.price) — وإلا كان بيُحتسب عليه كل شهر سعر كامل رغم إن
+      // الدفعات الفعلية (عبر مسار الدفع بالـQR) بتسجَّل بنصيبه بس، فكانت
+      // المديونية بتتراكم بلا داعي حتى مع الدفع المنتظم بالخصم.
+      final count = siblingGroupMembers != null
+          ? siblingGroupSize(student, siblingGroupMembers)
+          : 2;
+      base = student.siblingsTotal! / count;
     } else if (student.siblingId != null && student.siblingsTotal != null) {
-      // عرض الإخوة: المستحق الشهري الفعلي على كل طالب هو نصه من
-      // الإجمالي المشترك (siblingsTotal)، مش سعره الفردي (student.price)
-      // — وإلا كان بيُحتسب عليه كل شهر سعر كامل رغم إن الدفعات الفعلية
-      // (عبر مسار الدفع بالـQR) بتسجَّل بنص السعر بس لكل واحد فيهم،
-      // فالمديونية كانت بتتراكم بلا داعي حتى مع الدفع المنتظم بالخصم.
+      // بيانات قديمة لسه ما اتحوّلتش لـsiblingGroupId (نادر جدًا بعد
+      // migration الإصدار 18 — لو حصل، نفترض زوج بس زي القديم).
       base = student.siblingsTotal! / 2.0;
     } else {
       base = student.price;
@@ -62,6 +85,7 @@ class PricingHelper {
     required Group? group,
     required List<Attendance> allAttendance,
     required List<Payment> payments,
+    List<Student>? siblingGroupMembers,
   }) {
     return accumulatedDebtThrough(
       student: student,
@@ -69,6 +93,7 @@ class PricingHelper {
       allAttendance: allAttendance,
       payments: payments,
       month: DateTime.now(),
+      siblingGroupMembers: siblingGroupMembers,
     );
   }
 
@@ -81,6 +106,7 @@ class PricingHelper {
     required List<Attendance> allAttendance,
     required List<Payment> payments,
     required DateTime month,
+    List<Student>? siblingGroupMembers,
   }) {
     return _remainingThrough(
       student: student,
@@ -88,6 +114,7 @@ class PricingHelper {
       allAttendance: allAttendance,
       payments: payments,
       lastMonth: DateTime(month.year, month.month, 1),
+      siblingGroupMembers: siblingGroupMembers,
     );
   }
 
@@ -99,6 +126,7 @@ class PricingHelper {
     required Group? group,
     required List<Attendance> allAttendance,
     required DateTime month,
+    List<Student>? siblingGroupMembers,
   }) {
     if (student.isFullyExempt) return 0;
     final start = student.attendanceStart ?? student.createdAt;
@@ -113,7 +141,8 @@ class PricingHelper {
           student: student,
           group: group,
           month: cursor,
-          allAttendance: allAttendance);
+          allAttendance: allAttendance,
+          siblingGroupMembers: siblingGroupMembers);
       cursor = DateTime(cursor.year, cursor.month + 1, 1);
     }
     return totalDue;
@@ -132,6 +161,7 @@ class PricingHelper {
     required List<Attendance> allAttendance,
     required List<Payment> payments,
     required int graceDays,
+    List<Student>? siblingGroupMembers,
   }) {
     final now = DateTime.now();
     final withinGrace = graceDays > 0 && now.day <= graceDays;
@@ -144,6 +174,7 @@ class PricingHelper {
           allAttendance: allAttendance,
           payments: payments,
           lastMonth: lastMonth,
+          siblingGroupMembers: siblingGroupMembers,
         ) >
         0;
   }
@@ -154,13 +185,15 @@ class PricingHelper {
     required List<Attendance> allAttendance,
     required List<Payment> payments,
     required DateTime lastMonth,
+    List<Student>? siblingGroupMembers,
   }) {
     if (student.isFullyExempt) return 0;
     final totalDue = totalDueThrough(
         student: student,
         group: group,
         allAttendance: allAttendance,
-        month: lastMonth);
+        month: lastMonth,
+        siblingGroupMembers: siblingGroupMembers);
     final totalPaid = payments.fold<double>(0, (s, p) => s + p.amount);
     final remaining = totalDue - totalPaid;
     return remaining > 0 ? remaining : 0;

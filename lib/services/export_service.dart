@@ -116,6 +116,7 @@ class ExportService {
             group: groupById[s.groupId],
             month: month,
             allAttendance: attendance,
+            siblingGroupMembers: students,
           );
           totalPaid += paidMap[s.id] ?? 0;
         }
@@ -463,6 +464,7 @@ class ExportService {
         group: group,
         month: month,
         allAttendance: attendance,
+        siblingGroupMembers: students,
       );
       final remaining = (due - paid).clamp(0.0, double.infinity);
       final isEven = i % 2 == 0;
@@ -741,7 +743,8 @@ class ExportService {
                   student: st,
                   group: g,
                   month: month,
-                  allAttendance: allAttendance));
+                  allAttendance: allAttendance,
+                  siblingGroupMembers: students));
       final paid = active.fold<double>(0, (s, st) => s + (paidMap[st.id] ?? 0));
       final sessions =
           gStudents.fold<int>(0, (s, st) => s + (presentMap[st.id] ?? 0));

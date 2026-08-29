@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 17;
+const int DATABASE_VERSION = 18;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -96,8 +96,9 @@ const String COL_STUDENT_CODE = 'code';
 const String COL_STUDENT_GROUP_ID = 'group_id';
 const String COL_STUDENT_PRICE = 'price';
 const String COL_STUDENT_QR_PATH = 'qr_path';
-const String COL_STUDENT_SIBLING_ID = 'sibling_id';
+const String COL_STUDENT_SIBLING_ID = 'sibling_id'; // قديم — راجع specs/007-three-sibling-support
 const String COL_STUDENT_SIBLINGS_TOTAL = 'siblings_total';
+const String COL_STUDENT_SIBLING_GROUP_ID = 'sibling_group_id';
 const String COL_STUDENT_CREATED_AT = 'created_at';
 const String COL_STUDENT_ATTENDANCE_START = 'attendance_start';
 const String COL_STUDENT_GUARDIAN_PHONE = 'guardian_phone';

@@ -144,7 +144,11 @@ class ReportController extends GetxController {
     // تُحسَب بعدد الحصص المحضورة فعليًا الشهر ده، مش بسعر الحصة الواحدة
     // كأنه القيمة الشهرية الكاملة.
     double dueFor(Student st, Group group) => PricingHelper.monthlyDue(
-        student: st, group: group, month: m, allAttendance: allAttendance);
+        student: st,
+        group: group,
+        month: m,
+        allAttendance: allAttendance,
+        siblingGroupMembers: allStudents);
 
     // "دافع بالكامل" لازم يعتمد على المديونية المتراكمة (كل الشهور لحد
     // الشهر ده مطروح منها كل المدفوعات، مش دفعات الشهر ده بس) — وإلا
@@ -152,7 +156,11 @@ class ReportController extends GetxController {
     // عليه شهر قديم لكن دفع الشهر ده هيتحسب "مسدد" غلط.
     bool isFullyPaid(Student st, Group group) {
       final totalDue = PricingHelper.totalDueThrough(
-          student: st, group: group, allAttendance: allAttendance, month: m);
+          student: st,
+          group: group,
+          allAttendance: allAttendance,
+          month: m,
+          siblingGroupMembers: allStudents);
       if (totalDue <= 0) return false;
       final remaining = PricingHelper.accumulatedDebtThrough(
         student: st,
@@ -160,6 +168,7 @@ class ReportController extends GetxController {
         allAttendance: allAttendance,
         payments: allPayments.where((p) => p.studentId == st.id).toList(),
         month: m,
+        siblingGroupMembers: allStudents,
       );
       return remaining <= 0;
     }
@@ -240,7 +249,11 @@ class ReportController extends GetxController {
     for (final s in _studentsActiveInMonth) {
       final group = groupById[s.groupId];
       final due = PricingHelper.totalDueThrough(
-          student: s, group: group, allAttendance: allAttendance, month: m);
+          student: s,
+          group: group,
+          allAttendance: allAttendance,
+          month: m,
+          siblingGroupMembers: allStudents);
       if (due <= 0) continue;
       final remaining = PricingHelper.accumulatedDebtThrough(
         student: s,
@@ -248,6 +261,7 @@ class ReportController extends GetxController {
         allAttendance: allAttendance,
         payments: paymentsByStudent[s.id] ?? const [],
         month: m,
+        siblingGroupMembers: allStudents,
       );
       if (remaining > 0) {
         final paid = due - remaining;

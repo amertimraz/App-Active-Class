@@ -64,6 +64,7 @@ List<Student> sortStudents({
           group: groupOf(s),
           allAttendance: allAttendance,
           payments: paymentsByStudent[s.id] ?? const [],
+        siblingGroupMembers: students,
         ),
     };
     list.sort((a, b) => (debtOf[a.id] ?? 0).compareTo(debtOf[b.id] ?? 0));

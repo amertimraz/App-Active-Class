@@ -128,6 +128,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
               group: group,
               month: month,
               allAttendance: attendanceController.attendance,
+              siblingGroupMembers: studentController.students,
             );
             final remaining =
                 (due - paid).clamp(0.0, double.infinity).toDouble();
@@ -673,6 +674,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                   group: group,
                   allAttendance: attendanceController.attendance,
                   payments: otherPayments,
+                  siblingGroupMembers: studentController.students,
                 );
                 if (amount > remaining + 0.01) {
                   final proceed = await showDialog<bool>(
@@ -756,6 +758,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
         allAttendance: attendanceController.attendance,
         payments:
             controller.payments.where((p) => p.studentId == student.id).toList(),
+        siblingGroupMembers: studentController.students,
       );
     }
 
@@ -771,6 +774,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
         group: group,
         month: month,
         allAttendance: attendanceController.attendance,
+        siblingGroupMembers: studentController.students,
       );
       final paidThisMonth = controller.payments
           .where((p) =>
@@ -1372,9 +1376,9 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
   /// (لو الشيت اتفتحت من صف "لم يدفع" لشهر معيّن)، عشان السقف يفضل
   /// صحيح حتى لو الطالب عليه أكتر من شهر.
   double? _remainingDebt() {
-    final student = Get.find<StudentController>()
-        .students
-        .firstWhereOrNull((s) => s.id == widget.studentId);
+    final allStudents = Get.find<StudentController>().students;
+    final student =
+        allStudents.firstWhereOrNull((s) => s.id == widget.studentId);
     if (student == null) return null;
     final group = Get.find<GroupController>()
         .groups
@@ -1386,6 +1390,7 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
       payments: widget.controller.payments
           .where((p) => p.studentId == widget.studentId)
           .toList(),
+      siblingGroupMembers: allStudents,
     );
   }
 

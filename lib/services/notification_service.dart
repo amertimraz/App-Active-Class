@@ -292,6 +292,7 @@ class NotificationService {
         allAttendance: allAttendance,
         payments: studentPayments,
         graceDays: graceDays,
+        siblingGroupMembers: students,
       );
       if (isOverdue) overdueCount++;
     }

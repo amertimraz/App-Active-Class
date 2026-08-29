@@ -91,7 +91,10 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   bool _codeIsManual = false;
   DateTime? _attendanceStart = DateTime.now();
   DateTime? _birthDate;
-  Student? _sibling;
+  // كل الطلاب الآخرين اللي هيتربطوا كإخوة مع الطالب الجديد ده (بحد
+  // أقصى عضوين إضافيين — يعني مجموعة كاملة حتى 3). راجع
+  // specs/007-three-sibling-support.
+  List<Student> _siblings = [];
   bool _loading = false;
   bool _loadingGroups = true;
 
@@ -194,9 +197,17 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   }
 
   Future<void> _pickSibling() async {
+    if (_siblings.length >= 2) {
+      _toast('الحد الأقصى لمجموعة الإخوة 3 أعضاء', isError: true);
+      return;
+    }
     final all = await DatabaseService().getAllStudents();
-    // معنيش نربط أخ/أخت مؤرشف بطالب جديد.
-    final list = all.where((s) => s.id != null && !s.isArchived).toList();
+    final pickedIds = _siblings.map((s) => s.id).toSet();
+    // معنيش نربط أخ/أخت مؤرشف بطالب جديد، ولا نعرض طالب متضاف بالفعل.
+    final list = all
+        .where((s) =>
+            s.id != null && !s.isArchived && !pickedIds.contains(s.id))
+        .toList();
     if (!mounted) return;
     await showDialog(
       context: context,
@@ -243,9 +254,9 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                                     ),
                                     title: Text(s.name),
                                     subtitle: Text('الكود: ${s.code}'),
-                                    onTap: () {
-                                      setState(() => _sibling = s);
+                                    onTap: () async {
                                       Navigator.of(ctx).pop();
+                                      await _addSiblingCandidate(s);
                                     },
                                   );
                                 },
@@ -261,6 +272,28 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                 ));
       },
     );
+  }
+
+  /// يضيف طالب مختار كعضو في مجموعة الإخوة الجديدة — لو الطالب المختار
+  /// عضو أصلاً في مجموعة إخوة موجودة، بنضيف باقي أعضاء مجموعته كمان
+  /// (عشان الربط الجديد ميكسرش رابطهم القديم)، مع فرض الحد الأقصى 3.
+  Future<void> _addSiblingCandidate(Student picked) async {
+    var toAdd = [picked];
+    if (picked.siblingGroupId != null) {
+      toAdd = await DatabaseService()
+          .getStudentsInSiblingGroup(picked.siblingGroupId!);
+    }
+    final existingIds = _siblings.map((s) => s.id).toSet();
+    final merged = [
+      ..._siblings,
+      ...toAdd.where((s) => !existingIds.contains(s.id)),
+    ];
+    if (merged.length > 2) {
+      _toast('الحد الأقصى لمجموعة الإخوة 3 أعضاء', isError: true);
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _siblings = merged);
   }
 
   void _toast(String msg, {bool isError = false}) {
@@ -296,10 +329,11 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
       return;
     }
 
-    final sibTotal =
-        _sibling != null ? double.tryParse(_sibTotalCtrl.text.trim()) : null;
-    if (_sibling != null && (sibTotal == null || sibTotal < 0)) {
-      _toast('أدخل إجمالي الأخوين', isError: true);
+    final sibTotal = _siblings.isNotEmpty
+        ? double.tryParse(_sibTotalCtrl.text.trim())
+        : null;
+    if (_siblings.isNotEmpty && (sibTotal == null || sibTotal < 0)) {
+      _toast('أدخل الإجمالي المشترك للإخوة', isError: true);
       return;
     }
 
@@ -326,7 +360,6 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
       attendanceStart: _attendanceStart,
       guardianPhone: phone.isEmpty ? null : phone,
       birthDate: _birthDate,
-      siblingId: _sibling?.id,
       siblingsTotal: sibTotal,
       exemptPercent: _isExempt ? _exemptPercent : 0,
       exemptReason: finalReason,
@@ -342,14 +375,14 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
       return;
     }
 
-    // ربط الأخ (تحديث ذري للاثنين مع بعض)
+    // ربط مجموعة الإخوة (تحديث ذري لكل الأعضاء مع بعض)
     final isExemptSaved = _isExempt;
-    if (_sibling != null && sibTotal != null) {
-      final s1 =
-          created.copyWith(siblingId: _sibling!.id, siblingsTotal: sibTotal);
-      final s2 =
-          _sibling!.copyWith(siblingId: created.id, siblingsTotal: sibTotal);
-      await widget.controller.linkSiblings(s1, s2);
+    if (_siblings.isNotEmpty && sibTotal != null) {
+      final members = [
+        created.copyWith(siblingsTotal: sibTotal),
+        for (final s in _siblings) s.copyWith(siblingsTotal: sibTotal),
+      ];
+      await widget.controller.linkSiblingGroup(members);
     }
 
     widget.onAdded?.call();
@@ -367,7 +400,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
     _sibTotalCtrl.clear();
     _exemptCustomCtrl.clear();
     _birthDate = null;
-    _sibling = null;
+    _siblings = [];
     _isExempt = false;
     _exemptPercent = 100;
     _exemptReasonPreset = null;
@@ -782,7 +815,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
 
                       const SizedBox(height: 16),
 
-                      // ── ربط أخ ───────────────────────────────────────────
+                      // ── ربط إخوة (حتى 3 أعضاء) ───────────────────────────
                       Container(
                         decoration: BoxDecoration(
                           color: isDark
@@ -806,48 +839,58 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                                   color: Colors.purple, size: 18),
                             ),
                             title: Text(
-                              _sibling == null
+                              _siblings.isEmpty
                                   ? 'ربط بطالب آخر (أخ / أخت)'
-                                  : 'الأخ: ${_sibling!.name}',
+                                  : 'الإخوة (${_siblings.length + 1}/3)',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: _sibling != null ? Colors.purple : null,
+                                color:
+                                    _siblings.isNotEmpty ? Colors.purple : null,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            subtitle: _sibling != null
-                                ? Text('الكود: ${_sibling!.code}',
-                                    style: const TextStyle(fontSize: 11))
-                                : const Text('خصم مشترك للأخوين',
-                                    style: TextStyle(fontSize: 11)),
-                            trailing: _sibling == null
-                                ? IconButton(
+                            subtitle: _siblings.isEmpty
+                                ? const Text('خصم مشترك حتى 3 إخوة',
+                                    style: TextStyle(fontSize: 11))
+                                : null,
+                            trailing: _siblings.length >= 2
+                                ? null
+                                : IconButton(
                                     onPressed: _pickSibling,
                                     icon: const Icon(
                                         Icons.add_circle_outline_rounded,
                                         color: Colors.purple),
-                                    tooltip: 'اختر الطالب الأخ',
-                                  )
-                                : IconButton(
-                                    onPressed: () => setState(() {
-                                      _sibling = null;
-                                      _sibTotalCtrl.clear();
-                                    }),
-                                    icon: const Icon(Icons.close_rounded,
-                                        color: Colors.red),
+                                    tooltip: 'أضف عضو',
                                   ),
                           ),
-                          if (_sibling != null) ...[
+                          if (_siblings.isNotEmpty) ...[
                             const Divider(height: 0, indent: 16, endIndent: 16),
+                            ..._siblings.map((s) => ListTile(
+                                  dense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16),
+                                  title: Text(s.name,
+                                      style: const TextStyle(fontSize: 13)),
+                                  subtitle: Text('الكود: ${s.code}',
+                                      style: const TextStyle(fontSize: 11)),
+                                  trailing: IconButton(
+                                    onPressed: () => setState(() =>
+                                        _siblings = _siblings
+                                            .where((x) => x.id != s.id)
+                                            .toList()),
+                                    icon: const Icon(Icons.close_rounded,
+                                        color: Colors.red, size: 18),
+                                  ),
+                                )),
                             Padding(
                               padding:
                                   const EdgeInsets.fromLTRB(16, 10, 16, 14),
                               child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    _Label('إجمالي الاشتراك للأخوين معاً'),
+                                    _Label('الإجمالي المشترك للإخوة'),
                                     const SizedBox(height: 6),
                                     CustomTextField(
                                       controller: _sibTotalCtrl,

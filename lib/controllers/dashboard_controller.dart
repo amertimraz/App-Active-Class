@@ -179,6 +179,7 @@ class DashboardController extends GetxController {
         group: group,
         month: monthStart,
         allAttendance: att.attendance,
+        siblingGroupMembers: students,
       );
       expected += due;
       final studentPayments = paymentsByStudent[s.id] ?? const [];
@@ -188,6 +189,7 @@ class DashboardController extends GetxController {
         allAttendance: att.attendance,
         payments: studentPayments,
         graceDays: graceDays,
+        siblingGroupMembers: students,
       );
       if (isOverdue) {
         // المديونية المتراكمة الفعلية (كل الشهور غير المدفوعة)، مش سعر
@@ -198,6 +200,7 @@ class DashboardController extends GetxController {
           group: group,
           allAttendance: att.attendance,
           payments: studentPayments,
+          siblingGroupMembers: students,
         );
         unpaidStudents
             .add(UnpaidStudentEntry(student: s, amountDue: accumulatedDebt));

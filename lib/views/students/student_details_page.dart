@@ -372,6 +372,9 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
           group: _group,
           allAttendance: studentAtts,
           payments: studentPays,
+          siblingGroupMembers: Get.isRegistered<StudentController>()
+              ? Get.find<StudentController>().students
+              : null,
         );
 
         return NestedScrollView(

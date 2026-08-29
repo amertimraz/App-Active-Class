@@ -243,12 +243,13 @@ class StudentController extends GetxController {
     if (archivedIdx != -1) archivedStudents[archivedIdx] = updated;
   }
 
-  /// يربط طالبين كإخوة بشكل ذري — تحديث محلي للاثنين فقط لو نجحت
-  /// عملية القاعدة كاملة (منع ربط باتجاه واحد لو فشل نص العملية).
-  Future<bool> linkSiblings(Student s1, Student s2) async {
+  /// يربط مجموعة طلاب (2 أو 3) كإخوة بشكل ذري — تحديث محلي لكل
+  /// الأعضاء فقط لو نجحت عملية القاعدة كاملة (منع ربط جزئي لو فشل نص
+  /// العملية). راجع specs/007-three-sibling-support.
+  Future<bool> linkSiblingGroup(List<Student> members) async {
     try {
-      await _dbService.linkSiblings(s1, s2);
-      for (final s in [s1, s2]) {
+      await _dbService.linkSiblingGroup(members);
+      for (final s in members) {
         final index = students.indexWhere((x) => x.id == s.id);
         if (index != -1) students[index] = s;
       }

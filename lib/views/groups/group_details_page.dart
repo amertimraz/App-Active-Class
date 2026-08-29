@@ -133,6 +133,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         allAttendance: attendanceController.attendance,
         payments: allPayments.where((p) => p.studentId == s.id).toList(),
         graceDays: graceDays,
+        siblingGroupMembers: studentController.students,
       );
       if (!overdue) fullyPaid.add(s.id!);
     }
@@ -359,7 +360,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                     student: s,
                     group: g,
                     month: DateTime(now.year, now.month),
-                    allAttendance: attendanceController.attendance));
+                    allAttendance: attendanceController.attendance,
+                    siblingGroupMembers: studentController.students));
 
         // الحصص المسجلة فعليًا للمجموعة دي — أي تاريخ (يوم كامل) فيه على
         // الأقل سجل حضور واحد لطالب من طلابها، بغض النظر هل اليوم ده
@@ -2477,46 +2479,28 @@ void _gdShowFeesBreakdownDialog(
         }
 
         // بيستخدم PricingHelper بدل s.price مباشرة عشان يراعي الإعفاء
-        // (جزئي أو كامل) ومجموعات "بالحصة" (بيتحسب فيها على عدد الحصص
-        // المحضورة الشهر ده، مش سعر الحصة الواحدة كأنه القيمة الكاملة).
-        // عرض الإخوة مالوش معنى لمجموعات بالحصة (كل حصة بسعرها المنفصل)
-        // فبيتطبّق بس على المجموعات الشهرية، زي نفس السياسة المتبعة في
-        // qr_controller.dart.
-        final Map<double, int> solo = {}, pairs = {};
+        // (جزئي أو كامل)، مجموعات "بالحصة" (بيتحسب فيها على عدد الحصص
+        // المحضورة الشهر ده، مش سعر الحصة الواحدة كأنه القيمة الكاملة)،
+        // وعرض الإخوة (2-3 — بيقسّم الإجمالي المشترك على عدد الأعضاء
+        // الفعلي تلقائيًا عبر siblingGroupMembers، راجع
+        // specs/007-three-sibling-support).
+        final Map<double, int> solo = {};
         final Map<int, double> dueById = {};
-        final Set<int> paired = {};
+        final allStudentsList = byId.values.toList();
         for (final id in allowed) {
           final s = byId[id]!;
           final due = PricingHelper.monthlyDue(
               student: s,
               group: group,
               month: monthStart,
-              allAttendance: attCtrl.attendance);
-          if (!group.isPerSession &&
-              s.siblingId != null &&
-              s.siblingsTotal != null &&
-              allowed.contains(s.siblingId!) &&
-              !paired.contains(id)) {
-            final sib = byId[s.siblingId!];
-            if (sib != null &&
-                sib.siblingId == id &&
-                sib.siblingsTotal == s.siblingsTotal &&
-                !s.isFullyExempt) {
-              paired
-                ..add(id)
-                ..add(sib.id!);
-              pairs[s.siblingsTotal!] = (pairs[s.siblingsTotal!] ?? 0) + 1;
-              dueById[id] = s.siblingsTotal! / 2.0;
-              continue;
-            }
-          }
+              allAttendance: attCtrl.attendance,
+              siblingGroupMembers: allStudentsList);
           if (due > 0) solo[due] = (solo[due] ?? 0) + 1;
           dueById[id] = due;
         }
 
         double expected = 0;
         solo.forEach((p, c) => expected += p * c);
-        pairs.forEach((t, c) => expected += t * c);
 
         int paidCount = 0;
         double paidAmount = 0; // كاش محصّل فعليًا مؤرَّخ في نطاق الشهر ده (تدفق نقدي)
@@ -2548,6 +2532,7 @@ void _gdShowFeesBreakdownDialog(
             allAttendance: attCtrl.attendance,
             payments: list,
             month: monthStart,
+            siblingGroupMembers: allStudentsList,
           );
           if (remaining <= 0) {
             paidCount++;
@@ -2558,7 +2543,12 @@ void _gdShowFeesBreakdownDialog(
 
         return {
           'solo': solo,
-          'pairs': pairs,
+          // "pairs" (عروض إخوة ثنائية) اتشالت — كل طالب (شامل أعضاء
+          // مجموعات الإخوة) بقى بيظهر بنصيبه الفعلي تحت "أسعار فردية"
+          // مباشرة (PricingHelper.monthlyDue بيحسب النصيب صح لأي عدد
+          // أعضاء 2 أو 3، راجع specs/007-three-sibling-support)، فمفيش
+          // داعي لتصنيف منفصل ممكن يبوّظ مع مجموعات الـ3.
+          'pairs': const <double, int>{},
           'expected': expected,
           'paidCount': paidCount,
           'unpaidCount': applicableCount - paidCount,
