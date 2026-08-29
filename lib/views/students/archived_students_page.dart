@@ -10,14 +10,18 @@ import 'package:intl/intl.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
+import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/student_sort_helper.dart';
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/app_toast.dart';
+import 'package:active_class/widgets/student_sort_bar.dart';
 
 class ArchivedStudentsPage extends StatefulWidget {
   const ArchivedStudentsPage({super.key});
@@ -32,13 +36,37 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
   final StudentController controller = Get.isRegistered<StudentController>()
       ? Get.find<StudentController>()
       : Get.put(StudentController());
+  final AttendanceController _attCtrl = Get.isRegistered<AttendanceController>()
+      ? Get.find<AttendanceController>()
+      : Get.put(AttendanceController());
+  final PaymentController _payCtrl = Get.isRegistered<PaymentController>()
+      ? Get.find<PaymentController>()
+      : Get.put(PaymentController());
   List<Group> _groups = [];
+
+  // ترتيب — نفس أيقونات StudentSortBar المستخدمة في شاشة الطلاب/تفاصيل
+  // المجموعة، عشان تبقى موجودة في أي قايمة فيها طلاب.
+  StudentSort _sortBy = StudentSort.name;
+  bool _sortAscending = true;
+
+  void _onSortTap(StudentSort sort) {
+    setState(() {
+      if (_sortBy == sort) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortBy = sort;
+        _sortAscending = true;
+      }
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     controller.loadArchivedStudents();
     _loadGroups();
+    if (_attCtrl.attendance.isEmpty) _attCtrl.loadAttendance();
+    if (_payCtrl.payments.isEmpty) _payCtrl.loadPayments();
   }
 
   Future<void> _loadGroups() async {
@@ -63,7 +91,14 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
         child: RefreshIndicator(
           onRefresh: controller.loadArchivedStudents,
           child: Obx(() {
-            final students = controller.archivedStudents;
+            final students = sortStudents(
+              students: controller.archivedStudents,
+              sortBy: _sortBy,
+              ascending: _sortAscending,
+              groupOf: _groupOf,
+              allAttendance: _attCtrl.attendance,
+              allPayments: _payCtrl.payments,
+            );
             if (students.isEmpty) {
               return ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -87,13 +122,20 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
                       Icon(Icons.info_outline_rounded,
                           size: 16, color: Colors.grey.shade600),
                       const SizedBox(width: 6),
-                      Text(
-                        '${students.length} طالب مؤرشف',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                      Expanded(
+                        child: Text(
+                          '${students.length} طالب مؤرشف',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
+                      ),
+                      StudentSortBar(
+                        sortBy: _sortBy,
+                        ascending: _sortAscending,
+                        onChanged: _onSortTap,
                       ),
                     ],
                   ),

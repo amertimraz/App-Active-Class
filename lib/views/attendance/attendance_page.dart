@@ -11,6 +11,9 @@ import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/qr_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
+import 'package:active_class/controllers/payment_controller.dart';
+import 'package:active_class/utils/student_sort_helper.dart';
+import 'package:active_class/widgets/student_sort_bar.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/export_service.dart';
@@ -683,6 +686,27 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // ترتيب قائمة الطلاب داخل الموديل — نفس معيار الترتيب المستخدم في
+  // شاشة الطلاب/تفاصيل المجموعة (StudentSortBar)، عشان المدرس يقدر
+  // يرتّب حسب حالة الدفع/نسبة الحضور وهو بيسجّل الحضور مباشرة بدل ما
+  // يضطر يفتح شاشة تانية.
+  StudentSort _sortBy = StudentSort.name;
+  bool _sortAscending = true;
+  final PaymentController _payCtrl = Get.isRegistered<PaymentController>()
+      ? Get.find<PaymentController>()
+      : Get.put(PaymentController());
+
+  void _onSortTap(StudentSort sort) {
+    setState(() {
+      if (_sortBy == sort) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortBy = sort;
+        _sortAscending = true;
+      }
+    });
+  }
+
   // حالة محلية عشان زر إرسال التقرير يتغيّر شكله فورًا جوه الموديل، من غير
   // ما يستني إعادة بناء الأب (اللي هيحصل برضه عبر onReportSent).
   late bool _reportSent;
@@ -691,6 +715,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
   void initState() {
     super.initState();
     _reportSent = widget.alreadySentReport;
+    if (_payCtrl.payments.isEmpty) _payCtrl.loadPayments();
   }
 
   @override
@@ -738,9 +763,17 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                   : const Color(0xFFEF4444);
 
       final q = _searchQuery.trim().toLowerCase();
-      final visibleStudents = q.isEmpty
+      final filteredStudents = q.isEmpty
           ? groupStudents
           : groupStudents.where((s) => s.name.toLowerCase().contains(q)).toList();
+      final visibleStudents = sortStudents(
+        students: filteredStudents,
+        sortBy: _sortBy,
+        ascending: _sortAscending,
+        groupOf: (_) => group,
+        allAttendance: controller.attendance,
+        allPayments: _payCtrl.payments,
+      );
 
       final sessionTime = controller.sessionTimeForGroupOnDay(group, selectedDay);
 
@@ -923,18 +956,30 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
               ),
             ),
             const SizedBox(height: 10),
-            // بحث سريع عن طالب داخل هذه المجموعة (منقول من التكرار الأول)
+            // بحث سريع عن طالب داخل هذه المجموعة + ترتيب (منقول من التكرار
+            // الأول، وبنفس أيقونات الترتيب المستخدمة في شاشة الطلاب/تفاصيل
+            // المجموعة).
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: CustomSearchBar(
-                controller: _searchController,
-                hintText: 'ابحث عن طالب بالاسم...',
-                onChanged: (v) => setState(() => _searchQuery = v),
-                onClear: () => setState(() {
-                  _searchController.clear();
-                  _searchQuery = '';
-                }),
-              ),
+              child: Row(children: [
+                Expanded(
+                  child: CustomSearchBar(
+                    controller: _searchController,
+                    hintText: 'ابحث...',
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                    onClear: () => setState(() {
+                      _searchController.clear();
+                      _searchQuery = '';
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                StudentSortBar(
+                  sortBy: _sortBy,
+                  ascending: _sortAscending,
+                  onChanged: _onSortTap,
+                ),
+              ]),
             ),
             const Divider(height: 1, indent: 16, endIndent: 16),
             // قائمة الطلاب القابلة للتمرير + زر إرسال التقرير في آخرها
