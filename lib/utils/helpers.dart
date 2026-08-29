@@ -136,6 +136,15 @@ class FormatHelper {
     }
   }
 
+  /// نفس [formatCurrency] لكن بدون اسم العملة — للمساحات الضيقة جدًا (زي
+  /// خانات إحصائيات مختصرة) حيث أيقونة/تسمية الحقل نفسها بتوضّح إنه مبلغ
+  /// مالي أصلاً، فمش محتاجين نكرّر اسم العملة الكامل جنب الرقم.
+  static String formatCurrencyCompact(double? amount) {
+    final value = (amount ?? 0).toDouble();
+    final formatter = NumberFormat.currency(locale: 'ar', symbol: '', decimalDigits: 2);
+    return formatter.format(value).trim();
+  }
+
   /// تنسيق النسبة المئوية
   static String formatPercentage(double? percentage) {
     final value = (percentage ?? 0).toDouble();

@@ -601,55 +601,49 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
 
             const SizedBox(height: 16),
 
-            // إحصائيات — شبكة 2×2 بدل صف واحد بـ4 خانات: خانة واحدة كانت
-            // بتضيق جدًا لدرجة إن كلمة زي "جنيه" أو "إجمالي الرسوم" كانت
-            // بتتقطّع نصفها بالنص (مش حتى "..." — تقطيع حرفي وسط الكلمة).
-            // مساحة كل خانة دلوقتي أكبر بالضعف تقريبًا.
-            Column(
+            // إحصائيات — رجعنا لصف واحد بـ4 خانات (بدل شبكة 2×2) بخط أصغر
+            // للقيمة تحديدًا، عشان الكارت ميكبرش طولاً. راجع _HeaderStat
+            // لتفاصيل حجم الخط الجديد.
+            Row(
               children: [
-                Row(
-                  children: [
-                    _HeaderStat(
-                        label: 'الطلاب',
-                        value: '${students.length}',
-                        icon: Icons.people_rounded),
-                    const SizedBox(width: 12),
-                    _HeaderStat(
-                        label: 'إجمالي الرسوم',
-                        value: _canSeeFinancials
-                            ? FormatHelper.formatCurrency(totalFees)
-                            : '🔒',
-                        icon: Icons.payments_rounded,
-                        locked: !_canSeeFinancials,
-                        onTap: students.isEmpty
-                            ? null
-                            : () => _gdShowFeesBreakdownDialog(
-                                context, students, g)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _HeaderStat(
-                        label: 'اشتراك',
-                        value: !_canSeeFinancials
-                            ? '🔒'
-                            : (g.price != null
-                                ? FormatHelper.formatCurrency(g.price!)
-                                : '-'),
-                        icon: Icons.monetization_on_rounded,
-                        locked: !_canSeeFinancials),
-                    const SizedBox(width: 12),
-                    _HeaderStat(
-                        label: 'حصص مسجلة',
-                        value: '${sessionDays.length}',
-                        icon: Icons.event_available_rounded,
-                        onTap: sessionDays.isEmpty
-                            ? null
-                            : () => _gdShowSessionsDialog(
-                                context, g.name, sessionDays)),
-                  ],
-                ),
+                _HeaderStat(
+                    label: 'الطلاب',
+                    value: '${students.length}',
+                    icon: Icons.people_rounded),
+                const SizedBox(width: 10),
+                _HeaderStat(
+                    // بدون اسم العملة هنا — الأيقونة والتسمية تحت الرقم
+                    // ("إجمالي الرسوم") بتوضّح إنه مبلغ مالي أصلاً، فمفيش
+                    // داعي نكرر "جنيه"/"ريال"/... جنب كل رقم في مساحة ضيقة.
+                    label: 'إجمالي الرسوم',
+                    value: _canSeeFinancials
+                        ? FormatHelper.formatCurrencyCompact(totalFees)
+                        : '🔒',
+                    icon: Icons.payments_rounded,
+                    locked: !_canSeeFinancials,
+                    onTap: students.isEmpty
+                        ? null
+                        : () =>
+                            _gdShowFeesBreakdownDialog(context, students, g)),
+                const SizedBox(width: 10),
+                _HeaderStat(
+                    label: 'اشتراك',
+                    value: !_canSeeFinancials
+                        ? '🔒'
+                        : (g.price != null
+                            ? FormatHelper.formatCurrencyCompact(g.price!)
+                            : '-'),
+                    icon: Icons.monetization_on_rounded,
+                    locked: !_canSeeFinancials),
+                const SizedBox(width: 10),
+                _HeaderStat(
+                    label: 'حصص مسجلة',
+                    value: '${sessionDays.length}',
+                    icon: Icons.event_available_rounded,
+                    onTap: sessionDays.isEmpty
+                        ? null
+                        : () => _gdShowSessionsDialog(
+                            context, g.name, sessionDays)),
               ],
             ),
           ],
@@ -917,24 +911,25 @@ class _HeaderStat extends StatelessWidget {
         child: GestureDetector(
         onTap: locked ? showLockedPermissionHint : onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
             children: [
-              Icon(icon, color: Colors.white, size: 18),
+              Icon(icon, color: Colors.white, size: 17),
               const SizedBox(height: 4),
-              // maxLines:3 (قيم زي "2,340.00 جنيه" لسه ممكن تحتاج 3 أسطر
-              // في المساحة الضيقة دي) — عشان تظهر كاملة بدل ما تتقص بـ"...".
+              // القيم بقت من غير اسم العملة (راجع formatCurrencyCompact)
+              // فبقت قصيرة كفاية تفضل في صف واحد بخط مقروء عادي —
+              // maxLines:2 يبقى شبكة أمان بس لأرقام كبيرة جدًا مستقبلاً.
               Text(value,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w900,
-                      fontSize: 13),
-                  maxLines: 3,
+                      fontSize: 12),
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis),
               Text(label,
                   textAlign: TextAlign.center,
