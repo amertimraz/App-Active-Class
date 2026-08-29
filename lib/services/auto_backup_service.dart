@@ -71,6 +71,12 @@ class AutoBackupService {
     try {
       final result = await BackupService().createBackup();
       if (result.success) {
+        // نظّف النسخ الداخلية الزائدة عن سقف الاحتفاظ الافتراضي (5) —
+        // بدون ده النسخ الداخلية (Documents/backups) كانت بتتراكم من
+        // غير حد أقصى، لأن cleanOldBackups() قبل كده مكنتش بتتنادى
+        // إلا يدويًا من زرار في شاشة الإعدادات.
+        await BackupService().cleanOldBackups();
+
         // احفظ نسخة كمان في Downloads (تخزين خارجي) عشان تفضل موجودة
         // حتى لو التطبيق اتلغى تثبيته — النسخة الداخلية في Documents
         // بتتمسح مع التطبيق، الخارجية لأ.
@@ -98,6 +104,10 @@ class AutoBackupService {
   // الأقدم لما العدد يتعدى [_keepExternalCount]. النسخ اليدوي (زرار
   // "حفظ في Downloads" في الإعدادات) مش داخل في العد ده — بيتمسح إحنا
   // بس اللي بنحفظه تلقائيًا.
+  // (النسخ الداخلية في Documents/backups بتتنظف بنفس المنطق، بس عبر
+  // BackupService().cleanOldBackups() المستدعاة فوق في _runBackup —
+  // مفيش داعي لآلية تتبّع منفصلة زي دي لأن getLocalBackups() بيسرد
+  // الملفات مباشرة من نظام الملفات المحلي.)
   Future<void> _cleanOldExternalBackups(String newFileName) async {
     try {
       final prefs = await SharedPreferences.getInstance();
