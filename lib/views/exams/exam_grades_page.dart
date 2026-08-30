@@ -9,10 +9,14 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/exam_controller.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
+import 'package:active_class/models/student_model.dart';
+import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/helpers.dart';
 
 class ExamGradesPage extends StatefulWidget {
@@ -41,6 +45,10 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
   final Map<int, TextEditingController> _notes = {};
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  // خريطة طلاب المجموعة (بما فيهم رقم ولي الأمر) — تُحمَّل مرة واحدة عشان
+  // زر إرسال واتساب (فردي/جماعي) يقدر يجيب الرقم من غير استعلام DB لكل
+  // صف. راجع specs/008-exam-whatsapp-results.
+  Map<int, Student> _studentsById = {};
   // طابور بدل قفل: لو فيه حفظ شغال لنفس الطالب، الطلب الجديد بينتظره
   // يخلص الأول بدل ما يتجاهَل (منع فقدان تعديلات لو المستخدم كان سريع).
   final Map<int, Future<void>> _pending = {};
@@ -152,6 +160,8 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
     setState(() => _loading = true);
     final grades =
         await _ec.getGradesForExamGroup(widget.exam.id!, widget.groupId);
+    final students = await DatabaseService().getStudentsByGroup(widget.groupId);
+    _studentsById = {for (final s in students) if (s.id != null) s.id!: s};
 
     for (final g in grades) {
       if (!_ctrls.containsKey(g.studentId)) {
@@ -241,6 +251,116 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
     } catch (e) {
       if (mounted) ToastHelper.error('فشل حفظ الدرجة — حاول تاني');
       rethrow; // يوصل الخطأ للـ _GradeRowState._runSave عشان يقفل الـ spinner
+    }
+  }
+
+  // ── إرسال نتيجة الامتحان لولي الأمر عبر واتساب ─────────────────────────────
+  // راجع specs/008-exam-whatsapp-results — نفس نمط إرسال تقرير الحضور في
+  // attendance_page.dart (رابط wa.me + انتظار رجوع التطبيق من الخلفية).
+
+  Future<void> _sendResultToGuardian(ExamGrade grade) async {
+    if (!grade.isEntered) return; // احتياطي: مفروض الزر مش ظاهر أصلاً
+    final student = _studentsById[grade.studentId];
+    final rawPhone = student?.guardianPhone?.trim() ?? '';
+    if (rawPhone.isEmpty) {
+      ToastHelper.error(
+          'لا يوجد رقم ولي أمر مسجّل لـ ${grade.studentName ?? "هذا الطالب"}');
+      return;
+    }
+    final settings = Get.find<SettingsController>();
+    final phone = _normalizePhone(rawPhone, settings.countryDial.value);
+    if (phone.isEmpty) {
+      ToastHelper.error(
+          'رقم ولي أمر ${grade.studentName ?? "الطالب"} غير صالح');
+      return;
+    }
+    final message = _ec.buildGuardianExamResultMessage(
+      grade: grade,
+      exam: widget.exam,
+      teacherName: settings.teacherFullName.value.trim(),
+      teacherSpecialization: settings.teacherSpecialization.value.trim(),
+    );
+    final uri =
+        Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _confirmSendAllResults() async {
+    final entered = _grades.where((g) => g.isEntered).toList();
+    final withPhone = <ExamGrade>[];
+    final skipped = <ExamGrade>[];
+    final settings = Get.find<SettingsController>();
+    for (final g in entered) {
+      final rawPhone = _studentsById[g.studentId]?.guardianPhone?.trim() ?? '';
+      final normalized = rawPhone.isEmpty
+          ? ''
+          : _normalizePhone(rawPhone, settings.countryDial.value);
+      if (normalized.isEmpty) {
+        skipped.add(g);
+      } else {
+        withPhone.add(g);
+      }
+    }
+
+    if (withPhone.isEmpty) {
+      ToastHelper.error('مفيش أي طالب مستوفٍ حاليًا (درجة/غياب مسجّل + رقم ولي أمر)');
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('إرسال نتائج الامتحان؟'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('هيتبعت نتيجة امتحان "${widget.exam.name}" لـ '
+                  '${withPhone.length} ولي أمر في مجموعة "${widget.groupName}".'),
+              if (skipped.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                    '${skipped.length} طالب هيتم تخطّيهم (مفيش رقم ولي أمر): '
+                    '${skipped.map((g) => g.studentName ?? "؟").join("، ")}',
+                    style: TextStyle(fontSize: 12, color: Colors.orange.shade800)),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('إرسال')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    for (final g in withPhone) {
+      final rawPhone = _studentsById[g.studentId]!.guardianPhone!.trim();
+      final phone = _normalizePhone(rawPhone, settings.countryDial.value);
+      final message = _ec.buildGuardianExamResultMessage(
+        grade: g,
+        exam: widget.exam,
+        teacherName: settings.teacherFullName.value.trim(),
+        teacherSpecialization: settings.teacherSpecialization.value.trim(),
+      );
+      final uri = Uri.parse(
+          'https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      await _examWaitForResume();
+    }
+    if (mounted) {
+      ToastHelper.success(
+          'تم إرسال ${withPhone.length} رسالة'
+          '${skipped.isNotEmpty ? " (تم تخطّي ${skipped.length})" : ""}');
     }
   }
 
@@ -469,6 +589,11 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.chat_rounded, color: Color(0xFF25D366)),
+            tooltip: 'إرسال نتائج للكل عبر واتساب',
+            onPressed: _confirmSendAllResults,
+          ),
+          IconButton(
             icon: const Icon(Icons.share_rounded),
             tooltip: 'مشاركة النص',
             onPressed: _shareText,
@@ -546,6 +671,7 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
                               onNotesSaved: () => _saveGrade(
                                   g.studentId, _ctrls[g.studentId]?.text ?? '',
                                   absent: g.isAbsent),
+                              onSendWhatsapp: () => _sendResultToGuardian(g),
                             );
                           },
                         ),
@@ -758,6 +884,39 @@ class _ArabicDigitsInputFormatter extends TextInputFormatter {
   }
 }
 
+// ── مساعدات إرسال واتساب (نفس منطق attendance_page.dart._showSendReportConfirm) ──
+
+String _normalizePhone(String input, String defaultDial) {
+  var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
+  if (p.startsWith('+')) p = p.substring(1);
+  if (p.startsWith('00')) p = p.substring(2);
+  if (p.startsWith(defaultDial)) return p;
+  if (RegExp(r'^[1-9][0-9]{6,}$').hasMatch(p)) return p;
+  return defaultDial + p.replaceFirst(RegExp(r'^0+'), '');
+}
+
+// بيستنى رجوع التطبيق من الخلفية (المستخدم يرجع من واتساب) قبل ما يفتح
+// رسالة تانية في حلقة الإرسال الجماعي — نفس آلية attendance_page.dart.
+class _ExamResumeObserver extends WidgetsBindingObserver {
+  final void Function() onResume;
+  _ExamResumeObserver(this.onResume);
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) onResume();
+  }
+}
+
+Future<void> _examWaitForResume() {
+  final c = Completer<void>();
+  late _ExamResumeObserver obs;
+  obs = _ExamResumeObserver(() {
+    WidgetsBinding.instance.removeObserver(obs);
+    if (!c.isCompleted) c.complete();
+  });
+  WidgetsBinding.instance.addObserver(obs);
+  return c.future;
+}
+
 // ─── صف درجة طالب ─────────────────────────────────────────────────────────────
 class _GradeRow extends StatefulWidget {
   final ExamGrade grade;
@@ -768,6 +927,7 @@ class _GradeRow extends StatefulWidget {
   final Future<void> Function(String) onSaved;
   final Future<void> Function(bool) onAbsent;
   final Future<void> Function() onNotesSaved;
+  final Future<void> Function() onSendWhatsapp;
 
   const _GradeRow({
     super.key,
@@ -779,6 +939,7 @@ class _GradeRow extends StatefulWidget {
     required this.onSaved,
     required this.onAbsent,
     required this.onNotesSaved,
+    required this.onSendWhatsapp,
   });
 
   @override
@@ -1101,6 +1262,19 @@ class _GradeRowState extends State<_GradeRow> {
                   ),
                 ),
               ),
+
+              // زر إرسال نتيجة الامتحان لولي الأمر عبر واتساب — يظهر بس لو
+              // النتيجة اتسجّلت فعليًا (درجة أو غياب). راجع
+              // specs/008-exam-whatsapp-results.
+              if (widget.grade.isEntered)
+                GestureDetector(
+                  onTap: widget.onSendWhatsapp,
+                  child: const Padding(
+                    padding: EdgeInsets.only(right: 4),
+                    child: Icon(Icons.chat_rounded,
+                        size: 18, color: Color(0xFF25D366)),
+                  ),
+                ),
 
               if (_saving)
                 const Padding(

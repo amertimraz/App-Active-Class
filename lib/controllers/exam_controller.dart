@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/utils/helpers.dart';
 
 class ExamController extends GetxController {
   static ExamController get to => Get.find();
@@ -124,4 +125,45 @@ class ExamController extends GetxController {
     int? groupId,
   }) =>
       _db.getLeaderboard(examId: examId, groupId: groupId);
+
+  // ── رسالة نتيجة الامتحان لولي الأمر (واتساب) ───────────────────────────────
+  // راجع specs/008-exam-whatsapp-results. بتتولّد وقت الإرسال بس — مفيش
+  // تخزين لها. لو الطالب غايب عن الامتحان بترجع رسالة غياب مستقلة، غير
+  // كده رسالة نتيجة (الدرجة + ناجح/راسب حسب درجة نجاح هذا الامتحان
+  // بالتحديد، مش نسبة ثابتة).
+  String buildGuardianExamResultMessage({
+    required ExamGrade grade,
+    required Exam exam,
+    String teacherName = '',
+    String teacherSpecialization = '',
+  }) {
+    final name = grade.studentName ?? 'الطالب';
+    final buffer = StringBuffer();
+    if (grade.isAbsent) {
+      buffer
+        ..writeln('⚠️ *تنبيه غياب عن امتحان*')
+        ..writeln('👤 $name')
+        ..writeln('📝 لم يحضر امتحان "${exam.name}"');
+    } else {
+      final g = grade.grade ?? 0;
+      final passed = g >= exam.passingGrade;
+      buffer
+        ..writeln(passed ? '✅ *نتيجة امتحان*' : '⚠️ *نتيجة امتحان*')
+        ..writeln('👤 $name')
+        ..writeln('📝 امتحان "${exam.name}"')
+        ..writeln('📊 الدرجة: ${FormatHelper.formatGrade(g)} من '
+            '${FormatHelper.formatGrade(exam.maxGrade)}')
+        ..writeln(passed ? '🟢 الحالة: ناجح' : '🔴 الحالة: راسب');
+      if ((grade.notes ?? '').trim().isNotEmpty) {
+        buffer.writeln('📌 ملاحظات: ${grade.notes!.trim()}');
+      }
+    }
+    if (teacherName.trim().isNotEmpty) {
+      buffer.writeln('👨‍🏫 ${teacherName.trim()}');
+    }
+    if (teacherSpecialization.trim().isNotEmpty) {
+      buffer.writeln('📘 ${teacherSpecialization.trim()}');
+    }
+    return buffer.toString().trimRight();
+  }
 }
