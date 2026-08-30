@@ -12,6 +12,7 @@
 // بس لازم تعرف الـ ID الصح الأول عشان توصله.
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
@@ -93,7 +94,9 @@ class ParentPortalService {
     if (_auth.currentUser == null) {
       try {
         await _auth.signInAnonymously();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('ParentPortalService: signInAnonymously failed — $e');
+      }
     }
   }
 
@@ -135,7 +138,13 @@ class ParentPortalService {
       await _ensureAuth();
       final slug = await ensureSlug();
       await _publishProfile(slug);
-    } catch (_) {}
+    } catch (e) {
+      // best-effort — بنسجّل بس عشان فشل صامت زي ده (mismatch في هوية
+      // الجهاز/الحساب بعد إعادة تثبيت أو مسح بيانات، مثلاً) يبقى قابل
+      // للتشخيص من لوج الجهاز بدل ما يفضل مخفي تمامًا (راجع
+      // specs/003-parent-portal-expiry — الحادثة اللي اكتشفناها فيها).
+      debugPrint('ParentPortalService: publishProfile failed — $e');
+    }
   }
 
   Future<void> _publishProfile(String slug) async {
@@ -261,7 +270,8 @@ class ParentPortalService {
           .collection('students')
           .doc(docId)
           .set(data);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('ParentPortalService: pushStudentSummary($studentId) failed — $e');
       // best-effort — مش هنعطّل أي حاجة في التطبيق بسبب فشل نشر خلفي
     }
   }

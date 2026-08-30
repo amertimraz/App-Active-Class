@@ -2404,6 +2404,7 @@ class _ParentPortalTileState extends State<_ParentPortalTile> {
       // Firestore بترجع الـ batch كله بالفشل من غير ما تنفّذ ولا صف —
       // من غير catch هنا، الزرار كان بيفضل "بينشر..." للأبد من غير أي
       // رسالة، وده اللي كان بيبان وكأن التطبيق "علّق".
+      debugPrint('SettingsPage: publishAllStudents failed — $e');
       if (!mounted) return;
       ToastHelper.error('فشل النشر — تأكد من الاتصال بالإنترنت وحاول تاني');
     } finally {

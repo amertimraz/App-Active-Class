@@ -8,6 +8,7 @@ import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
+import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
@@ -100,7 +101,14 @@ class QRController extends GetxController {
       final att = Get.find<AttendanceController>();
       await att.addAttendance(attendance);
     } catch (_) {
+      // AttendanceController مش مسجّل حاليًا (نادر — يحصل لو المدرّس
+      // مسح QR للحضور من غير ما يفتح شاشة الحضور قبل كده في نفس
+      // الجلسة). addAttendance بتاعتها هي اللي بتنشر لبوابة أولياء
+      // الأمور عادةً، فالمسار البديل ده لازم يعمل نفس الحاجة يدويًا —
+      // من غيره الحضور بيتسجّل صح في قاعدة البيانات بس مايوصلش خالص
+      // لصفحة المتابعة العامة.
       await _dbService.insertAttendance(attendance);
+      unawaited(ParentPortalService().pushStudentSummary(student.id!));
     }
   }
 
@@ -330,6 +338,7 @@ class QRController extends GetxController {
                 amount: each,
                 note: note,
                 createdAt: now));
+            unawaited(ParentPortalService().pushStudentSummary(m.id!));
           }
           _refreshDashboard();
           // مسار الدفع عن طريق QR ده بيتم من غير المرور بـ
@@ -363,6 +372,7 @@ class QRController extends GetxController {
         createdAt: now,
       );
       await _dbService.insertPayment(payment);
+      unawaited(ParentPortalService().pushStudentSummary(student.id!));
       _refreshDashboard();
       unawaited(NotificationService().scheduleLatePaymentReminder());
       ToastHelper.success('تم دفع $paymentLabel ✅', title: 'تم الدفع');
