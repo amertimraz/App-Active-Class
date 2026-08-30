@@ -134,8 +134,19 @@ class QRController extends GetxController {
       _scannedPayments = payments;
       final latest = payments.isNotEmpty ? payments.first : null;
       lastPayment.value = latest;
-      final lastMonth = _extractLastPaidMonth(latest);
-      final start = _determineStartMonth(lastMonth);
+      // لمجموعات "بالحصة": الشهر المعروض افتراضيًا لازم يفضل الشهر
+      // الحالي دايمًا، مهما كان آخر دفعة — عكس المجموعات الشهرية، حصة
+      // جديدة ممكن تتحضّر وتفضل مستحقة في **نفس** الشهر اللي اتسجّلت
+      // فيه دفعة سابقة بالفعل (مثلاً دفع 5 حصص في أغسطس، وبعدين حضر
+      // حصة سادسة لسه في أغسطس نفسه). لو استخدمنا نفس منطق "انتقل
+      // للشهر الجاي بعد أي دفعة" بتاع الاشتراك الشهري، الحصة الجديدة
+      // دي كانت هتختفي (الفلترة بتاعة selectedSessionsCount بتتقيّد
+      // بـselectedMonths)، فزرار "دفع حصة متأخرة" يفضل من غير أي أثر
+      // (0 حصة مستحقة ظاهريًا) رغم إن الطالب فعلًا عليه حصة لسه متدفعتش.
+      final isPerSession = _scannedGroup.value?.isPerSession ?? false;
+      final start = isPerSession
+          ? DateTime(DateTime.now().year, DateTime.now().month)
+          : _determineStartMonth(_extractLastPaidMonth(latest));
       final months = _buildUpcomingMonths(start);
       upcomingMonths.assignAll(months);
       selectedMonths.assignAll(months.isNotEmpty ? [months.first] : []);
