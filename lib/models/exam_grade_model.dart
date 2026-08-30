@@ -113,18 +113,29 @@ class ExamGrade {
     passingGrade: m['passing_grade'] != null ? (m['passing_grade'] as num).toDouble() : null,
   );
 
-  // sentinel: يفرّق بين "الباراميتر ماتبعتش" و"اتبعت null قصداً" (لمسح الملاحظة)
+  // sentinel: يفرّق بين "الباراميتر ماتبعتش" و"اتبعت null قصداً" (لمسح
+  // الملاحظة، أو لمسح الدرجة — بديل رجوع الطالب عن درجة مُدخلة قبل كده،
+  // زي ما بيوضّح tooltip حقل الدرجة بالظبط "امسح الخانة وسيبها فاضية
+  // عشان تتراجع عن الدرجة". قبل كده `double? grade` العادي كان بيستخدم
+  // `grade ?? this.grade`، فمش قادر يفرّق بين "امسح الدرجة" (null صريح)
+  // و"معديش الباراميتر خالص" — فكان بيرجّع الدرجة القديمة بدل ما يمسحها،
+  // فتفضل الإحصائيات وشارة التصنيف على الشاشة معروضة بالقيمة القديمة
+  // لحد ما الشاشة تتعمل reload، رغم إن قاعدة البيانات نفسها كانت بتتحدث
+  // صح (لأن الحفظ الفعلي في DB بيمر من مسار تاني منفصل عن copyWith).
+  static const _unsetGrade = Object();
   static const _unsetNotes = Object();
 
   ExamGrade copyWith({
-    double? grade,
+    Object? grade = _unsetGrade,
     Object? notes = _unsetNotes,
     bool?   isAbsent,
   }) => ExamGrade(
     id:           id,
     examId:       examId,
     studentId:    studentId,
-    grade:        isAbsent == true ? null : (grade ?? this.grade),
+    grade:        isAbsent == true
+        ? null
+        : (identical(grade, _unsetGrade) ? this.grade : grade as double?),
     notes:        identical(notes, _unsetNotes) ? this.notes : notes as String?,
     isAbsent:     isAbsent     ?? this.isAbsent,
     createdAt:    createdAt,
