@@ -237,6 +237,15 @@
       </div>`;
   }
 
+  function renderUnavailable(){
+    card.innerHTML = `
+      <div style="text-align:center;padding:10px;">
+        <div style="font-size:32px;margin-bottom:8px;">⏸️</div>
+        <p style="font-weight:800;margin:0 0 4px;">الخدمة دي غير متاحة حاليًا</p>
+        <p style="font-size:12px;color:var(--text-muted);">تواصل مع المعلم لتفعيل خدمة المتابعة.</p>
+      </div>`;
+  }
+
   async function handleSubmit(){
     const code = document.getElementById('codeInput').value.trim().toUpperCase();
     const phone = document.getElementById('phoneInput').value.trim();
@@ -351,6 +360,15 @@
       const profileSnap = await getDoc(doc(db, 'parent_portal', slug));
       if (profileSnap.exists()) {
         const p = profileSnap.data();
+
+        // بوابة أولياء الأمور دي مدتها المستقلة (لو محددة) انتهت —
+        // نقفل الصفحة بالكامل قبل حتى عرض فورم إدخال الكود، بدل ما
+        // نعرض بيانات طالب قديمة ممكن توهم ولي الأمر إنها حالية.
+        if (p.parentPortalExpiresAt && new Date(p.parentPortalExpiresAt) < new Date()) {
+          renderUnavailable();
+          return;
+        }
+
         const title = p.teacherGender === 'female' ? 'مس' : 'مستر';
         const name = p.teacherName ? `${title} ${p.teacherName}` : '';
         if (name) {

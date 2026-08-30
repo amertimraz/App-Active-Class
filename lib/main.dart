@@ -50,6 +50,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:active_class/firebase_options.dart';
 import 'package:active_class/controllers/license_controller.dart';
+import 'package:active_class/services/parent_portal_service.dart';
 
 // تشغيل المهام الخلفية
 import 'package:workmanager/workmanager.dart';
@@ -149,6 +150,10 @@ void main() async {
   Get.put(LicenseController(), permanent: true);
   Get.put(ThemeController());
   Get.put(SettingsController());
+  // بتؤمّن إن تغييرات مدة/تفعيل بوابة أولياء الأمور (من الأدمن أو من
+  // التطبيق) بتنعكس فورًا على الصفحة العامة، حتى لو المدرس ماعملش أي
+  // إجراء بيلمس البوابة بعد فتح التطبيق — راجع تعليق ParentPortalService.init().
+  ParentPortalService().init();
   Get.put(SessionLogController(), permanent: true);
   Get.put(ExamController(), permanent: true);
   // نظام تسجيل الدخول المستقل — تهيئته الفعلية (اتصال Supabase) كسولة
