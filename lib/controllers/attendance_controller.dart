@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:active_class/models/attendance_model.dart';
+import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
@@ -632,11 +633,9 @@ class AttendanceController extends GetxController {
     String? teacherSpecialization,
   }) {
     final dateLabel = DateFormat('d MMMM yyyy', 'ar').format(DateTime.now());
-    final attLabel =
-        attendanceStatus == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غائب';
-    final hwLabel = homeworkStatus == null
-        ? 'لم يُسجَّل'
-        : (homeworkStatus == HOMEWORK_DONE ? '📗 عمل' : '📙 لم يعمل');
+    final isAbsent = attendanceStatus == ATTENDANCE_ABSENT;
+    final attLabel = isAbsent ? '❌ غائب' : '✅ حاضر';
+    final hwLabel = homeworkStatusLabel(homeworkStatus, absent: isAbsent);
 
     final buffer = StringBuffer()
       ..writeln('🧾 تقرير اليوم — $dateLabel')

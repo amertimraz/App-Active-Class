@@ -136,6 +136,9 @@ const String COL_HOMEWORK_STATUS = 'status';
 const String COL_HOMEWORK_CREATED_AT = 'created_at';
 const String HOMEWORK_DONE = 'عمل';
 const String HOMEWORK_NOT_DONE = 'لم يعمل';
+// حالة تالتة: الواجب اتحلّ ناقص. (spec 010 — القيم القديمة عمل/لم يعمل
+// تفضل صالحة في القاعدة وتُطبَّع عند العرض.)
+const String HOMEWORK_PARTIAL = 'ناقص';
 
 // Column Names - Payments
 const String COL_PAYMENT_ID = 'id';

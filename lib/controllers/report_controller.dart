@@ -128,14 +128,21 @@ class ReportController extends GetxController {
     }
 
     final homeworkDoneByStudent = <int, int>{};
+    final homeworkPartialByStudent = <int, int>{};
     final homeworkNotDoneByStudent = <int, int>{};
     for (final h in monthHomework) {
-      if (h.status == HOMEWORK_DONE) {
-        homeworkDoneByStudent.update(h.studentId, (v) => v + 1,
-            ifAbsent: () => 1);
-      } else if (h.status == HOMEWORK_NOT_DONE) {
-        homeworkNotDoneByStudent.update(h.studentId, (v) => v + 1,
-            ifAbsent: () => 1);
+      switch (normalizeHomeworkStatus(h.status)) {
+        case HOMEWORK_DONE:
+          homeworkDoneByStudent.update(h.studentId, (v) => v + 1,
+              ifAbsent: () => 1);
+        case HOMEWORK_PARTIAL:
+          homeworkPartialByStudent.update(h.studentId, (v) => v + 1,
+              ifAbsent: () => 1);
+        case HOMEWORK_NOT_DONE:
+          homeworkNotDoneByStudent.update(h.studentId, (v) => v + 1,
+              ifAbsent: () => 1);
+        default:
+          break;
       }
     }
 
@@ -182,8 +189,13 @@ class ReportController extends GetxController {
       final fullyPaid = students.where((s) => isFullyPaid(s, g)).length;
       final totalPresent =
           students.fold<int>(0, (s, st) => s + (presentByStudent[st.id] ?? 0));
+      // "الناقص" يُحسب ضمن "عمل الواجب" في ملخّص المجموعة (محاولة تُحتسب).
       final totalHomeworkDone = students.fold<int>(
-          0, (s, st) => s + (homeworkDoneByStudent[st.id] ?? 0));
+          0,
+          (s, st) =>
+              s +
+              (homeworkDoneByStudent[st.id] ?? 0) +
+              (homeworkPartialByStudent[st.id] ?? 0));
       final totalHomeworkNotDone = students.fold<int>(
           0, (s, st) => s + (homeworkNotDoneByStudent[st.id] ?? 0));
       return GroupMonthSummary(

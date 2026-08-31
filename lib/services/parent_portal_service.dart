@@ -195,9 +195,15 @@ class ParentPortalService {
     final absent =
         attendance.where((a) => a.status == ATTENDANCE_ABSENT).length;
     final totalPaid = payments.fold<double>(0, (s, p) => s + p.amount);
-    final homeworkDone = homework.where((h) => h.status == HOMEWORK_DONE).length;
-    final homeworkNotDone =
-        homework.where((h) => h.status == HOMEWORK_NOT_DONE).length;
+    final homeworkDone = homework
+        .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_DONE)
+        .length;
+    final homeworkPartial = homework
+        .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_PARTIAL)
+        .length;
+    final homeworkNotDone = homework
+        .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_NOT_DONE)
+        .length;
 
     final sortedAttendance = [...attendance]
       ..sort((a, b) => b.date.compareTo(a.date));
@@ -216,6 +222,7 @@ class ParentPortalService {
       'price': student.price,
       'exemptPercent': student.exemptPercent,
       'homeworkDone': homeworkDone,
+      'homeworkPartial': homeworkPartial,
       'homeworkNotDone': homeworkNotDone,
       'attendanceHistory': sortedAttendance.take(20).map((a) => {
             'date': a.date.toIso8601String(),
@@ -228,7 +235,8 @@ class ParentPortalService {
           }).toList(),
       'homeworkHistory': sortedHomework.take(20).map((h) => {
             'date': h.date.toIso8601String(),
-            'status': h.status,
+            'status': normalizeHomeworkStatus(h.status) ?? h.status,
+            'statusLabel': homeworkStatusLabel(h.status),
           }).toList(),
       'updatedAt': FieldValue.serverTimestamp(),
     };

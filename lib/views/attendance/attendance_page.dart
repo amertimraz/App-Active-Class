@@ -7,6 +7,7 @@ import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/homework_controller.dart';
 import 'package:active_class/models/attendance_model.dart';
+import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/qr_controller.dart';
@@ -879,12 +880,11 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                 ],
               ),
             ),
-            // أزرار "تحضير الكل" و"واجب الكل" — صف مستقل عشان ميتزنقوش مع
-            // الشارات فوق ولا يسببوا overflow.
+            // زر "تحضير الكل" فقط — زر "واجب الكل" اتنقل لتبويب "واجب"
+            // (spec 010). لو كله متحضّر بالفعل، الضغطة بتلغي التحضير.
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
               child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                // الكل حاضر ← لو كله متحضّر بالفعل، الضغطة بتلغي التحضير
                 Builder(builder: (context) {
                   final allPresent = totalCount > 0 &&
                       groupStudents.every(
@@ -905,39 +905,6 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                       color: allPresent
                           ? Colors.grey.shade600
                           : const Color(0xFF10B981),
-                    ),
-                  );
-                }),
-                // الواجب للكل
-                Builder(builder: (context) {
-                  homeworkCtrl.homework.length; // ربط الـObx الخارجي بالقائمة التفاعلية
-                  final presentStudents = groupStudents
-                      .where((s) => statusMap[s.id] == ATTENDANCE_PRESENT)
-                      .toList();
-                  final allHomeworkDone = presentStudents.isNotEmpty &&
-                      presentStudents.every((s) =>
-                          homeworkCtrl.statusFor(s.id!, selectedDay) ==
-                          HOMEWORK_DONE);
-                  return Tooltip(
-                    message: allHomeworkDone
-                        ? 'إلغاء واجب الكل'
-                        : 'تسجيل واجب الكل',
-                    child: IconButton(
-                      visualDensity: VisualDensity.compact,
-                      onPressed: presentStudents.isEmpty
-                          ? null
-                          : () => homeworkCtrl.markGroupAllHomeworkDone(
-                                presentStudents.map((s) => s.id!).toList(),
-                                selectedDay,
-                              ),
-                      icon: Icon(
-                          allHomeworkDone
-                              ? Icons.menu_book_rounded
-                              : Icons.menu_book_outlined,
-                          size: 20),
-                      color: allHomeworkDone
-                          ? const Color(0xFF2563EB)
-                          : Colors.grey.shade600,
                     ),
                   );
                 }),
@@ -983,49 +950,110 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
               ]),
             ),
             const Divider(height: 1, indent: 16, endIndent: 16),
-            // قائمة الطلاب القابلة للتمرير + زر إرسال التقرير في آخرها
+            // تبويبان داخل الموديل: حضور | واجب (spec 010). يفتح على "حضور".
             Flexible(
-              child: SingleChildScrollView(
-                child: Column(children: [
-                  if (visibleStudents.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                      child: Text(
-                        'لا يوجد طلاب مطابقين في هذه المجموعة',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade500,
-                            fontFamily: 'Cairo'),
-                      ),
-                    )
-                  else
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        children: visibleStudents.map((s) {
-                          final status = statusMap[s.id];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Obx(() => _StudentAttendanceChip(
-                                  student: s,
-                                  status: status,
-                                  onTap: () => controller.toggleAttendance(
-                                      s.id!, selectedDay),
-                                  homeworkStatus: homeworkCtrl.statusFor(
-                                      s.id!, selectedDay),
-                                  onHomeworkTap: () => homeworkCtrl
-                                      .toggleHomework(s.id!, selectedDay),
-                                )),
-                          );
-                        }).toList(),
-                      ),
+              child: DefaultTabController(
+                length: 2,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const TabBar(
+                      labelStyle: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13),
+                      tabs: [Tab(text: 'حضور'), Tab(text: 'واجب')],
                     ),
-                  // زرار إرسال تقرير واتساب — بيظهر بس لو الإعداد مفعّل من
-                  // الإعدادات، والتاريخ المعروض هو النهاردة فعلاً، وكل طلاب
-                  // المجموعة ليهم حالة حضور مسجّلة (مش وسط التسجيل).
-                  Builder(builder: (context) {
-                    final settings = Get.find<SettingsController>();
+                    Flexible(
+                      child: TabBarView(children: [
+                        // ── تبويب حضور ──────────────────────────────
+                        SingleChildScrollView(
+                          child: Column(children: [
+                            if (visibleStudents.isEmpty)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                                child: Text(
+                                  'لا يوجد طلاب مطابقين في هذه المجموعة',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade500,
+                                      fontFamily: 'Cairo'),
+                                ),
+                              )
+                            else
+                              Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  children: visibleStudents.map((s) {
+                                    final status = statusMap[s.id];
+                                    return Padding(
+                                      padding:
+                                          const EdgeInsets.only(bottom: 8),
+                                      child: Obx(() => _StudentAttendanceChip(
+                                            student: s,
+                                            status: status,
+                                            onTap: () async {
+                                              await controller.toggleAttendance(
+                                                  s.id!, selectedDay);
+                                              // غائب = لا واجب: امسح سجل الواجب
+                                              // لنفس اليوم (spec 010).
+                                              final ns = controller.attendance
+                                                  .firstWhereOrNull((a) =>
+                                                      a.studentId == s.id &&
+                                                      a.date.year ==
+                                                          selectedDay.year &&
+                                                      a.date.month ==
+                                                          selectedDay.month &&
+                                                      a.date.day ==
+                                                          selectedDay.day)
+                                                  ?.status;
+                                              if (ns == ATTENDANCE_ABSENT) {
+                                                await homeworkCtrl.clearHomework(
+                                                    s.id!, selectedDay);
+                                              }
+                                            },
+                                          )),
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                            _buildReportButton(context, group, groupStudents,
+                                controller, homeworkCtrl, selectedDay),
+                          ]),
+                        ),
+                        // ── تبويب واجب ──────────────────────────────
+                        _HomeworkTabBody(
+                          students: visibleStudents,
+                          statusMap: statusMap,
+                          homeworkCtrl: homeworkCtrl,
+                          selectedDay: selectedDay,
+                        ),
+                      ]),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _buildReportButton(
+    BuildContext context,
+    Group group,
+    List<Student> groupStudents,
+    AttendanceController controller,
+    HomeworkController homeworkCtrl,
+    DateTime selectedDay,
+  ) {
+    // زرار إرسال تقرير واتساب — بيظهر بس لو الإعداد مفعّل من الإعدادات،
+    // والتاريخ المعروض هو النهاردة فعلاً، وكل طلاب المجموعة ليهم حالة
+    // حضور مسجّلة (مش وسط التسجيل).
+    final settings = Get.find<SettingsController>();
                     if (!settings.reportOnCompletionEnabled.value) {
                       return const SizedBox.shrink();
                     }
@@ -1090,14 +1118,6 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                         ),
                       ),
                     );
-                  }),
-                ]),
-              ),
-            ),
-          ],
-        ),
-      );
-    });
   }
 }
 
@@ -1235,15 +1255,11 @@ class _StudentAttendanceChip extends StatelessWidget {
   final Student student;
   final String? status;
   final VoidCallback onTap;
-  final String? homeworkStatus;
-  final VoidCallback? onHomeworkTap;
 
   const _StudentAttendanceChip({
     required this.student,
     required this.status,
     required this.onTap,
-    this.homeworkStatus,
-    this.onHomeworkTap,
   });
 
   @override
@@ -1340,58 +1356,209 @@ class _StudentAttendanceChip extends StatelessWidget {
             ),
           ),
           Icon(icon, color: color, size: isAbsent ? 20 : 18),
-          if (onHomeworkTap != null) ...[
-            const SizedBox(width: 6),
-            _HomeworkBadge(status: homeworkStatus, onTap: onHomeworkTap!),
-          ],
         ]),
       ),
     );
   }
 }
 
-// ── شارة صغيرة لحالة الواجب — جنب أيقونة الحضور، نفس ارتفاع الصف بالظبط ──
-class _HomeworkBadge extends StatelessWidget {
-  final String? status;
-  final VoidCallback onTap;
-  const _HomeworkBadge({required this.status, required this.onTap});
+// ═══════════════════════════════════════════════════════════════════════════════
+//  تبويب "واجب" داخل موديل المجموعة (spec 010)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _HomeworkTabBody extends StatelessWidget {
+  final List<Student> students;
+  final Map<int, String> statusMap; // حالة الحضور لكل طالب في اليوم
+  final HomeworkController homeworkCtrl;
+  final DateTime selectedDay;
+
+  const _HomeworkTabBody({
+    required this.students,
+    required this.statusMap,
+    required this.homeworkCtrl,
+    required this.selectedDay,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isDone = status == HOMEWORK_DONE;
-    final isNotDone = status == HOMEWORK_NOT_DONE;
-    final color = isDone
-        ? const Color(0xFF2563EB)
-        : isNotDone
-            ? const Color(0xFFF59E0B)
-            : Colors.grey;
-    final icon = isDone
-        ? Icons.menu_book_rounded
-        : isNotDone
-            ? Icons.menu_book_outlined
-            : Icons.menu_book_outlined;
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Tooltip(
-        message: isDone
-            ? 'عمل الواجب'
-            : isNotDone
-                ? 'لم يعمل الواجب'
-                : 'حالة الواجب — اضغط للتسجيل',
-        child: Container(
-          width: 26,
-          height: 26,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: isDone || isNotDone ? 0.14 : 0.08),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withValues(alpha: 0.35)),
-          ),
-          child: Icon(icon, color: color, size: 14),
+    if (students.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text('لا يوجد طلاب مطابقين في هذه المجموعة',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade500,
+                  fontFamily: 'Cairo')),
         ),
+      );
+    }
+    return Obx(() {
+      homeworkCtrl.homework.length; // dependency تفاعلية
+      final presentIds = students
+          .where((s) => statusMap[s.id] != ATTENDANCE_ABSENT)
+          .map((s) => s.id!)
+          .toList();
+      final sum = homeworkCtrl.homeworkSummary(presentIds, selectedDay);
+      final allDone = presentIds.isNotEmpty &&
+          presentIds.every((id) =>
+              normalizeHomeworkStatus(homeworkCtrl.statusFor(id, selectedDay)) ==
+              HOMEWORK_DONE);
+
+      return SingleChildScrollView(
+        child: Column(children: [
+          // ملخّص + زر جماعي
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            child: Row(children: [
+              Expanded(
+                child: Text(
+                  'تم الحل: ${sum.done}  ·  ناقص: ${sum.partial}  ·  لم يُحل: ${sum.notDone}  ·  غير مسجّل: ${sum.unset}',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                      fontFamily: 'Cairo'),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: presentIds.isEmpty
+                    ? null
+                    : () => homeworkCtrl.markGroupAllHomeworkDone(
+                        presentIds, selectedDay),
+                icon: Icon(
+                    allDone ? Icons.menu_book_rounded : Icons.menu_book_outlined,
+                    size: 16),
+                label: Text(allDone ? 'إلغاء الكل' : 'الكل عمل',
+                    style: const TextStyle(fontSize: 12, fontFamily: 'Cairo')),
+              ),
+            ]),
+          ),
+          const Divider(height: 1, indent: 12, endIndent: 12),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            child: Column(
+              children: students.map((s) {
+                final absent = statusMap[s.id] == ATTENDANCE_ABSENT;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _HomeworkStudentRow(
+                    name: s.name,
+                    absent: absent,
+                    status: absent
+                        ? null
+                        : normalizeHomeworkStatus(
+                            homeworkCtrl.statusFor(s.id!, selectedDay)),
+                    onSelect: (st) =>
+                        homeworkCtrl.setHomeworkStatus(s.id!, selectedDay, st),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ]),
+      );
+    });
+  }
+}
+
+class _HomeworkStudentRow extends StatelessWidget {
+  final String name;
+  final bool absent;
+  final String? status; // مطبّع: HOMEWORK_DONE / HOMEWORK_PARTIAL / HOMEWORK_NOT_DONE / null
+  final ValueChanged<String?> onSelect;
+
+  const _HomeworkStudentRow({
+    required this.name,
+    required this.absent,
+    required this.status,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: absent
+            ? Colors.grey.withValues(alpha: 0.06)
+            : cs.surface.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
       ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(name,
+            style: const TextStyle(
+                fontFamily: 'Cairo', fontWeight: FontWeight.w700, fontSize: 13)),
+        const SizedBox(height: 6),
+        if (absent)
+          Text('غائب — لا واجب',
+              style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey.shade500,
+                  fontFamily: 'Cairo'))
+        else
+          _HomeworkStatusSegmented(status: status, onSelect: onSelect),
+      ]),
     );
+  }
+}
+
+/// 3 أزرار مجزّأة لحالة الواجب — يُختار منها واحد؛ الضغط على المختار = إلغاء.
+class _HomeworkStatusSegmented extends StatelessWidget {
+  final String? status;
+  final ValueChanged<String?> onSelect;
+
+  const _HomeworkStatusSegmented(
+      {required this.status, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget btn(String value, String label, Color color) {
+      final selected = status == value;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => onSelect(selected ? null : value),
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            decoration: BoxDecoration(
+              color: selected
+                  ? color.withValues(alpha: 0.16)
+                  : Colors.grey.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(
+                  color: selected
+                      ? color
+                      : Colors.grey.withValues(alpha: 0.25),
+                  width: selected ? 1.4 : 1),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 5),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'Cairo',
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                      color: selected ? color : Colors.grey.shade600)),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Row(children: [
+      btn(HOMEWORK_DONE, 'تم الحل', const Color(0xFF10B981)),
+      btn(HOMEWORK_PARTIAL, 'ناقص', const Color(0xFFF59E0B)),
+      btn(HOMEWORK_NOT_DONE, 'لم يُحل', const Color(0xFFEF4444)),
+    ]);
   }
 }
 

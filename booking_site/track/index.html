@@ -109,8 +109,10 @@
   .stat .l{font-size:11px;color:var(--text-muted);margin-top:2px;}
   .stat.present .n{color:var(--primary);}
   .stat.absent .n{color:var(--danger);}
-  .stat.hw-done .n{color:var(--accent);}
-  .stat.hw-not .n{color:#F59E0B;}
+  .stat.hw-done .n{color:#10B981;}
+  .stat.hw-part .n{color:#F59E0B;}
+  .stat.hw-not .n{color:#EF4444;}
+  .stat-grid.hw3{grid-template-columns:1fr 1fr 1fr;}
 
   .money-row{
     display:flex;justify-content:space-between;align-items:center;
@@ -301,17 +303,29 @@
           </div>`).join('')
       : `<div class="empty-hint">لا توجد مدفوعات بعد</div>`;
 
+    // حالة الواجب: عمل=تم الحل، ناقص، لم يعمل=لم يُحل. القيم القديمة مدعومة.
+    const hwLabel = (h) => {
+      if (h.statusLabel) return h.statusLabel;
+      const s = h.status;
+      if (s === 'عمل' || s === 'تم الحل') return '🟢 تم الحل';
+      if (s === 'ناقص') return '🟡 ناقص';
+      if (s === 'لم يعمل' || s === 'لم يُحل') return '🔴 لم يُحل';
+      return 'لم يُسجَّل';
+    };
+    const hwClass = (h) => {
+      const s = h.status;
+      if (s === 'لم يعمل' || s === 'لم يُحل') return 'badge-hw-not';
+      return 'badge-hw-done';
+    };
     const homeworkRows = homeworkHistory.length
       ? homeworkHistory.map(h => `
           <div class="history-row">
             <span class="date">${fmtDate(h.date)}</span>
-            <span class="${h.status === 'عمل' ? 'badge-hw-done' : 'badge-hw-not'}">
-              ${h.status === 'عمل' ? '📗 عمل الواجب' : '📙 لم يعمل الواجب'}
-            </span>
+            <span class="${hwClass(h)}">${hwLabel(h)}</span>
           </div>`).join('')
       : `<div class="empty-hint">لا توجد سجلات واجب بعد</div>`;
 
-    const hasHomework = (d.homeworkDone ?? 0) > 0 || (d.homeworkNotDone ?? 0) > 0 || homeworkHistory.length > 0;
+    const hasHomework = (d.homeworkDone ?? 0) > 0 || (d.homeworkPartial ?? 0) > 0 || (d.homeworkNotDone ?? 0) > 0 || homeworkHistory.length > 0;
 
     card.innerHTML = `
       <div class="welcome-row">
@@ -340,9 +354,10 @@
       <div class="history-list">${attendanceRows}</div>
 
       ${hasHomework ? `
-      <div class="stat-grid" style="margin-top:20px;">
-        <div class="stat hw-done"><div class="n">${d.homeworkDone ?? 0}</div><div class="l">مرات عمل الواجب</div></div>
-        <div class="stat hw-not"><div class="n">${d.homeworkNotDone ?? 0}</div><div class="l">مرات لم يعمل الواجب</div></div>
+      <div class="stat-grid hw3" style="margin-top:20px;">
+        <div class="stat hw-done"><div class="n">${d.homeworkDone ?? 0}</div><div class="l">🟢 تم الحل</div></div>
+        <div class="stat hw-part"><div class="n">${d.homeworkPartial ?? 0}</div><div class="l">🟡 ناقص</div></div>
+        <div class="stat hw-not"><div class="n">${d.homeworkNotDone ?? 0}</div><div class="l">🔴 لم يُحل</div></div>
       </div>
 
       <div class="section-title">📖 آخر الواجبات</div>

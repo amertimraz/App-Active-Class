@@ -634,8 +634,9 @@ class ExportService {
         _td(s.name, isEven: isEven, bold: true, size: 8),
       ];
       for (var d = 1; d <= days; d++) {
-        final status = sHw[d];
-        if (status == HOMEWORK_DONE) {
+        // الناقص يُحتسب كـ"عمل" في تقرير الواجب PDF (محاولة تُحتسب).
+        final status = normalizeHomeworkStatus(sHw[d]);
+        if (status == HOMEWORK_DONE || status == HOMEWORK_PARTIAL) {
           doneCount++;
           cells.add(_attCell(true, isEven));
         } else if (status == HOMEWORK_NOT_DONE) {
@@ -659,8 +660,13 @@ class ExportService {
     int totalNotDone = 0;
     for (final s in students) {
       final sHw = hwMap[s.id] ?? {};
-      totalDone += sHw.values.where((v) => v == HOMEWORK_DONE).length;
-      totalNotDone += sHw.values.where((v) => v == HOMEWORK_NOT_DONE).length;
+      totalDone += sHw.values.where((v) {
+        final n = normalizeHomeworkStatus(v);
+        return n == HOMEWORK_DONE || n == HOMEWORK_PARTIAL;
+      }).length;
+      totalNotDone += sHw.values
+          .where((v) => normalizeHomeworkStatus(v) == HOMEWORK_NOT_DONE)
+          .length;
     }
     final total = totalDone + totalNotDone;
     final rate = total > 0 ? (totalDone / total * 100) : 0.0;

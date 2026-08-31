@@ -147,9 +147,15 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
     final total = present + absent;
     final percent = total == 0 ? 0.0 : (present / total) * 100.0;
     final totalPaid = pays.fold<double>(0.0, (sum, p) => sum + p.amount);
-    final homeworkDone = hw.where((h) => h.status == HOMEWORK_DONE).length;
-    final homeworkNotDone =
-        hw.where((h) => h.status == HOMEWORK_NOT_DONE).length;
+    final homeworkDone = hw
+        .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_DONE)
+        .length;
+    final homeworkPartial = hw
+        .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_PARTIAL)
+        .length;
+    final homeworkNotDone = hw
+        .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_NOT_DONE)
+        .length;
     final monthLabel = DateFormat('MMMM yyyy', 'ar').format(start);
     final groupName = _group?.name ?? '-';
 
@@ -180,10 +186,10 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
 
     if (hwSorted.isNotEmpty) {
       buffer.writeln(
-          '\n📖 الواجب: عمل $homeworkDone • لم يعمل $homeworkNotDone');
+          '\n📖 الواجب: 🟢 تم الحل $homeworkDone • 🟡 ناقص $homeworkPartial • 🔴 لم يُحل $homeworkNotDone');
       for (final h in hwSorted.take(10)) {
         buffer.writeln(
-            '• ${DateFormat('yyyy-MM-dd').format(h.date)} — ${h.status == HOMEWORK_DONE ? '📗 عمل' : '📙 لم يعمل'}');
+            '• ${DateFormat('yyyy-MM-dd').format(h.date)} — ${homeworkStatusLabel(h.status)}');
       }
       if (hwSorted.length > 10)
         buffer.writeln('• … ${hwSorted.length - 10} سجلات إضافية');
@@ -1116,11 +1122,18 @@ class _HomeworkTab extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sorted = List.of(homework)..sort((a, b) => b.date.compareTo(a.date));
 
-    final doneCount = sorted.where((h) => h.status == HOMEWORK_DONE).length;
-    final notDoneCount =
-        sorted.where((h) => h.status == HOMEWORK_NOT_DONE).length;
-    final total = doneCount + notDoneCount;
-    final rate = total == 0 ? 0.0 : (doneCount / total) * 100;
+    final doneCount = sorted
+        .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_DONE)
+        .length;
+    final partialCount = sorted
+        .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_PARTIAL)
+        .length;
+    final notDoneCount = sorted
+        .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_NOT_DONE)
+        .length;
+    final total = doneCount + partialCount + notDoneCount;
+    // الناقص = نص درجة في نسبة الالتزام
+    final rate = total == 0 ? 0.0 : ((doneCount + partialCount * 0.5) / total) * 100;
 
     final Map<String, List<Homework>> byMonth = {};
     for (final h in sorted) {
@@ -1189,7 +1202,9 @@ class _HomeworkTab extends StatelessWidget {
         const SizedBox(height: 16),
         ...months.map((month) {
           final list = byMonth[month]!;
-          final mDone = list.where((h) => h.status == HOMEWORK_DONE).length;
+          final mDone = list
+              .where((h) => normalizeHomeworkStatus(h.status) != HOMEWORK_NOT_DONE)
+              .length;
           return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1235,21 +1250,25 @@ class _HomeworkTab extends StatelessWidget {
                         const Divider(height: 0, indent: 56),
                     itemBuilder: (_, i) {
                       final h = list[i];
-                      final isDone = h.status == HOMEWORK_DONE;
+                      final norm = normalizeHomeworkStatus(h.status);
+                      final c = norm == HOMEWORK_DONE
+                          ? const Color(0xFF10B981)
+                          : norm == HOMEWORK_PARTIAL
+                              ? const Color(0xFFF59E0B)
+                              : const Color(0xFFEF4444);
                       return ListTile(
                         leading: Container(
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: (isDone ? Colors.blue : Colors.orange)
-                                .withValues(alpha: 0.1),
+                            color: c.withValues(alpha: 0.12),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            isDone
+                            norm == HOMEWORK_DONE
                                 ? Icons.menu_book_rounded
                                 : Icons.menu_book_outlined,
-                            color: isDone ? Colors.blue : Colors.orange,
+                            color: c,
                             size: 18,
                           ),
                         ),
@@ -1259,13 +1278,12 @@ class _HomeworkTab extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: (isDone ? Colors.blue : Colors.orange)
-                                .withValues(alpha: 0.1),
+                            color: c.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Text(h.status,
+                          child: Text(homeworkStatusLabel(h.status),
                               style: TextStyle(
-                                  color: isDone ? Colors.blue : Colors.orange,
+                                  color: c,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700)),
                         ),

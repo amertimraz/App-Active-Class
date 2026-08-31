@@ -1,7 +1,37 @@
 // lib/models/homework_model.dart
 //
-// تسجيل حالة الواجب بس (عمل / لم يعمل) — نص الواجب نفسه فاضل في
+// تسجيل حالة الواجب (تم الحل / ناقص / لم يُحل) — نص الواجب نفسه فاضل في
 // الكشكول الورقي عمدًا، مش جوه التطبيق.
+import 'package:active_class/config/constants.dart';
+
+/// يطبّع قيمة حالة الواجب المخزَّنة (بما فيها القيم القديمة 'عمل'/'لم يعمل')
+/// لواحدة من: [HOMEWORK_DONE] / [HOMEWORK_PARTIAL] / [HOMEWORK_NOT_DONE] / null.
+/// مصدر الحقيقة الوحيد للتوافق مع البيانات القديمة (spec 010).
+String? normalizeHomeworkStatus(String? raw) {
+  final v = raw?.trim();
+  if (v == null || v.isEmpty) return null;
+  if (v == HOMEWORK_DONE || v == 'تم الحل') return HOMEWORK_DONE;
+  if (v == HOMEWORK_NOT_DONE || v == 'لم يُحل') return HOMEWORK_NOT_DONE;
+  if (v == HOMEWORK_PARTIAL) return HOMEWORK_PARTIAL;
+  return null;
+}
+
+/// تسمية حالة الواجب للعرض والتقارير — مصدر الحقيقة الوحيد.
+/// [absent] = الطالب غائب في اليوم ده (يتغلّب على أي حالة واجب).
+String homeworkStatusLabel(String? raw, {bool absent = false}) {
+  if (absent) return 'غائب (لا واجب)';
+  switch (normalizeHomeworkStatus(raw)) {
+    case HOMEWORK_DONE:
+      return '🟢 تم الحل';
+    case HOMEWORK_PARTIAL:
+      return '🟡 ناقص';
+    case HOMEWORK_NOT_DONE:
+      return '🔴 لم يُحل';
+    default:
+      return 'لم يُسجَّل';
+  }
+}
+
 class Homework {
   final int? id;
   final int studentId;

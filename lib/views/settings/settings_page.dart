@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/theme_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
@@ -1670,16 +1671,22 @@ class SettingsPage extends StatelessWidget {
             .toList()
           ..sort((a, b) => b.date.compareTo(a.date));
         if (hwMonth.isNotEmpty) {
-          final hwDone = hwMonth.where((h) => h.status == HOMEWORK_DONE).length;
-          final hwNotDone =
-              hwMonth.where((h) => h.status == HOMEWORK_NOT_DONE).length;
+          final hwDone = hwMonth
+              .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_DONE)
+              .length;
+          final hwPartial = hwMonth
+              .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_PARTIAL)
+              .length;
+          final hwNotDone = hwMonth
+              .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_NOT_DONE)
+              .length;
           buffer
             ..writeln('')
-            ..writeln('📖 الواجب: عمل $hwDone • لم يعمل $hwNotDone');
+            ..writeln(
+                '📖 الواجب: 🟢 تم الحل $hwDone • 🟡 ناقص $hwPartial • 🔴 لم يُحل $hwNotDone');
           for (final h in hwMonth.take(10)) {
             final d = DateFormat('yyyy-MM-dd').format(h.date);
-            final st = h.status == HOMEWORK_DONE ? '📗 عمل' : '📙 لم يعمل';
-            buffer.writeln('• $d — $st');
+            buffer.writeln('• $d — ${homeworkStatusLabel(h.status)}');
           }
           if (hwMonth.length > 10) {
             buffer.writeln('• … ${hwMonth.length - 10} سجلات إضافية');

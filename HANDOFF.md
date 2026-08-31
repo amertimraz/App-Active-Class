@@ -145,6 +145,21 @@
 
 ---
 
+## 1ح) تبويب الواجب — spec 010 — ✅ في الكود، ⏳ لسه ماتأكدش لايف، ⏳ لسه ماعُملش commit
+
+**المطلوب**: نقل الواجب من شارة داخل صف الحضور إلى **تبويب "واجب" جوّه موديل المجموعة** (جنب "حضور")، مع **3 حالات صريحة** (🟢 تم الحل / 🟡 ناقص / 🔴 لم يُحل) كأزرار مجزّأة، وإخفاء الواجب للطالب الغائب (وحذف سجله)، وحالة الواجب في **كل** تقارير الواتساب + بوابة أولياء الأمور.
+
+**اتعمل عبر SpecKit كامل** — `specs/010-homework-tab/`:
+- **بدون هجرة قاعدة بيانات** — ثابت جديد `HOMEWORK_PARTIAL='ناقص'` + `normalizeHomeworkStatus()` + `homeworkStatusLabel()` في `homework_model.dart` (مصدر حقيقة واحد، بيطبّع القديم `عمل`/`لم يعمل`).
+- `HomeworkController`: `setHomeworkStatus` / `clearHomework` / `homeworkSummary`؛ اتشال `toggleHomework`.
+- `attendance_page.dart` `_AttendanceSheet`: `DefaultTabController(2)` + `TabBar([حضور, واجب])`؛ تبويب واجب فيه `_HomeworkTabBody` + `_HomeworkStatusSegmented` (3 أزرار) + ملخّص + "الكل عمل"؛ الغائب → "غائب — لا واجب"؛ تسجيل غياب → `clearHomework`؛ اتشال `_HomeworkBadge` و"واجب الكل" من تبويب الحضور.
+- التقارير: `attendance_controller.buildGuardianReportMessage` + `student_details_page._shareMonthlyReport` + `settings_page` (شهري) + `parent_portal_service` (+ `homeworkPartial`, `statusLabel` في `homeworkHistory`) + `report_controller` + `export_service` (تقرير PDF) — كلهم عبر `homeworkStatusLabel`/`normalizeHomeworkStatus`.
+- **الصفحة العامة** `booking_site/track/index.html`: اتحدّثت لـ3 حالات + `homeworkPartial` + `.hw-part` CSS — **⚠️ لسه محتاجة نشر على الـVPS** (زي spec 003).
+
+`flutter analyze lib` = **0 errors/warnings**، الاختبارات بتعدّي، الـAPK debug اتبنى. **لسه ماتأكدش لايف على الجهاز** (T027) ولا اتنشرت الصفحة العامة (T024 جزء النشر).
+
+---
+
 ## 2ب) مؤجَّل: ترقية Firebase لإزالة SafetyNet (اقتراح Play Console)
 
 Play Console بيقترح على الإصدار 38 إزالة `play-services-safetynet` (SDK مُهمَل). المصدر المؤكَّد: **`firebase_app_check` نسخة `0.3.2+10`** لسه بتعلن `firebase-appcheck-safetynet:16.1.2` في إعداد Android بتاعها (رغم إن `main.dart` بيفعّل `AndroidProvider.playIntegrity` صح). الحل = ترقية `firebase_app_check` → `0.4.7`، وده يفرض ترقية كل مكتبات Firebase major مع بعض:

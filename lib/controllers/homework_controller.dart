@@ -21,31 +21,68 @@ class HomeworkController extends GetxController {
     }
   }
 
-  /// نفس منطق تبديل الحضور بالظبط: لا يوجد سجل → عمل → لم يعمل → حذف
-  /// (رجوع لحالة "غير مسجّل").
-  Future<void> toggleHomework(int studentId, DateTime day) async {
+  Homework? _recordFor(int studentId, DateTime day) {
     final dayStart = DateTime(day.year, day.month, day.day);
     final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
-    final existing = homework.firstWhereOrNull((h) =>
+    return homework.firstWhereOrNull((h) =>
         h.studentId == studentId &&
         !h.date.isBefore(dayStart) &&
         !h.date.isAfter(dayEnd));
+  }
+
+  /// يضبط حالة واجب طالب في يوم صراحةً (spec 010). لو [status] == null أو
+  /// نفس الحالة الحالية → حذف السجل (رجوع لـ"غير مسجّل"). غير كده upsert.
+  Future<void> setHomeworkStatus(
+      int studentId, DateTime day, String? status) async {
+    final existing = _recordFor(studentId, day);
     try {
-      if (existing == null) {
+      if (status == null || existing?.status == status) {
+        if (existing != null) await _dbService.deleteHomework(existing.id!);
+      } else if (existing == null) {
         await _dbService.insertHomework(Homework(
           studentId: studentId,
           date: DateTime(day.year, day.month, day.day,
               DateTime.now().hour, DateTime.now().minute),
-          status: HOMEWORK_DONE,
+          status: status,
         ));
-      } else if (existing.status == HOMEWORK_DONE) {
-        await _dbService.updateHomework(existing.copyWith(status: HOMEWORK_NOT_DONE));
       } else {
-        await _dbService.deleteHomework(existing.id!);
+        await _dbService.updateHomework(existing.copyWith(status: status));
       }
       await loadHomework();
       unawaited(ParentPortalService().pushStudentSummary(studentId));
     } catch (_) {}
+  }
+
+  /// يحذف سجل واجب طالب لليوم لو موجود — يُنادى عند تسجيل الطالب غائبًا
+  /// (غائب = لا واجب، spec 010).
+  Future<void> clearHomework(int studentId, DateTime day) async {
+    final existing = _recordFor(studentId, day);
+    if (existing == null) return;
+    try {
+      await _dbService.deleteHomework(existing.id!);
+      await loadHomework();
+      unawaited(ParentPortalService().pushStudentSummary(studentId));
+    } catch (_) {}
+  }
+
+  /// أعداد حالات الواجب لليوم للـ[studentIds] المُعطاة (المُستدعي بيستثني
+  /// الغائبين). البيانات القديمة تُطبَّع.
+  ({int done, int partial, int notDone, int unset}) homeworkSummary(
+      List<int> studentIds, DateTime day) {
+    var done = 0, partial = 0, notDone = 0, unset = 0;
+    for (final id in studentIds) {
+      switch (normalizeHomeworkStatus(statusFor(id, day))) {
+        case HOMEWORK_DONE:
+          done++;
+        case HOMEWORK_PARTIAL:
+          partial++;
+        case HOMEWORK_NOT_DONE:
+          notDone++;
+        default:
+          unset++;
+      }
+    }
+    return (done: done, partial: partial, notDone: notDone, unset: unset);
   }
 
   /// نفس منطق "حضر الكل" بالظبط: لو كله متعمَّل بالفعل، الضغطة بتلغي
@@ -63,8 +100,8 @@ class HomeworkController extends GetxController {
           h.studentId: h,
     };
 
-    final allAlreadyDone = studentIds
-        .every((id) => recordsByStudent[id]?.status == HOMEWORK_DONE);
+    final allAlreadyDone = studentIds.every((id) =>
+        normalizeHomeworkStatus(recordsByStudent[id]?.status) == HOMEWORK_DONE);
 
     var succeeded = 0;
     var failed = 0;
