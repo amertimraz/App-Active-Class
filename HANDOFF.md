@@ -104,6 +104,14 @@
 
 ---
 
+## 2ب) مؤجَّل: ترقية Firebase لإزالة SafetyNet (اقتراح Play Console)
+
+Play Console بيقترح على الإصدار 38 إزالة `play-services-safetynet` (SDK مُهمَل). المصدر المؤكَّد: **`firebase_app_check` نسخة `0.3.2+10`** لسه بتعلن `firebase-appcheck-safetynet:16.1.2` في إعداد Android بتاعها (رغم إن `main.dart` بيفعّل `AndroidProvider.playIntegrity` صح). الحل = ترقية `firebase_app_check` → `0.4.7`، وده يفرض ترقية كل مكتبات Firebase major مع بعض:
+`firebase_core 3.15.2→4.14.0`, `firebase_auth 5.7.0→6.6.1`, `cloud_firestore 5.6.12→6.x`, `firebase_storage 12.4.10→13.5.0`, `firebase_app_check 0.3.2+10→0.4.7`.
+سطح المخاطرة: Firestore (بوابة أولياء الأمور) + Auth (وضع الفريق) — محتاج تجربة لايف على الجهاز. **مش عاجل** — SafetyNet لسه شغّالة، وPlay مش بترفض النشر عليها. اقتراحات Play التانية (edge-to-edge: `targetSdk=36` بيتعامل معاها Flutter؛ R8: متعمل بالفعل في `build.gradle`) مفيهاش شغل.
+
+---
+
 ## 3) ملاحظات تقنية مهمة للجلسة الجاية
 
 - **adb**: `"/f/AndroidSDK/sdk/platform-tools/adb.exe"`، الجهاز serial `9aecbc89`، الفلافور `direct`. الأمر: `flutter build apk --debug --flavor direct` ثم `adb install -r build/app/outputs/flutter-apk/app-direct-debug.apk`.
