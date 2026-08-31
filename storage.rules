@@ -1,0 +1,28 @@
+rules_version = '2';
+
+// تخزين Firebase — الاستخدام الوحيد الحقيقي حاليًا هو صور إيصالات
+// الدفع اللي بيرفعها المستخدم المجهول (anonymous) وقت طلب الترقية
+// (راجع LicenseController.submitUpgradeRequest → 'receipts/...jpg').
+// أي مسار تاني مقفول بالكامل.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // إيصالات الدفع: رفع فقط (create) لأي مستخدم مسجّل دخول (anonymous
+    // من التطبيق)، صورة، أقل من 10 ميجا. القراءة متاحة للمسجّلين
+    // (المُرسِل بيستدعي getDownloadURL، والأدمن بيشوف الصورة من اللوحة)
+    // — الحماية إن اسم الملف = deviceId + توقيت بالمللي ثانية، غير قابل
+    // للتخمين. التعديل/الحذف ممنوعان نهائيًا من الكلاينت.
+    match /receipts/{fileName} {
+      allow create: if request.auth != null
+                    && request.resource.size < 10 * 1024 * 1024
+                    && request.resource.contentType.matches('image/.*');
+      allow read: if request.auth != null;
+      allow update, delete: if false;
+    }
+
+    // كل حاجة تانية — مقفولة
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
