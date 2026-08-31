@@ -110,6 +110,21 @@ class FormatHelper {
     return DateFormat(pattern, 'ar').format(dateTime);
   }
 
+  /// تنسيق وقت من نوع [TimeOfDay] (مواعيد الحصص، الإشعارات) وفق إعداد
+  /// "نظام الساعة 24". `intl` بيتعامل صح مع منتصف الليل (00:xx → 12:xx ص)
+  /// والظهر (12:xx → 12:xx م).
+  static String formatClock(TimeOfDay t) {
+    var use24h = true;
+    try {
+      use24h = Get.find<SettingsController>().use24hFormat.value;
+    } catch (_) {}
+    if (use24h) {
+      return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    }
+    return DateFormat('h:mm a', 'ar')
+        .format(DateTime(2000, 1, 1, t.hour, t.minute));
+  }
+
   /// تنسيق التاريخ والوقت معًا
   static String formatDateTime(DateTime? dateTime) {
     if (dateTime == null) return 'لم يتم التحديد';

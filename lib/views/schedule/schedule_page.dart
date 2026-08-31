@@ -1,13 +1,13 @@
 // lib/views/schedule/schedule_page.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
-import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/widgets/clock_text.dart';
 
 // ─── أيام الأسبوع (تبدأ السبت) ────────────────────────────────────────────────
 const List<String> _kDays = [
@@ -115,14 +115,7 @@ class _SchedulePageState extends State<SchedulePage> {
         group: g, dayIndex: dayIndex, from: from, to: to, studentCount: count);
   }
 
-  String _fmtTime(TimeOfDay t) {
-    final settings = Get.find<SettingsController>();
-    if (settings.use24hFormat.value) {
-      return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-    }
-    return DateFormat('hh:mm a', 'ar')
-        .format(DateTime(2000, 1, 1, t.hour, t.minute));
-  }
+  String _fmtTime(TimeOfDay t) => FormatHelper.formatClock(t);
 
   List<_ClassSlot> _slotsForDay(int day) {
     final list = _slots.where((s) => s.dayIndex == day).toList()
@@ -204,12 +197,9 @@ class _SchedulePageState extends State<SchedulePage> {
                   child: daySlots.isEmpty
                       ? _EmptyDay(
                           day: _kDays[_selectedDay], isDark: isDark, cs: cs)
-                      : Obx(() {
-                          // قراءة مباشرة هنا عشان القائمة تتحدّث لما نظام
-                          // الساعة 12/24 يتغيّر من الإعدادات — الصفحة دي
-                          // مش GetX-reactive أصلًا فمن غير ده الأوقات
-                          // مبتتحدثش غير لو الصفحة اتفتحت من جديد.
-                          Get.find<SettingsController>().use24hFormat.value;
+                      : ClockBuilder(builder: (_) {
+                          // إعادة بناء القائمة عند تغيير نظام الساعة 12/24
+                          // من الإعدادات (الصفحة دي مش GetX-reactive أصلًا).
                           return ListView.builder(
                             padding:
                                 const EdgeInsets.fromLTRB(16, 8, 16, 24),

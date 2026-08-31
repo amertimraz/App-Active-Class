@@ -68,6 +68,24 @@
 
 ---
 
+## 1هـ) نظام الساعة 24/12 مش بيتطبق في كل التطبيق — spec 009 — ✅ في الكود، ⏳ لسه ماتأكدش لايف، ⏳ لسه ماعُملش commit
+
+**البلاغ**: تبديل مفتاح "نظام الساعة 24" من الإعدادات مش بيتطبق فورًا ولا باستمرار على باقي الشاشات (مواعيد الحصص، الإشعارات، تواريخ الدفعات...).
+
+**السبب**: `FormatHelper.formatTime/formatDateTime/formatPaymentDate` دوال static بتقرا `RxBool use24hFormat` خارج أي نطاق تفاعلي، فالشاشات المبنية مبتعيدش البناء. حِيَل يدوية مبعثرة في ~6 شاشات وبعضها لأ. `notification_service` كان بيطبع 24 ساعة دايمًا.
+
+**اتعمل عبر SpecKit كامل** — `specs/009-clock-format-setting/` (spec → plan → tasks → implement):
+- **جديد** `lib/widgets/clock_text.dart`: `ClockText` / `ClockDateTimeText` / `ClockPaymentDateText` / `ClockBuilder` — تلفّ قراءة الإعداد في `Obx` مرة واحدة (الطريقة الموحّدة).
+- **جديد** `FormatHelper.formatClock(TimeOfDay)` في `helpers.dart` — لمواعيد الحصص + الإشعارات (بتتعامل صح مع 00:00→`12:00 ص` و12:00→`12:00 م`). اختبار وحدة: `test/format_clock_test.dart` (7 حالات، بتعدّي).
+- `settings_controller.setUse24hFormat` بقى يعيد جدولة الإشعارات (`syncAllScheduledNotifications`).
+- `main.dart`: `MediaQuery.alwaysUse24HourFormat` على الجذر (جوه الـObx الخارجي) لمنتقيات الوقت — وشيل الـ`MediaQuery.copyWith` المكرّرة من `groups_page`/`group_details`.
+- استبدال نقاط العرض: `student_details_page`, `attendance_page`, `schedule_page`, `groups_page` (كان بيعرض جدول raw 24h دايمًا + `displaySchedule` كان dead code — اتشال)، `group_details_page` (جدول + "آخر إرسال")، `qr_scanner_attendance_page`, `bookings_page`, `payments_page`, `payments_report_page`, `notification_service`.
+- **خارج النطاق** (تفضل `HH:mm`): تقارير واتساب/المشاركة النصية، ملفات PDF/النسخ الاحتياطي، سجلّ الدفع المخزَّن (`qr_controller:247`).
+
+`flutter analyze lib test` = **0 errors/warnings**. `rg "use24hFormat\.value;" lib/views` = نضيف (SC-003). **الجهاز مش متوصل فلسه ماتأكدش لايف** — المهام المتبقية في `tasks.md`: T008/T018/T019/T022/T023 (كلها تحقّق يدوي على الجهاز عبر `quickstart.md`).
+
+---
+
 ## 2) حاجات اتعملت واتأكد منها لايف + commit + push (كلها على main)
 
 بالترتيب الزمني في الجلسة دي:

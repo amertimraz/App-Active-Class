@@ -7,7 +7,7 @@ import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
-import 'package:active_class/controllers/settings_controller.dart';
+import 'package:active_class/widgets/clock_text.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/models/payment_model.dart' show Payment;
 import 'package:active_class/models/student_model.dart' show Student;
@@ -541,10 +541,6 @@ class _PaymentsPageState extends State<PaymentsPage> {
             const Divider(height: 1),
             Expanded(
               child: Obx(() {
-                // قراءة مباشرة هنا (مش جوه itemBuilder) عشان GetX يسجّلها
-                // كـ dependency — لو قريناها بس جوه itemBuilder، القائمة مش
-                // هتتحدّث لما نظام الساعة 12/24 يتغيّر من الإعدادات.
-                Get.find<SettingsController>().use24hFormat.value;
                 final payments = ctrl.payments
                     .where((p) =>
                         p.studentId == student.id &&
@@ -570,7 +566,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                         p.amount,
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      subtitle: Text(FormatHelper.formatPaymentDate(p.date)),
+                      subtitle: ClockPaymentDateText(p.date),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [

@@ -10,6 +10,7 @@ import 'package:active_class/models/booking_request_model.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/add_student_sheet.dart';
 import 'package:active_class/widgets/app_toast.dart';
+import 'package:active_class/widgets/clock_text.dart';
 
 const _kPrimary = Color(0xFF4F46E5);
 const _kAccent = Color(0xFF0EA5E9);
@@ -390,12 +391,14 @@ class _RequestCard extends StatelessWidget {
                 Icon(Icons.schedule_rounded,
                     size: 13, color: isDark ? Colors.white38 : Colors.grey[500]),
                 const SizedBox(width: 4),
-                Text(
-                  'وصل ${FormatHelper.formatDateTime(request.createdAt)}',
-                  style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 11.5,
-                      color: isDark ? Colors.white38 : Colors.grey[500]),
+                ClockBuilder(
+                  builder: (_) => Text(
+                    'وصل ${FormatHelper.formatDateTime(request.createdAt)}',
+                    style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 11.5,
+                        color: isDark ? Colors.white38 : Colors.grey[500]),
+                  ),
                 ),
               ],
             ),

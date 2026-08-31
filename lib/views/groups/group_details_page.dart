@@ -19,6 +19,7 @@ import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
+import 'package:active_class/widgets/clock_text.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
@@ -228,14 +229,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   String _formatSchedule(String? raw) {
     final r = raw?.trim() ?? '';
     if (r.isEmpty) return '-';
-    final settings = Get.find<SettingsController>();
-    String fmt(TimeOfDay t) {
-      if (settings.use24hFormat.value) {
-        return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-      }
-      return DateFormat('hh:mm a', 'ar')
-          .format(DateTime(2000, 1, 1, t.hour, t.minute));
-    }
+    String fmt(TimeOfDay t) => FormatHelper.formatClock(t);
 
     TimeOfDay? parse(String v) {
       final p = v.split(':');
@@ -595,11 +589,14 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             // مواعيد
             if ((g.schedule?.isNotEmpty ?? false)) ...[
               const SizedBox(height: 14),
-              Text(_formatSchedule(g.schedule),
-                  style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
+              ClockBuilder(
+                builder: (_) => Text(_formatSchedule(g.schedule),
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontSize: 12),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+              ),
             ],
 
             const SizedBox(height: 16),
@@ -1553,17 +1550,11 @@ class _GDScheduleEditorState extends State<_GDScheduleEditor> {
   }
 
   Future<void> _pickTime(int i, bool isFrom) async {
-    // بنفرض تنسيق 12/24 ساعة اللي مختاره المستخدم من إعدادات التطبيق —
-    // وإلا الـpicker بيتبع إعداد نظام الجهاز نفسه بغض النظر عن اختيار
-    // المستخدم جوه التطبيق.
-    final use24h = Get.find<SettingsController>().use24hFormat.value;
+    // نظام 12/24 ساعة للـpicker متضبوط على مستوى التطبيق كله في main.dart
+    // (MediaQuery.alwaysUse24HourFormat) وفق إعداد المستخدم.
     final t = await showTimePicker(
       context: context,
       initialTime: (isFrom ? _slots[i].from : _slots[i].to) ?? TimeOfDay.now(),
-      builder: (ctx, child) => MediaQuery(
-        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: use24h),
-        child: child!,
-      ),
     );
     if (t == null) return;
     setState(() {
@@ -1596,9 +1587,8 @@ class _GDScheduleEditorState extends State<_GDScheduleEditor> {
         ..._slots.asMap().entries.map((e) {
           final i = e.key;
           final s = e.value;
-          String fmtT(TimeOfDay? t) => t == null
-              ? '--:--'
-              : '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+          String fmtT(TimeOfDay? t) =>
+              t == null ? '--:--' : FormatHelper.formatClock(t);
           // يوم متحدد بدون وقت كامل = الموعد ده مش هيظهر في جدول الحصص
           final incomplete = s.day != null && (s.from == null || s.to == null);
           return Padding(
@@ -2138,9 +2128,12 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
                               children: [
                                 Text(s.guardianPhone ?? '-'),
                                 if (last != null)
-                                  Text(
-                                      'آخر إرسال: ${FormatHelper.formatDateTime(last)}',
-                                      style: Theme.of(ctx).textTheme.bodySmall),
+                                  ClockBuilder(
+                                    builder: (_) => Text(
+                                        'آخر إرسال: ${FormatHelper.formatDateTime(last)}',
+                                        style:
+                                            Theme.of(ctx).textTheme.bodySmall),
+                                  ),
                               ]),
                           controlAffinity: ListTileControlAffinity.leading,
                         );

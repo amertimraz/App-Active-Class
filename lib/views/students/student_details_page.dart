@@ -17,6 +17,7 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
+import 'package:active_class/widgets/clock_text.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/services/database_service.dart';
@@ -1336,13 +1337,9 @@ class _PaymentsTab extends StatelessWidget {
       );
     }
 
-    // Obx هنا عشان تواريخ الدفعات تتحدث تلقائيًا لما نظام الساعة 12/24
-    // يتغيّر من الإعدادات — الويدجت دي بتتبني مرة واحدة جوه TabBarView
-    // ومكانتش بتتحدّث تلقائيًا من غير ده.
-    return Obx(() {
-      Get.find<SettingsController>().use24hFormat.value;
-      return _buildList(isDark, months, byMonth);
-    });
+    // تواريخ الدفعات بتتحدّث تلقائيًا مع تغيير نظام الساعة عن طريق
+    // ClockPaymentDateText (تفاعلية داخليًا) — مفيش داعي للفّ الشاشة كلها.
+    return _buildList(isDark, months, byMonth);
   }
 
   Widget _buildList(
@@ -1487,7 +1484,7 @@ class _PaymentsTab extends StatelessWidget {
                           child: const Icon(Icons.check_rounded,
                               color: Colors.green, size: 18),
                         ),
-                        title: Text(FormatHelper.formatPaymentDate(p.date),
+                        title: ClockPaymentDateText(p.date,
                             style: const TextStyle(fontSize: 13)),
                         subtitle: p.note != null && p.note!.isNotEmpty
                             ? Text(p.note!,

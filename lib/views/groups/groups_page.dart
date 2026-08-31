@@ -15,7 +15,28 @@ import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/utils/group_price_helper.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
-import 'package:intl/intl.dart';
+import 'package:active_class/widgets/clock_text.dart';
+
+/// يعرض نطاق وقت حصة ("14:30-16:00") وفق إعداد "نظام الساعة 24" (spec 009).
+/// لازم يُستدعى جوه ClockBuilder/Obx عشان يتحدّث فورًا عند تغيير الإعداد.
+String _fmtScheduleRange(String rawRange) {
+  TimeOfDay? p(String v) {
+    final s = v.trim().split(':');
+    if (s.length != 2) return null;
+    final h = int.tryParse(s[0]), m = int.tryParse(s[1]);
+    if (h == null || m == null) return null;
+    return TimeOfDay(hour: h, minute: m);
+  }
+
+  final parts = rawRange.split('-');
+  if (parts.length == 2) {
+    final a = p(parts[0]), b = p(parts[1]);
+    if (a != null && b != null) {
+      return '${FormatHelper.formatClock(a)}-${FormatHelper.formatClock(b)}';
+    }
+  }
+  return rawRange;
+}
 
 /// يحوّل نص الجدول (صيغة "اليوم HH:MM-HH:MM,...") لخريطة يوم -> نطاقات
 /// زمنية بالدقائق، لاستخدامها في فحص التداخل داخل المجموعة أو بين المجموعات.
@@ -128,41 +149,6 @@ class _GroupsPageState extends State<GroupsPage> {
     return studentController.students.where((s) => s.groupId == groupId).toList();
   }
 
-  String _displaySchedule(String raw, bool use24) {
-    final parts = raw.split(',');
-    String fmt(TimeOfDay t) {
-      if (use24) {
-        return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-      }
-      final dt = DateTime(2000, 1, 1, t.hour, t.minute);
-      return DateFormat('hh:mm a', 'ar').format(dt);
-    }
-
-    TimeOfDay? parse(String v) {
-      final p = v.split(':');
-      if (p.length != 2) return null;
-      final h = int.tryParse(p[0]);
-      final m = int.tryParse(p[1]);
-      if (h == null || m == null) return null;
-      return TimeOfDay(hour: h, minute: m);
-    }
-
-    return parts.map((s) {
-      final txt = s.trim();
-      if (txt.isEmpty) return txt;
-      final sp = txt.split(' ');
-      if (sp.length < 2) return txt;
-      final day = sp.first;
-      final times = txt.substring(day.length).trim();
-      final range = times.split('-');
-      if (range.length != 2) return txt;
-      final from = parse(range[0].trim());
-      final to = parse(range[1].trim());
-      if (from == null || to == null) return txt;
-      return '$day ${fmt(from)}-${fmt(to)}';
-    }).join('\n');
-  }
-
   List<Map<String, String>> _parseScheduleSlots(String raw) {
     final parts = raw.split(',');
     return parts.map((s) {
@@ -206,10 +192,6 @@ class _GroupsPageState extends State<GroupsPage> {
           }).toList();
 
           final totalStudents = studentController.students.length;
-          // بنقرأ القيمة هنا (جوه الـ Obx) بدل جوه الـ closure اللي بتتنفذ
-          // لاحقًا داخل بناء كل بطاقة — لو قريناها هناك، GetX مش هيسجلها
-          // كـ dependency وبالتالي القائمة مش هتتحدّث لما نظام الساعة يتغيّر.
-          final use24h = Get.find<SettingsController>().use24hFormat.value;
 
           return Column(
             children: [
@@ -288,8 +270,6 @@ class _GroupsPageState extends State<GroupsPage> {
                                     }
                                     if (items[i].id != null) controller.deleteGroup(items[i].id!);
                                   },
-                                  displaySchedule: (raw) =>
-                                      _displaySchedule(raw, use24h),
                                   parseSlots: _parseScheduleSlots,
                                 ),
                           ),
@@ -1024,7 +1004,6 @@ class _GroupCard extends StatelessWidget {
   final List<Student> students;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-  final String Function(String) displaySchedule;
   final List<Map<String, String>> Function(String) parseSlots;
 
   const _GroupCard({
@@ -1034,7 +1013,6 @@ class _GroupCard extends StatelessWidget {
     required this.students,
     required this.onEdit,
     required this.onDelete,
-    required this.displaySchedule,
     required this.parseSlots,
   });
 
@@ -1215,26 +1193,28 @@ class _GroupCard extends StatelessWidget {
                         ? Text('لا توجد مواعيد',
                             style: TextStyle(
                                 fontSize: 12, color: Colors.grey.shade400))
-                        : Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: slots.map((s) {
-                              return Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: color.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  '${s['day']} ${s['time']}',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: color,
-                                      fontWeight: FontWeight.w600),
-                                ),
-                              );
-                            }).toList(),
+                        : ClockBuilder(
+                            builder: (_) => Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: slots.map((s) {
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '${s['day']} ${_fmtScheduleRange(s['time'] ?? '')}',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: color,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
                           ),
                   ),
 
@@ -1368,31 +1348,15 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
 
   String _pad(int n) => n.toString().padLeft(2, '0');
   String _fmt(TimeOfDay t) => '${_pad(t.hour)}:${_pad(t.minute)}';
-  String _fmtDisplay(TimeOfDay t) {
-    try {
-      if (!Get.find<SettingsController>().use24hFormat.value) {
-        return DateFormat('hh:mm a', 'ar').format(DateTime(2000, 1, 1, t.hour, t.minute));
-      }
-    } catch (_) {}
-    return _fmt(t);
-  }
+  String _fmtDisplay(TimeOfDay t) => FormatHelper.formatClock(t);
 
   TimeOfDay _addHour(TimeOfDay t) => TimeOfDay(hour: (t.hour + 1) % 24, minute: t.minute);
 
   Future<void> _pickTime(int index, bool isFrom) async {
     final cur = isFrom ? _entries[index].from : _entries[index].to;
-    // بنفرض تنسيق 12/24 ساعة اللي مختاره المستخدم من إعدادات التطبيق —
-    // وإلا الـpicker بيتبع إعداد نظام الجهاز نفسه بغض النظر عن اختيار
-    // المستخدم جوه التطبيق.
-    final use24h = Get.find<SettingsController>().use24hFormat.value;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: cur,
-      builder: (ctx, child) => MediaQuery(
-        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: use24h),
-        child: child!,
-      ),
-    );
+    // نظام 12/24 ساعة للـpicker متضبوط على مستوى التطبيق كله في main.dart
+    // (MediaQuery.alwaysUse24HourFormat) وفق إعداد المستخدم.
+    final picked = await showTimePicker(context: context, initialTime: cur);
     if (picked != null) {
       if (isFrom) {
         // بنحافظ على مدة الحصة الحالية بدل ما نفرض ساعة تابتة — لو

@@ -20,6 +20,7 @@ import 'package:active_class/services/export_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
+import 'package:active_class/widgets/clock_text.dart';
 import 'package:active_class/widgets/custom_dialogs.dart' as custom_dialogs;
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -2200,10 +2201,6 @@ class _QRScanTabState extends State<_QRScanTab> {
       // ── قائمة الحاضرين اليوم ────────────────────────────────────────────────
       Expanded(
         child: Obx(() {
-          // قراءة مباشرة هنا عشان القائمة تتحدّث لما نظام الساعة 12/24
-          // يتغيّر من الإعدادات — لو القراءة جوه itemBuilder بس، GetX
-          // مش هيسجّلها كـ dependency.
-          Get.find<SettingsController>().use24hFormat.value;
           final presentToday = widget.controller.attendance
               .where((a) =>
                   a.status == ATTENDANCE_PRESENT &&
@@ -2268,7 +2265,7 @@ class _QRScanTabState extends State<_QRScanTab> {
                             fontWeight: FontWeight.w700,
                             fontSize: 13)),
                   ),
-                  Text(FormatHelper.formatTime(att.date),
+                  ClockText(att.date,
                       style: TextStyle(
                           fontSize: 11, color: Colors.grey.shade500)),
                   const SizedBox(width: 6),

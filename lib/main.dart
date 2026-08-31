@@ -199,6 +199,8 @@ class MyApp extends StatelessWidget {
       });
     }
 
+    final SettingsController settingsController = Get.find();
+
     return Obx(() => GetMaterialApp(
           title: APP_NAME,
           debugShowCheckedModeBanner: false,
@@ -206,10 +208,18 @@ class MyApp extends StatelessWidget {
           darkTheme: AppTheme.darkTheme,
           themeMode: themeController.themeMode.value,
           locale: const Locale('ar'),
-          builder: (context, child) => Directionality(
-            textDirection: ui.TextDirection.rtl,
-            child: child ?? const SizedBox.shrink(),
-          ),
+          // Obx متداخل هنا بس: تبديل "نظام الساعة 24" يعيد بناء غلاف
+          // MediaQuery وحده (لمنتقيات الوقت الأصلية) من غير ما يعيد بناء
+          // GetMaterialApp/الـNavigator كله.
+          builder: (context, child) => Obx(() => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                    alwaysUse24HourFormat:
+                        settingsController.use24hFormat.value),
+                child: Directionality(
+                  textDirection: ui.TextDirection.rtl,
+                  child: child ?? const SizedBox.shrink(),
+                ),
+              )),
           home: const SplashPage(),
           getPages: [
             GetPage(name: ROUTE_SPLASH, page: () => const SplashPage()),

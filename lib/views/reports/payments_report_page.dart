@@ -13,6 +13,7 @@ import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/controllers/settings_controller.dart';
+import 'package:active_class/widgets/clock_text.dart';
 
 class PaymentsReportPage extends StatefulWidget {
   const PaymentsReportPage({super.key});
@@ -349,9 +350,6 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
 
   Widget _buildDailyReport() {
     return Obx(() {
-      // قراءة مباشرة هنا عشان القائمة تتحدّث لما نظام الساعة 12/24 يتغيّر
-      // من الإعدادات — القراءة جوه itemBuilder بس مش بتتسجل كـ dependency.
-      Get.find<SettingsController>().use24hFormat.value;
       final payments = paymentController.payments
           .where((p) =>
               p.date.year == _selectedDay.year &&
@@ -448,8 +446,9 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                           return ListTile(
                             leading: const Icon(Icons.payment),
                             title: Text(student?.name ?? 'طالب غير معروف'),
-                            subtitle: Text(
-                                '${group?.name ?? 'غير محدد'} • ${FormatHelper.formatPaymentDate(p.date)}'),
+                            subtitle: ClockBuilder(
+                                builder: (_) => Text(
+                                    '${group?.name ?? 'غير محدد'} • ${FormatHelper.formatPaymentDate(p.date)}')),
                             trailing:
                                 Text(FormatHelper.formatCurrency(p.amount)),
                           );

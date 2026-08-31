@@ -11,6 +11,7 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/helpers.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -434,8 +435,8 @@ class NotificationService {
     return TimeOfDay(hour: normalized ~/ 60, minute: normalized % 60);
   }
 
-  String _pad(int n) => n.toString().padLeft(2, '0');
-  String _fmt(TimeOfDay t) => '${_pad(t.hour)}:${_pad(t.minute)}';
+  // وقت الحصة في نصوص الإشعارات يتبع إعداد "نظام الساعة 24" (spec 009).
+  String _fmt(TimeOfDay t) => FormatHelper.formatClock(t);
 
   tz.TZDateTime _nextInstanceOfWeekdayTime(int targetWeekday, TimeOfDay time) {
     final now = tz.TZDateTime.now(tz.local);

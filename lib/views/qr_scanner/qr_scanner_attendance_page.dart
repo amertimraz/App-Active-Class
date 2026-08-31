@@ -15,6 +15,7 @@ import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/widgets/clock_text.dart';
 
 // ══════════════════════════════════════════════════════════════════
 //  QRScannerAttendancePage
@@ -625,13 +626,15 @@ class _AttendancePanel extends StatelessWidget {
 
               // ── حالة اليوم ──────────────────────────────────────
               if (isPresent)
-                _InfoBanner(
-                  icon: Icons.check_circle_rounded,
-                  color: const Color(0xFF10B981),
-                  text: 'تم تسجيل الحضور اليوم',
-                  subText: record != null
-                      ? 'في ${FormatHelper.formatTime(record.date)}'
-                      : null,
+                ClockBuilder(
+                  builder: (_) => _InfoBanner(
+                    icon: Icons.check_circle_rounded,
+                    color: const Color(0xFF10B981),
+                    text: 'تم تسجيل الحضور اليوم',
+                    subText: record != null
+                        ? 'في ${FormatHelper.formatTime(record.date)}'
+                        : null,
+                  ),
                 )
               else if (isAbsent)
                 _InfoBanner(

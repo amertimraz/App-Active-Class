@@ -1,5 +1,6 @@
 // lib/controllers/settings_controller.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -9,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/notification_service.dart';
 
 class CurrencyOption {
   final String code; // e.g., SAR
@@ -349,6 +351,9 @@ class SettingsController extends GetxController {
     try {
       await _dbSet(_keyUse24h, v ? '1' : '0');
     } catch (_) {}
+    // نصوص الإشعارات المجدولة (تذكير الحصة، ملخص اليوم) بتتحدّد وقت
+    // الجدولة، فلازم إعادة جدولة عشان تظهر بالصيغة الجديدة.
+    unawaited(NotificationService().syncAllScheduledNotifications());
   }
 
   // ===== Teacher Info =====
