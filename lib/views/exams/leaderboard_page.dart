@@ -242,7 +242,11 @@ class _LeaderboardCard extends StatelessWidget {
   }
 
   String get _initials {
-    final parts = entry.studentName.trim().split(' ');
+    final parts = entry.studentName
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return '؟';
     if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}';
     return parts[0][0];
   }

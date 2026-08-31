@@ -727,8 +727,12 @@ class _StatsPanel extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
               child: SizedBox(
-                height: 70,
-                child: _DistributionChart(dist: stats.distribution),
+                height: 92,
+                // ClipRect: يمنع أي رسم من BarChart إنه يطلع بره حدوده
+                // ويركب فوق شرائح الإحصائيات اللي فوقه.
+                child: ClipRect(
+                  child: _DistributionChart(dist: stats.distribution),
+                ),
               ),
             ),
         ],
@@ -791,17 +795,36 @@ class _DistributionChart extends StatelessWidget {
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 22,
+              reservedSize: 34,
               getTitlesWidget: (val, meta) {
-                final cat = cats[val.toInt()].$1;
+                final idx = val.toInt();
+                if (idx < 0 || idx >= cats.length) {
+                  return const SizedBox.shrink();
+                }
+                final entry = cats[idx];
+                final cat = entry.$1;
+                // العدد بيتعرض كنص تحت اسم التصنيف بدل tooltip ثابت —
+                // الـtooltip الثابت كان بيرسم فوق حدود الرسم ويركب على
+                // شرائح الإحصائيات اللي فوق الرسم (أرقام رمادية متداخلة).
                 return Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text(cat.label,
-                      style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 9,
-                          color: cat.color,
-                          fontWeight: FontWeight.w700)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${entry.$2}',
+                          style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 11,
+                              color: cat.color,
+                              fontWeight: FontWeight.w900)),
+                      Text(cat.label,
+                          style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 9,
+                              color: cat.color,
+                              fontWeight: FontWeight.w700)),
+                    ],
+                  ),
                 );
               },
             ),
@@ -824,21 +847,10 @@ class _DistributionChart extends StatelessWidget {
                 rodStackItems: [],
               ),
             ],
-            showingTooltipIndicators: count > 0 ? [0] : [],
+            showingTooltipIndicators: const [],
           );
         }).toList(),
-        barTouchData: BarTouchData(
-          touchTooltipData: BarTouchTooltipData(
-            getTooltipItem: (group, gIdx, rod, rIdx) => BarTooltipItem(
-              '${rod.toY.toInt()}',
-              const TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 10,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800),
-            ),
-          ),
-        ),
+        barTouchData: BarTouchData(enabled: false),
       ),
     );
   }
@@ -1068,9 +1080,15 @@ class _GradeRowState extends State<_GradeRow> {
   }
 
   String get _initials {
-    final name = widget.grade.studentName ?? '';
-    if (name.isEmpty) return '؟';
-    final parts = name.trim().split(' ');
+    // لازم يكون مقاوم لأي شكل اسم: مسافات مزدوجة، مسافات في الأول/الآخر،
+    // اسم فاضي. من غير الفلترة دي، اسم زي "محمد  علي" (مسافتين) بيدّي
+    // جزء فاضي، و parts[1][0] بترمي RangeError فالصف كله بيقع — وفي بناء
+    // الـrelease بيتحوّل لمربع رمادي (ErrorWidget) بدل ما يبان الخطأ.
+    final parts = (widget.grade.studentName ?? '')
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return '؟';
     if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}';
     return parts[0][0];
   }

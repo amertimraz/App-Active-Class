@@ -115,7 +115,11 @@ class _StudentExamHistoryPageState extends State<StudentExamHistoryPage> {
       GradeCategoryExt.fromPercentage(_overallPct);
 
   String get _initials {
-    final parts = widget.studentName.trim().split(' ');
+    final parts = widget.studentName
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return '؟';
     if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}';
     return parts[0][0];
   }
