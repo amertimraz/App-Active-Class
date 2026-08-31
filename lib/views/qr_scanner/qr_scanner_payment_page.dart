@@ -74,6 +74,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
         : Get.put(QRController());
     controller.mode.value = QRMode.payment;
     _session = Get.find<SessionLogController>();
+    _hydrateSessionFromToday();
     // لو ماسح QR مخفي من الإعدادات، متشغّلش الكاميرا خالص.
     if (!_hideQr) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _safeStartScanner());
@@ -87,6 +88,46 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
     scannerController.dispose();
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  // ── ملء سجل الجلسة من دفعات النهاردة الفعلية (مرة واحدة كل تشغيل) ──
+  Future<void> _hydrateSessionFromToday() async {
+    try {
+      final all = await _db.getAllPayments();
+      final now = DateTime.now();
+      final today = all
+          .where((p) =>
+              p.date.year == now.year &&
+              p.date.month == now.month &&
+              p.date.day == now.day)
+          .toList();
+      if (today.isEmpty) {
+        _session.hydrateOnce(const []);
+        return;
+      }
+      final byId = {
+        for (final s in studentController.students) s.id: s,
+      };
+      final entries = today.map((p) {
+        final s = byId[p.studentId];
+        final note = p.note ?? '';
+        final monthsPart =
+            note.split(';').firstWhere((e) => e.startsWith('months='), orElse: () => '');
+        final monthCount = monthsPart.isEmpty
+            ? 1
+            : monthsPart.substring(7).split(',').where((e) => e.trim().isNotEmpty).length;
+        return SessionEntry(
+          studentName: s?.name ?? 'طالب',
+          amount: p.amount,
+          monthCount: monthCount < 1 ? 1 : monthCount,
+          time: p.date,
+          guardianPhone: s?.guardianPhone,
+        );
+      }).toList()
+        ..sort((a, b) => b.time.compareTo(a.time));
+      _session.hydrateOnce(entries);
+      if (mounted) setState(() {});
+    } catch (_) {}
   }
 
   // ── تشغيل/إيقاف الكاميرا بأمان ─────────────────────────────────
@@ -691,15 +732,25 @@ class _ManualTab extends StatelessWidget {
                     onTap: onShowLog)
                 : const SizedBox.shrink()),
             Expanded(
-              child: _PaymentPanel(
-                student: manualStudent!,
-                controller: controller,
-                db: db,
-                onConfirm: () => onConfirm(manualStudent!),
-                onOverride: onOverride,
-                onClear: onBack,
-                showBackButton: true,
-              ),
+              // نستخدم scannedStudent (اتجاب من القاعدة لحظة الاختيار عبر
+              // handleScan) مش manualStudent (نسخة قديمة من نتائج البحث في
+              // الذاكرة) — عشان الإعفاء/السعر يظهروا محدَّثين. وكمان نعرض
+              // بطاقة المعفى هنا زي تبويب المسح بالظبط.
+              child: Obx(() {
+                final s = controller.scannedStudent.value ?? manualStudent!;
+                if (s.isExempt) {
+                  return _ExemptPanel(student: s, onClear: onBack);
+                }
+                return _PaymentPanel(
+                  student: s,
+                  controller: controller,
+                  db: db,
+                  onConfirm: () => onConfirm(s),
+                  onOverride: onOverride,
+                  onClear: onBack,
+                  showBackButton: true,
+                );
+              }),
             ),
           ],
         ),

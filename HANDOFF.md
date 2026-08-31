@@ -135,6 +135,16 @@
 
 ---
 
+## 1ز) تبويب الدفع اليدوي + عدّاد "دفعوا اليوم" — ✅ في الكود، ⏳ لسه ماتأكدش لايف، ⏳ لسه ماعُملش commit
+
+**بلاغ 6**: طالب معفى، لما تختاره من **البحث اليدوي** في تسجيل الدفع بيظهر بشاشة الدفع العادية (90 جنيه/شهر + زر "تأكيد الدفع") بدل بطاقة "معفى". السبب: `_ManualTab` كان بيرندر `_PaymentPanel` دايمًا باستخدام `manualStudent` (نسخة قديمة من نتائج البحث في الذاكرة) — مبيفحصش `isExempt` ومبيعرضش `_ExemptPanel` زي تبويب المسح. الإصلاح: يستخدم `controller.scannedStudent.value` (اتجاب من القاعدة عبر `handleScan`) + يعرض `_ExemptPanel` لو `isExempt`.
+
+**بلاغ 7**: عدّاد "X طلاب دفعوا اليوم" بيرجع 0 بعد قفل وفتح التطبيق (كان session-only في الذاكرة، مش من القاعدة). الإصلاح: `SessionLogController.hydrateOnce(...)` + `_hydrateSessionFromToday()` في `initState` بتاع شاشة الدفع — بتملأ السجل مرة واحدة كل تشغيل من دفعات النهاردة الفعلية في القاعدة.
+
+**ملفات**: `qr_scanner_payment_page.dart`، `session_log_controller.dart`. `flutter analyze lib` نضيف.
+
+---
+
 ## 2ب) مؤجَّل: ترقية Firebase لإزالة SafetyNet (اقتراح Play Console)
 
 Play Console بيقترح على الإصدار 38 إزالة `play-services-safetynet` (SDK مُهمَل). المصدر المؤكَّد: **`firebase_app_check` نسخة `0.3.2+10`** لسه بتعلن `firebase-appcheck-safetynet:16.1.2` في إعداد Android بتاعها (رغم إن `main.dart` بيفعّل `AndroidProvider.playIntegrity` صح). الحل = ترقية `firebase_app_check` → `0.4.7`، وده يفرض ترقية كل مكتبات Firebase major مع بعض:

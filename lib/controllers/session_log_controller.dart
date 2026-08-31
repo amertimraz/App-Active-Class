@@ -34,6 +34,19 @@ class SessionLogController extends GetxController {
   double get total => entries.fold(0, (s, e) => s + e.amount);
   int get count => entries.length;
 
+  bool _hydratedThisRun = false;
+
+  /// يملأ السجل مرة واحدة كل تشغيل من دفعات النهاردة الفعلية في القاعدة —
+  /// عشان عدّاد "دفعوا اليوم" ما يرجعش صفر بعد قفل وفتح التطبيق. لو
+  /// المدرس سجّل دفعات في نفس الجلسة بالفعل، مبنعملش حاجة.
+  void hydrateOnce(List<SessionEntry> todayEntries) {
+    if (_hydratedThisRun) return;
+    _hydratedThisRun = true;
+    if (entries.isNotEmpty) return;
+    entries.assignAll(todayEntries);
+    if (todayEntries.isNotEmpty) _lastEntryDate = DateTime.now();
+  }
+
   void add(SessionEntry entry) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
