@@ -18,12 +18,11 @@ import 'package:active_class/widgets/app_chrome.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
-import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/add_student_sheet.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
+import 'package:active_class/widgets/remove_student_dialog.dart';
 import 'package:active_class/widgets/import_students_dialog.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
-import 'package:active_class/widgets/app_toast.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:media_store_plus/media_store_plus.dart';
@@ -461,42 +460,12 @@ class _StudentsPageState extends State<StudentsPage>
   // ── Archive ──────────────────────────────────────────────────────
   void _confirmArchive(BuildContext context, Student student) {
     if (student.id == null) return;
-    if (!requireDeletePermission(
-        context, TeamModeService().canDeleteStudentsNow)) {
-      return;
-    }
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('أرشفة الطالب'),
-        content: Text(
-          'هل تريد أرشفة "${student.name}"؟\n'
-          'هيختفي من كل الشاشات النشطة (القوائم، الحضور، الدفع بالـQR) لكن '
-          'بياناته وسجله (حضور، مدفوعات، درجات) هيفضلوا محفوظين كاملين، '
-          'وتقدر تسترجعه في أي وقت من شاشة "الأرشيف".',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            onPressed: () async {
-              final name = student.name;
-              Navigator.of(ctx).pop();
-              await Future.delayed(const Duration(milliseconds: 80));
-              final ok = await controller.archiveStudent(student.id!);
-              if (!context.mounted) return;
-              if (ok) {
-                AppToast.success(context, 'تم أرشفة الطالب', subtitle: name);
-              }
-            },
-            child: const Text('أرشفة', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+    showRemoveStudentDialog(
+      context,
+      student: student,
+      canDelete: TeamModeService().canDeleteStudentsNow,
+      onArchive: () => controller.archiveStudent(student.id!),
+      onDeletePermanently: () => controller.deleteStudent(student.id!),
     );
   }
 
@@ -767,9 +736,9 @@ class _StudentCard extends StatelessWidget {
                       PopupMenuItem(
                         value: 'archive',
                         child: Row(children: [
-                          Icon(Icons.archive_rounded, size: 18, color: Colors.orange.shade400),
+                          Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red.shade400),
                           const SizedBox(width: 10),
-                          Text('أرشفة', style: TextStyle(color: Colors.orange.shade400)),
+                          Text('حذف', style: TextStyle(color: Colors.red.shade400)),
                         ]),
                       ),
                     ],
@@ -938,8 +907,8 @@ class _StudentGridTile extends StatelessWidget {
                             color: Colors.orange,
                             onTap: onEdit),
                         _GridAction(
-                            icon: Icons.archive_rounded,
-                            color: Colors.deepOrange,
+                            icon: Icons.delete_outline_rounded,
+                            color: Colors.red,
                             onTap: onArchive),
                       ],
                     ),

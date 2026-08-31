@@ -22,6 +22,7 @@ import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
+import 'package:active_class/widgets/remove_student_dialog.dart';
 import 'package:active_class/widgets/locked_feature.dart';
 import 'package:active_class/views/exams/student_exam_history_page.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -245,49 +246,25 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  // ─── أرشفة الطالب ────────────────────────────────────────────────────────
-  void _confirmArchive(Student s) {
+  // ─── حذف الطالب (أرشفة / حذف نهائي) ──────────────────────────────────────
+  void _confirmRemove(Student s) {
     if (s.id == null) return;
-    if (!requireDeletePermission(context, TeamModeService().canDeleteStudentsNow)) {
-      return;
-    }
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('أرشفة الطالب'),
-        content: Text(
-          'هل تريد أرشفة "${s.name}"؟\n'
-          'هيختفي من كل الشاشات النشطة لكن بياناته وسجله هيفضلوا محفوظين '
-          'كاملين، وتقدر تسترجعه في أي وقت من شاشة "الأرشيف".',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              // نمسك الـNavigator بتاع الصفحة الأساسية قبل الـawait — استخدام
-              // context مباشرة بعده كان بيولّد تحذير use_build_context_synchronously.
-              final pageNavigator = Navigator.of(context);
-              // الصفحة دي ممكن توصلها من مسارات معملتش Get.put(StudentController())
-              // قبلها خالص (زي بحث الصفحة الرئيسية) — لازم isRegistered
-              // بدل find المباشر، وإلا هترمي استثناء.
-              final studentCtrl = Get.isRegistered<StudentController>()
-                  ? Get.find<StudentController>()
-                  : Get.put(StudentController());
-              final ok = await studentCtrl.archiveStudent(s.id!);
-              if (!ok) return;
-              ToastHelper.success('تم أرشفة الطالب');
-              pageNavigator.pop();
-            },
-            child: const Text('أرشفة', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+    // نمسك الـNavigator بتاع الصفحة قبل أي await — استخدام context مباشرة
+    // بعده بيولّد تحذير use_build_context_synchronously.
+    final pageNavigator = Navigator.of(context);
+    // الصفحة دي ممكن توصلها من مسارات معملتش Get.put(StudentController())
+    // قبلها خالص (زي بحث الصفحة الرئيسية) — لازم isRegistered بدل find
+    // المباشر، وإلا هترمي استثناء.
+    final studentCtrl = Get.isRegistered<StudentController>()
+        ? Get.find<StudentController>()
+        : Get.put(StudentController());
+    showRemoveStudentDialog(
+      context,
+      student: s,
+      canDelete: TeamModeService().canDeleteStudentsNow,
+      onArchive: () => studentCtrl.archiveStudent(s.id!),
+      onDeletePermanently: () => studentCtrl.deleteStudent(s.id!),
+      onRemoved: () => pageNavigator.pop(),
     );
   }
 
@@ -342,9 +319,9 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
           ),
           if (!s.isArchived)
             IconButton(
-              tooltip: 'أرشفة الطالب',
-              icon: const Icon(Icons.archive_rounded),
-              onPressed: () => _confirmArchive(s),
+              tooltip: 'حذف الطالب',
+              icon: const Icon(Icons.delete_outline_rounded),
+              onPressed: () => _confirmRemove(s),
             ),
         ],
       ),
@@ -406,8 +383,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                       payments: studentPays,
                       totalPaid: totalPaid,
                       accumulatedDebt: accumulatedDebt,
-                      accentColor: primary,
-                      onEdit: () => _editStudent(s))
+                      accentColor: primary)
                   : const LockedSectionPlaceholder(),
             ],
           ),
@@ -1329,14 +1305,12 @@ class _PaymentsTab extends StatelessWidget {
   final double totalPaid;
   final double accumulatedDebt;
   final Color accentColor;
-  final VoidCallback onEdit;
 
   const _PaymentsTab({
     required this.payments,
     required this.totalPaid,
     required this.accumulatedDebt,
     required this.accentColor,
-    required this.onEdit,
   });
 
   @override
@@ -1412,14 +1386,8 @@ class _PaymentsTab extends StatelessWidget {
                               color: Colors.red)),
                     ]),
               ),
-              // تعديل سريع (زي تاريخ الانضمام) من غير ما تدور على زرار
-              // التعديل في أعلى الشاشة — مفيد لو الرقم غريب وعايز تظبطه
-              // على طول (مثلاً طالب انضم في نص الشهر).
-              IconButton(
-                onPressed: onEdit,
-                tooltip: 'تعديل بيانات الطالب',
-                icon: const Icon(Icons.edit_rounded, color: Colors.red),
-              ),
+              // زر تعديل المديونية مخفي مؤقتًا لحد ما يتظبط (بيفتح شيت
+              // تعديل الطالب الكامل بدل ما يعدّل الرقم نفسه).
             ]),
           ),
           const SizedBox(height: 16),

@@ -35,6 +35,7 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'dart:async';
 import 'package:active_class/widgets/add_student_sheet.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
+import 'package:active_class/widgets/remove_student_dialog.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -810,27 +811,20 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   }
 
   void _confirmArchiveStudent(Student student) {
-    if (!requireDeletePermission(context, TeamModeService().canDeleteStudentsNow)) {
-      return;
-    }
-    Get.defaultDialog(
-      title: 'أرشفة الطالب',
-      middleText: 'هل تريد أرشفة ${student.name}؟\n'
-          'هيختفي من كل الشاشات النشطة لكن بياناته وسجله هيفضلوا محفوظين '
-          'كاملين، وتقدر تسترجعه في أي وقت من شاشة "الأرشيف".',
-      textCancel: 'إلغاء',
-      textConfirm: 'أرشفة',
-      confirmTextColor: Colors.white,
-      buttonColor: Colors.orange,
-      onConfirm: () async {
-        Get.back();
-        if (student.id == null) return;
-        await Future.delayed(const Duration(milliseconds: 80));
+    if (student.id == null) return;
+    showRemoveStudentDialog(
+      context,
+      student: student,
+      canDelete: TeamModeService().canDeleteStudentsNow,
+      onArchive: () async {
         final ok = await studentController.archiveStudent(student.id!);
-        if (ok) {
-          NotificationService().syncAllScheduledNotifications();
-          ToastHelper.success('تم أرشفة الطالب');
-        }
+        if (ok) NotificationService().syncAllScheduledNotifications();
+        return ok;
+      },
+      onDeletePermanently: () async {
+        final ok = await studentController.deleteStudent(student.id!);
+        if (ok) NotificationService().syncAllScheduledNotifications();
+        return ok;
       },
     );
   }
@@ -1191,11 +1185,10 @@ class _StudentCard extends StatelessWidget {
                         const PopupMenuItem(
                             value: 'archive',
                             child: Row(children: [
-                              Icon(Icons.archive_rounded,
-                                  size: 18, color: Colors.orange),
+                              Icon(Icons.delete_outline_rounded,
+                                  size: 18, color: Colors.red),
                               SizedBox(width: 8),
-                              Text('أرشفة',
-                                  style: TextStyle(color: Colors.orange))
+                              Text('حذف', style: TextStyle(color: Colors.red))
                             ])),
                       ],
                     ),
