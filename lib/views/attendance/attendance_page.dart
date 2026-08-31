@@ -951,20 +951,23 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
             ),
             const Divider(height: 1, indent: 16, endIndent: 16),
             // تبويبان داخل الموديل: حضور | واجب (spec 010). يفتح على "حضور".
-            Flexible(
-              child: DefaultTabController(
-                length: 2,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const TabBar(
-                      labelStyle: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13),
-                      tabs: [Tab(text: 'حضور'), Tab(text: 'واجب')],
-                    ),
-                    Flexible(
+            // TabBarView محتاج ارتفاع محدَّد — والـColumn الأب mainAxisSize.min
+            // فبنحسب ارتفاع صريح من الشاشة (زي ما SingleChildScrollView كان
+            // بيتصرّف قبل التبويبات).
+            DefaultTabController(
+              length: 2,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const TabBar(
+                    labelStyle: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13),
+                    tabs: [Tab(text: 'حضور'), Tab(text: 'واجب')],
+                  ),
+                  SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.46,
                       child: TabBarView(children: [
                         // ── تبويب حضور ──────────────────────────────
                         SingleChildScrollView(
@@ -1035,7 +1038,6 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                   ],
                 ),
               ),
-            ),
           ],
         ),
       );
@@ -1395,7 +1397,7 @@ class _HomeworkTabBody extends StatelessWidget {
       );
     }
     return Obx(() {
-      homeworkCtrl.homework.length; // dependency تفاعلية
+      homeworkCtrl.homework.length; // ربط Obx بالقائمة التفاعلية
       final presentIds = students
           .where((s) => statusMap[s.id] != ATTENDANCE_ABSENT)
           .map((s) => s.id!)
