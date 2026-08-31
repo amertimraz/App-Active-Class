@@ -139,7 +139,7 @@ class DatabaseService {
         $COL_HOMEWORK_ID INTEGER PRIMARY KEY AUTOINCREMENT,
         $COL_HOMEWORK_STUDENT_ID INTEGER NOT NULL,
         $COL_HOMEWORK_DATE TEXT NOT NULL,
-        $COL_HOMEWORK_STATUS TEXT NOT NULL CHECK($COL_HOMEWORK_STATUS IN ('$HOMEWORK_DONE', '$HOMEWORK_NOT_DONE')),
+        $COL_HOMEWORK_STATUS TEXT NOT NULL CHECK($COL_HOMEWORK_STATUS IN ('$HOMEWORK_DONE', '$HOMEWORK_NOT_DONE', '$HOMEWORK_PARTIAL')),
         $COL_HOMEWORK_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_SYNC_UPDATED_AT TEXT,
         $COL_SYNC_REMOTE_ID TEXT,
@@ -401,7 +401,7 @@ class DatabaseService {
           $COL_HOMEWORK_ID INTEGER PRIMARY KEY AUTOINCREMENT,
           $COL_HOMEWORK_STUDENT_ID INTEGER NOT NULL,
           $COL_HOMEWORK_DATE TEXT NOT NULL,
-          $COL_HOMEWORK_STATUS TEXT NOT NULL CHECK($COL_HOMEWORK_STATUS IN ('$HOMEWORK_DONE', '$HOMEWORK_NOT_DONE')),
+          $COL_HOMEWORK_STATUS TEXT NOT NULL CHECK($COL_HOMEWORK_STATUS IN ('$HOMEWORK_DONE', '$HOMEWORK_NOT_DONE', '$HOMEWORK_PARTIAL')),
           $COL_HOMEWORK_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
           $COL_SYNC_UPDATED_AT TEXT,
           $COL_SYNC_REMOTE_ID TEXT,
@@ -474,6 +474,43 @@ class DatabaseService {
               where: '$COL_STUDENT_ID IN (?, ?)', whereArgs: [id, sibId]);
           handled.addAll([id, sibId]);
         }
+      } catch (_) {}
+    }
+
+    if (oldVersion < 19) {
+      // حالة واجب تالتة "ناقص" — جدول homework كان فيه CHECK بيسمح بـ
+      // 'عمل'/'لم يعمل' بس، فأي كتابة 'ناقص' كانت بتفشل بصمت. SQLite
+      // مبيسمحش بتعديل CHECK، فبنعيد بناء الجدول بنفس الأعمدة + CHECK
+      // موسّع. راجع specs/010-homework-tab.
+      try {
+        await db.execute('PRAGMA foreign_keys=OFF');
+        await db.transaction((txn) async {
+          await txn.execute('''
+            CREATE TABLE ${TABLE_HOMEWORK}_new (
+              $COL_HOMEWORK_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+              $COL_HOMEWORK_STUDENT_ID INTEGER NOT NULL,
+              $COL_HOMEWORK_DATE TEXT NOT NULL,
+              $COL_HOMEWORK_STATUS TEXT NOT NULL CHECK($COL_HOMEWORK_STATUS IN ('$HOMEWORK_DONE', '$HOMEWORK_NOT_DONE', '$HOMEWORK_PARTIAL')),
+              $COL_HOMEWORK_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
+              $COL_SYNC_UPDATED_AT TEXT,
+              $COL_SYNC_REMOTE_ID TEXT,
+              FOREIGN KEY($COL_HOMEWORK_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
+            )
+          ''');
+          await txn.execute('''
+            INSERT INTO ${TABLE_HOMEWORK}_new
+              ($COL_HOMEWORK_ID, $COL_HOMEWORK_STUDENT_ID, $COL_HOMEWORK_DATE,
+               $COL_HOMEWORK_STATUS, $COL_HOMEWORK_CREATED_AT, $COL_SYNC_UPDATED_AT, $COL_SYNC_REMOTE_ID)
+            SELECT $COL_HOMEWORK_ID, $COL_HOMEWORK_STUDENT_ID, $COL_HOMEWORK_DATE,
+               $COL_HOMEWORK_STATUS, $COL_HOMEWORK_CREATED_AT, $COL_SYNC_UPDATED_AT, $COL_SYNC_REMOTE_ID
+            FROM $TABLE_HOMEWORK
+          ''');
+          await txn.execute('DROP TABLE $TABLE_HOMEWORK');
+          await txn.execute(
+              'ALTER TABLE ${TABLE_HOMEWORK}_new RENAME TO $TABLE_HOMEWORK');
+        });
+        await db.execute(_homeworkDayUniqueIndexSql);
+        await db.execute('PRAGMA foreign_keys=ON');
       } catch (_) {}
     }
   }

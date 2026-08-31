@@ -880,50 +880,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                 ],
               ),
             ),
-            // زر "تحضير الكل" فقط — زر "واجب الكل" اتنقل لتبويب "واجب"
-            // (spec 010). لو كله متحضّر بالفعل، الضغطة بتلغي التحضير.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-              child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                Builder(builder: (context) {
-                  final allPresent = totalCount > 0 &&
-                      groupStudents.every(
-                          (s) => statusMap[s.id] == ATTENDANCE_PRESENT);
-                  return Tooltip(
-                    message: allPresent ? 'إلغاء تحضير الكل' : 'تحضير الكل',
-                    child: IconButton(
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => controller.markGroupAllPresent(
-                        groupStudents.map((s) => s.id!).toList(),
-                        selectedDay,
-                      ),
-                      icon: Icon(
-                          allPresent
-                              ? Icons.remove_done_rounded
-                              : Icons.done_all_rounded,
-                          size: 20),
-                      color: allPresent
-                          ? Colors.grey.shade600
-                          : const Color(0xFF10B981),
-                    ),
-                  );
-                }),
-              ]),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
-                  value: totalCount == 0 ? 0 : attendanceRate.clamp(0.0, 1.0),
-                  minHeight: 4,
-                  backgroundColor:
-                      isDark ? Colors.white12 : Colors.grey.shade100,
-                  valueColor: AlwaysStoppedAnimation<Color>(barColor),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             // بحث سريع عن طالب داخل هذه المجموعة + ترتيب (منقول من التكرار
             // الأول، وبنفس أيقونات الترتيب المستخدمة في شاشة الطلاب/تفاصيل
             // المجموعة).
@@ -972,6 +929,68 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                         // ── تبويب حضور ──────────────────────────────
                         SingleChildScrollView(
                           child: Column(children: [
+                            // "تحضير الكل" + شريط نسبة الحضور
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(14, 8, 14, 4),
+                              child: Row(children: [
+                                Builder(builder: (context) {
+                                  final allPresent = totalCount > 0 &&
+                                      groupStudents.every((s) =>
+                                          statusMap[s.id] ==
+                                          ATTENDANCE_PRESENT);
+                                  return TextButton.icon(
+                                    onPressed: () =>
+                                        controller.markGroupAllPresent(
+                                      groupStudents
+                                          .map((s) => s.id!)
+                                          .toList(),
+                                      selectedDay,
+                                    ),
+                                    style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8),
+                                        minimumSize: const Size(0, 32),
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                        foregroundColor: allPresent
+                                            ? Colors.grey.shade600
+                                            : const Color(0xFF10B981)),
+                                    icon: Icon(
+                                        allPresent
+                                            ? Icons.remove_done_rounded
+                                            : Icons.done_all_rounded,
+                                        size: 18),
+                                    label: Text(
+                                        allPresent
+                                            ? 'إلغاء تحضير الكل'
+                                            : 'تحضير الكل',
+                                        style: const TextStyle(
+                                            fontSize: 12,
+                                            fontFamily: 'Cairo')),
+                                  );
+                                }),
+                                const Spacer(),
+                              ]),
+                            ),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(14, 0, 14, 4),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(3),
+                                child: LinearProgressIndicator(
+                                  value: totalCount == 0
+                                      ? 0
+                                      : attendanceRate.clamp(0.0, 1.0),
+                                  minHeight: 4,
+                                  backgroundColor: isDark
+                                      ? Colors.white12
+                                      : Colors.grey.shade100,
+                                  valueColor:
+                                      AlwaysStoppedAnimation<Color>(barColor),
+                                ),
+                              ),
+                            ),
                             if (visibleStudents.isEmpty)
                               Padding(
                                 padding:
@@ -991,33 +1010,35 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                 child: Column(
                                   children: visibleStudents.map((s) {
                                     final status = statusMap[s.id];
+                                    // مفيش Obx هنا — الأب (_AttendanceSheet.build)
+                                    // ملفوف في Obx بيقرا controller.attendance،
+                                    // فأي تبديل بيعيد بناء الصف بـstatus جديد.
                                     return Padding(
                                       padding:
                                           const EdgeInsets.only(bottom: 8),
-                                      child: Obx(() => _StudentAttendanceChip(
-                                            student: s,
-                                            status: status,
-                                            onTap: () async {
-                                              await controller.toggleAttendance(
-                                                  s.id!, selectedDay);
-                                              // غائب = لا واجب: امسح سجل الواجب
-                                              // لنفس اليوم (spec 010).
-                                              final ns = controller.attendance
-                                                  .firstWhereOrNull((a) =>
-                                                      a.studentId == s.id &&
-                                                      a.date.year ==
-                                                          selectedDay.year &&
-                                                      a.date.month ==
-                                                          selectedDay.month &&
-                                                      a.date.day ==
-                                                          selectedDay.day)
-                                                  ?.status;
-                                              if (ns == ATTENDANCE_ABSENT) {
-                                                await homeworkCtrl.clearHomework(
-                                                    s.id!, selectedDay);
-                                              }
-                                            },
-                                          )),
+                                      child: _StudentAttendanceChip(
+                                        student: s,
+                                        status: status,
+                                        onTap: () async {
+                                          await controller.toggleAttendance(
+                                              s.id!, selectedDay);
+                                          // غائب = لا واجب: امسح سجل الواجب
+                                          // لنفس اليوم (spec 010).
+                                          final ns = controller.attendance
+                                              .firstWhereOrNull((a) =>
+                                                  a.studentId == s.id &&
+                                                  a.date.year ==
+                                                      selectedDay.year &&
+                                                  a.date.month ==
+                                                      selectedDay.month &&
+                                                  a.date.day == selectedDay.day)
+                                              ?.status;
+                                          if (ns == ATTENDANCE_ABSENT) {
+                                            await homeworkCtrl.clearHomework(
+                                                s.id!, selectedDay);
+                                          }
+                                        },
+                                      ),
                                     );
                                   }).toList(),
                                 ),
@@ -1408,42 +1429,57 @@ class _HomeworkTabBody extends StatelessWidget {
               normalizeHomeworkStatus(homeworkCtrl.statusFor(id, selectedDay)) ==
               HOMEWORK_DONE);
 
+      Widget miniCount(Color c, int n) => Padding(
+            padding: const EdgeInsetsDirectional.only(end: 10),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                  width: 7,
+                  height: 7,
+                  decoration:
+                      BoxDecoration(color: c, shape: BoxShape.circle)),
+              const SizedBox(width: 4),
+              Text('$n',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: c,
+                      fontFamily: 'Cairo')),
+            ]),
+          );
+
       return SingleChildScrollView(
         child: Column(children: [
-          // ملخّص + زر جماعي
+          // شريط ملخّص + زر جماعي
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
             child: Row(children: [
-              Expanded(
-                child: Text(
-                  'تم الحل: ${sum.done}  ·  ناقص: ${sum.partial}  ·  لم يُحل: ${sum.notDone}  ·  غير مسجّل: ${sum.unset}',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade600,
-                      fontFamily: 'Cairo'),
-                ),
-              ),
-              TextButton.icon(
+              miniCount(const Color(0xFF10B981), sum.done),
+              miniCount(const Color(0xFFF59E0B), sum.partial),
+              miniCount(const Color(0xFFEF4444), sum.notDone),
+              miniCount(Colors.grey, sum.unset),
+              const Spacer(),
+              TextButton(
                 onPressed: presentIds.isEmpty
                     ? null
                     : () => homeworkCtrl.markGroupAllHomeworkDone(
                         presentIds, selectedDay),
-                icon: Icon(
-                    allDone ? Icons.menu_book_rounded : Icons.menu_book_outlined,
-                    size: 16),
-                label: Text(allDone ? 'إلغاء الكل' : 'الكل عمل',
+                style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                child: Text(allDone ? 'إلغاء الكل' : 'الكل عمل',
                     style: const TextStyle(fontSize: 12, fontFamily: 'Cairo')),
               ),
             ]),
           ),
-          const Divider(height: 1, indent: 12, endIndent: 12),
+          const Divider(height: 1, indent: 14, endIndent: 14),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
             child: Column(
               children: students.map((s) {
                 final absent = statusMap[s.id] == ATTENDANCE_ABSENT;
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: 6),
                   child: _HomeworkStudentRow(
                     name: s.name,
                     absent: absent,
@@ -1481,27 +1517,37 @@ class _HomeworkStudentRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       decoration: BoxDecoration(
         color: absent
-            ? Colors.grey.withValues(alpha: 0.06)
-            : cs.surface.withValues(alpha: 0.4),
+            ? Colors.grey.withValues(alpha: 0.05)
+            : cs.onSurface.withValues(alpha: 0.02),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+        border: Border.all(color: cs.onSurface.withValues(alpha: 0.07)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(name,
-            style: const TextStyle(
-                fontFamily: 'Cairo', fontWeight: FontWeight.w700, fontSize: 13)),
-        const SizedBox(height: 6),
-        if (absent)
-          Text('غائب — لا واجب',
-              style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey.shade500,
-                  fontFamily: 'Cairo'))
-        else
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(
+            child: Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13)),
+          ),
+          if (absent)
+            Text('غائب',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade500,
+                    fontFamily: 'Cairo')),
+        ]),
+        if (!absent) ...[
+          const SizedBox(height: 7),
           _HomeworkStatusSegmented(status: status, onSelect: onSelect),
+        ],
       ]),
     );
   }

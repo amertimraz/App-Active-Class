@@ -12,3 +12,15 @@
 # سبب فشل "الحفظ في التنزيلات + المشاركة" في الـ release بس، مع إنها
 # شغالة تمام في نسخة الـ debug.
 -keep class com.snnafi.media_store_plus.** { *; }
+
+# flutter_local_notifications بيخزّن/يقرأ الإشعارات المجدولة كـ JSON عن
+# طريق Gson TypeToken<ArrayList<...>>. R8 بيمسح التواقيع العامة (generic
+# signatures) فيرمي "TypeToken must be created with a type argument"
+# وقت loadScheduledNotifications (داخل cancelAll/syncAll) — في الـrelease
+# بس. القواعد دي من README الخاص بالمكتبة + Gson.
+-keepattributes Signature
+-keepattributes *Annotation*
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+-keep class com.dexterous.** { *; }
+-keep class com.dexterous.flutterlocalnotifications.models.** { *; }
