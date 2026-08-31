@@ -835,7 +835,9 @@ class DatabaseService {
   /// في عملية واحدة ذرية — إما يتحدّثوا كلهم مع بعض أو ولا واحد. راجع
   /// specs/007-three-sibling-support (بديل linkSiblings الثنائي القديم).
   /// بيرفض (يرمي ArgumentError) لو العدد أقل من 2 أو أكتر من 3 (FR-007).
-  Future<void> linkSiblingGroup(List<Student> members) async {
+  /// يربط 2-3 إخوة بنفس `sibling_group_id` (= أصغر id بينهم) ويرجّعه —
+  /// المستدعي محتاجه عشان يحدّث النسخة في الذاكرة بنفس القيمة.
+  Future<int> linkSiblingGroup(List<Student> members) async {
     if (members.length < 2 || members.length > 3) {
       throw ArgumentError(
           'عدد أعضاء مجموعة الإخوة لازم يكون 2 أو 3 (الحالي: ${members.length})');
@@ -864,10 +866,53 @@ class DatabaseService {
       await _queueSync(TABLE_STUDENTS, members[i].id!, 'update',
           payload: maps[i]);
     }
+    return groupId;
+  }
+
+  /// لو مجموعة إخوة نزلت لعضو واحد نشط (الباقي اتأرشف/اتحذف)، بيفكّ
+  /// الربط عنه — عضو لوحده بـsiblingGroupId بيتحسب عليه الإجمالي كامل
+  /// (siblingsTotal ÷ 1). آمن للاستدعاء لأي groupId.
+  Future<void> _unlinkOrphanedSiblingSurvivor(int groupId) async {
+    final db = await database;
+    final rows = await db.query(TABLE_STUDENTS,
+        where: '$COL_STUDENT_SIBLING_GROUP_ID = ? AND $COL_STUDENT_IS_ARCHIVED = 0',
+        whereArgs: [groupId]);
+    if (rows.length != 1) return;
+    final survivor = Student.fromMap(rows.first);
+    final now = DateTime.now().toIso8601String();
+    await db.update(
+      TABLE_STUDENTS,
+      {
+        COL_STUDENT_SIBLING_ID: null,
+        COL_STUDENT_SIBLINGS_TOTAL: null,
+        COL_STUDENT_SIBLING_GROUP_ID: null,
+        COL_SYNC_UPDATED_AT: now,
+      },
+      where: '$COL_STUDENT_ID = ?',
+      whereArgs: [survivor.id],
+    );
+    await _queueSync(TABLE_STUDENTS, survivor.id!, 'update', payload: {
+      ...survivor.toMap(),
+      COL_STUDENT_SIBLING_ID: null,
+      COL_STUDENT_SIBLINGS_TOTAL: null,
+      COL_STUDENT_SIBLING_GROUP_ID: null,
+      COL_SYNC_UPDATED_AT: now,
+    });
   }
 
   Future<int> deleteStudent(int id) async {
     final db = await database;
+    // لو الطالب ده كان في مجموعة إخوة، نمسك الـgroupId قبل الحذف عشان
+    // نفكّ العضو الوحيد اللي ممكن يفضل بعده (وإلا يتحسب عليه الإجمالي
+    // كامل). راجع specs/007-three-sibling-support.
+    final sibRows = await db.query(TABLE_STUDENTS,
+        columns: [COL_STUDENT_SIBLING_GROUP_ID],
+        where: '$COL_STUDENT_ID = ?',
+        whereArgs: [id],
+        limit: 1);
+    final orphanGroupId = sibRows.isNotEmpty
+        ? sibRows.first[COL_STUDENT_SIBLING_GROUP_ID] as int?
+        : null;
     // نفس سبب deleteGroup: الحضور والمدفوعات بتاعة الطالب ده هتتحذف
     // تلقائيًا بالـ CASCADE، فلازم نلقطهم الأول عشان نبلّغ المزامنة.
     final attendanceRows = await db.query(TABLE_ATTENDANCE,
@@ -895,6 +940,9 @@ class DatabaseService {
           row[COL_SYNC_REMOTE_ID] as String?);
     }
     await _queueDelete(TABLE_STUDENTS, id, studentRemoteId);
+    if (orphanGroupId != null) {
+      await _unlinkOrphanedSiblingSurvivor(orphanGroupId);
+    }
     return n;
   }
 
@@ -944,6 +992,12 @@ class DatabaseService {
         );
       }
     });
+    // لو المجموعة نزلت لعضو واحد نشط، نفكّه هو كمان — عضو لوحده بـ
+    // siblingGroupId بيتحسب عليه siblingsTotal ÷ 1 = الإجمالي كامل
+    // (مديونية غلط). راجع specs/007-three-sibling-support.
+    if (student.siblingGroupId != null) {
+      await _unlinkOrphanedSiblingSurvivor(student.siblingGroupId!);
+    }
     _notifyChanged();
 
     await _queueSync(TABLE_STUDENTS, studentId, 'update', payload: {

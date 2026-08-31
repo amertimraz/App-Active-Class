@@ -163,8 +163,9 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
         !controller.isPerSessionGroup &&
         !student.isFullyExempt;
     if (isSiblingSplit) {
-      final others =
-          await _db.getStudentsInSiblingGroup(student.siblingGroupId!);
+      final others = await _db.getStudentsInSiblingGroup(
+          student.siblingGroupId!,
+          excludeId: student.id);
       if (!mounted) return;
       final total = controller.totalAmount.value;
       final otherNames = others.map((s) => s.name).join(' و');
@@ -1306,8 +1307,9 @@ class _PaymentPanel extends StatelessWidget {
               Obx(() {
                 final total = controller.totalAmount.value;
                 return FutureBuilder<List<Student>>(
-                  future: DatabaseService()
-                      .getStudentsInSiblingGroup(student.siblingGroupId!),
+                  future: DatabaseService().getStudentsInSiblingGroup(
+                      student.siblingGroupId!,
+                      excludeId: student.id),
                   builder: (_, snap) {
                     final others = snap.data ?? const <Student>[];
                     final memberCount = others.length + 1;

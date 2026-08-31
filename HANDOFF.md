@@ -104,6 +104,37 @@
 
 ---
 
+## 1و) مديونية وهمية على إخوة مجموعة من 3 — ✅ في الكود، ⏳ لسه ماتأكدش لايف، ⏳ لسه ماعُملش commit
+
+**البلاغ**: طالب في مجموعة إخوة من 3 (siblingsTotal=140، نصيب كل=46.67) دفع نصيبه بالكامل، ورغم كده بتظهر عليه "مديونية متراكمة 23.33" وشاشة الدفع بتحسب المستحق 140 والمتبقي 23.33. `23.33 = (140/2) − 46.67` → الحساب بيقسم على 2 بدل 3.
+
+**السببان**:
+1. `StudentController.linkSiblingGroup` (سطر 249): بعد `_dbService.linkSiblingGroup` كان بيخزّن `members[i]` في القائمة في الذاكرة **من غير** `siblingGroupId` المحسوب (أصغر id)، فالعضو المربوط حديثًا يفضل `siblingGroupId=null` محليًا → `PricingHelper.siblingGroupSize` يرجّع 2 → `siblingsTotal/2`.
+2. `qr_controller` (`scannedStudentDebt`, `scannedStudentOverdue`, `_computeBaseAmount`): كانوا بينادوا `PricingHelper` **من غير** `siblingGroupMembers` خالص → افتراض ثابت `count=2`. (كل الشاشات التانية بتبعت القائمة صح — دي كانت الوحيدة الناقصة.)
+
+**الإصلاح**:
+- `DatabaseService.linkSiblingGroup` بقى يرجّع `int` (الـgroupId المكتوب في القاعدة).
+- `StudentController.linkSiblingGroup` بيطبّق `s.copyWith(siblingGroupId: groupId)` على النسخة في الذاكرة.
+- `qr_controller`: getter جديد `_allStudents` بيتبعت لـ`PricingHelper` في الـ3 أماكن.
+
+**مفيش migration** — القاعدة أصلاً صح (الدفع بالـQR كان بيسجّل `siblings=3` صح). بعد الإصلاح + إعادة بناء، الرقم الوهمي بيختفي حسابيًا. **حل مؤقت للمدرس دلوقتي**: قفل وفتح التطبيق بيصلّح شاشة تفاصيل الطالب (بيعيد تحميل من القاعدة الصح) — بس شاشة الدفع بالـQR محتاجة النسخة الجديدة.
+
+3. **`qr_controller` كان بيجيب أعضاء مجموعة الإخوة من غير `excludeId`** (سطر ~332) — فالطالب الممسوح بيتكرر في `members = [student, ...others]` → يتسجّل عليه **دفعتين** ويضيع نصيب أخ تاني. ده سبب إن مازن عنده دفعتين ومحمود دفعة واحدة (المدرس مسح مازن). اتصلح بـ`excludeId: student.id` + إصلاح مكانين عرض تانيين في `qr_scanner_payment_page.dart` (نفس الغلط في نص حوار التأكيد وسطر "عرض الإخوة مع").
+
+**ملفات**: `database_service.dart`، `student_controller.dart`، `qr_controller.dart`، `qr_scanner_payment_page.dart`. `flutter analyze lib` نضيف.
+
+**التوضيح النهائي** (بعد صور تانية من المدرس): هما **أخين بس** (محمود 641 + مازن 426)، إجمالي 140، نصيب كل 70. باج #3 (نقص `excludeId`) هو **السبب الجذري لكل حاجة**: مسح مازن → `others` رجّع الاتنين شامل مازن → `members=[مازن,مازن,محمود]` → `memberCount=3` → قسمة 140/3=46.67 بدل 140/2=70، ومازن اتسجّل عليه دفعتين. والمديونية 23.33 على محمود = مستحقه الصح (70) ناقص الدفعة الغلط (46.67). باجات #1 و#2 (siblingGroupMembers) إصلاحات صحيحة لمجموعات الـ3 الحقيقية بس مش كانت سبب الحالة دي.
+
+4. **باج عام (مش إخوة): `confirmPayment` مفيهوش حارس دخول متكرر** — `isProcessing` كان بيترفع بعد التحقّقات، فضغطة مزدوجة سريعة على "تأكيد الدفع" بتسجّل دفعتين لأي طالب عادي (شوف "سيد أحمد السيد 425" مكرر في مدفوعات اليوم). اتصلح: `if (isProcessing.value) return false;` كأول سطر.
+
+5. **`deleteStudent` و`archiveStudent` ماكانوش بيفكّوا العضو الوحيد الباقي من زوج إخوة** — عضو لوحده بـ`siblingGroupId` بيتحسب عليه `siblingsTotal ÷ 1` = الإجمالي كامل (مديونية غلط ضخمة). زر الحذف الجديد (`ea8ad92`) خلّى ده سهل الوصول. اتصلح: helper `_unlinkOrphanedSiblingSurvivor(groupId)` بيتنادى من الاتنين — لو المجموعة نزلت لعضو نشط واحد بيفكّه.
+
+**ملفات**: `database_service.dart`, `student_controller.dart`, `qr_controller.dart`, `qr_scanner_payment_page.dart`. `flutter analyze lib` نضيف (0 errors/warnings).
+
+**تنظيف بيانات المدرس الحالية**: احذف دفعات أغسطس للأخين (مازن ×2، محمود ×1)، وأعد المسح والدفع مرة واحدة بالنسخة الجديدة → كل واحد 70، المديونية صفر. وامسح الدفعة المكررة لـ"سيد أحمد السيد".
+
+---
+
 ## 2ب) مؤجَّل: ترقية Firebase لإزالة SafetyNet (اقتراح Play Console)
 
 Play Console بيقترح على الإصدار 38 إزالة `play-services-safetynet` (SDK مُهمَل). المصدر المؤكَّد: **`firebase_app_check` نسخة `0.3.2+10`** لسه بتعلن `firebase-appcheck-safetynet:16.1.2` في إعداد Android بتاعها (رغم إن `main.dart` بيفعّل `AndroidProvider.playIntegrity` صح). الحل = ترقية `firebase_app_check` → `0.4.7`، وده يفرض ترقية كل مكتبات Firebase major مع بعض:

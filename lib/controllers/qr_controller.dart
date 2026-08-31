@@ -14,6 +14,7 @@ import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
+import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 
 enum QRMode { attendance, payment }
@@ -255,6 +256,11 @@ class QRController extends GetxController {
   }
 
   Future<bool> confirmPayment() async {
+    // منع الدخول المتكرر: ضغطة مزدوجة سريعة على "تأكيد الدفع" كانت
+    // بتشغّل confirmPayment مرتين قبل ما isProcessing يترفع (كان بيترفع
+    // بعد التحقّقات مش في الأول)، فتتسجّل دفعتين لنفس الطالب — سواء عادي
+    // أو في مسار عرض الإخوة. لازم يكون أول سطر.
+    if (isProcessing.value) return false;
     final student = scannedStudent.value;
     if (student == null) {
       ToastHelper.error('لا يوجد طالب محدد');
@@ -326,10 +332,12 @@ class QRController extends GetxController {
           student.siblingsTotal != null &&
           !isPerSessionGroup &&
           !student.isFullyExempt) {
-        // كل أعضاء المجموعة (2 أو 3) شامل الطالب الممسوح نفسه —
-        // راجع specs/007-three-sibling-support.
-        final others = await _dbService
-            .getStudentsInSiblingGroup(student.siblingGroupId!);
+        // "باقي" أعضاء المجموعة — لازم excludeId عشان الطالب الممسوح
+        // ما يترجعش هنا كمان، وإلا members = [student, student, ...] فيتسجّل
+        // عليه دفعتين ويضيع نصيب أخ تاني. راجع specs/007-three-sibling-support.
+        final others = await _dbService.getStudentsInSiblingGroup(
+            student.siblingGroupId!,
+            excludeId: student.id);
         final members = [student, ...others];
         final memberCount = members.length;
         if (memberCount >= 2) {
@@ -457,6 +465,13 @@ class QRController extends GetxController {
   // (تفاصيل المجموعة، تفاصيل الطالب، شاشة تسجيل الدفع) — عشان الحالة
   // المعروضة هنا تتطابق دايمًا مع باقي التطبيق، بدل حساب منفصل خاص
   // بشاشة الـQR كان بيدّي نتيجة مختلفة أحيانًا.
+  // كل طلاب التطبيق — لازمة لـPricingHelper عشان يقسم إجمالي الإخوة على
+  // العدد الفعلي (2 أو 3). من غيرها بيفترض 2 دايمًا فتظهر مديونية وهمية
+  // على طالب في مجموعة إخوة من 3. راجع specs/007-three-sibling-support.
+  List<Student>? get _allStudents => Get.isRegistered<StudentController>()
+      ? Get.find<StudentController>().students
+      : null;
+
   double get scannedStudentDebt {
     final s = scannedStudent.value;
     if (s == null) return 0;
@@ -465,6 +480,7 @@ class QRController extends GetxController {
       group: _scannedGroup.value,
       allAttendance: _scannedAttendance,
       payments: _scannedPayments,
+      siblingGroupMembers: _allStudents,
     );
   }
 
@@ -480,6 +496,7 @@ class QRController extends GetxController {
       allAttendance: _scannedAttendance,
       payments: _scannedPayments,
       graceDays: graceDays,
+      siblingGroupMembers: _allStudents,
     );
   }
 
@@ -496,6 +513,7 @@ class QRController extends GetxController {
         group: _scannedGroup.value,
         month: month,
         allAttendance: _scannedAttendance,
+        siblingGroupMembers: _allStudents,
       );
     }
     return sum;

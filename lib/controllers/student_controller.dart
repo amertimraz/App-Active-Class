@@ -248,10 +248,16 @@ class StudentController extends GetxController {
   /// العملية). راجع specs/007-three-sibling-support.
   Future<bool> linkSiblingGroup(List<Student> members) async {
     try {
-      await _dbService.linkSiblingGroup(members);
+      // القيمة اللي كُتبت فعليًا في القاعدة (أصغر id) — لازم نطبّقها على
+      // النسخة في الذاكرة كمان، وإلا العضو الجديد يفضل siblingGroupId
+      // بتاعته null محليًا فحساب المديونية بيقسم الإجمالي /2 بدل /3
+      // (مديونية وهمية). راجع specs/007-three-sibling-support.
+      final groupId = await _dbService.linkSiblingGroup(members);
       for (final s in members) {
         final index = students.indexWhere((x) => x.id == s.id);
-        if (index != -1) students[index] = s;
+        if (index != -1) {
+          students[index] = s.copyWith(siblingGroupId: groupId);
+        }
       }
       filterStudents();
       return true;
