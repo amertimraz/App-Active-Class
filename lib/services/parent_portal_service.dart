@@ -25,9 +25,11 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
+import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/utils/pricing_helper.dart';
 
 class ParentPortalService {
   static final ParentPortalService _instance = ParentPortalService._internal();
@@ -273,11 +275,24 @@ class ParentPortalService {
     required List<Homework> homework,
     required String groupName,
     List<StudentExamRecord> exams = const [],
+    Group? group,
+    List<Student> allStudents = const [],
   }) {
     final last4 = _last4(student.guardianPhone);
     if (last4 == null) return null;
     final code = student.code.toUpperCase();
     if (code.isEmpty) return null;
+
+    // المديونية المتراكمة المحسوبة زي التطبيق بالظبط (بتاخد نظام التحصيل
+    // والحساب النسبي من إعدادات PricingHelper) — عشان "المتبقّي" في
+    // البوابة يطابق اللي المدرس شايفه (spec 012).
+    final accumulatedDebt = PricingHelper.accumulatedDebt(
+      student: student,
+      group: group,
+      allAttendance: attendance,
+      payments: payments,
+      siblingGroupMembers: allStudents.isEmpty ? null : allStudents,
+    );
 
     // "متأخر" يُحتسب حضورًا في العدّاد، ويُعرض كفئة ثالثة (spec 011)
     final present =
@@ -321,6 +336,7 @@ class ParentPortalService {
       'late': late,
       'absent': absent,
       'totalPaid': totalPaid,
+      'remaining': accumulatedDebt,
       'price': student.price,
       'exemptPercent': student.exemptPercent,
       'homeworkDone': homeworkDone,
@@ -369,12 +385,17 @@ class ParentPortalService {
       final homework = await _dbService.getHomeworkByStudent(studentId);
       final exams = await _dbService.getStudentExamHistory(studentId);
       final group = await _dbService.getGroup(student.groupId);
+      final allStudents = student.siblingGroupId != null
+          ? await _dbService.getAllStudents()
+          : const <Student>[];
       final data = _buildSummaryData(student,
           attendance: attendanceRecords,
           payments: payments,
           homework: homework,
           groupName: group?.name ?? '',
-          exams: exams);
+          exams: exams,
+          group: group,
+          allStudents: allStudents);
       if (data == null) return;
       final docId = data.remove('_docId') as String;
 
@@ -452,6 +473,7 @@ class ParentPortalService {
     final examsByStudent = await _dbService.getAllStudentExamHistories();
 
     final groupNameById = {for (final g in allGroups) g.id: g.name};
+    final groupById = {for (final g in allGroups) g.id: g};
     final attendanceByStudent = <int, List<Attendance>>{};
     for (final a in allAttendance) {
       attendanceByStudent.putIfAbsent(a.studentId, () => []).add(a);
@@ -481,6 +503,8 @@ class ParentPortalService {
         homework: homeworkByStudent[s.id] ?? const [],
         groupName: groupNameById[s.groupId] ?? '',
         exams: examsByStudent[s.id] ?? const [],
+        group: groupById[s.groupId],
+        allStudents: students,
       );
       if (data == null) continue;
       final docId = data.remove('_docId') as String;

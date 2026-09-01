@@ -9,6 +9,26 @@ import 'package:active_class/models/student_model.dart';
 /// - بالحصة: سعر الحصة الواحدة × عدد الحصص اللي حضرها الطالب فعليًا
 ///   في الشهر المطلوب (من سجل الحضور)، ثم تُطبَّق نسبة الإعفاء لو موجودة.
 class PricingHelper {
+  // ── نظام تحصيل الاشتراك الشهري (spec 012) ─────────────────────────
+  // بيتظبطوا من SettingsController عند تحميل الإعدادات وعند أي تغيير —
+  // نفس نمط DatabaseService.teamModeEnabled. الافتراضي = السلوك القديم
+  // بالظبط (مقدّم، بدون حساب نسبي).
+  static bool billingArrears = false;
+  static bool prorateFirstMonth = false;
+
+  static double _roundTo5(double x) => (x / 5).round() * 5.0;
+
+  /// آخر شهر مستحق فعليًا لطلب "لحد شهر [requested]". في وضع "مؤخّر"
+  /// بيتقيّد بآخر شهر **مكتمل** (الشهر الحالي − 1) — فطالب مديونيته كلها
+  /// من الشهر الجاري يظهر بصفر لحد ما الشهر يخلص. idempotent.
+  static DateTime _effectiveLastMonth(DateTime requested) {
+    final req = DateTime(requested.year, requested.month, 1);
+    if (!billingArrears) return req;
+    final now = DateTime.now();
+    final lastComplete = DateTime(now.year, now.month - 1, 1);
+    return req.isBefore(lastComplete) ? req : lastComplete;
+  }
+
   static int sessionsAttended({
     required Student student,
     required DateTime month,
@@ -47,7 +67,7 @@ class PricingHelper {
   }) {
     if (student.isFullyExempt) return 0;
 
-    final double base;
+    double base;
     if (group != null && group.isPerSession) {
       final attended = sessionsAttended(
           student: student, month: month, allAttendance: allAttendance);
@@ -69,6 +89,22 @@ class PricingHelper {
       base = student.siblingsTotal! / 2.0;
     } else {
       base = student.price;
+    }
+
+    // حساب نسبي للشهر الأول (spec 012): شهر انضمام الطالب بس يتحسب
+    // بنسبة الأيام المشمولة ÷ 30 (بحد أقصى شهر كامل)، مقرّبًا لأقرب 5 ج.
+    // للمجموعات الشهرية فقط — بالحصة بتُحسب بعدد الحصص المحضورة (FR-012).
+    final isPerSession = group != null && group.isPerSession;
+    if (prorateFirstMonth && !isPerSession) {
+      final start = student.attendanceStart ?? student.createdAt;
+      if (start != null &&
+          start.year == month.year &&
+          start.month == month.month) {
+        final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+        final daysCovered = daysInMonth - start.day + 1;
+        final ratio = (daysCovered / 30).clamp(0.0, 1.0);
+        base = _roundTo5(base * ratio);
+      }
     }
 
     return base * (1 - student.exemptPercent / 100);
@@ -131,7 +167,11 @@ class PricingHelper {
     if (student.isFullyExempt) return 0;
     final start = student.attendanceStart ?? student.createdAt;
     if (start == null) return 0;
-    final lastMonth = DateTime(month.year, month.month, 1);
+    // في وضع "مؤخّر" الشهر الجاري مستثنى لحد ما يخلص (spec 012) —
+    // للمجموعات الشهرية فقط؛ بالحصة بتتجاهل الإعداد (FR-012).
+    final lastMonth = (group != null && group.isPerSession)
+        ? DateTime(month.year, month.month, 1)
+        : _effectiveLastMonth(month);
     var cursor = DateTime(start.year, start.month, 1);
     if (cursor.isAfter(lastMonth)) return 0;
 

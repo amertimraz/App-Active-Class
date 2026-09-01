@@ -168,6 +168,14 @@ const String SETTING_LATE_GRACE_MINUTES = 'late_grace_minutes';
 // افتراضيًا مفعّل؛ لو معطّل الـQR يسجّل "حاضر" دايمًا. (spec 011)
 const String SETTING_QR_AUTO_LATE_ENABLED = 'qr_auto_late_enabled';
 
+// app_settings keys — نظام تحصيل الاشتراك الشهري (spec 012).
+// billing_arrears: false=مقدّم (الافتراضي، الشهر مستحق من أول يومه)،
+//   true=مؤخّر (الشهر الجاري ما يتحسبش لحد ما يخلص).
+// prorate_first_month: false=شهر كامل دايمًا (الافتراضي)،
+//   true=شهر انضمام الطالب يُحسب نسبيًا بأيامه المشمولة.
+const String SETTING_BILLING_ARREARS = 'billing_arrears';
+const String SETTING_PRORATE_FIRST_MONTH = 'prorate_first_month';
+
 // Route Names
 const String ROUTE_SPLASH = '/splash';
 const String ROUTE_HOME = '/';

@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
+import 'package:active_class/utils/pricing_helper.dart';
 
 class CurrencyOption {
   final String code; // e.g., SAR
@@ -138,6 +139,7 @@ class SettingsController extends GetxController {
       _loadReportOnCompletionSetting(),
       _loadPaymentGraceDays(),
       _loadLateAttendanceSettings(),
+      _loadBillingSettings(),
     ]);
   }
 
@@ -279,6 +281,43 @@ class SettingsController extends GetxController {
     qrAutoLateEnabled.value = v;
     try {
       await _dbSet(SETTING_QR_AUTO_LATE_ENABLED, v ? '1' : '0');
+    } catch (_) {}
+  }
+
+  // ── نظام تحصيل الاشتراك الشهري (spec 012) ──────────────────────
+  // false = مقدّم (الافتراضي)، true = مؤخّر (الشهر الجاري ما يتحسبش لحد
+  // ما يخلص). حساب نسبي للشهر الأول منفصل، افتراضيًا مطفي.
+  final RxBool billingArrears = false.obs;
+  final RxBool prorateFirstMonth = false.obs;
+
+  Future<void> _loadBillingSettings() async {
+    try {
+      billingArrears.value =
+          await _migrateBool(SETTING_BILLING_ARREARS) ?? false;
+      prorateFirstMonth.value =
+          await _migrateBool(SETTING_PRORATE_FIRST_MONTH) ?? false;
+    } catch (_) {}
+    _applyBillingToPricingHelper();
+  }
+
+  void _applyBillingToPricingHelper() {
+    PricingHelper.billingArrears = billingArrears.value;
+    PricingHelper.prorateFirstMonth = prorateFirstMonth.value;
+  }
+
+  Future<void> setBillingArrears(bool v) async {
+    billingArrears.value = v;
+    _applyBillingToPricingHelper();
+    try {
+      await _dbSet(SETTING_BILLING_ARREARS, v ? '1' : '0');
+    } catch (_) {}
+  }
+
+  Future<void> setProrateFirstMonth(bool v) async {
+    prorateFirstMonth.value = v;
+    _applyBillingToPricingHelper();
+    try {
+      await _dbSet(SETTING_PRORATE_FIRST_MONTH, v ? '1' : '0');
     } catch (_) {}
   }
 

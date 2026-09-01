@@ -380,6 +380,50 @@ class SettingsPage extends StatelessWidget {
                                   }
                                 },
                               )),
+                          _buildDivider(isDark),
+                          // ── نظام التحصيل: مقدّم / مؤخّر (spec 012) ──
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.event_repeat_rounded,
+                                iconColor: const Color(0xFF0EA5E9),
+                                title: 'تحصيل مؤخّر (بالمنقضي)',
+                                subtitle: settings.billingArrears.value
+                                    ? 'الشهر الجاري ما يتحسبش في المديونية لحد ما يخلص'
+                                    : 'مقدّم — الشهر مستحق من أول يومه (الافتراضي)',
+                                rxValue: settings.billingArrears,
+                                onChanged: (v) async {
+                                  await settings.setBillingArrears(v);
+                                  ToastHelper.success(
+                                    v
+                                        ? 'الشهر الجاري مش هيتحسب لحد ما يخلص'
+                                        : 'الشهر مستحق من أول يومه',
+                                    title: 'نظام التحصيل',
+                                  );
+                                },
+                              )),
+                          _buildDivider(isDark),
+                          // ── حساب نسبي للشهر الأول (spec 012) ──
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.pie_chart_outline_rounded,
+                                iconColor: const Color(0xFF0EA5E9),
+                                title: 'حساب نسبي للشهر الأول',
+                                subtitle: settings.prorateFirstMonth.value
+                                    ? 'الطالب اللي بينضم نص الشهر يدفع نسبة الأيام (تقريب لأقرب 5 ج)'
+                                    : 'الشهر الأول شهر كامل زي أي شهر (الافتراضي)',
+                                rxValue: settings.prorateFirstMonth,
+                                onChanged: (v) async {
+                                  await settings.setProrateFirstMonth(v);
+                                  ToastHelper.success(
+                                    v
+                                        ? 'شهر الانضمام هيتحسب بنسبة أيامه'
+                                        : 'شهر الانضمام شهر كامل',
+                                    title: 'الحساب النسبي',
+                                  );
+                                },
+                              )),
                         ],
                       ),
                       const SizedBox(height: 14),

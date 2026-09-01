@@ -278,7 +278,12 @@
     const exemptPercent = Number(d.exemptPercent) || 0;
     const effectivePrice = price * (1 - exemptPercent / 100);
     const totalPaid = Number(d.totalPaid) || 0;
-    const remaining = Math.max(0, effectivePrice - totalPaid);
+    // d.remaining = المديونية المتراكمة المحسوبة في التطبيق (بتاخد نظام
+    // التحصيل والحساب النسبي). المستندات القديمة مفيهاش الحقل ده →
+    // بنرجع للحساب المبسّط (شهر واحد − المدفوع).
+    const remaining = (typeof d.remaining === 'number')
+      ? Math.max(0, d.remaining)
+      : Math.max(0, effectivePrice - totalPaid);
     const initial = (d.name || '؟').trim().charAt(0);
     const attendanceHistory = Array.isArray(d.attendanceHistory) ? d.attendanceHistory : [];
     const paymentHistory = Array.isArray(d.paymentHistory) ? d.paymentHistory : [];
