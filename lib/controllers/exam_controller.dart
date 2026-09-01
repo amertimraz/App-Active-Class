@@ -1,8 +1,10 @@
 // lib/controllers/exam_controller.dart
+import 'dart:async';
 import 'package:get/get.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/helpers.dart';
 
 class ExamController extends GetxController {
@@ -96,13 +98,16 @@ class ExamController extends GetxController {
     required double? grade,
     String? notes,
     bool isAbsent = false,
-  }) =>
-      _db.upsertGrade(
-          examId: examId,
-          studentId: studentId,
-          grade: grade,
-          notes: notes,
-          isAbsent: isAbsent);
+  }) async {
+    await _db.upsertGrade(
+        examId: examId,
+        studentId: studentId,
+        grade: grade,
+        notes: notes,
+        isAbsent: isAbsent);
+    // حدّث بوابة أولياء الأمور بدرجة الطالب فورًا (best-effort)
+    unawaited(ParentPortalService().pushStudentSummary(studentId));
+  }
 
   Future<ExamGroupStats> getStats(int examId, int groupId, String groupName) =>
       _db.getExamGroupStats(examId, groupId, groupName);

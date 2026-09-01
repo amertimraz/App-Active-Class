@@ -22,6 +22,7 @@ import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
+import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/services/database_service.dart';
@@ -184,6 +185,7 @@ class ParentPortalService {
     required List<Payment> payments,
     required List<Homework> homework,
     required String groupName,
+    List<StudentExamRecord> exams = const [],
   }) {
     final last4 = _last4(student.guardianPhone);
     if (last4 == null) return null;
@@ -217,6 +219,13 @@ class ParentPortalService {
     final sortedHomework = [...homework]
       ..sort((a, b) => b.date.compareTo(a.date));
 
+    // امتحانات الطالب — بس اللي اترصد فيها درجة أو اتسجّل غياب (مش
+    // امتحانات مجدولة لسه مالهاش نتيجة). أحدث 15.
+    final examRecords = exams
+        .where((e) => e.grade != null || e.isAbsent)
+        .toList()
+      ..sort((a, b) => b.examDate.compareTo(a.examDate));
+
     return {
       '_docId': '${code}_$last4',
       'name': student.name,
@@ -245,6 +254,14 @@ class ParentPortalService {
             'status': normalizeHomeworkStatus(h.status) ?? h.status,
             'statusLabel': homeworkStatusLabel(h.status),
           }).toList(),
+      'examCount': examRecords.length,
+      'examHistory': examRecords.take(15).map((e) => {
+            'name': e.examName,
+            'date': e.examDate.toIso8601String(),
+            'absent': e.isAbsent,
+            'grade': e.isAbsent ? null : e.grade,
+            'maxGrade': e.maxGrade,
+          }).toList(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -263,12 +280,14 @@ class ParentPortalService {
       final attendanceRecords = await _dbService.getAttendanceByStudent(studentId);
       final payments = await _dbService.getPaymentsByStudent(studentId);
       final homework = await _dbService.getHomeworkByStudent(studentId);
+      final exams = await _dbService.getStudentExamHistory(studentId);
       final group = await _dbService.getGroup(student.groupId);
       final data = _buildSummaryData(student,
           attendance: attendanceRecords,
           payments: payments,
           homework: homework,
-          groupName: group?.name ?? '');
+          groupName: group?.name ?? '',
+          exams: exams);
       if (data == null) return;
       final docId = data.remove('_docId') as String;
 
@@ -343,6 +362,7 @@ class ParentPortalService {
     final allPayments = await _dbService.getAllPayments();
     final allHomework = await _dbService.getAllHomework();
     final allGroups = await _dbService.getAllGroups();
+    final examsByStudent = await _dbService.getAllStudentExamHistories();
 
     final groupNameById = {for (final g in allGroups) g.id: g.name};
     final attendanceByStudent = <int, List<Attendance>>{};
@@ -373,6 +393,7 @@ class ParentPortalService {
         payments: paymentsByStudent[s.id] ?? const [],
         homework: homeworkByStudent[s.id] ?? const [],
         groupName: groupNameById[s.groupId] ?? '',
+        exams: examsByStudent[s.id] ?? const [],
       );
       if (data == null) continue;
       final docId = data.remove('_docId') as String;

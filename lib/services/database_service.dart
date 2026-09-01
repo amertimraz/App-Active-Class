@@ -2043,6 +2043,48 @@ class DatabaseService {
         .toList();
   }
 
+  /// سجل امتحانات كل الطلاب دفعة واحدة — {studentId: [records]} —
+  /// عشان النشر الجماعي لبوابة أولياء الأمور (publishAllStudents) ما
+  /// يعملش استعلام منفصل لكل طالب.
+  Future<Map<int, List<StudentExamRecord>>> getAllStudentExamHistories() async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT
+        s.$COL_STUDENT_ID         AS student_id,
+        e.$COL_EXAM_ID            AS exam_id,
+        e.$COL_EXAM_NAME          AS exam_name,
+        e.$COL_EXAM_DATE          AS exam_date,
+        e.$COL_EXAM_MAX_GRADE     AS max_grade,
+        e.$COL_EXAM_PASSING_GRADE AS passing_grade,
+        eg.$COL_GRADE_VALUE       AS grade,
+        eg.$COL_GRADE_IS_ABSENT   AS is_absent,
+        g.$COL_GROUP_NAME         AS group_name
+      FROM $TABLE_EXAMS e
+      INNER JOIN $TABLE_EXAM_GROUPS exg ON exg.$COL_EG_EXAM_ID = e.$COL_EXAM_ID
+      INNER JOIN $TABLE_STUDENTS    s   ON s.$COL_STUDENT_GROUP_ID = exg.$COL_EG_GROUP_ID
+      INNER JOIN $TABLE_GROUPS      g   ON g.$COL_GROUP_ID = s.$COL_STUDENT_GROUP_ID
+      LEFT JOIN  $TABLE_EXAM_GRADES eg  ON eg.$COL_GRADE_EXAM_ID = e.$COL_EXAM_ID
+                                       AND eg.$COL_GRADE_STUDENT_ID = s.$COL_STUDENT_ID
+      ORDER BY e.$COL_EXAM_DATE ASC
+    ''');
+
+    final map = <int, List<StudentExamRecord>>{};
+    for (final r in rows) {
+      final sid = r['student_id'] as int;
+      map.putIfAbsent(sid, () => []).add(StudentExamRecord(
+            examId: r['exam_id'] as int,
+            examName: r['exam_name'] as String,
+            examDate: DateTime.parse(r['exam_date'] as String),
+            maxGrade: (r['max_grade'] as num).toDouble(),
+            passingGrade: (r['passing_grade'] as num).toDouble(),
+            grade: r['grade'] != null ? (r['grade'] as num).toDouble() : null,
+            isAbsent: (r['is_absent'] as int? ?? 0) == 1,
+            groupName: r['group_name'] as String,
+          ));
+    }
+    return map;
+  }
+
   /// قائمة الأوائل لامتحان معين (كل المجموعات أو مجموعة محددة)
   Future<List<LeaderboardEntry>> getLeaderboard({
     int? examId,
