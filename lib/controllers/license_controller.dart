@@ -139,6 +139,28 @@ class LicenseController extends GetxController {
       parentPortalEnabled.value &&
       (parentPortalExpiresAt.value == null ||
           parentPortalExpiresAt.value!.isAfter(DateTime.now()));
+
+  /// يخزّن حالة بوابة أولياء الأمور محليًا بعد أي قراءة ناجحة من Firestore.
+  Future<void> _persistParentPortal(SharedPreferences prefs) async {
+    await prefs.setBool(_kParentPortalEnabled, parentPortalEnabled.value);
+    final exp = parentPortalExpiresAt.value;
+    if (exp != null) {
+      await prefs.setInt(
+          _kParentPortalExpiresAt, exp.millisecondsSinceEpoch);
+    } else {
+      await prefs.remove(_kParentPortalExpiresAt);
+    }
+  }
+
+  /// يستعيد حالة بوابة أولياء الأمور من التخزين المحلي — يُستخدم في مسار
+  /// الأوفلاين (grace period) عشان البوابة ما تختفيش بعد إعادة التثبيت.
+  void _restoreParentPortal(SharedPreferences prefs) {
+    parentPortalEnabled.value =
+        prefs.getBool(_kParentPortalEnabled) ?? false;
+    final ms = prefs.getInt(_kParentPortalExpiresAt);
+    parentPortalExpiresAt.value =
+        ms != null ? DateTime.fromMillisecondsSinceEpoch(ms) : null;
+  }
   final licenseCode = RxnString();
   final hasRequest = false.obs; // هل عنده طلب ترقية pending
   final expiresAt = Rxn<DateTime>(); // تاريخ انتهاء الترخيص
@@ -175,6 +197,12 @@ class LicenseController extends GetxController {
   static const _kExpiresAt = 'lic_expires_at'; // مخزّنة عشان وضع الأوفلاين (grace period)
   static const _kHasRequest = 'lic_has_request';
   static const _kLastVerified = 'lic_last_verified'; // آخر تحقق ناجح من السيرفر
+  // بوابة أولياء الأمور — مخزّنة محليًا زي الخطة/تاريخ الانتهاء، عشان بعد
+  // إعادة تثبيت التطبيق (والبيانات لسه محفوظة) لو أول تحقق ترخيص حصل أوفلاين
+  // أو النت بطيء، البوابة ما تختفيش لحد ما تحقق أونلاين ينجح. من غير ده كان
+  // المدرس مضطر يقفلها/يفعّلها من لوحة الأدمن بعد كل تثبيت.
+  static const _kParentPortalEnabled = 'lic_parent_portal_enabled';
+  static const _kParentPortalExpiresAt = 'lic_parent_portal_expires_at';
   static const kTrialDays = 7;
   static const int _kGraceDays = 3; // مهلة الاستخدام أوفلاين بعد آخر تحقق ناجح
 
@@ -402,12 +430,18 @@ class LicenseController extends GetxController {
       parentPortalExpiresAt.value =
           (data['parentPortalExpiresAt'] as Timestamp?)?.toDate();
 
-      // الجهاز مربوط بجهاز آخر
+      // الجهاز مربوط بجهاز آخر — الترخيص مش بتاع الجهاز ده، امسح أي كاش
+      // لبوابة أولياء الأمور عشان مسار الأوفلاين ما يرجّعهاش.
       if (boundDev != null && boundDev != deviceId.value) {
+        parentPortalEnabled.value = false;
+        parentPortalExpiresAt.value = null;
         await prefs.remove(_kCode);
+        await prefs.remove(_kParentPortalEnabled);
+        await prefs.remove(_kParentPortalExpiresAt);
         state.value = LicenseState.trialExpired;
         return;
       }
+      await _persistParentPortal(prefs);
 
       // ربط الجهاز إذا لم يكن مرتبطاً — أول تفعيل فعلي للكود.
       // العداد يبدأ من هنا بالظبط (مش من وقت إنشاء الكود في لوحة
@@ -486,6 +520,9 @@ class LicenseController extends GetxController {
         expiresAt.value = cachedExpiresMs != null
             ? DateTime.fromMillisecondsSinceEpoch(cachedExpiresMs)
             : null;
+        // استعِد حالة بوابة أولياء الأمور من الكاش — من غير ده كانت
+        // بتختفي بعد كل إعادة تثبيت لحد ما يحصل تحقق أونلاين ناجح.
+        _restoreParentPortal(prefs);
         state.value = LicenseState.active;
       } else {
         // انتهت مهلة الاستخدام بدون اتصال — لازم يتأكد من السيرفر تاني
@@ -509,6 +546,8 @@ class LicenseController extends GetxController {
         await prefs.remove(_kCode);
         await prefs.remove(_kPlan);
         await prefs.remove(_kExpiresAt);
+        await prefs.remove(_kParentPortalEnabled);
+        await prefs.remove(_kParentPortalExpiresAt);
         licenseCode.value = null;
         expiresAt.value = null;
         parentPortalEnabled.value = false;
@@ -527,6 +566,7 @@ class LicenseController extends GetxController {
       parentPortalEnabled.value = data['parentPortalEnabled'] as bool? ?? false;
       parentPortalExpiresAt.value =
           (data['parentPortalExpiresAt'] as Timestamp?)?.toDate();
+      await _persistParentPortal(prefs);
 
       if (status == 'suspended') {
         state.value = LicenseState.suspended;
