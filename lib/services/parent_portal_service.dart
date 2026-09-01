@@ -68,7 +68,16 @@ class ParentPortalService {
     final lic = LicenseController.to;
     _licenseWorker = everAll(
       [lic.parentPortalEnabled, lic.parentPortalExpiresAt],
-      (_) => publishProfile(),
+      (_) {
+        // لو البوابة اتعطّلت (شِيلت العلامة أو عدّى تاريخ الانتهاء)،
+        // اكتب active:false على المستند العام عشان صفحة الأهالي تعرض
+        // "غير متاحة" بدل ما تفضل عارضة بيانات متجمّدة للأبد.
+        if (lic.parentPortalActiveNow) {
+          publishProfile();
+        } else {
+          publishPortalClosed();
+        }
+      },
     );
   }
 
@@ -169,6 +178,23 @@ class ParentPortalService {
 
   Future<String?> getSlugIfExists() => _dbService.getSetting(_kSlugKey);
 
+  /// بتُكتب لما البوابة تتعطّل — بتحطّ `active: false` على المستند العام
+  /// عشان صفحة `/track/{slug}` تعرض "غير متاحة" فورًا بدل بيانات متجمّدة.
+  /// best-effort — لو مفيش رابط متولّد أصلاً أو فشلت الكتابة، بنتجاهل.
+  Future<void> publishPortalClosed() async {
+    try {
+      final slug = await getSlugIfExists();
+      if (slug == null || slug.isEmpty) return;
+      await _ensureAuth();
+      await _db.collection('parent_portal').doc(slug).set({
+        'active': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('ParentPortalService: publishPortalClosed failed — $e');
+    }
+  }
+
   /// آخر 4 أرقام من رقم ولي الأمر — عمود الحماية الوحيد، فلو رقم
   /// التليفون فاضي أو أقل من 4 أرقام، الطالب ده مينفعش يتنشر خالص
   /// (بدل ما نضعّف الحماية).
@@ -219,6 +245,9 @@ class ParentPortalService {
       // .toUtc() بتضمن علامة 'Z' فيرجع new Date() في الجافاسكريبت
       // يفهمها كلحظة مطلقة، بغض النظر عن توقيت أي جهاز.
       'parentPortalExpiresAt': expiresAt?.toUtc().toIso8601String(),
+      // البوابة شغّالة — بيتقرا في صفحة /track عشان القفل اليدوي (شيل
+      // العلامة من غير تاريخ) يوصل للأهالي كمان مش بس القفل بالتاريخ.
+      'active': true,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
