@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/payment_model.dart';
+import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
@@ -54,6 +55,7 @@ class DashboardController extends GetxController {
   // ── إحصائيات اليوم ───────────────────────────────────────────────────────
   final RxInt    todayPresent        = 0.obs;
   final RxInt    todayAbsent         = 0.obs;
+  final RxInt    todayLate           = 0.obs; // spec 011 — فئة منفصلة
   final RxInt    todayExpected       = 0.obs;
   final RxDouble todayAttendanceRate = 0.0.obs;
 
@@ -233,11 +235,15 @@ class DashboardController extends GetxController {
             !a.date.isBefore(todayStart) && !a.date.isAfter(todayEnd))
         .toList();
 
+    // "متأخر" يُحتسب حضورًا (spec 011)
     final present = todayRecords
-        .where((a) => a.status == ATTENDANCE_PRESENT)
+        .where((a) => attendanceCountsAsPresent(a.status))
         .length;
     final absent  = todayRecords
-        .where((a) => a.status != ATTENDANCE_PRESENT)
+        .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT)
+        .length;
+    final late = todayRecords
+        .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_LATE)
         .length;
 
     // المتوقع = كل طلاب المجموعات اللي ليها حصة مجدولة النهاردة (بصرف النظر
@@ -257,6 +263,7 @@ class DashboardController extends GetxController {
 
     todayPresent.value        = present;
     todayAbsent.value         = absent;
+    todayLate.value           = late;
     todayExpected.value       = total;
     todayAttendanceRate.value = total > 0 ? present / total : 0;
 
@@ -353,17 +360,24 @@ class DashboardController extends GetxController {
     for (final a in sortedAtt.take(5)) {
       final student = await _db.getStudent(a.studentId);
       if (student != null) {
+        final norm = normalizeAttendanceStatus(a.status);
+        final isLate = norm == ATTENDANCE_LATE;
+        final counts = attendanceCountsAsPresent(a.status);
         activities.add(RecentActivity(
           type: ActivityType.attendance,
           title: student.name,
-          subtitle: a.status == ATTENDANCE_PRESENT ? 'حضر' : 'غاب',
+          subtitle: isLate ? 'متأخر' : (counts ? 'حضر' : 'غاب'),
           date: a.date,
-          icon: a.status == ATTENDANCE_PRESENT
-              ? Icons.check_circle_rounded
-              : Icons.cancel_rounded,
-          color: a.status == ATTENDANCE_PRESENT
-              ? AppTheme.successColor
-              : AppTheme.errorColor,
+          icon: isLate
+              ? Icons.schedule_rounded
+              : counts
+                  ? Icons.check_circle_rounded
+                  : Icons.cancel_rounded,
+          color: isLate
+              ? const Color(0xFFF59E0B)
+              : counts
+                  ? AppTheme.successColor
+                  : AppTheme.errorColor,
         ));
       }
     }

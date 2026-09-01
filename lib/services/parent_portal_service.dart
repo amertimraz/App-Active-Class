@@ -190,10 +190,15 @@ class ParentPortalService {
     final code = student.code.toUpperCase();
     if (code.isEmpty) return null;
 
+    // "متأخر" يُحتسب حضورًا في العدّاد، ويُعرض كفئة ثالثة (spec 011)
     final present =
-        attendance.where((a) => a.status == ATTENDANCE_PRESENT).length;
-    final absent =
-        attendance.where((a) => a.status == ATTENDANCE_ABSENT).length;
+        attendance.where((a) => attendanceCountsAsPresent(a.status)).length;
+    final late = attendance
+        .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_LATE)
+        .length;
+    final absent = attendance
+        .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT)
+        .length;
     final totalPaid = payments.fold<double>(0, (s, p) => s + p.amount);
     final homeworkDone = homework
         .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_DONE)
@@ -217,6 +222,7 @@ class ParentPortalService {
       'name': student.name,
       'groupName': groupName,
       'present': present,
+      'late': late,
       'absent': absent,
       'totalPaid': totalPaid,
       'price': student.price,
@@ -226,7 +232,8 @@ class ParentPortalService {
       'homeworkNotDone': homeworkNotDone,
       'attendanceHistory': sortedAttendance.take(20).map((a) => {
             'date': a.date.toIso8601String(),
-            'status': a.status,
+            'status': normalizeAttendanceStatus(a.status) ?? a.status,
+            'statusLabel': attendanceStatusLabel(a.status),
           }).toList(),
       'paymentHistory': sortedPayments.take(15).map((p) => {
             'date': p.date.toIso8601String(),

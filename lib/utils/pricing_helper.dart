@@ -1,5 +1,4 @@
 // lib/utils/pricing_helper.dart
-import 'package:active_class/config/constants.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/payment_model.dart';
@@ -18,7 +17,8 @@ class PricingHelper {
     return allAttendance
         .where((a) =>
             a.studentId == student.id &&
-            a.status == ATTENDANCE_PRESENT &&
+            // "متأخر" حصة محضورة كاملة زي "حاضر" (spec 011)
+            attendanceCountsAsPresent(a.status) &&
             a.date.year == month.year &&
             a.date.month == month.month)
         .length;

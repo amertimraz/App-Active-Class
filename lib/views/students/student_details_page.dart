@@ -142,8 +142,14 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
             !h.date.isAfter(end))
         .toList();
 
-    final present = atts.where((a) => a.status == ATTENDANCE_PRESENT).length;
-    final absent = atts.where((a) => a.status == ATTENDANCE_ABSENT).length;
+    final present =
+        atts.where((a) => attendanceCountsAsPresent(a.status)).length;
+    final late = atts
+        .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_LATE)
+        .length;
+    final absent = atts
+        .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT)
+        .length;
     final total = present + absent;
     final percent = total == 0 ? 0.0 : (present / total) * 100.0;
     final totalPaid = pays.fold<double>(0.0, (sum, p) => sum + p.amount);
@@ -171,14 +177,15 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
       ..writeln(
           '📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
       ..writeln('')
-      ..writeln(
-          '📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
+      ..writeln(late > 0
+          ? '📊 الحضور: ✅ حاضر $present (منهم ⏰ متأخر $late) • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%'
+          : '📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
 
     if (attsSorted.isNotEmpty) {
       buffer.writeln('\n📅 سجلات الحضور:');
       for (final a in attsSorted.take(10)) {
         buffer.writeln(
-            '• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب'}');
+            '• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${attendanceStatusLabel(a.status)}');
       }
       if (attsSorted.length > 10)
         buffer.writeln('• … ${attsSorted.length - 10} سجلات إضافية');
@@ -342,10 +349,13 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
         final studentHomework = homeworkController.homework
             .where((h) => h.studentId == s.id)
             .toList();
-        final presentCount =
-            studentAtts.where((a) => a.status == ATTENDANCE_PRESENT).length;
-        final absentCount =
-            studentAtts.where((a) => a.status == ATTENDANCE_ABSENT).length;
+        final presentCount = studentAtts
+            .where((a) => attendanceCountsAsPresent(a.status))
+            .length;
+        final absentCount = studentAtts
+            .where((a) =>
+                normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT)
+            .length;
         final attRate = studentAtts.isEmpty
             ? 0.0
             : (presentCount / studentAtts.length) * 100;
@@ -1013,7 +1023,7 @@ class _AttendanceTab extends StatelessWidget {
         ...months.map((month) {
           final list = byMonth[month]!;
           final mPresent =
-              list.where((a) => a.status == ATTENDANCE_PRESENT).length;
+              list.where((a) => attendanceCountsAsPresent(a.status)).length;
           return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1059,21 +1069,25 @@ class _AttendanceTab extends StatelessWidget {
                         const Divider(height: 0, indent: 56),
                     itemBuilder: (_, i) {
                       final a = list[i];
-                      final isPresent = a.status == ATTENDANCE_PRESENT;
+                      final norm = normalizeAttendanceStatus(a.status);
+                      final isLate = norm == ATTENDANCE_LATE;
+                      final counts = attendanceCountsAsPresent(a.status);
+                      final c = attendanceStatusColor(norm);
                       return ListTile(
                         leading: Container(
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: (isPresent ? Colors.green : Colors.red)
-                                .withValues(alpha: 0.1),
+                            color: c.withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            isPresent
-                                ? Icons.check_rounded
-                                : Icons.close_rounded,
-                            color: isPresent ? Colors.green : Colors.red,
+                            isLate
+                                ? Icons.schedule_rounded
+                                : counts
+                                    ? Icons.check_rounded
+                                    : Icons.close_rounded,
+                            color: c,
                             size: 18,
                           ),
                         ),
@@ -1083,13 +1097,12 @@ class _AttendanceTab extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: (isPresent ? Colors.green : Colors.red)
-                                .withValues(alpha: 0.1),
+                            color: c.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(a.status,
                               style: TextStyle(
-                                  color: isPresent ? Colors.green : Colors.red,
+                                  color: c,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700)),
                         ),

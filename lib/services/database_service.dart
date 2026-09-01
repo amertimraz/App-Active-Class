@@ -118,7 +118,7 @@ class DatabaseService {
         $COL_ATTENDANCE_ID INTEGER PRIMARY KEY AUTOINCREMENT,
         $COL_ATTENDANCE_STUDENT_ID INTEGER NOT NULL,
         $COL_ATTENDANCE_DATE TEXT NOT NULL,
-        $COL_ATTENDANCE_STATUS TEXT NOT NULL CHECK($COL_ATTENDANCE_STATUS IN ('$ATTENDANCE_PRESENT', '$ATTENDANCE_ABSENT')),
+        $COL_ATTENDANCE_STATUS TEXT NOT NULL CHECK($COL_ATTENDANCE_STATUS IN ('$ATTENDANCE_PRESENT', '$ATTENDANCE_ABSENT', '$ATTENDANCE_LATE')),
         $COL_ATTENDANCE_NOTES TEXT,
         $COL_ATTENDANCE_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_SYNC_UPDATED_AT TEXT,
@@ -510,6 +510,51 @@ class DatabaseService {
         await db.execute(
             'ALTER TABLE ${TABLE_HOMEWORK}_new RENAME TO $TABLE_HOMEWORK');
         await db.execute(_homeworkDayUniqueIndexSql);
+      } catch (_) {}
+    }
+
+    if (oldVersion < 21) {
+      // حالة حضور تالتة "متأخر" — جدول attendance كان فيه CHECK بيسمح بـ
+      // 'حاضر'/'غائب' بس. SQLite مبيسمحش بتعديل CHECK، فبنعيد بناء الجدول
+      // بنفس الأعمدة + CHECK موسّع. راجع specs/011-late-attendance.
+      // onUpgrade جوه transaction بتاعت sqflite أصلاً — db.execute مباشرة،
+      // بلا db.transaction متداخلة (نفس درس migration v20).
+      try {
+        await db.execute('''
+          CREATE TABLE ${TABLE_ATTENDANCE}_new (
+            $COL_ATTENDANCE_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            $COL_ATTENDANCE_STUDENT_ID INTEGER NOT NULL,
+            $COL_ATTENDANCE_DATE TEXT NOT NULL,
+            $COL_ATTENDANCE_STATUS TEXT NOT NULL CHECK($COL_ATTENDANCE_STATUS IN ('$ATTENDANCE_PRESENT', '$ATTENDANCE_ABSENT', '$ATTENDANCE_LATE')),
+            $COL_ATTENDANCE_NOTES TEXT,
+            $COL_ATTENDANCE_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
+            $COL_SYNC_UPDATED_AT TEXT,
+            $COL_SYNC_REMOTE_ID TEXT,
+            UNIQUE($COL_ATTENDANCE_STUDENT_ID, $COL_ATTENDANCE_DATE),
+            FOREIGN KEY($COL_ATTENDANCE_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
+          )
+        ''');
+        await db.execute('''
+          INSERT INTO ${TABLE_ATTENDANCE}_new
+            ($COL_ATTENDANCE_ID, $COL_ATTENDANCE_STUDENT_ID, $COL_ATTENDANCE_DATE,
+             $COL_ATTENDANCE_STATUS, $COL_ATTENDANCE_NOTES, $COL_ATTENDANCE_CREATED_AT,
+             $COL_SYNC_UPDATED_AT, $COL_SYNC_REMOTE_ID)
+          SELECT $COL_ATTENDANCE_ID, $COL_ATTENDANCE_STUDENT_ID, $COL_ATTENDANCE_DATE,
+             $COL_ATTENDANCE_STATUS, $COL_ATTENDANCE_NOTES, $COL_ATTENDANCE_CREATED_AT,
+             $COL_SYNC_UPDATED_AT, $COL_SYNC_REMOTE_ID
+          FROM $TABLE_ATTENDANCE
+        ''');
+        await db.execute('DROP TABLE $TABLE_ATTENDANCE');
+        await db.execute(
+            'ALTER TABLE ${TABLE_ATTENDANCE}_new RENAME TO $TABLE_ATTENDANCE');
+        await db.execute(_attendanceDayUniqueIndexSql);
+        // إعادة إنشاء الفهارس غير الفريدة اللي كانت على الجدول القديم
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_attendance_student_id '
+            'ON $TABLE_ATTENDANCE($COL_ATTENDANCE_STUDENT_ID)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_attendance_date '
+            'ON $TABLE_ATTENDANCE($COL_ATTENDANCE_DATE)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_attendance_status '
+            'ON $TABLE_ATTENDANCE($COL_ATTENDANCE_STATUS)');
       } catch (_) {}
     }
   }

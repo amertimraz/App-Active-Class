@@ -92,10 +92,29 @@ class QRController extends GetxController {
       return;
     }
 
+    // حساب "متأخر" تلقائيًا (spec 011): لو الإعداد مفعّل ومجموعة الطالب ليها
+    // وقت بداية مجدول اليوم، والمسح بعد (البداية + مهلة التأخير) → "متأخر".
+    // بدون جدول أو الإعداد معطّل → "حاضر".
+    var status = ATTENDANCE_PRESENT;
+    try {
+      final settings = Get.find<SettingsController>();
+      if (settings.qrAutoLateEnabled.value &&
+          group != null &&
+          Get.isRegistered<AttendanceController>()) {
+        final start = Get.find<AttendanceController>()
+            .sessionStartTimeForGroupOnDay(group, now);
+        if (start != null) {
+          final threshold =
+              start.add(Duration(minutes: settings.lateGraceMinutes.value));
+          if (now.isAfter(threshold)) status = ATTENDANCE_LATE;
+        }
+      }
+    } catch (_) {}
+
     final attendance = Attendance(
       studentId: student.id!,
       date: now,
-      status: ATTENDANCE_PRESENT,
+      status: status,
       notes: 'تم عبر QR',
     );
     try {
@@ -531,7 +550,7 @@ class QRController extends GetxController {
     for (final month in selectedMonths) {
       count += _scannedAttendance
           .where((a) =>
-              a.status == ATTENDANCE_PRESENT &&
+              attendanceCountsAsPresent(a.status) &&
               a.date.year == month.year &&
               a.date.month == month.month)
           .length;
@@ -582,7 +601,7 @@ class QRController extends GetxController {
     for (final month in selectedMonths) {
       dates.addAll(_scannedAttendance
           .where((a) =>
-              a.status == ATTENDANCE_PRESENT &&
+              attendanceCountsAsPresent(a.status) &&
               a.date.year == month.year &&
               a.date.month == month.month)
           .map((a) => DateTime(a.date.year, a.date.month, a.date.day)));

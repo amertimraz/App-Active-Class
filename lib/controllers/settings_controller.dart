@@ -137,6 +137,7 @@ class SettingsController extends GetxController {
       _loadHideQrSettings(),
       _loadReportOnCompletionSetting(),
       _loadPaymentGraceDays(),
+      _loadLateAttendanceSettings(),
     ]);
   }
 
@@ -248,6 +249,36 @@ class SettingsController extends GetxController {
     paymentGraceDays.value = d;
     try {
       await _dbSet(_keyPaymentGraceDays, d.toString());
+    } catch (_) {}
+  }
+
+  // ── حالة حضور "متأخر" (spec 011) ──────────────────────────────
+  // مهلة السماح بالدقايق بعد بداية الحصة قبل ما مسح الـQR يسجّل "متأخر".
+  final RxInt lateGraceMinutes = 15.obs;
+  // تفعيل حساب "متأخر" تلقائيًا عند مسح الـQR (لو معطّل → "حاضر" دايمًا).
+  final RxBool qrAutoLateEnabled = true.obs;
+
+  Future<void> _loadLateAttendanceSettings() async {
+    try {
+      lateGraceMinutes.value =
+          await _migrateInt(SETTING_LATE_GRACE_MINUTES) ?? 15;
+      qrAutoLateEnabled.value =
+          await _migrateBool(SETTING_QR_AUTO_LATE_ENABLED) ?? true;
+    } catch (_) {}
+  }
+
+  Future<void> setLateGraceMinutes(int minutes) async {
+    final m = minutes.clamp(0, 120);
+    lateGraceMinutes.value = m;
+    try {
+      await _dbSet(SETTING_LATE_GRACE_MINUTES, m.toString());
+    } catch (_) {}
+  }
+
+  Future<void> setQrAutoLateEnabled(bool v) async {
+    qrAutoLateEnabled.value = v;
+    try {
+      await _dbSet(SETTING_QR_AUTO_LATE_ENABLED, v ? '1' : '0');
     } catch (_) {}
   }
 

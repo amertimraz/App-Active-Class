@@ -12,6 +12,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/models/homework_model.dart';
+import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/theme_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
@@ -420,6 +421,49 @@ class SettingsPage extends StatelessWidget {
                                 onChanged: (v) async =>
                                     await settings.setHideQrInAttendance(v),
                               )),
+                          _buildDivider(isDark),
+                          // ── تسجيل "متأخر" تلقائيًا عبر QR (spec 011) ──
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.schedule_rounded,
+                                iconColor: const Color(0xFFF59E0B),
+                                title: 'تسجيل "متأخر" تلقائيًا عبر QR',
+                                subtitle: settings.qrAutoLateEnabled.value
+                                    ? 'لو الطالب اتمسح بعد بداية الحصة بأكتر من المهلة، يتسجّل "متأخر"'
+                                    : 'معطّل — المسح يسجّل "حاضر" دايمًا',
+                                rxValue: settings.qrAutoLateEnabled,
+                                onChanged: (v) async =>
+                                    await settings.setQrAutoLateEnabled(v),
+                              )),
+                          Obx(() => settings.qrAutoLateEnabled.value
+                              ? Column(children: [
+                                  _buildDivider(isDark),
+                                  _buildDropdownTile<int>(
+                                    context,
+                                    isDark,
+                                    icon: Icons.hourglass_bottom_rounded,
+                                    iconColor: const Color(0xFFF59E0B),
+                                    title: 'مهلة التأخير (دقائق)',
+                                    value: settings.lateGraceMinutes.value,
+                                    items: const [0, 5, 10, 15, 20, 30, 45, 60]
+                                        .map((m) => DropdownMenuItem(
+                                              value: m,
+                                              child: Text(m == 0
+                                                  ? 'فورًا بعد البداية'
+                                                  : '$m دقيقة'),
+                                            ))
+                                        .toList(),
+                                    onChanged: (m) async {
+                                      if (m != null) {
+                                        await settings.setLateGraceMinutes(m);
+                                        ToastHelper.success('تم التغيير',
+                                            title: 'مهلة التأخير');
+                                      }
+                                    },
+                                  ),
+                                ])
+                              : const SizedBox.shrink()),
                         ],
                       ),
                       const SizedBox(height: 14),
@@ -1626,10 +1670,17 @@ class SettingsPage extends StatelessWidget {
             .where((p) => !p.date.isBefore(start) && !p.date.isAfter(monthEnd))
             .toList();
 
-        final present =
-            attsMonth.where((a) => a.status == ATTENDANCE_PRESENT).length;
-        final absent =
-            attsMonth.where((a) => a.status == ATTENDANCE_ABSENT).length;
+        final present = attsMonth
+            .where((a) => attendanceCountsAsPresent(a.status))
+            .length;
+        final late = attsMonth
+            .where((a) =>
+                normalizeAttendanceStatus(a.status) == ATTENDANCE_LATE)
+            .length;
+        final absent = attsMonth
+            .where((a) =>
+                normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT)
+            .length;
         final total = present + absent;
         final percent = total == 0 ? 0.0 : (present / total) * 100.0;
         final totalPaid =
@@ -1648,8 +1699,9 @@ class SettingsPage extends StatelessWidget {
           ..writeln(
               '📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
           ..writeln('')
-          ..writeln(
-              '📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
+          ..writeln(late > 0
+              ? '📊 الحضور: ✅ حاضر $present (منهم ⏰ متأخر $late) • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%'
+              : '📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
 
         if (attsSorted.isNotEmpty) {
           buffer
@@ -1657,8 +1709,7 @@ class SettingsPage extends StatelessWidget {
             ..writeln('📅 سجلات الحضور:');
           for (final a in attsSorted.take(10)) {
             final d = DateFormat('yyyy-MM-dd').format(a.date);
-            final st = a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب';
-            buffer.writeln('• $d — $st');
+            buffer.writeln('• $d — ${attendanceStatusLabel(a.status)}');
           }
           if (attsSorted.length > 10) {
             buffer.writeln('• … ${attsSorted.length - 10} سجلات إضافية');

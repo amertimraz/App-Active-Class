@@ -217,8 +217,10 @@ class AttendanceController extends GetxController {
   /// مرتين للقفز لحالة معيّنة — لو الاستدعاء التاني فشل، الطالب كان
   /// بيفضل "حاضر" بالخطأ رغم إن الشاشة بتفترض إنه اتسجّل "غائب").
   /// بيرمي الخطأ للمتصل (بدل ما يبتلعه) عشان يقدر يتصرف بناءً عليه.
+  /// [status] == null → حذف سجل اليوم (نفس نمط setHomeworkStatus في spec 010 —
+  /// بيسمح للـsegmented يلغي الاختيار بالضغط على الزر المختار).
   Future<void> setAttendanceStatus(
-      int studentId, DateTime day, String status) async {
+      int studentId, DateTime day, String? status) async {
     final dayStart = DateTime(day.year, day.month, day.day);
     final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
     final existing = attendance.firstWhereOrNull((a) =>
@@ -226,7 +228,10 @@ class AttendanceController extends GetxController {
         !a.date.isBefore(dayStart) &&
         !a.date.isAfter(dayEnd));
 
-    if (existing == null) {
+    if (status == null) {
+      if (existing == null) return;
+      await _dbService.deleteAttendance(existing.id!);
+    } else if (existing == null) {
       await _dbService.insertAttendance(Attendance(
         studentId: studentId,
         date: DateTime(day.year, day.month, day.day,
@@ -259,6 +264,10 @@ class AttendanceController extends GetxController {
           a.studentId: a,
     };
 
+    // ملاحظة (spec 011): الحلقة تحت بتتخطّى أي طالب عنده سجل بالفعل
+    // (recordsByStudent.containsKey) — يعني الطالب المسجّل "متأخر" يدويًا
+    // ما بيتكتبش فوقه "حاضر". شرط "الكل حاضر → امسح" بيفضل مربوط بـ"حاضر"
+    // بالظبط عشان وجود متأخر يمنع مسح-التبديل (المدرس يمسحه يدويًا).
     final allAlreadyPresent = studentIds.every((id) =>
         recordsByStudent[id]?.status == ATTENDANCE_PRESENT);
 
@@ -450,12 +459,26 @@ class AttendanceController extends GetxController {
 
   // ========== إحصائيات ==========
 
-  // عدّ الحضور "حاضر" لكل طالب ضمن النطاق
+  // عدّ الحضور لكل طالب ضمن النطاق — "متأخر" يُحتسب حضورًا (spec 011)
   Map<int, int> getPresentCountByStudent({DateTimeRange? range}) {
     final r = range ?? dateRange.value;
     final Map<int, int> map = {};
     for (final att in attendance) {
-      if (att.status == ATTENDANCE_PRESENT && (r == null || _inRange(att.date, r))) {
+      if (attendanceCountsAsPresent(att.status) &&
+          (r == null || _inRange(att.date, r))) {
+        map.update(att.studentId, (v) => v + 1, ifAbsent: () => 1);
+      }
+    }
+    return map;
+  }
+
+  // عدّ "متأخر" فقط لكل طالب ضمن النطاق (لعرضه كفئة منفصلة)
+  Map<int, int> getLateCountByStudent({DateTimeRange? range}) {
+    final r = range ?? dateRange.value;
+    final Map<int, int> map = {};
+    for (final att in attendance) {
+      if (normalizeAttendanceStatus(att.status) == ATTENDANCE_LATE &&
+          (r == null || _inRange(att.date, r))) {
         map.update(att.studentId, (v) => v + 1, ifAbsent: () => 1);
       }
     }
@@ -572,6 +595,21 @@ class AttendanceController extends GetxController {
     return null;
   }
 
+  // وقت بداية حصة المجموعة في يوم معيّن كـDateTime كامل (بيدمج تاريخ [day]
+  // مع ساعة البداية من الجدول). بيرجّع null لو مفيش جدول لليوم ده أو الصيغة
+  // غير صالحة. بيُستخدم لحساب "متأخر" تلقائيًا عند مسح الـQR (spec 011).
+  DateTime? sessionStartTimeForGroupOnDay(Group group, DateTime day) {
+    final timesText = sessionTimeForGroupOnDay(group, day);
+    if (timesText == null) return null;
+    final startText = timesText.split('-').first.trim();
+    final p = startText.split(':');
+    if (p.length != 2) return null;
+    final h = int.tryParse(p[0]);
+    final m = int.tryParse(p[1]);
+    if (h == null || m == null) return null;
+    return DateTime(day.year, day.month, day.day, h, m);
+  }
+
   // الوقت المتبقي لحصة المجموعة الحالية، لو فيه حصة شغالة فعلاً دلوقتي
   // — بيرجّع null لو مفيش حصة شغالة (قبل الميعاد، أو بعد النهاية، أو
   // مفيش جدول أصلاً). صيغة الجدول القياسية "اليوم HH:mm-HH:mm" (زي ما
@@ -633,8 +671,9 @@ class AttendanceController extends GetxController {
     String? teacherSpecialization,
   }) {
     final dateLabel = DateFormat('d MMMM yyyy', 'ar').format(DateTime.now());
-    final isAbsent = attendanceStatus == ATTENDANCE_ABSENT;
-    final attLabel = isAbsent ? '❌ غائب' : '✅ حاضر';
+    final isAbsent =
+        normalizeAttendanceStatus(attendanceStatus) == ATTENDANCE_ABSENT;
+    final attLabel = attendanceStatusLabel(attendanceStatus);
     final hwLabel = homeworkStatusLabel(homeworkStatus, absent: isAbsent);
 
     final buffer = StringBuffer()
@@ -662,19 +701,32 @@ class AttendanceController extends GetxController {
   StudentMonthAttendance getStudentMonthAttendance(int studentId, DateTime month) {
     final start = DateTime(month.year, month.month, 1);
     final end = DateTime(month.year, month.month + 1, 0, 23, 59, 59);
-    int present = 0;
+    int present = 0; // حاضر + متأخر (الاتنين حضور)
+    int late = 0;
     final absentDates = <DateTime>[];
+    final lateDates = <DateTime>[];
     for (final a in attendance) {
       if (a.studentId != studentId) continue;
       if (a.date.isBefore(start) || a.date.isAfter(end)) continue;
-      if (a.status == ATTENDANCE_PRESENT) {
+      final s = normalizeAttendanceStatus(a.status);
+      if (s == ATTENDANCE_PRESENT || s == ATTENDANCE_LATE) {
         present++;
-      } else if (a.status == ATTENDANCE_ABSENT) {
+        if (s == ATTENDANCE_LATE) {
+          late++;
+          lateDates.add(a.date);
+        }
+      } else if (s == ATTENDANCE_ABSENT) {
         absentDates.add(a.date);
       }
     }
     absentDates.sort();
-    return StudentMonthAttendance(presentCount: present, absentDates: absentDates);
+    lateDates.sort();
+    return StudentMonthAttendance(
+      presentCount: present,
+      absentDates: absentDates,
+      lateCount: late,
+      lateDates: lateDates,
+    );
   }
 
   // إحصاء ملخص شامل للنطاق: إجمالي حاضر/متوقع ونسبة الحضور
@@ -699,9 +751,16 @@ class AttendanceController extends GetxController {
 }
 
 class StudentMonthAttendance {
-  final int presentCount;
+  final int presentCount; // حاضر + متأخر
   final List<DateTime> absentDates;
-  const StudentMonthAttendance({required this.presentCount, required this.absentDates});
+  final int lateCount;
+  final List<DateTime> lateDates;
+  const StudentMonthAttendance({
+    required this.presentCount,
+    required this.absentDates,
+    this.lateCount = 0,
+    this.lateDates = const [],
+  });
 }
 
 class AttendanceSummary {

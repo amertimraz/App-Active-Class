@@ -380,8 +380,9 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         final sessionDays = byDay.entries
             .map((e) => _GDSessionDay(
                   date: e.key,
-                  presentCount:
-                      e.value.where((a) => a.status == ATTENDANCE_PRESENT).length,
+                  presentCount: e.value
+                      .where((a) => attendanceCountsAsPresent(a.status))
+                      .length,
                   totalMarked: e.value.length,
                   recordIds: e.value.map((a) => a.id!).toList(),
                 ))
@@ -2171,10 +2172,17 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
                                   !p.date.isAfter(end))
                               .toList();
                           final present = attsMonth
-                              .where((a) => a.status == ATTENDANCE_PRESENT)
+                              .where((a) => attendanceCountsAsPresent(a.status))
+                              .length;
+                          final late = attsMonth
+                              .where((a) =>
+                                  normalizeAttendanceStatus(a.status) ==
+                                  ATTENDANCE_LATE)
                               .length;
                           final absent = attsMonth
-                              .where((a) => a.status == ATTENDANCE_ABSENT)
+                              .where((a) =>
+                                  normalizeAttendanceStatus(a.status) ==
+                                  ATTENDANCE_ABSENT)
                               .length;
                           final total = present + absent;
                           final percent =
@@ -2191,8 +2199,9 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
                             ..writeln(
                                 '📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
                             ..writeln('')
-                            ..writeln(
-                                '📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
+                            ..writeln(late > 0
+                                ? '📊 الحضور: ✅ حاضر $present (منهم ⏰ متأخر $late) • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%'
+                                : '📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
 
                           final attsSorted = List.of(attsMonth)
                             ..sort((a, b) => b.date.compareTo(a.date));
@@ -2200,7 +2209,7 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
                             buffer.writeln('\n📅 سجلات الحضور:');
                             for (final a in attsSorted.take(10)) {
                               buffer.writeln(
-                                  '• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${a.status == ATTENDANCE_PRESENT ? '✅ حاضر' : '❌ غياب'}');
+                                  '• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${attendanceStatusLabel(a.status)}');
                             }
                           }
                           if (TeamModeService().canSeeFinancials) {

@@ -1,4 +1,54 @@
 ﻿// lib/models/attendance_model.dart
+import 'package:flutter/material.dart' show Color;
+import 'package:active_class/config/constants.dart';
+
+/// يطبّع قيمة حالة الحضور المخزَّنة لواحدة من:
+/// [ATTENDANCE_PRESENT] / [ATTENDANCE_LATE] / [ATTENDANCE_ABSENT] / null.
+/// مصدر الحقيقة الوحيد للتوافق مع البيانات القديمة (spec 011 — نفس نمط
+/// normalizeHomeworkStatus في spec 010).
+String? normalizeAttendanceStatus(String? raw) {
+  final v = raw?.trim();
+  if (v == null || v.isEmpty) return null;
+  if (v == ATTENDANCE_PRESENT) return ATTENDANCE_PRESENT;
+  if (v == ATTENDANCE_ABSENT) return ATTENDANCE_ABSENT;
+  if (v == ATTENDANCE_LATE) return ATTENDANCE_LATE;
+  return null;
+}
+
+/// هل الحالة دي تُحتسب "حضور" (في نسبة الحضور وعدّ الحصص للفوترة بالحصة)؟
+/// "متأخر" = حضر فعلاً → تُحتسب زي "حاضر" بالظبط.
+bool attendanceCountsAsPresent(String? raw) {
+  final s = normalizeAttendanceStatus(raw);
+  return s == ATTENDANCE_PRESENT || s == ATTENDANCE_LATE;
+}
+
+/// تسمية حالة الحضور للعرض والتقارير — مصدر الحقيقة الوحيد.
+String attendanceStatusLabel(String? raw) {
+  switch (normalizeAttendanceStatus(raw)) {
+    case ATTENDANCE_PRESENT:
+      return '✅ حاضر';
+    case ATTENDANCE_LATE:
+      return '⏰ متأخر';
+    case ATTENDANCE_ABSENT:
+      return '❌ غائب';
+    default:
+      return 'لم يُسجَّل';
+  }
+}
+
+/// لون حالة الحضور للـUI والتقارير — أخضر / كهرماني / أحمر / رمادي.
+Color attendanceStatusColor(String? raw) {
+  switch (normalizeAttendanceStatus(raw)) {
+    case ATTENDANCE_PRESENT:
+      return const Color(0xFF10B981);
+    case ATTENDANCE_LATE:
+      return const Color(0xFFF59E0B);
+    case ATTENDANCE_ABSENT:
+      return const Color(0xFFEF4444);
+    default:
+      return const Color(0xFF9CA3AF);
+  }
+}
 
 class Attendance {
   final int? id;

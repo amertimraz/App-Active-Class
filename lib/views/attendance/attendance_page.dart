@@ -237,8 +237,9 @@ class _RegisterTabState extends State<_RegisterTab> {
           .where((s) => todayGroups.any((g) => g.id == s.groupId))
           .map((s) => s.id)
           .toSet();
-      final presentCount  = statusMap.entries.where((e) => todayIds.contains(e.key) && e.value == ATTENDANCE_PRESENT).length;
-      final absentCount   = statusMap.entries.where((e) => todayIds.contains(e.key) && e.value == ATTENDANCE_ABSENT).length;
+      final presentCount  = statusMap.entries.where((e) => todayIds.contains(e.key) && normalizeAttendanceStatus(e.value) == ATTENDANCE_PRESENT).length;
+      final lateCount     = statusMap.entries.where((e) => todayIds.contains(e.key) && normalizeAttendanceStatus(e.value) == ATTENDANCE_LATE).length;
+      final absentCount   = statusMap.entries.where((e) => todayIds.contains(e.key) && normalizeAttendanceStatus(e.value) == ATTENDANCE_ABSENT).length;
       final totalStudents = todayIds.length;
       final unmarked = totalStudents - statusMap.keys.where(todayIds.contains).length;
 
@@ -251,6 +252,7 @@ class _RegisterTabState extends State<_RegisterTab> {
           dateFmt: dateFmt,
           onDayChanged: widget.onDayChanged,
           presentCount:  presentCount,
+          lateCount:     lateCount,
           absentCount:   absentCount,
           unmarked:      unmarked,
           totalStudents: totalStudents,
@@ -281,7 +283,10 @@ class _RegisterTabState extends State<_RegisterTab> {
                         if (groupStudents.isEmpty) return const SizedBox.shrink();
 
                         final gPresent = groupStudents
-                            .where((s) => statusMap[s.id] == ATTENDANCE_PRESENT)
+                            .where((s) => attendanceCountsAsPresent(statusMap[s.id]))
+                            .length;
+                        final gLate = groupStudents
+                            .where((s) => normalizeAttendanceStatus(statusMap[s.id]) == ATTENDANCE_LATE)
                             .length;
                         final gTotal = groupStudents.length;
                         final gRate  = gTotal > 0 ? gPresent / gTotal : 0.0;
@@ -291,6 +296,7 @@ class _RegisterTabState extends State<_RegisterTab> {
                           group: group,
                           sessionTime: sessionTime,
                           presentCount: gPresent,
+                          lateCount: gLate,
                           totalCount: gTotal,
                           attendanceRate: gRate,
                           controller: widget.controller,
@@ -322,7 +328,7 @@ class _DayNavigator extends StatelessWidget {
   final bool isToday;
   final DateFormat dateFmt;
   final ValueChanged<DateTime> onDayChanged;
-  final int presentCount, absentCount, unmarked, totalStudents;
+  final int presentCount, lateCount, absentCount, unmarked, totalStudents;
 
   const _DayNavigator({
     required this.isDark,
@@ -331,6 +337,7 @@ class _DayNavigator extends StatelessWidget {
     required this.dateFmt,
     required this.onDayChanged,
     required this.presentCount,
+    this.lateCount = 0,
     required this.absentCount,
     required this.unmarked,
     required this.totalStudents,
@@ -338,7 +345,9 @@ class _DayNavigator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rate = totalStudents > 0 ? presentCount / totalStudents : 0.0;
+    // "متأخر" يُحتسب حضورًا في النسبة (spec 011)
+    final rate =
+        totalStudents > 0 ? (presentCount + lateCount) / totalStudents : 0.0;
     final barColor = rate >= 0.8
         ? const Color(0xFF10B981)
         : rate >= 0.5
@@ -444,6 +453,8 @@ class _DayNavigator extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _StatPill(label: 'حاضر',    value: presentCount,  color: const Color(0xFF10B981)),
+                if (lateCount > 0)
+                  _StatPill(label: 'متأخر', value: lateCount, color: const Color(0xFFF59E0B)),
                 _StatPill(label: 'غائب',    value: absentCount,   color: const Color(0xFFEF4444)),
                 _StatPill(label: 'لم يُسجَّل', value: unmarked,   color: Colors.grey),
                 _StatPill(label: 'الكل',    value: totalStudents, color: AppTheme.primaryColor),
@@ -466,6 +477,7 @@ class _GroupSummaryCard extends StatelessWidget {
   final Group group;
   final String? sessionTime;
   final int presentCount, totalCount;
+  final int lateCount;
   final double attendanceRate;
   final AttendanceController controller;
   final VoidCallback onTap;
@@ -475,6 +487,7 @@ class _GroupSummaryCard extends StatelessWidget {
     required this.group,
     required this.sessionTime,
     required this.presentCount,
+    this.lateCount = 0,
     required this.totalCount,
     required this.attendanceRate,
     required this.controller,
@@ -591,6 +604,23 @@ class _GroupSummaryCard extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                             fontSize: 12)),
                   ),
+                  if (lateCount > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: const Color(0xFFF59E0B)
+                                .withValues(alpha: 0.3)),
+                      ),
+                      child: Text('⏰ $lateCount متأخر',
+                          style: const TextStyle(
+                              color: Color(0xFFF59E0B),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11)),
+                    ),
                 ],
               ),
             ),
@@ -752,8 +782,17 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
         for (final a in dayRecords) a.studentId: a.status,
       };
 
-      final presentCount =
-          groupStudents.where((s) => statusMap[s.id] == ATTENDANCE_PRESENT).length;
+      final presentCount = groupStudents
+          .where((s) => attendanceCountsAsPresent(statusMap[s.id]))
+          .length;
+      final lateCount = groupStudents
+          .where((s) =>
+              normalizeAttendanceStatus(statusMap[s.id]) == ATTENDANCE_LATE)
+          .length;
+      final absentCount = groupStudents
+          .where((s) =>
+              normalizeAttendanceStatus(statusMap[s.id]) == ATTENDANCE_ABSENT)
+          .length;
       final totalCount = groupStudents.length;
       final attendanceRate = totalCount > 0 ? presentCount / totalCount : 0.0;
       final barColor = attendanceRate >= 0.8
@@ -871,7 +910,10 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: barColor.withValues(alpha: 0.3)),
                     ),
-                    child: Text('$presentCount / $totalCount',
+                    child: Text(
+                        lateCount > 0
+                            ? 'حاضر $presentCount · متأخر $lateCount · غائب $absentCount'
+                            : '$presentCount / $totalCount',
                         style: TextStyle(
                             color: barColor,
                             fontWeight: FontWeight.w800,
@@ -1019,21 +1061,19 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                       child: _StudentAttendanceChip(
                                         student: s,
                                         status: status,
-                                        onTap: () async {
-                                          await controller.toggleAttendance(
-                                              s.id!, selectedDay);
+                                        onSelect: (newStatus) async {
+                                          try {
+                                            await controller
+                                                .setAttendanceStatus(s.id!,
+                                                    selectedDay, newStatus);
+                                          } catch (_) {
+                                            ToastHelper.error('حدث خطأ');
+                                            return;
+                                          }
                                           // غائب = لا واجب: امسح سجل الواجب
-                                          // لنفس اليوم (spec 010).
-                                          final ns = controller.attendance
-                                              .firstWhereOrNull((a) =>
-                                                  a.studentId == s.id &&
-                                                  a.date.year ==
-                                                      selectedDay.year &&
-                                                  a.date.month ==
-                                                      selectedDay.month &&
-                                                  a.date.day == selectedDay.day)
-                                              ?.status;
-                                          if (ns == ATTENDANCE_ABSENT) {
+                                          // لنفس اليوم (spec 010). "متأخر"
+                                          // مش غياب → الواجب بيفضل.
+                                          if (newStatus == ATTENDANCE_ABSENT) {
                                             await homeworkCtrl.clearHomework(
                                                 s.id!, selectedDay);
                                           }
@@ -1277,110 +1317,154 @@ Future<void> _atWaitForResume() {
 class _StudentAttendanceChip extends StatelessWidget {
   final Student student;
   final String? status;
-  final VoidCallback onTap;
+  // onSelect(status) → يسجّل الحالة؛ onSelect(null) → يمسح السجل (spec 011).
+  final ValueChanged<String?> onSelect;
 
   const _StudentAttendanceChip({
     required this.student,
     required this.status,
-    required this.onTap,
+    required this.onSelect,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isPresent = status == ATTENDANCE_PRESENT;
-    final isAbsent  = status == ATTENDANCE_ABSENT;
+    final norm = normalizeAttendanceStatus(status);
+    final color = attendanceStatusColor(norm);
+    final marked = norm != null;
 
-    // هرمية بصرية متعمّدة: "غائب" هو الاستثناء اللي المدرس محتاج يلاحظه
-    // فورًا فبيبان بأقوى تباين وحدود واضحة؛ "لم يُسجَّل" هي الحالة
-    // الافتراضية الأكثر شيوعًا وقت بداية الحصة فبتبقى هادئة بصريًا (بلا
-    // حدود بارزة) عشان العين تتجاهلها بسهولة وتلتقط الاستثناءات بدل ما
-    // تقرأ كل صف على حدة؛ "حاضر" في المنتصف — واضح لكن أقل ثقلاً من الغياب.
-    final color = isPresent
-        ? const Color(0xFF10B981)
-        : isAbsent
-            ? const Color(0xFFEF4444)
-            : Colors.grey.shade400;
+    final bgColor = marked
+        ? color.withValues(alpha: 0.08)
+        : Colors.grey.withValues(alpha: 0.04);
+    final borderColor =
+        marked ? color.withValues(alpha: 0.3) : Colors.transparent;
 
-    final bgColor = isPresent
-        ? const Color(0xFF10B981).withValues(alpha: 0.08)
-        : isAbsent
-            ? const Color(0xFFEF4444).withValues(alpha: 0.16)
-            : Colors.grey.withValues(alpha: 0.04);
+    final initial =
+        student.name.trim().isNotEmpty ? student.name.trim()[0] : '؟';
 
-    final borderColor = isAbsent
-        ? const Color(0xFFEF4444).withValues(alpha: 0.6)
-        : isPresent
-            ? const Color(0xFF10B981).withValues(alpha: 0.25)
-            : Colors.transparent;
-
-    final borderWidth = isAbsent ? 1.6 : (isPresent ? 1.0 : 0.0);
-
-    final icon = isPresent
-        ? Icons.check_circle_rounded
-        : isAbsent
-            ? Icons.cancel_rounded
-            : Icons.radio_button_unchecked_rounded;
-
-    final initial = student.name.trim().isNotEmpty ? student.name.trim()[0] : '؟';
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: borderColor, width: borderWidth),
-        ),
-        child: Row(children: [
-          // دائرة الحرف الأول
-          Container(
-            width: 34, height: 34,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(initial,
-                  style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14,
-                      color: color)),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  student.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontWeight:
-                        isAbsent ? FontWeight.w800 : FontWeight.w700,
-                    fontSize: 12,
-                    color: isPresent || isAbsent ? color : Colors.grey.shade600,
-                  ),
-                ),
-                Text(
-                  isPresent ? 'حاضر' : isAbsent ? 'غائب' : 'لم يُسجَّل',
-                  style: TextStyle(
-                      fontSize: 10,
-                      color: color,
-                      fontWeight: isAbsent ? FontWeight.w800 : FontWeight.w600),
-                ),
-              ],
-            ),
-          ),
-          Icon(icon, color: color, size: isAbsent ? 20 : 18),
-        ]),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor, width: marked ? 1.0 : 0.0),
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(initial,
+                    style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                        color: color)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                student.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12.5,
+                  color: marked ? color : Colors.grey.shade700,
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          _AttendanceStatusSegmented(status: norm, onSelect: onSelect),
+        ],
+      ),
+    );
+  }
+}
+
+// segmented ثلاثي لحالة الحضور: حاضر / متأخر / غائب — يُختار واحد،
+// الضغط على المختار يمسح السجل (spec 011). نفس نمط _HomeworkStatusSegmented.
+class _AttendanceStatusSegmented extends StatelessWidget {
+  final String? status;
+  final ValueChanged<String?> onSelect;
+
+  const _AttendanceStatusSegmented(
+      {required this.status, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    final divider = Colors.grey.withValues(alpha: 0.28);
+
+    Widget seg(String value, String label, IconData icon, Color color,
+        {required bool first, required bool last}) {
+      final selected = status == value;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => onSelect(selected ? null : value),
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? color : Colors.transparent,
+              borderRadius: BorderRadiusDirectional.horizontal(
+                start: Radius.circular(first ? 9 : 0),
+                end: Radius.circular(last ? 9 : 0),
+              ),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, size: 14, color: selected ? Colors.white : color),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.clip,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'Cairo',
+                        fontWeight:
+                            selected ? FontWeight.w800 : FontWeight.w600,
+                        color: selected
+                            ? Colors.white
+                            : Colors.grey.shade600)),
+              ),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: divider),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(children: [
+        seg(ATTENDANCE_PRESENT, 'حاضر', Icons.check_rounded,
+            const Color(0xFF10B981),
+            first: true, last: false),
+        Container(width: 1, height: 34, color: divider),
+        seg(ATTENDANCE_LATE, 'متأخر', Icons.schedule_rounded,
+            const Color(0xFFF59E0B),
+            first: false, last: false),
+        Container(width: 1, height: 34, color: divider),
+        seg(ATTENDANCE_ABSENT, 'غائب', Icons.close_rounded,
+            const Color(0xFFEF4444),
+            first: false, last: true),
+      ]),
     );
   }
 }
@@ -1866,6 +1950,7 @@ class _RecordsTabState extends State<_RecordsTab> {
             for (final item in [
               ('الكل', ''),
               ('حاضر', ATTENDANCE_PRESENT),
+              ('متأخر', ATTENDANCE_LATE),
               ('غائب', ATTENDANCE_ABSENT),
             ])
               Padding(
@@ -1875,9 +1960,11 @@ class _RecordsTabState extends State<_RecordsTab> {
                   selected: _statusFilter == item.$2,
                   color: item.$2 == ATTENDANCE_PRESENT
                       ? const Color(0xFF10B981)
-                      : item.$2 == ATTENDANCE_ABSENT
-                          ? const Color(0xFFEF4444)
-                          : AppTheme.primaryColor,
+                      : item.$2 == ATTENDANCE_LATE
+                          ? const Color(0xFFF59E0B)
+                          : item.$2 == ATTENDANCE_ABSENT
+                              ? const Color(0xFFEF4444)
+                              : AppTheme.primaryColor,
                   onTap: () => setState(() => _statusFilter = item.$2),
                 ),
               ),
@@ -1902,8 +1989,10 @@ class _RecordsTabState extends State<_RecordsTab> {
                   itemBuilder: (ctx, i) {
                     final att       = list[i];
                     final s         = students.firstWhereOrNull((st) => st.id == att.studentId);
-                    final isPresent = att.status == ATTENDANCE_PRESENT;
-                    final color     = isPresent ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+                    final norm      = normalizeAttendanceStatus(att.status);
+                    final isLate    = norm == ATTENDANCE_LATE;
+                    final isPresent = attendanceCountsAsPresent(att.status);
+                    final color     = attendanceStatusColor(norm);
                     final groupName = groupById[s?.groupId]?.name;
 
                     return Container(
@@ -1929,7 +2018,11 @@ class _RecordsTabState extends State<_RecordsTab> {
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            isPresent ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                            isLate
+                                ? Icons.schedule_rounded
+                                : isPresent
+                                    ? Icons.check_circle_rounded
+                                    : Icons.cancel_rounded,
                             color: color, size: 20,
                           ),
                         ),
@@ -2160,13 +2253,21 @@ class _StatisticsTabState extends State<_StatisticsTab> {
       }).toList()
         ..sort((a, b) => a.percent.compareTo(b.percent));
 
+      bool inRange(DateTime d) => _range == null ||
+          (!d.isBefore(_range!.start) && !d.isAfter(_range!.end));
+      // "متأخر" يُحتسب حضورًا (spec 011)
       final rangePresent = widget.controller.attendance
-          .where((a) => a.status == ATTENDANCE_PRESENT &&
-              (_range == null || (!a.date.isBefore(_range!.start) && !a.date.isAfter(_range!.end))))
+          .where((a) => attendanceCountsAsPresent(a.status) && inRange(a.date))
+          .length;
+      final rangeLate = widget.controller.attendance
+          .where((a) =>
+              normalizeAttendanceStatus(a.status) == ATTENDANCE_LATE &&
+              inRange(a.date))
           .length;
       final rangeAbsent = widget.controller.attendance
-          .where((a) => a.status == ATTENDANCE_ABSENT &&
-              (_range == null || (!a.date.isBefore(_range!.start) && !a.date.isAfter(_range!.end))))
+          .where((a) =>
+              normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT &&
+              inRange(a.date))
           .length;
       final total = rangePresent + rangeAbsent;
       final rate  = total > 0 ? rangePresent / total : 0.0;
@@ -2224,6 +2325,9 @@ class _StatisticsTabState extends State<_StatisticsTab> {
                 children: [
                   _BigStat(label: 'حضور', value: rangePresent.toString(),
                       color: const Color(0xFF10B981), icon: Icons.check_circle_outline_rounded),
+                  if (rangeLate > 0)
+                    _BigStat(label: 'متأخر', value: rangeLate.toString(),
+                        color: const Color(0xFFF59E0B), icon: Icons.schedule_rounded),
                   _BigStat(label: 'غياب', value: rangeAbsent.toString(),
                       color: const Color(0xFFEF4444), icon: Icons.cancel_outlined),
                   _BigStat(
@@ -2487,7 +2591,7 @@ class _QRScanTabState extends State<_QRScanTab> {
         child: Obx(() {
           final presentToday = widget.controller.attendance
               .where((a) =>
-                  a.status == ATTENDANCE_PRESENT &&
+                  attendanceCountsAsPresent(a.status) &&
                   !a.date.isBefore(today.start) &&
                   !a.date.isAfter(today.end))
               .toList()
@@ -3043,31 +3147,45 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
       final dayStart  = DateTime(now.year, now.month, now.day);
       final dayEnd    = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
+      bool inToday(DateTime d) =>
+          !d.isBefore(dayStart) && !d.isAfter(dayEnd);
       final absentIds = widget.controller.attendance
           .where((a) =>
-              a.status == ATTENDANCE_ABSENT &&
-              !a.date.isBefore(dayStart) &&
-              !a.date.isAfter(dayEnd))
+              normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT &&
+              inToday(a.date))
+          .map((a) => a.studentId)
+          .toSet();
+      // قسم "متأخرين" منفصل تحت الغايبين (spec 011) — المتأخر مش غايب.
+      final lateIds = widget.controller.attendance
+          .where((a) =>
+              normalizeAttendanceStatus(a.status) == ATTENDANCE_LATE &&
+              inToday(a.date))
           .map((a) => a.studentId)
           .toSet();
 
+      _AbsentEntry mk(Student s) => _AbsentEntry(
+          student: s, groupName: groupById[s.groupId]?.name ?? '-');
+      int byGroupThenName(_AbsentEntry a, _AbsentEntry b) {
+        final g = a.groupName.compareTo(b.groupName);
+        return g != 0 ? g : a.student.name.compareTo(b.student.name);
+      }
+
       final entries = students
           .where((s) => s.id != null && absentIds.contains(s.id))
-          .map((s) => _AbsentEntry(
-              student: s, groupName: groupById[s.groupId]?.name ?? '-'))
+          .map(mk)
           .toList()
-        ..sort((a, b) {
-          final byGroup = a.groupName.compareTo(b.groupName);
-          return byGroup != 0
-              ? byGroup
-              : a.student.name.compareTo(b.student.name);
-        });
+        ..sort(byGroupThenName);
+      final lateEntries = students
+          .where((s) => s.id != null && lateIds.contains(s.id))
+          .map(mk)
+          .toList()
+        ..sort(byGroupThenName);
 
       // نظّف أي تحديد لطالب مبقاش غايب بعد إعادة تحميل الحضور
       final validIds = entries.map((e) => e.student.id!).toSet();
       _selected.removeWhere((id) => !validIds.contains(id));
 
-      if (entries.isEmpty) {
+      if (entries.isEmpty && lateEntries.isEmpty) {
         return const EmptyState(
           icon: Icons.emoji_people_rounded,
           title: 'مفيش غياب النهاردة',
@@ -3084,7 +3202,9 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Row(children: [
             Text(
-              'غياب اليوم (${entries.length})',
+              entries.isEmpty
+                  ? 'متأخرو اليوم (${lateEntries.length})'
+                  : 'غياب اليوم (${entries.length})',
               style: TextStyle(
                 fontFamily: 'Cairo',
                 fontWeight: FontWeight.bold,
@@ -3093,6 +3213,7 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
               ),
             ),
             const Spacer(),
+            if (entries.isNotEmpty)
             TextButton.icon(
               onPressed: () => setState(() {
                 if (allSelected) {
@@ -3116,8 +3237,65 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 90),
-            itemCount: entries.length,
+            // [غايبين...] + [عنوان "متأخرين"] + [متأخرين...]
+            itemCount: entries.length +
+                (lateEntries.isEmpty
+                    ? 0
+                    : (entries.isEmpty ? 0 : 1) + lateEntries.length),
             itemBuilder: (ctx, i) {
+              // عنوان قسم "متأخرين" (لو فيه غايبين قبله)
+              if (entries.isNotEmpty &&
+                  lateEntries.isNotEmpty &&
+                  i == entries.length) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 14, 4, 8),
+                  child: Row(children: [
+                    const Icon(Icons.schedule_rounded,
+                        size: 16, color: Color(0xFFF59E0B)),
+                    const SizedBox(width: 6),
+                    Text('متأخرون (${lateEntries.length})',
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13.5,
+                          color: isDark
+                              ? Colors.white
+                              : const Color(0xFF111827),
+                        )),
+                  ]),
+                );
+              }
+
+              // صفوف "متأخرين" (info-only، بلا checkbox/إرسال)
+              final lateStart =
+                  entries.length + (entries.isEmpty ? 0 : 1);
+              if (i >= lateStart) {
+                final le = lateEntries[i - lateStart];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF131D31) : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+                  ),
+                  child: ListTile(
+                    leading: const Icon(Icons.schedule_rounded,
+                        color: Color(0xFFF59E0B)),
+                    title: Text(le.student.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 13.5)),
+                    subtitle: Text(
+                      'الكود: ${le.student.code} • المجموعة: ${le.groupName} • متأخر',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          color:
+                              isDark ? Colors.white60 : Colors.grey.shade600),
+                    ),
+                  ),
+                );
+              }
+
               final entry    = entries[i];
               final s        = entry.student;
               final hasPhone = (s.guardianPhone ?? '').trim().isNotEmpty;

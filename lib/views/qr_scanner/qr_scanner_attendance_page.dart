@@ -14,6 +14,7 @@ import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/clock_text.dart';
 
@@ -225,7 +226,7 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
             final today = _todayStart();
             final count = attCtrl.attendance
                 .where((a) =>
-                    a.status == ATTENDANCE_PRESENT &&
+                    attendanceCountsAsPresent(a.status) &&
                     a.date.year == today.year &&
                     a.date.month == today.month &&
                     a.date.day == today.day)
@@ -305,7 +306,7 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
               final today = _todayStart();
               final count = attCtrl.attendance
                   .where((a) =>
-                      a.status == ATTENDANCE_PRESENT &&
+                      attendanceCountsAsPresent(a.status) &&
                       a.date.year == today.year &&
                       a.date.month == today.month &&
                       a.date.day == today.day)
@@ -422,7 +423,7 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
         final today = _todayStart();
         final entries = attCtrl.attendance
             .where((a) =>
-                a.status == ATTENDANCE_PRESENT &&
+                attendanceCountsAsPresent(a.status) &&
                 a.date.year == today.year &&
                 a.date.month == today.month &&
                 a.date.day == today.day)
@@ -510,8 +511,12 @@ class _AttendancePanel extends StatelessWidget {
           a.date.year == today2.year &&
           a.date.month == today2.month &&
           a.date.day == today2.day);
-      final isPresent = record?.status == ATTENDANCE_PRESENT;
-      final isAbsent  = record?.status == ATTENDANCE_ABSENT;
+      final norm = normalizeAttendanceStatus(record?.status);
+      final isLate = norm == ATTENDANCE_LATE; // spec 011
+      final isPresent = norm == ATTENDANCE_PRESENT || isLate; // "متأخر" حضور
+      final isAbsent  = norm == ATTENDANCE_ABSENT;
+      final presentColor =
+          isLate ? const Color(0xFFF59E0B) : const Color(0xFF10B981);
 
       return Container(
         color: surface,
@@ -573,32 +578,34 @@ class _AttendancePanel extends StatelessWidget {
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: (isPresent
-                                ? const Color(0xFF10B981)
+                                ? presentColor
                                 : const Color(0xFFEF4444))
                             .withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                             color: (isPresent
-                                    ? const Color(0xFF10B981)
+                                    ? presentColor
                                     : const Color(0xFFEF4444))
                                 .withValues(alpha: 0.3)),
                       ),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(
-                          isPresent
-                              ? Icons.check_circle_rounded
-                              : Icons.cancel_rounded,
+                          isLate
+                              ? Icons.schedule_rounded
+                              : isPresent
+                                  ? Icons.check_circle_rounded
+                                  : Icons.cancel_rounded,
                           size: 13,
                           color: isPresent
-                              ? const Color(0xFF10B981)
+                              ? presentColor
                               : const Color(0xFFEF4444),
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          isPresent ? 'حاضر' : 'غائب',
+                          isLate ? 'متأخر' : isPresent ? 'حاضر' : 'غائب',
                           style: TextStyle(
                               color: isPresent
-                                  ? const Color(0xFF10B981)
+                                  ? presentColor
                                   : const Color(0xFFEF4444),
                               fontSize: 11,
                               fontWeight: FontWeight.bold),
@@ -1042,8 +1049,12 @@ class _StudentSearchCard extends StatelessWidget {
         a.date.year == today.year &&
         a.date.month == today.month &&
         a.date.day == today.day);
-    final isPresent = record?.status == ATTENDANCE_PRESENT;
-    final isAbsent  = record?.status == ATTENDANCE_ABSENT;
+    final norm = normalizeAttendanceStatus(record?.status);
+    final isLate = norm == ATTENDANCE_LATE; // spec 011
+    final isPresent = norm == ATTENDANCE_PRESENT || isLate;
+    final isAbsent  = norm == ATTENDANCE_ABSENT;
+    final presentColor =
+        isLate ? const Color(0xFFF59E0B) : const Color(0xFF10B981);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1102,23 +1113,22 @@ class _StudentSearchCard extends StatelessWidget {
               if (isPresent || isAbsent) ...[
                 const SizedBox(width: 6),
                 Icon(
-                  isPresent
-                      ? Icons.check_circle_rounded
-                      : Icons.cancel_rounded,
+                  isLate
+                      ? Icons.schedule_rounded
+                      : isPresent
+                          ? Icons.check_circle_rounded
+                          : Icons.cancel_rounded,
                   size: 12,
-                  color: isPresent
-                      ? const Color(0xFF10B981)
-                      : const Color(0xFFEF4444),
+                  color: isPresent ? presentColor : const Color(0xFFEF4444),
                 ),
                 const SizedBox(width: 2),
                 Text(
-                  isPresent ? 'حاضر' : 'غائب',
+                  isLate ? 'متأخر' : isPresent ? 'حاضر' : 'غائب',
                   style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: isPresent
-                          ? const Color(0xFF10B981)
-                          : const Color(0xFFEF4444)),
+                      color:
+                          isPresent ? presentColor : const Color(0xFFEF4444)),
                 ),
               ],
             ]),

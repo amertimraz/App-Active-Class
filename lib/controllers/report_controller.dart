@@ -78,11 +78,17 @@ class ReportController extends GetxController {
   double get monthTotalCollected =>
       monthPayments.fold(0.0, (s, p) => s + p.amount);
 
+  // "متأخر" يُحتسب حضورًا (spec 011)
   int get monthPresentCount =>
-      monthAttendance.where((a) => a.status == 'حاضر').length;
+      monthAttendance.where((a) => attendanceCountsAsPresent(a.status)).length;
 
-  int get monthAbsentCount =>
-      monthAttendance.where((a) => a.status == 'غائب').length;
+  int get monthAbsentCount => monthAttendance
+      .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT)
+      .length;
+
+  int get monthLateCount => monthAttendance
+      .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_LATE)
+      .length;
 
   List<Homework> get monthHomework {
     final m = selectedMonth.value;
@@ -121,9 +127,13 @@ class ReportController extends GetxController {
     }
 
     final presentByStudent = <int, int>{};
+    final lateByStudent = <int, int>{};
     for (final a in monthAttendance) {
-      if (a.status == 'حاضر') {
+      if (attendanceCountsAsPresent(a.status)) {
         presentByStudent.update(a.studentId, (v) => v + 1, ifAbsent: () => 1);
+      }
+      if (normalizeAttendanceStatus(a.status) == ATTENDANCE_LATE) {
+        lateByStudent.update(a.studentId, (v) => v + 1, ifAbsent: () => 1);
       }
     }
 
@@ -189,6 +199,8 @@ class ReportController extends GetxController {
       final fullyPaid = students.where((s) => isFullyPaid(s, g)).length;
       final totalPresent =
           students.fold<int>(0, (s, st) => s + (presentByStudent[st.id] ?? 0));
+      final totalLate =
+          students.fold<int>(0, (s, st) => s + (lateByStudent[st.id] ?? 0));
       // "الناقص" يُحسب ضمن "عمل الواجب" في ملخّص المجموعة (محاولة تُحتسب).
       final totalHomeworkDone = students.fold<int>(
           0,
@@ -205,6 +217,7 @@ class ReportController extends GetxController {
         collectedIncome: collectedIncome,
         fullyPaidCount: fullyPaid,
         totalPresentSessions: totalPresent,
+        totalLateSessions: totalLate,
         totalHomeworkDone: totalHomeworkDone,
         totalHomeworkNotDone: totalHomeworkNotDone,
       );
@@ -225,7 +238,8 @@ class ReportController extends GetxController {
 
     final byDate = <DateTime, List<Attendance>>{};
     for (final a in monthAttendance) {
-      if (a.status != 'حاضر') continue;
+      // "متأخر" حصة محضورة كاملة زي "حاضر" (spec 011)
+      if (!attendanceCountsAsPresent(a.status)) continue;
       if (!studentById.containsKey(a.studentId)) continue;
       final d = DateTime(a.date.year, a.date.month, a.date.day);
       byDate.putIfAbsent(d, () => []).add(a);
@@ -425,7 +439,8 @@ class GroupMonthSummary {
   final double expectedIncome;
   final double collectedIncome;
   final int fullyPaidCount;
-  final int totalPresentSessions;
+  final int totalPresentSessions; // شامل "متأخر"
+  final int totalLateSessions; // منها كام "متأخر" (spec 011)
   final int totalHomeworkDone;
   final int totalHomeworkNotDone;
 
@@ -436,6 +451,7 @@ class GroupMonthSummary {
     required this.collectedIncome,
     required this.fullyPaidCount,
     required this.totalPresentSessions,
+    this.totalLateSessions = 0,
     this.totalHomeworkDone = 0,
     this.totalHomeworkNotDone = 0,
   });

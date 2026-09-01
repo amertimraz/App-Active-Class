@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 20;
+const int DATABASE_VERSION = 21;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -157,6 +157,16 @@ const String COL_REPORT_SENT_AT = 'sent_at';
 // Attendance Status
 const String ATTENDANCE_PRESENT = 'حاضر';
 const String ATTENDANCE_ABSENT = 'غائب';
+// حالة تالتة: الطالب حضر بس بعد بداية الحصة. (spec 011 — تُحتسب حضورًا في
+// النسبة والفوترة بالحصة، وتُعرض مميّزة. القيم القديمة حاضر/غائب تفضل صالحة.)
+const String ATTENDANCE_LATE = 'متأخر';
+
+// app_settings key — مهلة السماح (بالدقايق) بعد بداية الحصة قبل ما مسح الـQR
+// يسجّل الطالب "متأخر" تلقائيًا. افتراضي 15. (spec 011)
+const String SETTING_LATE_GRACE_MINUTES = 'late_grace_minutes';
+// app_settings key — تفعيل/تعطيل حساب "متأخر" تلقائيًا عند مسح الـQR.
+// افتراضيًا مفعّل؛ لو معطّل الـQR يسجّل "حاضر" دايمًا. (spec 011)
+const String SETTING_QR_AUTO_LATE_ENABLED = 'qr_auto_late_enabled';
 
 // Route Names
 const String ROUTE_SPLASH = '/splash';

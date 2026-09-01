@@ -305,7 +305,7 @@ class ExportService {
       }
       final presentMap = <int, int>{};
       for (final a in monthAtt) {
-        if (a.status == ATTENDANCE_PRESENT) {
+        if (attendanceCountsAsPresent(a.status)) {
           presentMap.update(a.studentId, (v) => v + 1, ifAbsent: () => 1);
         }
       }
@@ -544,11 +544,14 @@ class ExportService {
         _td(s.name, isEven: isEven, bold: true, size: 8),
       ];
       for (var d = 1; d <= days; d++) {
-        final status = sAtt[d];
-        if (status == ATTENDANCE_PRESENT) {
+        final norm = normalizeAttendanceStatus(sAtt[d]);
+        if (norm == ATTENDANCE_LATE) {
+          presentCount++; // "متأخر" حضور (spec 011)
+          cells.add(_attCell(true, isEven, late: true));
+        } else if (norm == ATTENDANCE_PRESENT) {
           presentCount++;
           cells.add(_attCell(true, isEven));
-        } else if (status == ATTENDANCE_ABSENT) {
+        } else if (norm == ATTENDANCE_ABSENT) {
           absentCount++;
           cells.add(_attCell(false, isEven));
         } else {
@@ -567,10 +570,17 @@ class ExportService {
       List<Student> students, Map<int, Map<int, String>> attMap, int days) {
     int totalPresent = 0;
     int totalAbsent = 0;
+    int totalLate = 0;
     for (final s in students) {
       final sAtt = attMap[s.id] ?? {};
-      totalPresent += sAtt.values.where((v) => v == ATTENDANCE_PRESENT).length;
-      totalAbsent += sAtt.values.where((v) => v == ATTENDANCE_ABSENT).length;
+      totalPresent +=
+          sAtt.values.where((v) => attendanceCountsAsPresent(v)).length;
+      totalLate += sAtt.values
+          .where((v) => normalizeAttendanceStatus(v) == ATTENDANCE_LATE)
+          .length;
+      totalAbsent += sAtt.values
+          .where((v) => normalizeAttendanceStatus(v) == ATTENDANCE_ABSENT)
+          .length;
     }
     final total = totalPresent + totalAbsent;
     final rate = total > 0 ? (totalPresent / total * 100) : 0.0;
@@ -585,6 +595,8 @@ class ExportService {
         mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
         children: [
           _statBox('إجمالي الحضور', '$totalPresent جلسة', _success),
+          if (totalLate > 0)
+            _statBox('منها متأخر', '$totalLate جلسة', _warning),
           _statBox('إجمالي الغياب', '$totalAbsent جلسة', _error),
           _statBox(
               'نسبة الحضور',
@@ -868,7 +880,8 @@ class ExportService {
 
   // نرسم علامة الحضور/الغياب كشكل هندسي بدل رموز يونيكود (✓/●) — دي
   // مش مضمونة موجودة في خط Cairo المرفق، وبتطلع مربعات فاضية في الـPDF.
-  pw.Widget _attCell(bool? present, bool isEven) => pw.Container(
+  pw.Widget _attCell(bool? present, bool isEven, {bool late = false}) =>
+      pw.Container(
         color: isEven ? _white : _lightGrey,
         alignment: pw.Alignment.center,
         padding: const pw.EdgeInsets.all(1),
@@ -879,9 +892,10 @@ class ExportService {
                 height: 7,
                 decoration: pw.BoxDecoration(
                   shape: pw.BoxShape.circle,
-                  color: present ? _success : null,
-                  border:
-                      present ? null : pw.Border.all(color: _error, width: 1),
+                  color: late ? _warning : (present ? _success : null),
+                  border: (present || late)
+                      ? null
+                      : pw.Border.all(color: _error, width: 1),
                 ),
               ),
       );

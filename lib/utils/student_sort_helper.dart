@@ -6,7 +6,6 @@ import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/student_model.dart';
-import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 
 enum StudentSort { name, paymentStatus, attendanceRate, joinDate }
@@ -79,7 +78,8 @@ List<Student> sortStudents({
   double rateOf(Student s) {
     final att = attByStudent[s.id];
     if (att == null || att.isEmpty) return 2.0; // مفيش سجل حضور — آخر الترتيب التصاعدي
-    final present = att.where((a) => a.status == ATTENDANCE_PRESENT).length;
+    final present =
+        att.where((a) => attendanceCountsAsPresent(a.status)).length;
     return present / att.length;
   }
   final rateMap = {for (final s in list) s.id: rateOf(s)};

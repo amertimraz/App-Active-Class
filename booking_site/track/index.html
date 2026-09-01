@@ -108,11 +108,12 @@
   .stat .n{font-size:24px;font-weight:900;}
   .stat .l{font-size:11px;color:var(--text-muted);margin-top:2px;}
   .stat.present .n{color:var(--primary);}
+  .stat.late .n{color:#F59E0B;}
   .stat.absent .n{color:var(--danger);}
   .stat.hw-done .n{color:#10B981;}
   .stat.hw-part .n{color:#F59E0B;}
   .stat.hw-not .n{color:#EF4444;}
-  .stat-grid.hw3{grid-template-columns:1fr 1fr 1fr;}
+  .stat-grid.hw3,.stat-grid.att3{grid-template-columns:1fr 1fr 1fr;}
 
   .money-row{
     display:flex;justify-content:space-between;align-items:center;
@@ -135,6 +136,7 @@
   .history-row .note{color:var(--text-muted);font-size:11px;margin-top:2px;}
   .badge-present{color:var(--primary-dark);font-weight:800;font-size:12px;}
   .badge-absent{color:var(--danger);font-weight:800;font-size:12px;}
+  .badge-late{color:#B45309;font-weight:800;font-size:12px;}
   .badge-hw-done{color:var(--accent);font-weight:800;font-size:12px;}
   .badge-hw-not{color:#F59E0B;font-weight:800;font-size:12px;}
   .amount{color:var(--primary-dark);font-weight:800;font-size:13px;}
@@ -282,13 +284,23 @@
     teacherTitle.textContent = `أهلًا بك، ولي أمر ${d.name}`;
     teacherSub.textContent = 'تابع حضور ومدفوعات ابنك أول بأول';
 
+    // حالة الحضور: حاضر / متأخر / غائب. القيم القديمة مدعومة.
+    const attLabel = (a) => {
+      if (a.statusLabel) return a.statusLabel;
+      if (a.status === 'متأخر') return '⏰ متأخر';
+      if (a.status === 'حاضر') return '✅ حاضر';
+      return '❌ غائب';
+    };
+    const attClass = (a) => {
+      if (a.status === 'متأخر') return 'badge-late';
+      if (a.status === 'حاضر') return 'badge-present';
+      return 'badge-absent';
+    };
     const attendanceRows = attendanceHistory.length
       ? attendanceHistory.map(a => `
           <div class="history-row">
             <span class="date">${fmtDate(a.date)}</span>
-            <span class="${a.status === 'حاضر' ? 'badge-present' : 'badge-absent'}">
-              ${a.status === 'حاضر' ? '✅ حاضر' : '❌ غائب'}
-            </span>
+            <span class="${attClass(a)}">${attLabel(a)}</span>
           </div>`).join('')
       : `<div class="empty-hint">لا توجد سجلات حضور بعد</div>`;
 
@@ -337,8 +349,9 @@
         </div>
       </div>
 
-      <div class="stat-grid">
+      <div class="stat-grid${(d.late ?? 0) > 0 ? ' att3' : ''}">
         <div class="stat present"><div class="n">${d.present ?? 0}</div><div class="l">حصص حاضرة</div></div>
+        ${(d.late ?? 0) > 0 ? `<div class="stat late"><div class="n">${d.late}</div><div class="l">منها متأخر</div></div>` : ''}
         <div class="stat absent"><div class="n">${d.absent ?? 0}</div><div class="l">حصص غائبة</div></div>
       </div>
 
