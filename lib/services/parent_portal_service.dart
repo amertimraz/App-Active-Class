@@ -10,6 +10,8 @@
 // نفسه مركّب من {code}_{last4} (زي رابط سرّي غير قابل للتخمين لمين
 // معندوش الرقمين مع بعض)، فالقاعدة الأمنية بسيطة: قراءة عامة مسموحة،
 // بس لازم تعرف الـ ID الصح الأول عشان توصله.
+import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -101,20 +103,68 @@ class ParentPortalService {
     }
   }
 
+  static const _slugChars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+
   String _generateSlug() {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     final rnd = Random.secure();
-    return List.generate(10, (_) => chars[rnd.nextInt(chars.length)]).join();
+    return List.generate(10, (_) => _slugChars[rnd.nextInt(36)]).join();
   }
 
-  /// رابط المتابعة الثابت للمدرس — بيتولّد مرة واحدة بس ويتخزّن محليًا.
-  Future<String> ensureSlug() async {
-    var slug = await _dbService.getSetting(_kSlugKey);
-    if (slug == null || slug.isEmpty) {
-      slug = _generateSlug();
-      await _dbService.setSetting(_kSlugKey, slug);
+  /// رابط مشتقّ حتميًا من كود الترخيص — نفس الكود يدّي نفس الرابط دايمًا،
+  /// فإعادة تثبيت التطبيق (والمدرس بيعيد إدخال نفس الكود) مابتغيّرش رابط
+  /// الأهالي. مش تشفير — السرّية في كود الترخيص نفسه؛ الغرض بس إنه ثابت
+  /// وغير متسلسل/متوقّع. FNV-1a 64-بت موسّع لـ12 حرف base36.
+  String _deterministicSlug(String seed) {
+    final mask = (BigInt.one << 64) - BigInt.one;
+    final prime = BigInt.from(1099511628211);
+    var h = BigInt.parse('14695981039346656037'); // FNV-1a offset
+    for (final b in utf8.encode(seed.trim())) {
+      h = ((h ^ BigInt.from(b)) * prime) & mask;
     }
-    return slug;
+    h = ((h ^ (h >> 29)) * prime) & mask;
+    h = (h ^ (h >> 17)) & mask;
+    final base = BigInt.from(36);
+    final buf = StringBuffer();
+    for (var i = 0; i < 12; i++) {
+      buf.write(_slugChars[(h % base).toInt()]);
+      h = h ~/ base;
+    }
+    return buf.toString();
+  }
+
+  bool _migratingSlug = false;
+
+  /// رابط المتابعة الثابت للمدرس. لو فيه كود ترخيص → مشتقّ منه حتميًا
+  /// (ثابت عبر إعادة التثبيت). غير كده (تجربة/بدون ترخيص) → عشوائي محفوظ
+  /// محليًا. لو الرابط اتغيّر من رابط قديم مخزّن، بنرفع كل الطلاب للرابط
+  /// الجديد مرة واحدة عشان مايبقاش فاضي.
+  Future<String> ensureSlug() async {
+    final code = LicenseController.to.licenseCode.value?.trim();
+
+    if (code == null || code.isEmpty) {
+      var slug = await _dbService.getSetting(_kSlugKey);
+      if (slug == null || slug.isEmpty) {
+        slug = _generateSlug();
+        await _dbService.setSetting(_kSlugKey, slug);
+      }
+      return slug;
+    }
+
+    final det = _deterministicSlug(code);
+    final stored = await _dbService.getSetting(_kSlugKey);
+    if (stored != det) {
+      final hadOldLink = stored != null && stored.isNotEmpty;
+      await _dbService.setSetting(_kSlugKey, det);
+      if (hadOldLink &&
+          !_migratingSlug &&
+          LicenseController.to.parentPortalActiveNow) {
+        _migratingSlug = true;
+        unawaited(publishAllStudents()
+            .catchError((_) => 0)
+            .whenComplete(() => _migratingSlug = false));
+      }
+    }
+    return det;
   }
 
   Future<String?> getSlugIfExists() => _dbService.getSetting(_kSlugKey);
