@@ -132,6 +132,13 @@ class LicenseController extends GetxController {
   /// معندهمش بوابة أولياء أمور خالص.
   final parentPortalRecheckTick = 0.obs;
 
+  /// بيتزوّد كل مرة نقرأ فيها بيانات الترخيص من السيرفر بنجاح (تحقّق أولي
+  /// أو تحديث realtime) — حتى لو القيم ما اتغيّرتش. ParentPortalService
+  /// بيراقبه عشان يوفّق حالة البوابة العامة (active) مع الترخيص، بالذات
+  /// لو الأدمن قفل البوابة والتطبيق كان مقفول (ساعتها parentPortalEnabled
+  /// بيفضل false → false ومفيش أي everAll بيفير).
+  final licenseVerifiedTick = 0.obs;
+
   /// "شغالة فعليًا دلوقتي" — مفعّلة أصلاً، ومدتها المستقلة (لو محددة)
   /// لسه ماعدّتش. مقارنة زمنية مباشرة بنفس نمط فحص انتهاء الترخيص
   /// الأساسي (راجع _validateLicense) — مش Rx، بيتقيّم عند كل استدعاء.
@@ -442,6 +449,7 @@ class LicenseController extends GetxController {
         return;
       }
       await _persistParentPortal(prefs);
+      licenseVerifiedTick.value++;
 
       // ربط الجهاز إذا لم يكن مرتبطاً — أول تفعيل فعلي للكود.
       // العداد يبدأ من هنا بالظبط (مش من وقت إنشاء الكود في لوحة
@@ -567,6 +575,7 @@ class LicenseController extends GetxController {
       parentPortalExpiresAt.value =
           (data['parentPortalExpiresAt'] as Timestamp?)?.toDate();
       await _persistParentPortal(prefs);
+      licenseVerifiedTick.value++;
 
       if (status == 'suspended') {
         state.value = LicenseState.suspended;

@@ -67,7 +67,10 @@ class ParentPortalService {
     if (!Get.isRegistered<LicenseController>()) return;
     final lic = LicenseController.to;
     _licenseWorker = everAll(
-      [lic.parentPortalEnabled, lic.parentPortalExpiresAt],
+      // licenseVerifiedTick كمان — عشان الـcallback يفير حتى لو الأدمن
+      // قفل البوابة والتطبيق كان مقفول (ساعتها parentPortalEnabled بيفضل
+      // false→false ومفيش تغيير)، فأول تحقق ترخيص بعد الفتح بيوفّق الحالة.
+      [lic.parentPortalEnabled, lic.parentPortalExpiresAt, lic.licenseVerifiedTick],
       (_) {
         // لو البوابة اتعطّلت (شِيلت العلامة أو عدّى تاريخ الانتهاء)،
         // اكتب active:false على المستند العام عشان صفحة الأهالي تعرض
@@ -183,7 +186,12 @@ class ParentPortalService {
   /// best-effort — لو مفيش رابط متولّد أصلاً أو فشلت الكتابة، بنتجاهل.
   Future<void> publishPortalClosed() async {
     try {
-      final slug = await getSlugIfExists();
+      // نفس الرابط اللي ensureSlug بترجّعه (المشتقّ من كود الترخيص) —
+      // من غير آثار جانبية (مافيش migration ولا publishAllStudents).
+      final code = LicenseController.to.licenseCode.value?.trim();
+      final slug = (code != null && code.isNotEmpty)
+          ? _deterministicSlug(code)
+          : await getSlugIfExists();
       if (slug == null || slug.isEmpty) return;
       await _ensureAuth();
       await _db.collection('parent_portal').doc(slug).set({
