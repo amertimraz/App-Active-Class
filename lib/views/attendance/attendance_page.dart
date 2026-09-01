@@ -1585,17 +1585,23 @@ class _HomeworkStatusSegmented extends StatelessWidget {
             ),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               Container(
-                width: 8,
-                height: 8,
+                width: 7,
+                height: 7,
                 decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
-              const SizedBox(width: 5),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'Cairo',
-                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                      color: selected ? color : Colors.grey.shade600)),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    softWrap: false,
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontFamily: 'Cairo',
+                        fontWeight:
+                            selected ? FontWeight.w800 : FontWeight.w600,
+                        color: selected ? color : Colors.grey.shade600)),
+              ),
             ]),
           ),
         ),
