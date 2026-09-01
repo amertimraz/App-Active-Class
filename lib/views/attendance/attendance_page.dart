@@ -1513,39 +1513,88 @@ class _HomeworkStudentRow extends StatelessWidget {
     required this.onSelect,
   });
 
+  static const _done = Color(0xFF10B981);
+  static const _partial = Color(0xFFF59E0B);
+  static const _notDone = Color(0xFFEF4444);
+
+  Color? get _accent => status == HOMEWORK_DONE
+      ? _done
+      : status == HOMEWORK_PARTIAL
+          ? _partial
+          : status == HOMEWORK_NOT_DONE
+              ? _notDone
+              : null;
+
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
+    final accent = _accent;
+    final initial = name.trim().isNotEmpty ? name.trim().characters.first : '؟';
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      padding: const EdgeInsetsDirectional.fromSTEB(11, 9, 12, 11),
       decoration: BoxDecoration(
-        color: absent
-            ? Colors.grey.withValues(alpha: 0.05)
-            : cs.onSurface.withValues(alpha: 0.02),
-        borderRadius: BorderRadius.circular(12),
+        color: isDark ? cs.surface.withValues(alpha: 0.45) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: cs.onSurface.withValues(alpha: 0.07)),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2)),
+              ],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: (accent ?? cs.onSurface).withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Text(initial,
+                style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                    color: accent ?? cs.onSurface.withValues(alpha: 0.7))),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                     fontFamily: 'Cairo',
                     fontWeight: FontWeight.w700,
-                    fontSize: 13)),
+                    fontSize: 13,
+                    color: absent
+                        ? cs.onSurface.withValues(alpha: 0.4)
+                        : cs.onSurface)),
           ),
           if (absent)
-            Text('غائب',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade500,
-                    fontFamily: 'Cairo')),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text('غائب — لا واجب',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade500,
+                      fontFamily: 'Cairo')),
+            ),
         ]),
         if (!absent) ...[
-          const SizedBox(height: 7),
+          const SizedBox(height: 9),
           _HomeworkStatusSegmented(status: status, onSelect: onSelect),
         ],
       ]),
@@ -1553,7 +1602,8 @@ class _HomeworkStudentRow extends StatelessWidget {
   }
 }
 
-/// 3 أزرار مجزّأة لحالة الواجب — يُختار منها واحد؛ الضغط على المختار = إلغاء.
+/// عنصر تحكّم مجزّأ متصل لحالة الواجب — 3 أقسام؛ يُختار واحد؛ الضغط على
+/// المختار = إلغاء (رجوع لـ"غير مسجّل").
 class _HomeworkStatusSegmented extends StatelessWidget {
   final String? status;
   final ValueChanged<String?> onSelect;
@@ -1563,44 +1613,42 @@ class _HomeworkStatusSegmented extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget btn(String value, String label, Color color) {
+    final divider = Colors.grey.withValues(alpha: 0.28);
+
+    Widget seg(String value, String label, IconData icon, Color color,
+        {required bool first, required bool last}) {
       final selected = status == value;
       return Expanded(
         child: GestureDetector(
           onTap: () => onSelect(selected ? null : value),
           behavior: HitTestBehavior.opaque,
           child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 2),
-            padding: const EdgeInsets.symmetric(vertical: 7),
+            height: 34,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: selected
-                  ? color.withValues(alpha: 0.16)
-                  : Colors.grey.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(
-                  color: selected
-                      ? color
-                      : Colors.grey.withValues(alpha: 0.25),
-                  width: selected ? 1.4 : 1),
-            ),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              color: selected ? color : Colors.transparent,
+              borderRadius: BorderRadiusDirectional.horizontal(
+                start: Radius.circular(first ? 9 : 0),
+                end: Radius.circular(last ? 9 : 0),
               ),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon,
+                  size: 14, color: selected ? Colors.white : color),
               const SizedBox(width: 4),
               Flexible(
                 child: Text(label,
                     maxLines: 1,
-                    overflow: TextOverflow.clip,
                     softWrap: false,
+                    overflow: TextOverflow.clip,
                     style: TextStyle(
-                        fontSize: 10.5,
+                        fontSize: 11,
                         fontFamily: 'Cairo',
                         fontWeight:
                             selected ? FontWeight.w800 : FontWeight.w600,
-                        color: selected ? color : Colors.grey.shade600)),
+                        color: selected
+                            ? Colors.white
+                            : Colors.grey.shade600)),
               ),
             ]),
           ),
@@ -1608,11 +1656,26 @@ class _HomeworkStatusSegmented extends StatelessWidget {
       );
     }
 
-    return Row(children: [
-      btn(HOMEWORK_DONE, 'تم الحل', const Color(0xFF10B981)),
-      btn(HOMEWORK_PARTIAL, 'ناقص', const Color(0xFFF59E0B)),
-      btn(HOMEWORK_NOT_DONE, 'لم يُحل', const Color(0xFFEF4444)),
-    ]);
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: divider),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(children: [
+        seg(HOMEWORK_DONE, 'تم الحل', Icons.check_rounded,
+            const Color(0xFF10B981),
+            first: true, last: false),
+        Container(width: 1, height: 34, color: divider),
+        seg(HOMEWORK_PARTIAL, 'ناقص', Icons.remove_rounded,
+            const Color(0xFFF59E0B),
+            first: false, last: false),
+        Container(width: 1, height: 34, color: divider),
+        seg(HOMEWORK_NOT_DONE, 'لم يُحل', Icons.close_rounded,
+            const Color(0xFFEF4444),
+            first: false, last: true),
+      ]),
+    );
   }
 }
 
