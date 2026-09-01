@@ -1266,7 +1266,7 @@ class _PaymentPanel extends StatelessWidget {
                                           fontSize: 13,
                                           color: onSurface)),
                                   const Spacer(),
-                                  // Quick Pay — الشهر الحالي فوراً
+                                  // Quick Pay — أقدم شهر مستحق فوراً
                                   GestureDetector(
                                     onTap: () {
                                       controller.selectFirstMonth();
@@ -1288,7 +1288,7 @@ class _PaymentPanel extends StatelessWidget {
                                             Icon(Icons.bolt_rounded,
                                                 size: 14, color: Colors.green),
                                             SizedBox(width: 4),
-                                            Text('هذا الشهر فقط',
+                                            Text('الأقدم فقط',
                                                 style: TextStyle(
                                                     color: Colors.green,
                                                     fontSize: 11,

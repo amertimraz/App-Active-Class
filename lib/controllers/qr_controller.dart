@@ -164,12 +164,18 @@ class QRController extends GetxController {
       // بـselectedMonths)، فزرار "دفع حصة متأخرة" يفضل من غير أي أثر
       // (0 حصة مستحقة ظاهريًا) رغم إن الطالب فعلًا عليه حصة لسه متدفعتش.
       final isPerSession = _scannedGroup.value?.isPerSession ?? false;
+      final nowMonth = DateTime(DateTime.now().year, DateTime.now().month);
       final start = isPerSession
-          ? DateTime(DateTime.now().year, DateTime.now().month)
-          : _determineStartMonth(_extractLastPaidMonth(latest));
+          ? nowMonth
+          : _oldestUnpaidMonth(student, payments);
       final months = _buildUpcomingMonths(start);
       upcomingMonths.assignAll(months);
-      selectedMonths.assignAll(months.isNotEmpty ? [months.first] : []);
+      // اختار أقدم شهر مستحق تلقائيًا فقط لو فيه مديونية فعلًا (الشهر
+      // <= الشهر الحالي). لو الطالب دافع مقدّمًا، سيب الاختيار فاضي عشان
+      // ما نخصمش عليه شهر جديد بالغلط.
+      final hasDebt = isPerSession || !start.isAfter(nowMonth);
+      selectedMonths
+          .assignAll(hasDebt && months.isNotEmpty ? [months.first] : []);
       _sessionsCoveredByQuickPay = 0;
       resetSessionsToPaySelection();
       _recalculateTotal();
@@ -203,16 +209,64 @@ class QRController extends GetxController {
     return DateTime(payment.date.year, payment.date.month);
   }
 
-  DateTime _determineStartMonth(DateTime? lastMonth) {
+  /// أقدم شهر لسه ما اتدفعش لطالب "شهري" — بيمشي من شهر بداية حضوره
+  /// وبيتخطّى الشهور اللي اتغطّت بدفعات سابقة (من ملاحظة الدفعة
+  /// "months=YYYY-M,..."، أو شهر الدفعة نفسها للدفعات القديمة بلا قائمة).
+  /// كده شاشة الدفع بتبدأ من أغسطس المستحق مش من سبتمبر، وبعد دفع أغسطس
+  /// بتظهر سبتمبر مش أكتوبر.
+  DateTime _oldestUnpaidMonth(Student student, List<Payment> payments) {
     final now = DateTime.now();
     final current = DateTime(now.year, now.month);
-    if (lastMonth == null) return current;
-    if (lastMonth.isBefore(current)) return current;
-    return DateTime(lastMonth.year, lastMonth.month + 1);
+    final startDate = student.attendanceStart ?? student.createdAt;
+    if (startDate == null) return current;
+    var cursor = DateTime(startDate.year, startDate.month);
+    if (cursor.isAfter(current)) return current;
+
+    final paid = <String>{};
+    for (final p in payments) {
+      final note = p.note ?? '';
+      final monthsPart = note
+          .split(';')
+          .firstWhere((s) => s.startsWith('months='), orElse: () => '');
+      if (monthsPart.isEmpty) {
+        paid.add('${p.date.year}-${p.date.month}');
+        continue;
+      }
+      for (final key in monthsPart.substring('months='.length).split(',')) {
+        final k = key.trim();
+        if (k.isEmpty) continue;
+        final parts = k.split('-');
+        if (parts.length == 2) {
+          final y = int.tryParse(parts[0]);
+          final m = int.tryParse(parts[1]);
+          if (y != null && m != null) paid.add('$y-$m');
+        }
+      }
+    }
+
+    var guard = 0;
+    while (paid.contains('${cursor.year}-${cursor.month}') && guard < 240) {
+      cursor = DateTime(cursor.year, cursor.month + 1);
+      guard++;
+    }
+    return cursor;
   }
 
   List<DateTime> _buildUpcomingMonths(DateTime start) {
-    return List.generate(4, (i) => DateTime(start.year, start.month + i));
+    final now = DateTime.now();
+    final current = DateTime(now.year, now.month);
+    // من [start] لحد الشهر الحالي + شهرين قدّام، بحد أدنى 4 شهور وأقصى 12
+    // (عشان طالب متأخر شهور كتير يشوف كل المتأخر مش 4 بس).
+    var end = DateTime(current.year, current.month + 2);
+    final minEnd = DateTime(start.year, start.month + 3);
+    if (end.isBefore(minEnd)) end = minEnd;
+    final months = <DateTime>[];
+    var c = DateTime(start.year, start.month);
+    while (!c.isAfter(end) && months.length < 12) {
+      months.add(c);
+      c = DateTime(c.year, c.month + 1);
+    }
+    return months;
   }
 
   void toggleMonth(DateTime month) {
