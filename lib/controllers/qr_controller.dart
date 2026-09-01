@@ -167,15 +167,16 @@ class QRController extends GetxController {
       final nowMonth = DateTime(DateTime.now().year, DateTime.now().month);
       final start = isPerSession
           ? nowMonth
-          : _oldestUnpaidMonth(student, payments);
+          : _oldestUnpaidMonth(student, _scannedGroup.value, payments);
       final months = _buildUpcomingMonths(start);
       upcomingMonths.assignAll(months);
-      // اختار أقدم شهر مستحق تلقائيًا فقط لو فيه مديونية فعلًا (الشهر
-      // <= الشهر الحالي). لو الطالب دافع مقدّمًا، سيب الاختيار فاضي عشان
-      // ما نخصمش عليه شهر جديد بالغلط.
-      final hasDebt = isPerSession || !start.isAfter(nowMonth);
+      // اختار أقدم شهر تلقائيًا فقط لو هو شهر **فات** (متأخر فعلًا). الشهر
+      // الحالي أو أي شهر جاي بيفضل غير مختار عشان المدرس هو اللي يقرر
+      // يحصّله دلوقتي ولا لأ — من غير ما نخصم عليه بالغلط.
+      final autoSelect =
+          isPerSession || start.isBefore(nowMonth);
       selectedMonths
-          .assignAll(hasDebt && months.isNotEmpty ? [months.first] : []);
+          .assignAll(autoSelect && months.isNotEmpty ? [months.first] : []);
       _sessionsCoveredByQuickPay = 0;
       resetSessionsToPaySelection();
       _recalculateTotal();
@@ -209,47 +210,40 @@ class QRController extends GetxController {
     return DateTime(payment.date.year, payment.date.month);
   }
 
-  /// أقدم شهر لسه ما اتدفعش لطالب "شهري" — بيمشي من شهر بداية حضوره
-  /// وبيتخطّى الشهور اللي اتغطّت بدفعات سابقة (من ملاحظة الدفعة
-  /// "months=YYYY-M,..."، أو شهر الدفعة نفسها للدفعات القديمة بلا قائمة).
-  /// كده شاشة الدفع بتبدأ من أغسطس المستحق مش من سبتمبر، وبعد دفع أغسطس
-  /// بتظهر سبتمبر مش أكتوبر.
-  DateTime _oldestUnpaidMonth(Student student, List<Payment> payments) {
+  /// أقدم شهر لسه ما اتغطّاش بالدفعات لطالب "شهري". **مبني على المبلغ**
+  /// (مش على ملاحظات الدفعات) عشان يطابق بالظبط طريقة حساب "المتبقّي
+  /// عليه" (PricingHelper.accumulatedDebt): الدفعات رصيد واحد بيغطّي
+  /// أقدم الشهور الأول (FIFO). بنمشي من شهر بداية الحضور ونجمّع المستحق
+  /// شهر بشهر لحد ما يتعدّى إجمالي المدفوع — أول شهر يتعدّى = أول شهر
+  /// غير مغطّى. كده الشاشة بتبدأ من أغسطس المستحق مش سبتمبر، وبعد دفع
+  /// أغسطس بتظهر سبتمبر.
+  DateTime _oldestUnpaidMonth(
+      Student student, Group? group, List<Payment> payments) {
     final now = DateTime.now();
     final current = DateTime(now.year, now.month);
+    if (student.isFullyExempt) return current;
     final startDate = student.attendanceStart ?? student.createdAt;
     if (startDate == null) return current;
     var cursor = DateTime(startDate.year, startDate.month);
     if (cursor.isAfter(current)) return current;
 
-    final paid = <String>{};
-    for (final p in payments) {
-      final note = p.note ?? '';
-      final monthsPart = note
-          .split(';')
-          .firstWhere((s) => s.startsWith('months='), orElse: () => '');
-      if (monthsPart.isEmpty) {
-        paid.add('${p.date.year}-${p.date.month}');
-        continue;
-      }
-      for (final key in monthsPart.substring('months='.length).split(',')) {
-        final k = key.trim();
-        if (k.isEmpty) continue;
-        final parts = k.split('-');
-        if (parts.length == 2) {
-          final y = int.tryParse(parts[0]);
-          final m = int.tryParse(parts[1]);
-          if (y != null && m != null) paid.add('$y-$m');
-        }
-      }
-    }
-
+    final paidTotal = payments.fold<double>(0, (s, p) => s + p.amount);
+    var cumulativeDue = 0.0;
     var guard = 0;
-    while (paid.contains('${cursor.year}-${cursor.month}') && guard < 240) {
+    while (guard < 240) {
+      final due = PricingHelper.monthlyDue(
+        student: student,
+        group: group,
+        month: cursor,
+        allAttendance: _scannedAttendance,
+        siblingGroupMembers: _allStudents,
+      );
+      if (cumulativeDue + due > paidTotal + 0.01) return cursor;
+      cumulativeDue += due;
       cursor = DateTime(cursor.year, cursor.month + 1);
       guard++;
     }
-    return cursor;
+    return current;
   }
 
   List<DateTime> _buildUpcomingMonths(DateTime start) {
