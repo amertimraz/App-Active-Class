@@ -41,53 +41,54 @@ class DashboardController extends GetxController {
   final DatabaseService _db = DatabaseService();
 
   // ── إحصائيات عامة ────────────────────────────────────────────────────────
-  final RxInt    totalGroups    = 0.obs;
-  final RxInt    totalStudents  = 0.obs;
-  final RxInt    exemptStudents = 0.obs;
+  final RxInt totalGroups = 0.obs;
+  final RxInt totalStudents = 0.obs;
+  final RxInt exemptStudents = 0.obs;
 
   // ── إحصائيات الشهر الحالي ────────────────────────────────────────────────
-  final RxDouble monthExpected       = 0.0.obs;
-  final RxDouble monthPaid           = 0.0.obs;
-  final RxDouble monthRemaining      = 0.0.obs;
-  final RxDouble monthPaymentRate    = 0.0.obs;
-  final RxInt    paidStudentsCount   = 0.obs;
-  final RxInt    unpaidStudentsCount = 0.obs;
+  final RxDouble monthExpected = 0.0.obs;
+  final RxDouble monthPaid = 0.0.obs;
+  final RxDouble monthRemaining = 0.0.obs;
+  final RxDouble monthPaymentRate = 0.0.obs;
+  final RxInt paidStudentsCount = 0.obs;
+  final RxInt unpaidStudentsCount = 0.obs;
 
   // ── كارت "دفعات [الشهر]" — شهر التحصيل + تنقّل (spec 013 US4) ────────────
   // الأرقام مشتقّة من المديونية المتراكمة (PricingHelper) لحد الشهر
   // المختار، مش "دفعات مؤرَّخة في الشهر ÷ مستحق الشهر".
-  final Rx<DateTime> paymentCardMonth  = defaultCollectionMonth().obs;
+  final Rx<DateTime> paymentCardMonth = defaultCollectionMonth().obs;
   // أقدم شهر عليه مستحق فعلاً (أقدم تسجيل بين الطلاب النشطين) — الحد
   // الأدنى للتنقّل، عشان مايظهرش شهر مالوش أي مستحق ولا محصّل.
   final Rx<DateTime> paymentCardMinMonth =
       DateTime(DateTime.now().year, DateTime.now().month, 1).obs;
-  final RxDouble paymentCardExpected   = 0.0.obs;
-  final RxDouble paymentCardCollected  = 0.0.obs;
-  final RxDouble paymentCardRemaining  = 0.0.obs;
-  final RxDouble paymentCardRate       = 0.0.obs;
-  final RxInt    paymentCardUnpaid     = 0.obs;
+  final RxDouble paymentCardExpected = 0.0.obs;
+  final RxDouble paymentCardCollected = 0.0.obs;
+  final RxDouble paymentCardRemaining = 0.0.obs;
+  final RxDouble paymentCardRate = 0.0.obs;
+  final RxInt paymentCardUnpaid = 0.obs;
 
   // ── إحصائيات اليوم ───────────────────────────────────────────────────────
-  final RxInt    todayPresent        = 0.obs;
-  final RxInt    todayAbsent         = 0.obs;
-  final RxInt    todayLate           = 0.obs; // spec 011 — فئة منفصلة
-  final RxInt    todayExpected       = 0.obs;
+  final RxInt todayPresent = 0.obs;
+  final RxInt todayAbsent = 0.obs;
+  final RxInt todayLate = 0.obs; // spec 011 — فئة منفصلة
+  final RxInt todayExpected = 0.obs;
   final RxDouble todayAttendanceRate = 0.0.obs;
 
   // ── مدفوعات اليوم (كل الدفعات، أي مجموعة) ───────────────────────────────
   final RxDouble todayPaymentsTotal = 0.0.obs;
-  final RxInt    todayPaymentsCount = 0.obs;
+  final RxInt todayPaymentsCount = 0.obs;
   RxList<TodayPaymentEntry> get todayPaymentsList => _todayPaymentsList;
-  final RxList<TodayPaymentEntry> _todayPaymentsList = <TodayPaymentEntry>[].obs;
+  final RxList<TodayPaymentEntry> _todayPaymentsList =
+      <TodayPaymentEntry>[].obs;
 
   // ── إيراد اليوم من المجموعات المسعّرة بالحصة ────────────────────────────
   // فعلي: من سجلات الحضور "حاضر" اللي اتسجلت النهاردة بالفعل.
-  final RxDouble todaySessionRevenue      = 0.0.obs;
-  final RxInt    todaySessionRevenueCount = 0.obs;
+  final RxDouble todaySessionRevenue = 0.0.obs;
+  final RxInt todaySessionRevenueCount = 0.obs;
   // متوقع: كل طلاب المجموعات المسعّرة بالحصة اللي ليها حصة مجدولة النهاردة
   // (حسب جدول المجموعة الأسبوعي)، بغض النظر عن تسجيل الحضور من عدمه.
-  final RxDouble todaySessionRevenueExpected      = 0.0.obs;
-  final RxInt    todaySessionRevenueExpectedCount = 0.obs;
+  final RxDouble todaySessionRevenueExpected = 0.0.obs;
+  final RxInt todaySessionRevenueExpectedCount = 0.obs;
 
   // ── حالة ─────────────────────────────────────────────────────────────────
   final RxBool isLoading = false.obs;
@@ -101,10 +102,10 @@ class DashboardController extends GetxController {
   final RxList<UnpaidStudentEntry> _unpaidList = <UnpaidStudentEntry>[].obs;
 
   // ── للتوافق مع الكود القديم ───────────────────────────────────────────────
-  RxInt    get totalPaymentsInt => paidStudentsCount;
-  RxInt    get todayAttendance  => todayPresent;
-  RxDouble get attendanceRate   => todayAttendanceRate;
-  RxInt    get paidStudents     => paidStudentsCount;
+  RxInt get totalPaymentsInt => paidStudentsCount;
+  RxInt get todayAttendance => todayPresent;
+  RxDouble get attendanceRate => todayAttendanceRate;
+  RxInt get paidStudents => paidStudentsCount;
 
   @override
   void onInit() {
@@ -141,24 +142,23 @@ class DashboardController extends GetxController {
     final students =
         (await _db.getAllStudents()).where((s) => !s.isArchived).toList();
 
-    totalGroups.value   = groups.length;
+    totalGroups.value = groups.length;
     totalStudents.value = students.length;
-    exemptStudents.value =
-        students.where((s) => s.isFullyExempt).length;
+    exemptStudents.value = students.where((s) => s.isFullyExempt).length;
   }
 
   // ── تحميل إحصائيات الشهر ────────────────────────────────────────────────
   Future<void> _loadMonthStats() async {
-    final now        = DateTime.now();
+    final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1);
-    final monthEnd   = DateTime(now.year, now.month + 1, 1)
+    final monthEnd = DateTime(now.year, now.month + 1, 1)
         .subtract(const Duration(seconds: 1));
 
     // الطلاب المؤرشفين مستبعدين — مش من ضمن "المستحق الحالي" (FR-*)
     final students =
         (await _db.getAllStudents()).where((s) => !s.isArchived).toList();
     final payments = await _db.getAllPayments();
-    final groups   = await _db.getAllGroups();
+    final groups = await _db.getAllGroups();
     final groupById = {for (final g in groups) g.id: g};
 
     final att = Get.isRegistered<AttendanceController>()
@@ -169,8 +169,9 @@ class DashboardController extends GetxController {
     final activeStudents = students.where((s) => !s.isFullyExempt).toList();
 
     // المدفوعات هذا الشهر فقط
-    final monthPayments = payments.where((p) =>
-        !p.date.isBefore(monthStart) && !p.date.isAfter(monthEnd)).toList();
+    final monthPayments = payments
+        .where((p) => !p.date.isBefore(monthStart) && !p.date.isAfter(monthEnd))
+        .toList();
 
     // كل مدفوعات كل طالب (بغض النظر عن تاريخها) — عشان قائمة "لم يدفعوا"
     // تعتمد على المديونية المتراكمة الفعلية (PricingHelper.isOverdue)
@@ -188,7 +189,7 @@ class DashboardController extends GetxController {
         : 0;
 
     double expected = 0;
-    double paid     = 0;
+    double paid = 0;
     final unpaidStudents = <UnpaidStudentEntry>[];
     for (final s in activeStudents) {
       final group = groupById[s.groupId];
@@ -228,12 +229,12 @@ class DashboardController extends GetxController {
       paid += p.amount;
     }
 
-    monthExpected.value    = expected;
-    monthPaid.value        = paid;
-    monthRemaining.value   = (expected - paid).clamp(0, double.infinity);
+    monthExpected.value = expected;
+    monthPaid.value = paid;
+    monthRemaining.value = (expected - paid).clamp(0, double.infinity);
     monthPaymentRate.value = expected > 0 ? (paid / expected).clamp(0, 1) : 0;
 
-    paidStudentsCount.value   = activeStudents.length - unpaidStudents.length;
+    paidStudentsCount.value = activeStudents.length - unpaidStudents.length;
     unpaidStudentsCount.value = unpaidStudents.length;
 
     _unpaidList.assignAll(unpaidStudents);
@@ -251,11 +252,28 @@ class DashboardController extends GetxController {
         next.isBefore(paymentCardMinMonth.value)) {
       return;
     }
+    // بنبدّل الاسم فورًا (عشان السحب المتتالي السريع يزبط)، والأرقام
+    // تتعتّم لحد ما الحساب يخلّص (paymentCardBusy).
     paymentCardMonth.value = next;
     await _computePaymentCard();
   }
 
+  // توكن تسلسلي — لو المدرس سحب بسرعة مرتين، أكتر من حساب بيشتغل
+  // بالتوازي؛ الأقدم مايكتبش نتيجته فوق الأحدث.
+  int _payCardToken = 0;
+  final RxBool paymentCardBusy = false.obs;
+
   Future<void> _computePaymentCard() async {
+    final token = ++_payCardToken;
+    paymentCardBusy.value = true;
+    try {
+      await _computePaymentCardBody(token);
+    } finally {
+      if (token == _payCardToken) paymentCardBusy.value = false;
+    }
+  }
+
+  Future<void> _computePaymentCardBody(int token) async {
     // الكارت بيعرض **الشهر المختار وحده** — "دفعات سبتمبر" = مستحق
     // سبتمبر × المحصّل لسبتمبر، مش إجمالي تراكمي من بداية تسجيل الطالب.
     // المحصّل بيتوزّع FIFO: الدفعات بتغطّي الشهور الأقدم الأول، فطالب
@@ -286,14 +304,12 @@ class DashboardController extends GetxController {
     final minMonth = (earliest != null && earliest.isBefore(currentMonth))
         ? earliest
         : currentMonth;
-    paymentCardMinMonth.value = minMonth;
 
     // ثبّت الشهر المعروض داخل [minMonth .. currentMonth]
     var month =
         DateTime(paymentCardMonth.value.year, paymentCardMonth.value.month, 1);
     if (month.isBefore(minMonth)) month = minMonth;
     if (month.isAfter(currentMonth)) month = currentMonth;
-    if (month != paymentCardMonth.value) paymentCardMonth.value = month;
 
     final prevMonth = DateTime(month.year, month.month - 1, 1);
 
@@ -334,8 +350,7 @@ class DashboardController extends GetxController {
       if (dueThisMonth > 0) {
         final totalPaid =
             studentPayments.fold<double>(0, (sum, p) => sum + p.amount);
-        final paidThisMonth =
-            (totalPaid - dueBefore).clamp(0.0, dueThisMonth);
+        final paidThisMonth = (totalPaid - dueBefore).clamp(0.0, dueThisMonth);
         expected += dueThisMonth;
         collected += paidThisMonth;
       }
@@ -354,8 +369,13 @@ class DashboardController extends GetxController {
       }
     }
 
+    // سحبة أحدث سبقتنا → مانكتبش نتيجة قديمة
+    if (token != _payCardToken) return;
+
     final remaining =
         (expected - collected).clamp(0.0, double.infinity).toDouble();
+    paymentCardMinMonth.value = minMonth;
+    if (month != paymentCardMonth.value) paymentCardMonth.value = month;
     paymentCardExpected.value = expected;
     paymentCardCollected.value = collected;
     paymentCardRemaining.value = remaining;
@@ -366,21 +386,19 @@ class DashboardController extends GetxController {
 
   // ── تحميل إحصائيات اليوم ────────────────────────────────────────────────
   Future<void> _loadTodayStats() async {
-    final now        = DateTime.now();
+    final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
-    final todayEnd   = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
     final allAtt = await _db.getAllAttendance();
     final todayRecords = allAtt
-        .where((a) =>
-            !a.date.isBefore(todayStart) && !a.date.isAfter(todayEnd))
+        .where((a) => !a.date.isBefore(todayStart) && !a.date.isAfter(todayEnd))
         .toList();
 
     // "متأخر" يُحتسب حضورًا (spec 011)
-    final present = todayRecords
-        .where((a) => attendanceCountsAsPresent(a.status))
-        .length;
-    final absent  = todayRecords
+    final present =
+        todayRecords.where((a) => attendanceCountsAsPresent(a.status)).length;
+    final absent = todayRecords
         .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT)
         .length;
     final late = todayRecords
@@ -402,10 +420,10 @@ class DashboardController extends GetxController {
         ? 0
         : students.where((s) => scheduledTodayIds.contains(s.groupId)).length;
 
-    todayPresent.value        = present;
-    todayAbsent.value         = absent;
-    todayLate.value           = late;
-    todayExpected.value       = total;
+    todayPresent.value = present;
+    todayAbsent.value = absent;
+    todayLate.value = late;
+    todayExpected.value = total;
     todayAttendanceRate.value = total > 0 ? present / total : 0;
 
     // مدفوعات اليوم — كل الدفعات المسجَّلة النهاردة بصرف النظر عن نوع
@@ -416,7 +434,8 @@ class DashboardController extends GetxController {
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
 
-    todayPaymentsTotal.value = todayPayments.fold(0.0, (sum, p) => sum + p.amount);
+    todayPaymentsTotal.value =
+        todayPayments.fold(0.0, (sum, p) => sum + p.amount);
     todayPaymentsCount.value = todayPayments.length;
 
     final studentsById = {for (final s in students) s.id: s};
@@ -453,8 +472,8 @@ class DashboardController extends GetxController {
         actualCount += 1;
       }
 
-      final scheduledTodayPerSessionIds = scheduledTodayIds
-          .intersection(perSessionGroupIds);
+      final scheduledTodayPerSessionIds =
+          scheduledTodayIds.intersection(perSessionGroupIds);
       if (scheduledTodayPerSessionIds.isNotEmpty) {
         for (final s in students) {
           if (!scheduledTodayPerSessionIds.contains(s.groupId)) continue;
@@ -465,9 +484,9 @@ class DashboardController extends GetxController {
       }
     }
 
-    todaySessionRevenue.value              = actualRevenue;
-    todaySessionRevenueCount.value         = actualCount;
-    todaySessionRevenueExpected.value      = expectedRevenue;
+    todaySessionRevenue.value = actualRevenue;
+    todaySessionRevenueCount.value = actualCount;
+    todaySessionRevenueExpected.value = expectedRevenue;
     todaySessionRevenueExpectedCount.value = expectedCount;
   }
 
@@ -544,12 +563,12 @@ class DashboardController extends GetxController {
 // ══════════════════════════════════════════════════════════════════
 class RecentActivity {
   final ActivityType type;
-  final String    title;
-  final String    subtitle;
-  final DateTime  date;
-  final IconData  icon;
-  final Color     color;
-  final double?   amount;
+  final String title;
+  final String subtitle;
+  final DateTime date;
+  final IconData icon;
+  final Color color;
+  final double? amount;
 
   RecentActivity({
     required this.type,
@@ -564,10 +583,10 @@ class RecentActivity {
   /// وقت نسبي مقروء
   String get timeLabel {
     final diff = DateTime.now().difference(date);
-    if (diff.inMinutes < 1)  return 'الآن';
+    if (diff.inMinutes < 1) return 'الآن';
     if (diff.inMinutes < 60) return 'منذ ${diff.inMinutes} د';
-    if (diff.inHours   < 24) return 'منذ ${diff.inHours} س';
-    if (diff.inDays    < 7)  return 'منذ ${diff.inDays} يوم';
+    if (diff.inHours < 24) return 'منذ ${diff.inHours} س';
+    if (diff.inDays < 7) return 'منذ ${diff.inDays} يوم';
     return '${date.day}/${date.month}/${date.year}';
   }
 }

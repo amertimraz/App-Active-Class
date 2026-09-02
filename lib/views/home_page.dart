@@ -591,18 +591,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             final expected = _dashboardController.paymentCardExpected.value;
             final rate = _dashboardController.paymentCardRate.value;
             final unpaidCount = _dashboardController.paymentCardUnpaid.value;
+            final paymentCardBusy = _dashboardController.paymentCardBusy.value;
             final now = DateTime.now();
             final pcCurMonth = DateTime(now.year, now.month, 1);
-            final paymentMonthsCount = ((pcCurMonth.year -
-                        paymentCardMinMonth.year) *
-                    12 +
-                (pcCurMonth.month - paymentCardMinMonth.month) +
-                1);
-            final paymentMonthIndex = (((paymentCardMonth.year -
-                        paymentCardMinMonth.year) *
-                    12 +
-                (paymentCardMonth.month - paymentCardMinMonth.month)))
-                .clamp(0, paymentMonthsCount - 1);
+            final paymentMonthsCount =
+                ((pcCurMonth.year - paymentCardMinMonth.year) * 12 +
+                    (pcCurMonth.month - paymentCardMinMonth.month) +
+                    1);
+            final paymentMonthIndex =
+                (((paymentCardMonth.year - paymentCardMinMonth.year) * 12 +
+                        (paymentCardMonth.month - paymentCardMinMonth.month)))
+                    .clamp(0, paymentMonthsCount - 1);
             final exempt = _dashboardController.exemptStudents.value;
             final present = _dashboardController.todayPresent.value;
             final absent = _dashboardController.todayAbsent.value;
@@ -679,6 +678,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     month: paymentCardMonth,
                     monthIndex: paymentMonthIndex,
                     monthsCount: paymentMonthsCount,
+                    busy: paymentCardBusy,
                     onSwipe: (d) =>
                         _dashboardController.shiftPaymentCardMonth(d),
                     locked: !canSeeFinancials,
@@ -2084,6 +2084,7 @@ class _PaymentProgressCard extends StatelessWidget {
     required this.onSwipe,
     required this.monthIndex,
     required this.monthsCount,
+    required this.busy,
     this.locked = false,
   });
 
@@ -2096,6 +2097,8 @@ class _PaymentProgressCard extends StatelessWidget {
   final void Function(int delta) onSwipe;
   final int monthIndex;
   final int monthsCount;
+  // بيتحسب أرقام الشهر الجديد → نعتّم الأرقام لحد ما تجهز
+  final bool busy;
   final bool locked;
 
   @override
@@ -2118,209 +2121,225 @@ class _PaymentProgressCard extends StatelessWidget {
     return GestureDetector(
       onHorizontalDragEnd: (d) {
         final v = d.primaryVelocity ?? 0;
-        if (v < -250) {
-          onSwipe(1); // سحب لليسار → الشهر التالي
-        } else if (v > 250) {
-          onSwipe(-1); // سحب لليمين → الشهر السابق
+        if (v < -140) {
+          onSwipe(1); // سحب لليسار → الشهر التالي (أحدث)
+        } else if (v > 140) {
+          onSwipe(-1); // سحب لليمين → الشهر السابق (أقدم)
         }
       },
       child: Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.06)
-              : Colors.grey.shade200,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.grey.shade200,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        transitionBuilder: (child, anim) => FadeTransition(
-          opacity: anim,
-          child: SlideTransition(
-            position: Tween(
-                    begin: const Offset(0.05, 0), end: Offset.zero)
-                .animate(anim),
-            child: child,
-          ),
-        ),
-      child: Column(
-        key: ValueKey('paycard-${month.year}-${month.month}'),
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.bar_chart_rounded, size: 16, color: barColor),
-              const SizedBox(width: 6),
-              Text(
-                'دفعات ${_arabicMonth(month.month)}',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: isDark ? Colors.white : const Color(0xFF111827),
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: barColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  locked ? '🔒' : '$pct%',
-                  style: TextStyle(
-                    color: barColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // Progress bar
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: locked ? 0 : rate.clamp(0.0, 1.0),
-              minHeight: 8,
-              backgroundColor: isDark ? Colors.white12 : Colors.grey.shade200,
-              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          transitionBuilder: (child, anim) => FadeTransition(
+            opacity: anim,
+            child: SlideTransition(
+              position: Tween(begin: const Offset(0.05, 0), end: Offset.zero)
+                  .animate(anim),
+              child: child,
             ),
           ),
-          const SizedBox(height: 10),
-          Row(
+          child: Column(
+            key: ValueKey('paycard-${month.year}-${month.month}'),
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      fmtPaid,
+              Row(
+                children: [
+                  Icon(Icons.bar_chart_rounded, size: 16, color: barColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    'دفعات ${_arabicMonth(month.month)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: isDark ? Colors.white : const Color(0xFF111827),
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: barColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      locked ? '🔒' : '$pct%',
                       style: TextStyle(
                         color: barColor,
                         fontWeight: FontWeight.bold,
-                        fontSize: 13,
+                        fontSize: 12,
                       ),
                     ),
-                    Text(
-                      'من $fmtExpected',
-                      style: TextStyle(
-                        color: isDark ? Colors.white38 : Colors.grey.shade500,
-                        fontSize: 11,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 150),
+                opacity: busy ? 0.35 : 1.0,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Progress bar
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: locked ? 0 : rate.clamp(0.0, 1.0),
+                        minHeight: 8,
+                        backgroundColor:
+                            isDark ? Colors.white12 : Colors.grey.shade200,
+                        valueColor: AlwaysStoppedAnimation<Color>(barColor),
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                fmtPaid,
+                                style: TextStyle(
+                                  color: barColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              Text(
+                                'من $fmtExpected',
+                                style: TextStyle(
+                                  color: isDark
+                                      ? Colors.white38
+                                      : Colors.grey.shade500,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // "لم يدفع" badge — قابل للضغط
+                        if (locked)
+                          GestureDetector(
+                            onTap: onTapUnpaid,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: (isDark ? Colors.white : Colors.grey)
+                                    .withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color:
+                                        (isDark ? Colors.white24 : Colors.grey)
+                                            .withValues(alpha: 0.35)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.lock_rounded,
+                                      size: 13,
+                                      color: isDark
+                                          ? Colors.white38
+                                          : Colors.grey.shade600),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'مقفول',
+                                    style: TextStyle(
+                                      color: isDark
+                                          ? Colors.white38
+                                          : Colors.grey.shade600,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else if (unpaidCount > 0)
+                          GestureDetector(
+                            onTap: onTapUnpaid,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEF4444)
+                                    .withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: const Color(0xFFEF4444)
+                                        .withValues(alpha: 0.35)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.warning_amber_rounded,
+                                      size: 13, color: Color(0xFFEF4444)),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '$unpaidCount لم يدفع',
+                                    style: const TextStyle(
+                                      color: Color(0xFFEF4444),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          Row(
+                            children: const [
+                              Icon(Icons.check_circle_rounded,
+                                  size: 14, color: Color(0xFF10B981)),
+                              SizedBox(width: 4),
+                              Text(
+                                'الكل دفع ✓',
+                                style: TextStyle(
+                                    color: Color(0xFF10B981),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11),
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
                   ],
                 ),
               ),
-              // "لم يدفع" badge — قابل للضغط
-              if (locked)
-                GestureDetector(
-                  onTap: onTapUnpaid,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: (isDark ? Colors.white : Colors.grey)
-                          .withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: (isDark ? Colors.white24 : Colors.grey)
-                              .withValues(alpha: 0.35)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.lock_rounded,
-                            size: 13,
-                            color:
-                                isDark ? Colors.white38 : Colors.grey.shade600),
-                        const SizedBox(width: 4),
-                        Text(
-                          'مقفول',
-                          style: TextStyle(
-                            color:
-                                isDark ? Colors.white38 : Colors.grey.shade600,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
+              if (monthsCount > 1) ...[
+                const SizedBox(height: 10),
+                Center(
+                  child: _MonthDots(
+                    count: monthsCount,
+                    index: monthIndex,
+                    color: barColor,
+                    isDark: isDark,
                   ),
-                )
-              else if (unpaidCount > 0)
-                GestureDetector(
-                  onTap: onTapUnpaid,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color:
-                              const Color(0xFFEF4444).withValues(alpha: 0.35)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.warning_amber_rounded,
-                            size: 13, color: Color(0xFFEF4444)),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$unpaidCount لم يدفع',
-                          style: const TextStyle(
-                            color: Color(0xFFEF4444),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                Row(
-                  children: const [
-                    Icon(Icons.check_circle_rounded,
-                        size: 14, color: Color(0xFF10B981)),
-                    SizedBox(width: 4),
-                    Text(
-                      'الكل دفع ✓',
-                      style: TextStyle(
-                          color: Color(0xFF10B981),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11),
-                    ),
-                  ],
                 ),
+              ],
             ],
           ),
-          if (monthsCount > 1) ...[
-            const SizedBox(height: 10),
-            Center(
-              child: _MonthDots(
-                count: monthsCount,
-                index: monthIndex,
-                color: barColor,
-                isDark: isDark,
-              ),
-            ),
-          ],
-        ],
-      ),
-      ),
+        ),
       ),
     );
   }
