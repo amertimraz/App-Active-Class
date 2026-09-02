@@ -62,7 +62,8 @@ class QRController extends GetxController {
       if (student.isArchived) {
         scannedStudent.value = null;
         _clearPaymentState();
-        ToastHelper.error('الطالب "${student.name}" مؤرشف — استرجعه أولاً من شاشة الأرشيف');
+        ToastHelper.error(
+            'الطالب "${student.name}" مؤرشف — استرجعه أولاً من شاشة الأرشيف');
         return;
       }
       scannedStudent.value = student;
@@ -173,8 +174,7 @@ class QRController extends GetxController {
       // اختار أقدم شهر تلقائيًا فقط لو هو شهر **فات** (متأخر فعلًا). الشهر
       // الحالي أو أي شهر جاي بيفضل غير مختار عشان المدرس هو اللي يقرر
       // يحصّله دلوقتي ولا لأ — من غير ما نخصم عليه بالغلط.
-      final autoSelect =
-          isPerSession || start.isBefore(nowMonth);
+      final autoSelect = isPerSession || start.isBefore(nowMonth);
       selectedMonths
           .assignAll(autoSelect && months.isNotEmpty ? [months.first] : []);
       _sessionsCoveredByQuickPay = 0;
@@ -572,10 +572,10 @@ class QRController extends GetxController {
   // بيستخدم PricingHelper (نفس مصدر الحساب في شاشة المدفوعات) عشان
   // القيمتين متطابقين دايمًا ومتشملين خصم الإعفاء الجزئي.
   double _computeBaseAmount(Student? s) {
-    if (s == null) return 0;
-    double sum = 0;
+    if (s == null || selectedMonths.isEmpty) return 0;
+    double grossDue = 0;
     for (final month in selectedMonths) {
-      sum += PricingHelper.monthlyDue(
+      grossDue += PricingHelper.monthlyDue(
         student: s,
         group: _scannedGroup.value,
         month: month,
@@ -583,7 +583,28 @@ class QRController extends GetxController {
         siblingGroupMembers: _allStudents,
       );
     }
-    return sum;
+    // للمجموعات بالحصة الحساب بعدد الحصص غير المدفوعة (sessions= في
+    // الـnote) مش بالمبلغ التراكمي — نسيبه زي ما هو.
+    if (isPerSessionGroup) return grossDue;
+
+    // اطرح اللي اتدفع بالفعل ويغطّي الشهور دي (FIFO): إجمالي المدفوع
+    // ناقص المستحق على الشهور اللي قبل أقدم شهر مختار. من غير ده كان
+    // بيعرض قيمة الشهر كاملة حتى لو الطالب دفع جزء منه بالفعل (bug).
+    final sorted = [...selectedMonths]..sort();
+    final prev = DateTime(sorted.first.year, sorted.first.month - 1);
+    final dueBefore = PricingHelper.totalDueThrough(
+      student: s,
+      group: _scannedGroup.value,
+      allAttendance: _scannedAttendance,
+      month: prev,
+      siblingGroupMembers: _allStudents,
+    );
+    final totalPaid = _scannedPayments.fold<double>(0, (a, p) => a + p.amount);
+    final creditTowardSelected =
+        (totalPaid - dueBefore).clamp(0.0, grossDue).toDouble();
+    return (grossDue - creditTowardSelected)
+        .clamp(0.0, double.infinity)
+        .toDouble();
   }
 
   // هل الطالب الممسوح/المختار من مجموعة مسعّرة بالحصة؟ تُستخدم في الواجهة

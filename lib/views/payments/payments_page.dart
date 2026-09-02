@@ -111,24 +111,27 @@ class _PaymentsPageState extends State<PaymentsPage> {
               .toList()
             ..sort((a, b) => a.name.compareTo(b.name));
 
-          // مديونية متراكمة بدل مدفوعات الشهر ده بس — نفس منطق PricingHelper
-          // المستخدم في باقي التطبيق، عشان طالب دافع مقدَّمًا شهر فات ميظهرش
-          // "متأخر" غلط، وطالب عليه شهر قديم ميظهرش "مدفوع بالكامل" غلط.
+          // المديونية المتراكمة الحقيقية على الطالب **دلوقتي** — من شهر
+          // تسجيله لحد الشهر الحالي (أو آخر شهر مكتمل في وضع التحصيل
+          // المؤخّر) — نفس مصدر تفاصيل الطالب بالظبط. مش بتتقيّد بالشهر
+          // المختار في المنتقي: طالب دفع شهر التحصيل بالكامل وعليه الشهر
+          // الجاري كان بيظهر "مدفوع بالكامل" غلط (bug).
           final Map<int, List<Payment>> paymentsByStudent = {};
           for (final p in controller.payments) {
             paymentsByStudent.putIfAbsent(p.studentId, () => []).add(p);
           }
+          final nowMonth = DateTime.now();
 
           final rows = <_StudentMonthRow>[];
           for (final s in scopedStudents) {
             final group = groupById[s.groupId];
             final studentPayments = paymentsByStudent[s.id] ?? const [];
-            final paid = studentPayments.fold<double>(
-                0.0, (sum, p) => sum + p.amount);
+            final paid =
+                studentPayments.fold<double>(0.0, (sum, p) => sum + p.amount);
             final due = PricingHelper.totalDueThrough(
               student: s,
               group: group,
-              month: month,
+              month: nowMonth,
               allAttendance: attendanceController.attendance,
               siblingGroupMembers: studentController.students,
             );
@@ -754,8 +757,9 @@ class _PaymentsPageState extends State<PaymentsPage> {
         student: student,
         group: group,
         allAttendance: attendanceController.attendance,
-        payments:
-            controller.payments.where((p) => p.studentId == student.id).toList(),
+        payments: controller.payments
+            .where((p) => p.studentId == student.id)
+            .toList(),
         siblingGroupMembers: studentController.students,
       );
     }
