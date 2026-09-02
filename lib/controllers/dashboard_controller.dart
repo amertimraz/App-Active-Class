@@ -312,23 +312,28 @@ class DashboardController extends GetxController {
       final group = groupById[s.groupId];
       final studentPayments = paymentsByStudent[s.id] ?? const <Payment>[];
 
-      final dueThisMonth = PricingHelper.monthlyDue(
+      // مستحق الشهر ده وحده = (المستحق التراكمي لحد الشهر) − (لحد الشهر
+      // اللي قبله). بنستخدم totalDueThrough عشان بتبدأ من شهر تسجيل
+      // الطالب فعلًا (مفيش عدّ لطالب اتسجّل بعد الشهر ده)، وبتحترم وضع
+      // "التحصيل المؤخّر" للشهر الجاري. monthlyDue لوحدها مابتعملش ده.
+      final dueBefore = PricingHelper.totalDueThrough(
         student: s,
         group: group,
-        month: month,
         allAttendance: att.attendance,
+        month: prevMonth,
         siblingGroupMembers: students,
       );
+      final dueThrough = PricingHelper.totalDueThrough(
+        student: s,
+        group: group,
+        allAttendance: att.attendance,
+        month: month,
+        siblingGroupMembers: students,
+      );
+      final dueThisMonth = (dueThrough - dueBefore).clamp(0.0, double.infinity);
       if (dueThisMonth > 0) {
         final totalPaid =
             studentPayments.fold<double>(0, (sum, p) => sum + p.amount);
-        final dueBefore = PricingHelper.totalDueThrough(
-          student: s,
-          group: group,
-          allAttendance: att.attendance,
-          month: prevMonth,
-          siblingGroupMembers: students,
-        );
         final paidThisMonth =
             (totalPaid - dueBefore).clamp(0.0, dueThisMonth);
         expected += dueThisMonth;
