@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 21;
+const int DATABASE_VERSION = 22;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -63,6 +63,9 @@ const String COL_EXAM_DATE          = 'date';
 const String COL_EXAM_MAX_GRADE     = 'max_grade';
 const String COL_EXAM_PASSING_GRADE = 'passing_grade';
 const String COL_EXAM_CREATED_AT    = 'created_at';
+// spec 013 — الشهر اللي يُحسب له الامتحان في التقارير الشهرية (نص "YYYY-M").
+// null → بديله شهر تاريخ الامتحان (توافق خلفي).
+const String COL_EXAM_REPORT_MONTH  = 'report_month';
 
 // Column Names - Exam Groups
 const String COL_EG_ID       = 'id';

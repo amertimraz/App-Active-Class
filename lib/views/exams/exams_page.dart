@@ -406,7 +406,7 @@ class _ExamsPageState extends State<ExamsPage> {
       builder: (_) => _ExamFormSheet(
         existing: existing,
         groups: _gc.groups.toList(),
-        onSave: (name, date, max, passing, groupIds) async {
+        onSave: (name, date, max, passing, groupIds, reportMonth) async {
           String? err;
           if (existing == null) {
             err = await _ec.addExam(
@@ -415,6 +415,7 @@ class _ExamsPageState extends State<ExamsPage> {
               maxGrade: max,
               passingGrade: passing,
               groupIds: groupIds,
+              reportMonth: reportMonth,
             );
           } else {
             err = await _ec.editExam(
@@ -423,7 +424,8 @@ class _ExamsPageState extends State<ExamsPage> {
                   date: date,
                   maxGrade: max,
                   passingGrade: passing,
-                  groupIds: groupIds),
+                  groupIds: groupIds,
+                  reportMonth: reportMonth),
               groupIds,
             );
           }
@@ -919,8 +921,8 @@ class _EmptyState extends StatelessWidget {
 class _ExamFormSheet extends StatefulWidget {
   final Exam? existing;
   final List<Group> groups;
-  final Future<String?> Function(String, DateTime, double, double, List<int>)
-      onSave;
+  final Future<String?> Function(
+      String, DateTime, double, double, List<int>, String?) onSave;
 
   const _ExamFormSheet({
     required this.existing,
@@ -936,6 +938,9 @@ class _ExamFormSheetState extends State<_ExamFormSheet> {
   final _maxCtrl = TextEditingController(text: '100');
   final _passingCtrl = TextEditingController(text: '50');
   DateTime _date = DateTime.now();
+  // "شهر التقرير" — لو null الامتحان بيتبع شهر تاريخه؛ المدرس يقدر
+  // يحدّده صراحةً لامتحان على شهر فات (spec 013 US6). صيغة "YYYY-M".
+  String? _reportMonth;
   final Set<int> _selectedGroups = {};
   bool _saving = false;
   String? _error;
@@ -949,7 +954,37 @@ class _ExamFormSheetState extends State<_ExamFormSheet> {
       _maxCtrl.text = e.maxGrade.toStringAsFixed(0);
       _passingCtrl.text = e.passingGrade.toStringAsFixed(0);
       _date = e.date;
+      _reportMonth = e.reportMonth;
       _selectedGroups.addAll(e.groupIds);
+    }
+  }
+
+  DateTime get _effectiveReportMonth {
+    final raw = _reportMonth;
+    if (raw != null) {
+      final p = raw.split('-');
+      if (p.length == 2) {
+        final y = int.tryParse(p[0]);
+        final m = int.tryParse(p[1]);
+        if (y != null && m != null && m >= 1 && m <= 12) {
+          return DateTime(y, m, 1);
+        }
+      }
+    }
+    return DateTime(_date.year, _date.month, 1);
+  }
+
+  Future<void> _pickReportMonth() async {
+    final cur = _effectiveReportMonth;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: cur,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      helpText: 'اختر شهر التقرير',
+    );
+    if (picked != null && mounted) {
+      setState(() => _reportMonth = '${picked.year}-${picked.month}');
     }
   }
 
@@ -982,6 +1017,7 @@ class _ExamFormSheetState extends State<_ExamFormSheet> {
       double.tryParse(_maxCtrl.text) ?? 100,
       double.tryParse(_passingCtrl.text) ?? 50,
       _selectedGroups.toList(),
+      _reportMonth,
     );
     if (mounted)
       setState(() {
@@ -1062,6 +1098,61 @@ class _ExamFormSheetState extends State<_ExamFormSheet> {
                     const Spacer(),
                     Icon(Icons.arrow_drop_down_rounded,
                         color: cs.onSurface.withValues(alpha: 0.4)),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // شهر التقرير (spec 013 US6)
+              InkWell(
+                onTap: _pickReportMonth,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  decoration: BoxDecoration(
+                    border:
+                        Border.all(color: cs.onSurface.withValues(alpha: 0.2)),
+                    borderRadius: BorderRadius.circular(12),
+                    color: isDark ? cs.onSurface.withValues(alpha: 0.05) : null,
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.event_note_rounded,
+                        color: AppTheme.primaryColor, size: 18),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('شهر التقرير',
+                            style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 11,
+                                color: cs.onSurface.withValues(alpha: 0.5))),
+                        Text(
+                          DateFormat('MMMM yyyy', 'ar')
+                              .format(_effectiveReportMonth),
+                          style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 14,
+                              color: cs.onSurface),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    if (_reportMonth != null)
+                      InkWell(
+                        onTap: () => setState(() => _reportMonth = null),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(Icons.close_rounded,
+                              size: 16,
+                              color: cs.onSurface.withValues(alpha: 0.4)),
+                        ),
+                      )
+                    else
+                      Icon(Icons.arrow_drop_down_rounded,
+                          color: cs.onSurface.withValues(alpha: 0.4)),
                   ]),
                 ),
               ),

@@ -148,6 +148,9 @@ class ExportService {
   // ─────────────────────────────────────────────────────────────────
   Future<ExportResult> exportAttendancePDF({
     required DateTime month,
+    // spec 014 — لو != null: تقرير فترة [month, periodEnd] شاملاً الطرفين
+    // (month هنا = تاريخ البداية الفعلي، مش أول الشهر).
+    DateTime? periodEnd,
     required List<Student> students,
     required List<Attendance> attendance,
     required List<Group> groups,
@@ -156,19 +159,23 @@ class ExportService {
       await _loadFonts();
       final doc = pw.Document();
 
-      final start = DateTime(month.year, month.month, 1);
-      final end = DateTime(month.year, month.month + 1, 0);
-      final days = end.day; // عدد أيام الشهر
+      final isRange = periodEnd != null;
+      final start = isRange
+          ? DateTime(month.year, month.month, month.day)
+          : DateTime(month.year, month.month, 1);
+      final end = isRange
+          ? DateTime(periodEnd.year, periodEnd.month, periodEnd.day, 23, 59, 59)
+          : DateTime(month.year, month.month + 1, 0, 23, 59, 59);
 
-      final monthAtt = attendance
-          .where(
-              (a) => a.date.year == month.year && a.date.month == month.month)
+      final rangeAtt = attendance
+          .where((a) => !a.date.isBefore(start) && !a.date.isAfter(end))
           .toList();
 
-      // Map: studentId → Map<day, status>
-      final attMap = <int, Map<int, String>>{};
-      for (final a in monthAtt) {
-        attMap.putIfAbsent(a.studentId, () => {})[a.date.day] = a.status;
+      // Map: studentId → Map<تاريخ اليوم, status>
+      final attMap = <int, Map<DateTime, String>>{};
+      for (final a in rangeAtt) {
+        final d = DateTime(a.date.year, a.date.month, a.date.day);
+        attMap.putIfAbsent(a.studentId, () => {})[d] = a.status;
       }
       final groupById = {for (final g in groups) g.id: g};
 
@@ -178,7 +185,9 @@ class ExportService {
           return gc != 0 ? gc : a.name.compareTo(b.name);
         });
 
-      final monthLabel = DateFormat('MMMM yyyy', 'ar').format(month);
+      final label = isRange
+          ? _periodLabel(start, periodEnd)
+          : DateFormat('MMMM yyyy', 'ar').format(month);
 
       // ننشئ صفحات منفصلة لكل مجموعة لأن الجدول عريض
       final byGroup = <int, List<Student>>{};
@@ -195,17 +204,21 @@ class ExportService {
           pageFormat: PdfPageFormat.a4.landscape,
           textDirection: pw.TextDirection.rtl,
           margin: const pw.EdgeInsets.all(20),
-          header: (_) => _pageHeader('تقرير الحضور — $gLabel — $monthLabel'),
+          header: (_) => _pageHeader('تقرير الحضور — $gLabel — $label'),
           footer: (ctx) => _pageFooter(ctx),
           build: (ctx) => [
-            _attendanceTable(gStudents, attMap, days, start),
+            _attendanceTable(gStudents, attMap, start, end, isRange),
             pw.SizedBox(height: 12),
-            _attendanceSummary(gStudents, attMap, days),
+            _attendanceSummary(gStudents, attMap),
           ],
         ));
       }
 
-      return _savePdf(doc, 'attendance_${_fileMonth(month)}');
+      return _savePdf(
+          doc,
+          isRange
+              ? 'attendance_${_fileRange(start, periodEnd)}'
+              : 'attendance_${_fileMonth(month)}');
     } catch (e) {
       return ExportResult.fail('فشل إنشاء PDF: $e');
     }
@@ -216,6 +229,8 @@ class ExportService {
   // ─────────────────────────────────────────────────────────────────
   Future<ExportResult> exportHomeworkPDF({
     required DateTime month,
+    // spec 014 — لو != null: تقرير فترة [month, periodEnd] شاملاً الطرفين.
+    DateTime? periodEnd,
     required List<Student> students,
     required List<Homework> homework,
     required List<Group> groups,
@@ -224,18 +239,22 @@ class ExportService {
       await _loadFonts();
       final doc = pw.Document();
 
-      final start = DateTime(month.year, month.month, 1);
-      final end = DateTime(month.year, month.month + 1, 0);
-      final days = end.day;
+      final isRange = periodEnd != null;
+      final start = isRange
+          ? DateTime(month.year, month.month, month.day)
+          : DateTime(month.year, month.month, 1);
+      final end = isRange
+          ? DateTime(periodEnd.year, periodEnd.month, periodEnd.day, 23, 59, 59)
+          : DateTime(month.year, month.month + 1, 0, 23, 59, 59);
 
-      final monthHw = homework
-          .where(
-              (h) => h.date.year == month.year && h.date.month == month.month)
+      final rangeHw = homework
+          .where((h) => !h.date.isBefore(start) && !h.date.isAfter(end))
           .toList();
 
-      final hwMap = <int, Map<int, String>>{};
-      for (final h in monthHw) {
-        hwMap.putIfAbsent(h.studentId, () => {})[h.date.day] = h.status;
+      final hwMap = <int, Map<DateTime, String>>{};
+      for (final h in rangeHw) {
+        final d = DateTime(h.date.year, h.date.month, h.date.day);
+        hwMap.putIfAbsent(h.studentId, () => {})[d] = h.status;
       }
       final groupById = {for (final g in groups) g.id: g};
 
@@ -245,7 +264,9 @@ class ExportService {
           return gc != 0 ? gc : a.name.compareTo(b.name);
         });
 
-      final monthLabel = DateFormat('MMMM yyyy', 'ar').format(month);
+      final label = isRange
+          ? _periodLabel(start, periodEnd)
+          : DateFormat('MMMM yyyy', 'ar').format(month);
 
       final byGroup = <int, List<Student>>{};
       for (final s in sorted) {
@@ -261,17 +282,21 @@ class ExportService {
           pageFormat: PdfPageFormat.a4.landscape,
           textDirection: pw.TextDirection.rtl,
           margin: const pw.EdgeInsets.all(20),
-          header: (_) => _pageHeader('تقرير الواجب — $gLabel — $monthLabel'),
+          header: (_) => _pageHeader('تقرير الواجب — $gLabel — $label'),
           footer: (ctx) => _pageFooter(ctx),
           build: (ctx) => [
-            _homeworkTable(gStudents, hwMap, days, start),
+            _homeworkTable(gStudents, hwMap, start, end, isRange),
             pw.SizedBox(height: 12),
-            _homeworkSummary(gStudents, hwMap, days),
+            _homeworkSummary(gStudents, hwMap),
           ],
         ));
       }
 
-      return _savePdf(doc, 'homework_${_fileMonth(month)}');
+      return _savePdf(
+          doc,
+          isRange
+              ? 'homework_${_fileRange(start, periodEnd)}'
+              : 'homework_${_fileMonth(month)}');
     } catch (e) {
       return ExportResult.fail('فشل إنشاء PDF: $e');
     }
@@ -356,8 +381,14 @@ class ExportService {
       ),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          pw.Text(title, style: _style(size: 14, bold: true, color: _primary)),
+          pw.Expanded(
+            child: pw.Text(title,
+                style: _style(size: 14, bold: true, color: _primary),
+                maxLines: 2),
+          ),
+          pw.SizedBox(width: 8),
           pw.Text('Active Class', style: _style(size: 10, color: _grey)),
         ],
       ),
@@ -508,31 +539,45 @@ class ExportService {
 
   // ── جدول الحضور ──────────────────────────────────────────────────
   pw.Widget _attendanceTable(List<Student> students,
-      Map<int, Map<int, String>> attMap, int days, DateTime start) {
-    // أعمدة: الاسم + أيام الشهر
+      Map<int, Map<DateTime, String>> attMap, DateTime start, DateTime end,
+      bool isRange) {
+    // أعمدة الأيام = التواريخ اللي فيها تسجيل حصص فعلي فقط (spec 013 US5).
+    // في وضع الفترة (spec 014) الترويسة تعرض يوم/شهر عشان الفترة اللي
+    // بتمتد على أكتر من شهر ما يحصلش فيها لبس.
+    final dateSet = <DateTime>{};
+    for (final m in attMap.values) {
+      dateSet.addAll(m.keys);
+    }
+    final sortedDates = dateSet.toList()..sort();
+    if (sortedDates.isEmpty) {
+      final label = isRange
+          ? 'الفترة ${_periodLabel(start, end)}'
+          : DateFormat('MMMM yyyy', 'ar').format(start);
+      return pw.Text('لا توجد حصص مسجّلة في $label',
+          style: _style(size: 10, color: _grey));
+    }
+    final n = sortedDates.length;
+
     final colWidths = <int, pw.TableColumnWidth>{
       0: const pw.FlexColumnWidth(2.5), // الاسم
     };
-    for (var d = 1; d <= days; d++) {
-      colWidths[d] = const pw.FixedColumnWidth(18);
+    for (var i = 1; i <= n; i++) {
+      colWidths[i] = const pw.FixedColumnWidth(18);
     }
-    colWidths[days + 1] = const pw.FixedColumnWidth(30); // حضور
-    colWidths[days + 2] = const pw.FixedColumnWidth(30); // غياب
+    colWidths[n + 1] = const pw.FixedColumnWidth(30); // حضور
+    colWidths[n + 2] = const pw.FixedColumnWidth(30); // غياب
 
     final rows = <pw.TableRow>[];
 
-    // Header row
     final headerCells = <pw.Widget>[_th('الاسم', size: 8)];
-    for (var d = 1; d <= days; d++) {
-      final date = DateTime(start.year, start.month, d);
-      final weekday = _weekdayShort(date.weekday);
-      headerCells.add(_thSmall('$d\n$weekday'));
+    for (final d in sortedDates) {
+      final head = isRange ? '${d.day}/${d.month}' : '${d.day}';
+      headerCells.add(_thSmall('$head\n${_weekdayShort(d.weekday)}'));
     }
     headerCells.add(_th('ح', size: 8));
     headerCells.add(_th('غ', size: 8));
     rows.add(pw.TableRow(children: headerCells));
 
-    // Data rows
     for (var i = 0; i < students.length; i++) {
       final s = students[i];
       final sAtt = attMap[s.id] ?? {};
@@ -543,7 +588,7 @@ class ExportService {
       final cells = <pw.Widget>[
         _td(s.name, isEven: isEven, bold: true, size: 8),
       ];
-      for (var d = 1; d <= days; d++) {
+      for (final d in sortedDates) {
         final norm = normalizeAttendanceStatus(sAtt[d]);
         if (norm == ATTENDANCE_LATE) {
           presentCount++; // "متأخر" حضور (spec 011)
@@ -567,7 +612,7 @@ class ExportService {
   }
 
   pw.Widget _attendanceSummary(
-      List<Student> students, Map<int, Map<int, String>> attMap, int days) {
+      List<Student> students, Map<int, Map<DateTime, String>> attMap) {
     int totalPresent = 0;
     int totalAbsent = 0;
     int totalLate = 0;
@@ -613,23 +658,39 @@ class ExportService {
 
   // ── جدول الواجب ──────────────────────────────────────────────────
   pw.Widget _homeworkTable(List<Student> students,
-      Map<int, Map<int, String>> hwMap, int days, DateTime start) {
+      Map<int, Map<DateTime, String>> hwMap, DateTime start, DateTime end,
+      bool isRange) {
+    // أعمدة الأيام = تواريخ التسجيل الفعلي فقط (spec 013 US5)؛ ترويسة
+    // يوم/شهر في وضع الفترة (spec 014).
+    final dateSet = <DateTime>{};
+    for (final m in hwMap.values) {
+      dateSet.addAll(m.keys);
+    }
+    final sortedDates = dateSet.toList()..sort();
+    if (sortedDates.isEmpty) {
+      final label = isRange
+          ? 'الفترة ${_periodLabel(start, end)}'
+          : DateFormat('MMMM yyyy', 'ar').format(start);
+      return pw.Text('لا يوجد واجب مسجّل في $label',
+          style: _style(size: 10, color: _grey));
+    }
+    final n = sortedDates.length;
+
     final colWidths = <int, pw.TableColumnWidth>{
       0: const pw.FlexColumnWidth(2.5),
     };
-    for (var d = 1; d <= days; d++) {
-      colWidths[d] = const pw.FixedColumnWidth(18);
+    for (var i = 1; i <= n; i++) {
+      colWidths[i] = const pw.FixedColumnWidth(18);
     }
-    colWidths[days + 1] = const pw.FixedColumnWidth(30);
-    colWidths[days + 2] = const pw.FixedColumnWidth(30);
+    colWidths[n + 1] = const pw.FixedColumnWidth(30);
+    colWidths[n + 2] = const pw.FixedColumnWidth(30);
 
     final rows = <pw.TableRow>[];
 
     final headerCells = <pw.Widget>[_th('الاسم', size: 8)];
-    for (var d = 1; d <= days; d++) {
-      final date = DateTime(start.year, start.month, d);
-      final weekday = _weekdayShort(date.weekday);
-      headerCells.add(_thSmall('$d\n$weekday'));
+    for (final d in sortedDates) {
+      final head = isRange ? '${d.day}/${d.month}' : '${d.day}';
+      headerCells.add(_thSmall('$head\n${_weekdayShort(d.weekday)}'));
     }
     headerCells.add(_th('عمل', size: 8));
     headerCells.add(_th('لم يعمل', size: 8));
@@ -645,7 +706,7 @@ class ExportService {
       final cells = <pw.Widget>[
         _td(s.name, isEven: isEven, bold: true, size: 8),
       ];
-      for (var d = 1; d <= days; d++) {
+      for (final d in sortedDates) {
         // الناقص يُحتسب كـ"عمل" في تقرير الواجب PDF (محاولة تُحتسب).
         final status = normalizeHomeworkStatus(sHw[d]);
         if (status == HOMEWORK_DONE || status == HOMEWORK_PARTIAL) {
@@ -667,7 +728,7 @@ class ExportService {
   }
 
   pw.Widget _homeworkSummary(
-      List<Student> students, Map<int, Map<int, String>> hwMap, int days) {
+      List<Student> students, Map<int, Map<DateTime, String>> hwMap) {
     int totalDone = 0;
     int totalNotDone = 0;
     for (final s in students) {
@@ -908,6 +969,18 @@ class ExportService {
 
   String _fileMonth(DateTime m) =>
       '${m.year}_${m.month.toString().padLeft(2, '0')}';
+
+  // spec 014 — تسمية/عنوان الفترة المخصصة
+  String _fileRange(DateTime from, DateTime to) {
+    String d(DateTime x) =>
+        '${x.year}-${x.month.toString().padLeft(2, '0')}-${x.day.toString().padLeft(2, '0')}';
+    return '${d(from)}_الى_${d(to)}';
+  }
+
+  String _periodLabel(DateTime from, DateTime to) {
+    final f = DateFormat('d MMMM yyyy', 'ar');
+    return 'من ${f.format(from)} إلى ${f.format(to)}';
+  }
 
   String _weekdayShort(int wd) {
     const days = ['', 'ن', 'ث', 'ر', 'خ', 'ج', 'س', 'ح'];

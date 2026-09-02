@@ -895,111 +895,264 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+// ── حالة "الوضع + النطاق" لشيت التصدير — تتذكّر خلال الجلسة، تتصفّر
+//    مع إعادة تشغيل التطبيق (spec 014 US3). لو المدرس غيّر الشهر المعروض
+//    في شاشة التقارير، النطاق يتبع الشهر الجديد بدل ما يفضل قديم.
+bool _exportRangeMode = false;
+DateTime? _exportFrom;
+DateTime? _exportTo;
+DateTime? _exportSeedMonth;
+
+// فوق حد معيّن الجدول بيطلع أعمدة كتير جدًا (عمود لكل يوم فيه حصة) —
+// نحذّر المدرس قبل ما نولّد PDF عريض صعب القراءة (spec 014).
+const int _longRangeDaysThreshold = 100;
+
+Future<void> _exportRangeReport(
+  BuildContext context,
+  ReportController ctrl, {
+  required bool attendance,
+  required DateTime from,
+  required DateTime to,
+}) async {
+  if (!context.mounted) return;
+  final days = to.difference(from).inDays + 1;
+  if (days > _longRangeDaysThreshold) {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('فترة طويلة',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+        content: Text(
+            'الفترة $days يوم — جدول التقرير ممكن يطلع عريض جدًا وصعب القراءة على الورق. تحب تكمّل؟',
+            style: const TextStyle(fontFamily: 'Cairo')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('إلغاء')),
+          FilledButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('متابعة')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+  }
+  if (attendance) {
+    ctrl.exportAttendancePDF(from: from, to: to);
+  } else {
+    ctrl.exportHomeworkPDF(from: from, to: to);
+  }
+}
+
 // ── قائمة التصدير helper ─────────────────────────────────────────────────────
 void _showExportMenu(BuildContext context, ReportController ctrl) {
-  final month = DateFormat('MMMM yyyy', 'ar').format(ctrl.selectedMonth.value);
+  final selMonth = ctrl.selectedMonth.value;
+  if (_exportFrom == null ||
+      _exportSeedMonth == null ||
+      _exportSeedMonth!.year != selMonth.year ||
+      _exportSeedMonth!.month != selMonth.month) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var f = DateTime(selMonth.year, selMonth.month, 1);
+    // "إلى" = نهاية الشهر المختار، بحد أقصى النهاردة (مفيش سجلات في
+    // المستقبل، والشهر المستقبلي بالكامل بيبقى نطاق فاضي).
+    final monthEnd = DateTime(selMonth.year, selMonth.month + 1, 0);
+    var t = monthEnd.isAfter(today) ? today : monthEnd;
+    if (f.isAfter(t)) f = t; // شهر مستقبلي → انهار النطاق ليوم واحد
+    _exportFrom = f;
+    _exportTo = t;
+    _exportSeedMonth = DateTime(selMonth.year, selMonth.month, 1);
+  }
+  if (_exportTo!.isBefore(_exportFrom!)) _exportTo = _exportFrom;
+
+  final dFmt = DateFormat('d MMMM yyyy', 'ar');
+
+  bool licenceOk() => requireLicenseFeature(
+      context,
+      Get.find<LicenseController>().canExport,
+      'تصدير التقارير غير متاح في الفترة التجريبية — قم بالترقية');
+
   showModalBottomSheet(
     context: context,
     shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-    builder: (ctx) => Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2)),
-            ),
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setSt) {
+        final range = _exportRangeMode;
+        final title = range
+            ? 'تصدير تقرير — من ${dFmt.format(_exportFrom!)} إلى ${dFmt.format(_exportTo!)}'
+            : 'تصدير تقرير — ${DateFormat('MMMM yyyy', 'ar').format(selMonth)}';
+
+        Future<void> pickFrom() async {
+          final p = await showDatePicker(
+            context: ctx,
+            initialDate: _exportFrom!,
+            firstDate: DateTime(2020),
+            lastDate: _exportTo!, // مايتعدّاش "إلى"
+            helpText: 'من تاريخ',
+          );
+          if (p != null) {
+            setSt(() => _exportFrom = DateTime(p.year, p.month, p.day));
+          }
+        }
+
+        Future<void> pickTo() async {
+          final p = await showDatePicker(
+            context: ctx,
+            initialDate: _exportTo!,
+            firstDate: _exportFrom!, // ماينفعش يبقى قبل "من"
+            lastDate: DateTime.now().add(const Duration(days: 365)),
+            helpText: 'إلى تاريخ',
+          );
+          if (p != null) {
+            setSt(() => _exportTo = DateTime(p.year, p.month, p.day));
+          }
+        }
+
+        Widget dateRow(String label, DateTime value, VoidCallback onTap) =>
+            InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(children: [
+                  Text(label,
+                      style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 13,
+                          color: Colors.grey.shade600)),
+                  const SizedBox(width: 12),
+                  Text(dFmt.format(value),
+                      style: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700)),
+                  const Spacer(),
+                  const Icon(Icons.calendar_today_rounded, size: 16),
+                ]),
+              ),
+            );
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // مفتاح الوضع: شهر / فترة مخصصة
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('شهر')),
+                  ButtonSegment(value: true, label: Text('فترة مخصصة')),
+                ],
+                selected: {range},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) =>
+                    setSt(() => _exportRangeMode = s.first),
+              ),
+              const SizedBox(height: 14),
+
+              Text(title,
+                  style: const TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15)),
+
+              if (range) ...[
+                const SizedBox(height: 8),
+                dateRow('من', _exportFrom!, pickFrom),
+                const Divider(height: 1),
+                dateRow('إلى', _exportTo!, pickTo),
+              ] else ...[
+                const SizedBox(height: 4),
+                Text('اختر نوع التقرير الذي تريد تصديره كـ PDF',
+                    style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
+                        color: Colors.grey.shade600)),
+              ],
+              const SizedBox(height: 20),
+
+              if (!range) ...[
+                _ExportOption(
+                  icon: Icons.payments_rounded,
+                  color: const Color(0xFF1565C0),
+                  title: 'تقرير الدفعات',
+                  subtitle: 'جدول بالطلاب والمبالغ والحالة',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    if (!licenceOk()) return;
+                    ctrl.exportPaymentsPDF();
+                  },
+                ),
+                const SizedBox(height: 10),
+              ],
+              _ExportOption(
+                icon: Icons.how_to_reg_rounded,
+                color: const Color(0xFF2E7D32),
+                title: 'تقرير الحضور',
+                subtitle: 'جدول تفصيلي لحضور وغياب كل طالب',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (!licenceOk()) return;
+                  if (range) {
+                    _exportRangeReport(context, ctrl,
+                        attendance: true,
+                        from: _exportFrom!,
+                        to: _exportTo!);
+                  } else {
+                    ctrl.exportAttendancePDF();
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
+              _ExportOption(
+                icon: Icons.menu_book_rounded,
+                color: const Color(0xFF2563EB),
+                title: 'تقرير الواجب',
+                subtitle: 'جدول تفصيلي بحالة الواجب لكل طالب',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (!licenceOk()) return;
+                  if (range) {
+                    _exportRangeReport(context, ctrl,
+                        attendance: false,
+                        from: _exportFrom!,
+                        to: _exportTo!);
+                  } else {
+                    ctrl.exportHomeworkPDF();
+                  }
+                },
+              ),
+              if (!range) ...[
+                const SizedBox(height: 10),
+                _ExportOption(
+                  icon: Icons.bar_chart_rounded,
+                  color: const Color(0xFF6A1B9A),
+                  title: 'ملخص المجموعات',
+                  subtitle: 'إجماليات كل مجموعة (دفعات + حضور)',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    if (!licenceOk()) return;
+                    ctrl.exportGroupsSummaryPDF();
+                  },
+                ),
+              ],
+            ],
           ),
-          const SizedBox(height: 16),
-          Text('تصدير تقرير — $month',
-              style: const TextStyle(
-                  fontFamily: 'Cairo',
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16)),
-          const SizedBox(height: 4),
-          Text('اختر نوع التقرير الذي تريد تصديره كـ PDF',
-              style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12,
-                  color: Colors.grey.shade600)),
-          const SizedBox(height: 20),
-          _ExportOption(
-            icon: Icons.payments_rounded,
-            color: const Color(0xFF1565C0),
-            title: 'تقرير الدفعات',
-            subtitle: 'جدول بالطلاب والمبالغ والحالة',
-            onTap: () {
-              Navigator.pop(ctx);
-              if (!requireLicenseFeature(
-                  context,
-                  Get.find<LicenseController>().canExport,
-                  'تصدير التقارير غير متاح في الفترة التجريبية — قم بالترقية')) {
-                return;
-              }
-              ctrl.exportPaymentsPDF();
-            },
-          ),
-          const SizedBox(height: 10),
-          _ExportOption(
-            icon: Icons.how_to_reg_rounded,
-            color: const Color(0xFF2E7D32),
-            title: 'تقرير الحضور',
-            subtitle: 'جدول تفصيلي لحضور وغياب كل طالب',
-            onTap: () {
-              Navigator.pop(ctx);
-              if (!requireLicenseFeature(
-                  context,
-                  Get.find<LicenseController>().canExport,
-                  'تصدير التقارير غير متاح في الفترة التجريبية — قم بالترقية')) {
-                return;
-              }
-              ctrl.exportAttendancePDF();
-            },
-          ),
-          const SizedBox(height: 10),
-          _ExportOption(
-            icon: Icons.menu_book_rounded,
-            color: const Color(0xFF2563EB),
-            title: 'تقرير الواجب',
-            subtitle: 'جدول تفصيلي بحالة الواجب لكل طالب',
-            onTap: () {
-              Navigator.pop(ctx);
-              if (!requireLicenseFeature(
-                  context,
-                  Get.find<LicenseController>().canExport,
-                  'تصدير التقارير غير متاح في الفترة التجريبية — قم بالترقية')) {
-                return;
-              }
-              ctrl.exportHomeworkPDF();
-            },
-          ),
-          const SizedBox(height: 10),
-          _ExportOption(
-            icon: Icons.bar_chart_rounded,
-            color: const Color(0xFF6A1B9A),
-            title: 'ملخص المجموعات',
-            subtitle: 'إجماليات كل مجموعة (دفعات + حضور)',
-            onTap: () {
-              Navigator.pop(ctx);
-              if (!requireLicenseFeature(
-                  context,
-                  Get.find<LicenseController>().canExport,
-                  'تصدير التقارير غير متاح في الفترة التجريبية — قم بالترقية')) {
-                return;
-              }
-              ctrl.exportGroupsSummaryPDF();
-            },
-          ),
-        ],
-      ),
+        );
+      },
     ),
   );
 }

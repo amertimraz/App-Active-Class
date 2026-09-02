@@ -11,6 +11,7 @@ import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/billing_period.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/widgets/clock_text.dart';
@@ -37,7 +38,7 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
   void initState() {
     super.initState();
     final now = DateTime.now();
-    paymentController.selectedMonth.value ??= DateTime(now.year, now.month, 1);
+    paymentController.selectedMonth.value ??= defaultCollectionMonth();
     _selectedDay = DateTime(now.year, now.month, now.day);
     paymentController.loadPayments();
     studentController.loadAllStudents();

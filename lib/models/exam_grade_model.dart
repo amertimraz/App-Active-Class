@@ -224,6 +224,9 @@ class StudentExamRecord {
   final int      examId;
   final String   examName;
   final DateTime examDate;
+  /// spec 013 — الشهر اللي يُحسب له الامتحان في التقارير الشهرية
+  /// (اليوم 1). مشتقّ وقت البناء من report_month أو شهر examDate.
+  final DateTime reportMonth;
   final double   maxGrade;
   final double   passingGrade;
   final double?  grade;
@@ -234,12 +237,28 @@ class StudentExamRecord {
     required this.examId,
     required this.examName,
     required this.examDate,
+    required this.reportMonth,
     required this.maxGrade,
     required this.passingGrade,
     this.grade,
     this.isAbsent = false,
     required this.groupName,
   });
+
+  /// يبني قيمة reportMonth من نص report_month (أو شهر التاريخ لو null/غير صالح).
+  static DateTime resolveReportMonth(String? raw, DateTime examDate) {
+    if (raw != null) {
+      final p = raw.split('-');
+      if (p.length == 2) {
+        final y = int.tryParse(p[0]);
+        final m = int.tryParse(p[1]);
+        if (y != null && m != null && m >= 1 && m <= 12) {
+          return DateTime(y, m, 1);
+        }
+      }
+    }
+    return DateTime(examDate.year, examDate.month, 1);
+  }
 
   double get percentage =>
       (grade != null && maxGrade > 0) ? (grade! / maxGrade) * 100 : 0;

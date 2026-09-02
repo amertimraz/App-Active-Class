@@ -11,6 +11,7 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/billing_period.dart';
 
 enum ActivityType { attendance, payment }
 
@@ -51,6 +52,16 @@ class DashboardController extends GetxController {
   final RxDouble monthPaymentRate    = 0.0.obs;
   final RxInt    paidStudentsCount   = 0.obs;
   final RxInt    unpaidStudentsCount = 0.obs;
+
+  // ── كارت "دفعات [الشهر]" — شهر التحصيل + تنقّل (spec 013 US4) ────────────
+  // الأرقام مشتقّة من المديونية المتراكمة (PricingHelper) لحد الشهر
+  // المختار، مش "دفعات مؤرَّخة في الشهر ÷ مستحق الشهر".
+  final Rx<DateTime> paymentCardMonth  = defaultCollectionMonth().obs;
+  final RxDouble paymentCardExpected   = 0.0.obs;
+  final RxDouble paymentCardCollected  = 0.0.obs;
+  final RxDouble paymentCardRemaining  = 0.0.obs;
+  final RxDouble paymentCardRate       = 0.0.obs;
+  final RxInt    paymentCardUnpaid     = 0.obs;
 
   // ── إحصائيات اليوم ───────────────────────────────────────────────────────
   final RxInt    todayPresent        = 0.obs;
@@ -103,6 +114,7 @@ class DashboardController extends GetxController {
       await Future.wait([
         _loadGeneralStats(),
         _loadMonthStats(),
+        _computePaymentCard(),
         _loadTodayStats(),
         _loadRecentActivities(),
       ]);
@@ -221,6 +233,89 @@ class DashboardController extends GetxController {
     unpaidStudentsCount.value = unpaidStudents.length;
 
     _unpaidList.assignAll(unpaidStudents);
+  }
+
+  // ── كارت "دفعات [الشهر]" (spec 013 US4) ────────────────────────────────
+  /// المدرس يقدر يتنقّل بين الشهور بالسهمين — بحد أقصى الشهر الحالي.
+  Future<void> shiftPaymentCardMonth(int delta) async {
+    final m = paymentCardMonth.value;
+    final next = DateTime(m.year, m.month + delta, 1);
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month, 1);
+    if (next.isAfter(currentMonth)) return;
+    paymentCardMonth.value = next;
+    await _computePaymentCard();
+  }
+
+  Future<void> _computePaymentCard() async {
+    final month = DateTime(
+        paymentCardMonth.value.year, paymentCardMonth.value.month, 1);
+
+    final students =
+        (await _db.getAllStudents()).where((s) => !s.isArchived).toList();
+    final payments = await _db.getAllPayments();
+    final groups = await _db.getAllGroups();
+    final groupById = {for (final g in groups) g.id: g};
+
+    final att = Get.isRegistered<AttendanceController>()
+        ? Get.find<AttendanceController>()
+        : Get.put(AttendanceController());
+    if (att.attendance.isEmpty) await att.loadAttendance();
+
+    final paymentsByStudent = <int, List<Payment>>{};
+    for (final p in payments) {
+      paymentsByStudent.putIfAbsent(p.studentId, () => []).add(p);
+    }
+    final graceDays = Get.isRegistered<SettingsController>()
+        ? Get.find<SettingsController>().paymentGraceDays.value
+        : 0;
+    final now = DateTime.now();
+    final isCurrentMonth =
+        month.year == now.year && month.month == now.month;
+
+    double expected = 0;
+    double remaining = 0;
+    int unpaid = 0;
+    for (final s in students.where((s) => !s.isFullyExempt)) {
+      final group = groupById[s.groupId];
+      final studentPayments = paymentsByStudent[s.id] ?? const <Payment>[];
+      expected += PricingHelper.totalDueThrough(
+        student: s,
+        group: group,
+        allAttendance: att.attendance,
+        month: month,
+        siblingGroupMembers: students,
+      );
+      final debt = PricingHelper.accumulatedDebtThrough(
+        student: s,
+        group: group,
+        allAttendance: att.attendance,
+        payments: studentPayments,
+        month: month,
+        siblingGroupMembers: students,
+      );
+      remaining += debt;
+      // في الشهر الحالي بنحترم مهلة السماح زي قائمة "لم يدفعوا".
+      final overdue = isCurrentMonth
+          ? PricingHelper.isOverdue(
+              student: s,
+              group: group,
+              allAttendance: att.attendance,
+              payments: studentPayments,
+              graceDays: graceDays,
+              siblingGroupMembers: students,
+            )
+          : debt > 0;
+      if (overdue) unpaid++;
+    }
+
+    final collected = (expected - remaining).clamp(0, double.infinity);
+    paymentCardExpected.value  = expected;
+    paymentCardRemaining.value = remaining.clamp(0, double.infinity);
+    paymentCardCollected.value = collected.toDouble();
+    paymentCardRate.value =
+        expected > 0 ? (collected / expected).clamp(0.0, 1.0).toDouble() : 0.0;
+    paymentCardUnpaid.value = unpaid;
   }
 
   // ── تحميل إحصائيات اليوم ────────────────────────────────────────────────

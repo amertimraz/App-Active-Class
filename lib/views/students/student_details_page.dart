@@ -20,6 +20,8 @@ import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/clock_text.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/billing_period.dart';
+import 'package:active_class/utils/monthly_report_message.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
@@ -119,131 +121,172 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
       return;
     }
 
-    final now = DateTime.now();
-    final start = DateTime(now.year, now.month, 1);
-    final end = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
-
-    final atts = attendanceController.attendance
-        .where((a) =>
-            a.studentId == s.id &&
-            !a.date.isBefore(start) &&
-            !a.date.isAfter(end))
-        .toList();
-    final pays = paymentController.payments
-        .where((p) =>
-            p.studentId == s.id &&
-            !p.date.isBefore(start) &&
-            !p.date.isAfter(end))
-        .toList();
-    final hw = homeworkController.homework
-        .where((h) =>
-            h.studentId == s.id &&
-            !h.date.isBefore(start) &&
-            !h.date.isAfter(end))
-        .toList();
-
-    final present =
-        atts.where((a) => attendanceCountsAsPresent(a.status)).length;
-    final late = atts
-        .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_LATE)
-        .length;
-    final absent = atts
-        .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT)
-        .length;
-    final total = present + absent;
-    final percent = total == 0 ? 0.0 : (present / total) * 100.0;
-    final totalPaid = pays.fold<double>(0.0, (sum, p) => sum + p.amount);
-    final homeworkDone = hw
-        .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_DONE)
-        .length;
-    final homeworkPartial = hw
-        .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_PARTIAL)
-        .length;
-    final homeworkNotDone = hw
-        .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_NOT_DONE)
-        .length;
-    final monthLabel = DateFormat('MMMM yyyy', 'ar').format(start);
-    final groupName = _group?.name ?? '-';
-
-    final attsSorted = List.of(atts)..sort((a, b) => b.date.compareTo(a.date));
-    final paysSorted = List.of(pays)..sort((a, b) => b.date.compareTo(a.date));
-    final hwSorted = List.of(hw)..sort((a, b) => b.date.compareTo(a.date));
-
-    final buffer = StringBuffer()
-      ..writeln('🧾 تقرير الشهر: $monthLabel')
-      ..writeln('👤 الاسم: ${s.name}')
-      ..writeln('🆔 الكود: ${s.code}')
-      ..writeln('👥 المجموعة: $groupName')
-      ..writeln(
-          '📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
-      ..writeln('')
-      ..writeln(late > 0
-          ? '📊 الحضور: ✅ حاضر $present (منهم ⏰ متأخر $late) • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%'
-          : '📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
-
-    if (attsSorted.isNotEmpty) {
-      buffer.writeln('\n📅 سجلات الحضور:');
-      for (final a in attsSorted.take(10)) {
-        buffer.writeln(
-            '• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${attendanceStatusLabel(a.status)}');
-      }
-      if (attsSorted.length > 10)
-        buffer.writeln('• … ${attsSorted.length - 10} سجلات إضافية');
-    }
-
-    if (hwSorted.isNotEmpty) {
-      buffer.writeln(
-          '\n📖 الواجب: 🟢 تم الحل $homeworkDone • 🟡 ناقص $homeworkPartial • 🔴 لم يُحل $homeworkNotDone');
-      for (final h in hwSorted.take(10)) {
-        buffer.writeln(
-            '• ${DateFormat('yyyy-MM-dd').format(h.date)} — ${homeworkStatusLabel(h.status)}');
-      }
-      if (hwSorted.length > 10)
-        buffer.writeln('• … ${hwSorted.length - 10} سجلات إضافية');
-    }
-
-    if (_canSeeFinancials) {
-      buffer.writeln(
-          '\n💰 المدفوعات: إجمالي ${FormatHelper.formatCurrency(totalPaid)}');
-      for (final p in paysSorted) {
-        buffer.writeln(
-            '• ${DateFormat('yyyy-MM-dd HH:mm').format(p.date)} — ${FormatHelper.formatCurrency(p.amount)}');
-      }
-    }
-
-    // لو معندوش صلاحية يشوف الامتحانات، مش هيقدر يبعت تقرير فيه
-    // درجات الطالب حتى لو عن طريق واتساب — نفس القيد اللي على الشاشة.
-    final examsMonth = _canSeeAcademics
-        ? ((await DatabaseService().getStudentExamHistory(s.id!))
-                .where((r) =>
-                    !r.examDate.isBefore(start) && !r.examDate.isAfter(end))
-                .toList()
-              ..sort((a, b) => b.examDate.compareTo(a.examDate)))
-        : <StudentExamRecord>[];
-    if (examsMonth.isNotEmpty) {
-      buffer.writeln('\n📝 الامتحانات:');
-      for (final r in examsMonth) {
-        final dateStr = DateFormat('yyyy-MM-dd').format(r.examDate);
-        if (r.isAbsent) {
-          buffer.writeln('• $dateStr — ${r.examName}: غائب');
-        } else if (r.grade != null) {
-          buffer.writeln(
-              '• $dateStr — ${r.examName}: ${FormatHelper.formatGrade(r.grade!)}/${r.maxGrade.toStringAsFixed(0)} (${r.category.label})');
-        } else {
-          buffer.writeln('• $dateStr — ${r.examName}: لم تُدخل الدرجة بعد');
-        }
-      }
-    }
+    // اختيار نوع التقرير: شهر كامل (الافتراضي، مربوط بالفوترة) أو فترة
+    // مخصصة (spec 014).
+    final kind = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            ListTile(
+              leading: const Icon(Icons.calendar_month_rounded),
+              title: const Text('تقرير شهر'),
+              subtitle: const Text('التقرير الشهري المعتاد (حسب صلاحياتك)'),
+              onTap: () => Navigator.pop(ctx, 'month'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.date_range_rounded),
+              title: const Text('تقرير فترة'),
+              subtitle: const Text('من تاريخ لتاريخ — أكاديمي فقط بدون ماليات'),
+              onTap: () => Navigator.pop(ctx, 'period'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (kind == null || !mounted) return;
 
     final settings = Get.find<SettingsController>();
-    final tName = settings.teacherFullName.value.trim();
-    final tSpec = settings.teacherSpecialization.value.trim();
-    if (tName.isNotEmpty || tSpec.isNotEmpty) {
-      buffer
-        ..writeln('\n👨‍🏫 المعلم: ${tName.isNotEmpty ? tName : '-'}')
-        ..writeln('📘 التخصص: ${tSpec.isNotEmpty ? tSpec : '-'}');
+    String? message;
+
+    if (kind == 'month') {
+      final collectionMonth = defaultCollectionMonth();
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: collectionMonth,
+        firstDate: DateTime(collectionMonth.year - 3, 1, 1),
+        lastDate: DateTime(collectionMonth.year, collectionMonth.month + 1, 0),
+        helpText: 'اختر شهر التقرير',
+      );
+      if (picked == null) return;
+      final month = DateTime(picked.year, picked.month, 1);
+      final start = month;
+      final end = DateTime(month.year, month.month + 1, 0, 23, 59, 59);
+
+      final atts = attendanceController.attendance
+          .where((a) =>
+              a.studentId == s.id &&
+              !a.date.isBefore(start) &&
+              !a.date.isAfter(end))
+          .toList();
+      final pays = paymentController.payments
+          .where((p) =>
+              p.studentId == s.id &&
+              !p.date.isBefore(start) &&
+              !p.date.isAfter(end))
+          .toList();
+      final hw = homeworkController.homework
+          .where((h) =>
+              h.studentId == s.id &&
+              !h.date.isBefore(start) &&
+              !h.date.isAfter(end))
+          .toList();
+      final examsMonth = _canSeeAcademics
+          ? (await DatabaseService().getStudentExamHistory(s.id!))
+              .where((r) =>
+                  r.reportMonth.year == month.year &&
+                  r.reportMonth.month == month.month)
+              .toList()
+          : <StudentExamRecord>[];
+
+      message = buildMonthlyReportMessage(
+        student: s,
+        month: month,
+        groupName: _group?.name ?? '-',
+        monthAtt: atts,
+        monthHw: hw,
+        monthPays: pays,
+        monthExams: examsMonth,
+        teacherName: settings.teacherFullName.value,
+        teacherSpecialization: settings.teacherSpecialization.value,
+        canSeeFinancials: _canSeeFinancials,
+        canSeeAcademics: _canSeeAcademics,
+      );
+    } else {
+      // تقرير فترة مخصصة — منتقيي "من" و"إلى"، فلترة بالتاريخ الفعلي
+      // (الامتحانات بـ examDate — spec 014 Q1=A)، بدون قسم مالي (Q3=B).
+      final now = DateTime.now();
+      final from = await showDatePicker(
+        context: context,
+        initialDate: DateTime(now.year, now.month, 1),
+        firstDate: DateTime(2020),
+        lastDate: now.add(const Duration(days: 365)),
+        helpText: 'من تاريخ',
+      );
+      if (from == null || !mounted) return;
+      final to = await showDatePicker(
+        context: context,
+        initialDate: from.isAfter(now) ? from : now,
+        firstDate: from,
+        lastDate: now.add(const Duration(days: 365)),
+        helpText: 'إلى تاريخ',
+      );
+      if (to == null || !mounted) return;
+      final start = DateTime(from.year, from.month, from.day);
+      final end = DateTime(to.year, to.month, to.day, 23, 59, 59);
+
+      // فترة طويلة جدًا → الرسالة هتطلع ضخمة؛ نحذّر الأول (spec 014).
+      final rangeDays = end.difference(start).inDays + 1;
+      if (rangeDays > 100) {
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: const Text('فترة طويلة'),
+            content: Text(
+                'الفترة $rangeDays يوم — الرسالة ممكن تطلع طويلة جدًا. تحب تكمّل؟'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(c, false),
+                  child: const Text('إلغاء')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(c, true),
+                  child: const Text('متابعة')),
+            ],
+          ),
+        );
+        if (ok != true || !mounted) return;
+      }
+
+      final atts = attendanceController.attendance
+          .where((a) =>
+              a.studentId == s.id &&
+              !a.date.isBefore(start) &&
+              !a.date.isAfter(end))
+          .toList();
+      final hw = homeworkController.homework
+          .where((h) =>
+              h.studentId == s.id &&
+              !h.date.isBefore(start) &&
+              !h.date.isAfter(end))
+          .toList();
+      final examsRange = _canSeeAcademics
+          ? (await DatabaseService().getStudentExamHistory(s.id!))
+              .where((r) =>
+                  !r.examDate.isBefore(start) && !r.examDate.isAfter(end))
+              .toList()
+          : <StudentExamRecord>[];
+
+      message = buildMonthlyReportMessage(
+        student: s,
+        month: start,
+        periodStart: start,
+        periodEnd: DateTime(to.year, to.month, to.day),
+        groupName: _group?.name ?? '-',
+        monthAtt: atts,
+        monthHw: hw,
+        monthPays: const [],
+        monthExams: examsRange,
+        teacherName: settings.teacherFullName.value,
+        teacherSpecialization: settings.teacherSpecialization.value,
+        canSeeFinancials: _canSeeFinancials,
+        canSeeAcademics: _canSeeAcademics,
+      );
     }
-    buffer.writeln('\nتم الإرسال من تطبيق Active Class');
 
     String normalize(String input, String defaultDial) {
       var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
@@ -256,7 +299,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
 
     final phone = normalize(rawPhone, settings.countryDial.value);
     final uri = Uri.parse(
-        'https://wa.me/$phone?text=${Uri.encodeComponent(buffer.toString())}');
+        'https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 

@@ -183,6 +183,7 @@ class DatabaseService {
         $COL_EXAM_DATE          TEXT NOT NULL,
         $COL_EXAM_MAX_GRADE     REAL NOT NULL DEFAULT 100,
         $COL_EXAM_PASSING_GRADE REAL NOT NULL DEFAULT 50,
+        $COL_EXAM_REPORT_MONTH  TEXT,
         $COL_EXAM_CREATED_AT    TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_SYNC_UPDATED_AT    TEXT,
         $COL_SYNC_REMOTE_ID     TEXT
@@ -555,6 +556,14 @@ class DatabaseService {
             'ON $TABLE_ATTENDANCE($COL_ATTENDANCE_DATE)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_attendance_status '
             'ON $TABLE_ATTENDANCE($COL_ATTENDANCE_STATUS)');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 22) {
+      // spec 013 — عمود "شهر التقرير" للامتحان (null = بديله شهر التاريخ).
+      try {
+        await db.execute(
+            'ALTER TABLE $TABLE_EXAMS ADD COLUMN $COL_EXAM_REPORT_MONTH TEXT');
       } catch (_) {}
     }
   }
@@ -1614,6 +1623,7 @@ class DatabaseService {
         COL_EXAM_DATE: exam.date.toIso8601String(),
         COL_EXAM_MAX_GRADE: exam.maxGrade,
         COL_EXAM_PASSING_GRADE: exam.passingGrade,
+        COL_EXAM_REPORT_MONTH: exam.reportMonth,
         COL_SYNC_UPDATED_AT: now,
       });
 
@@ -1716,6 +1726,7 @@ class DatabaseService {
             COL_EXAM_DATE: exam.date.toIso8601String(),
             COL_EXAM_MAX_GRADE: exam.maxGrade,
             COL_EXAM_PASSING_GRADE: exam.passingGrade,
+            COL_EXAM_REPORT_MONTH: exam.reportMonth,
             COL_SYNC_UPDATED_AT: now,
           },
           where: '$COL_EXAM_ID = ?',
@@ -2014,6 +2025,7 @@ class DatabaseService {
         e.$COL_EXAM_ID            AS exam_id,
         e.$COL_EXAM_NAME          AS exam_name,
         e.$COL_EXAM_DATE          AS exam_date,
+        e.$COL_EXAM_REPORT_MONTH  AS report_month,
         e.$COL_EXAM_MAX_GRADE     AS max_grade,
         e.$COL_EXAM_PASSING_GRADE AS passing_grade,
         eg.$COL_GRADE_VALUE       AS grade,
@@ -2029,18 +2041,21 @@ class DatabaseService {
       ORDER BY e.$COL_EXAM_DATE ASC
     ''', [studentId, studentId]);
 
-    return rows
-        .map((r) => StudentExamRecord(
-              examId: r['exam_id'] as int,
-              examName: r['exam_name'] as String,
-              examDate: DateTime.parse(r['exam_date'] as String),
-              maxGrade: (r['max_grade'] as num).toDouble(),
-              passingGrade: (r['passing_grade'] as num).toDouble(),
-              grade: r['grade'] != null ? (r['grade'] as num).toDouble() : null,
-              isAbsent: (r['is_absent'] as int? ?? 0) == 1,
-              groupName: r['group_name'] as String,
-            ))
-        .toList();
+    return rows.map((r) {
+      final examDate = DateTime.parse(r['exam_date'] as String);
+      return StudentExamRecord(
+        examId: r['exam_id'] as int,
+        examName: r['exam_name'] as String,
+        examDate: examDate,
+        reportMonth: StudentExamRecord.resolveReportMonth(
+            r['report_month'] as String?, examDate),
+        maxGrade: (r['max_grade'] as num).toDouble(),
+        passingGrade: (r['passing_grade'] as num).toDouble(),
+        grade: r['grade'] != null ? (r['grade'] as num).toDouble() : null,
+        isAbsent: (r['is_absent'] as int? ?? 0) == 1,
+        groupName: r['group_name'] as String,
+      );
+    }).toList();
   }
 
   /// سجل امتحانات كل الطلاب دفعة واحدة — {studentId: [records]} —
@@ -2054,6 +2069,7 @@ class DatabaseService {
         e.$COL_EXAM_ID            AS exam_id,
         e.$COL_EXAM_NAME          AS exam_name,
         e.$COL_EXAM_DATE          AS exam_date,
+        e.$COL_EXAM_REPORT_MONTH  AS report_month,
         e.$COL_EXAM_MAX_GRADE     AS max_grade,
         e.$COL_EXAM_PASSING_GRADE AS passing_grade,
         eg.$COL_GRADE_VALUE       AS grade,
@@ -2071,10 +2087,13 @@ class DatabaseService {
     final map = <int, List<StudentExamRecord>>{};
     for (final r in rows) {
       final sid = r['student_id'] as int;
+      final examDate = DateTime.parse(r['exam_date'] as String);
       map.putIfAbsent(sid, () => []).add(StudentExamRecord(
             examId: r['exam_id'] as int,
             examName: r['exam_name'] as String,
-            examDate: DateTime.parse(r['exam_date'] as String),
+            examDate: examDate,
+            reportMonth: StudentExamRecord.resolveReportMonth(
+                r['report_month'] as String?, examDate),
             maxGrade: (r['max_grade'] as num).toDouble(),
             passingGrade: (r['passing_grade'] as num).toDouble(),
             grade: r['grade'] != null ? (r['grade'] as num).toDouble() : null,

@@ -41,6 +41,7 @@ class ExamController extends GetxController {
     required double maxGrade,
     required double passingGrade,
     required List<int> groupIds,
+    String? reportMonth,
   }) async {
     if (name.trim().isEmpty) return 'أدخل اسم الامتحان';
     if (groupIds.isEmpty) return 'اختر مجموعة على الأقل';
@@ -52,7 +53,8 @@ class ExamController extends GetxController {
             name: name.trim(),
             date: date,
             maxGrade: maxGrade,
-            passingGrade: passingGrade),
+            passingGrade: passingGrade,
+            reportMonth: reportMonth),
         groupIds,
       );
       await loadExams();

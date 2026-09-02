@@ -11,6 +11,7 @@ import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/billing_period.dart';
 import 'package:active_class/utils/group_price_helper.dart';
 import 'package:active_class/utils/student_sort_helper.dart';
 import 'package:active_class/widgets/student_sort_bar.dart';
@@ -21,6 +22,7 @@ import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/clock_text.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/monthly_report_message.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
@@ -2003,11 +2005,10 @@ Future<void> _startGroupWhatsappBatchSend(
 Future<void> _pickAndSend(BuildContext context, List<Student> all,
     SettingsController settings) async {
   final db = DatabaseService();
-  final now = DateTime.now();
-  final start = DateTime(now.year, now.month, 1);
-  final end = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
-  final sentMap =
-      await db.getReportSentMap(all.map((s) => s.id!).toList(), start);
+  final ids = all.map((s) => s.id!).toList();
+  // شهر التحصيل هو الحد الأقصى — مفيش إرسال لشهر لسه ما خلصش (spec 013 US3).
+  final maxMonth = defaultCollectionMonth();
+  final sentMap = await db.getReportSentMap(ids, maxMonth);
 
   String normalize(String input, String defaultDial) {
     var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
@@ -2028,8 +2029,31 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
       // افتراضياً: الطلاب اللي اتبعتلهم الشهر ده ميتشيكوش (عشان ميتكررش الإرسال)
       List<bool> sel = items.map((s) => !sentMap.containsKey(s.id)).toList();
       bool sending = false;
+      DateTime selMonth = maxMonth;
+      DateTime start = DateTime(selMonth.year, selMonth.month, 1);
+      DateTime end =
+          DateTime(selMonth.year, selMonth.month + 1, 0, 23, 59, 59);
       return StatefulBuilder(
         builder: (ctx, setSt) {
+          Future<void> changeMonth(int delta) async {
+            final m = DateTime(selMonth.year, selMonth.month + delta, 1);
+            if (m.isAfter(maxMonth)) return;
+            final fresh = await db.getReportSentMap(ids, m);
+            setSt(() {
+              selMonth = m;
+              start = DateTime(m.year, m.month, 1);
+              end = DateTime(m.year, m.month + 1, 0, 23, 59, 59);
+              sentMap
+                ..clear()
+                ..addAll(fresh);
+              for (int i = 0; i < sel.length; i++) {
+                sel[i] = !sentMap.containsKey(items[i].id);
+              }
+            });
+          }
+
+          final atMaxMonth = !selMonth
+              .isBefore(DateTime(maxMonth.year, maxMonth.month, 1));
           final sentCount =
               items.where((s) => sentMap.containsKey(s.id)).length;
           final remainingCount = items.length - sentCount;
@@ -2060,6 +2084,32 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // منتقي شهر التقرير
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        onPressed: sending
+                            ? null
+                            : () => changeMonth(-1),
+                        icon: const Icon(Icons.chevron_right_rounded),
+                        tooltip: 'الشهر السابق',
+                      ),
+                      Text(
+                        DateFormat('MMMM yyyy', 'ar').format(selMonth),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 15),
+                      ),
+                      IconButton(
+                        onPressed: sending || atMaxMonth
+                            ? null
+                            : () => changeMonth(1),
+                        icon: const Icon(Icons.chevron_left_rounded),
+                        tooltip: 'الشهر التالي',
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 1),
                   // أزرار تحديد سريعة
                   Row(children: [
                     TextButton.icon(
@@ -2161,6 +2211,7 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
                           final group = await db.getGroup(s.groupId);
                           final atts = await db.getAttendanceByStudent(s.id!);
                           final pays = await db.getPaymentsByStudent(s.id!);
+                          final hw = await db.getHomeworkByStudent(s.id!);
                           final attsMonth = atts
                               .where((a) =>
                                   !a.date.isBefore(start) &&
@@ -2171,97 +2222,37 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
                                   !p.date.isBefore(start) &&
                                   !p.date.isAfter(end))
                               .toList();
-                          final present = attsMonth
-                              .where((a) => attendanceCountsAsPresent(a.status))
-                              .length;
-                          final late = attsMonth
-                              .where((a) =>
-                                  normalizeAttendanceStatus(a.status) ==
-                                  ATTENDANCE_LATE)
-                              .length;
-                          final absent = attsMonth
-                              .where((a) =>
-                                  normalizeAttendanceStatus(a.status) ==
-                                  ATTENDANCE_ABSENT)
-                              .length;
-                          final total = present + absent;
-                          final percent =
-                              total == 0 ? 0.0 : (present / total) * 100.0;
-                          final totalPaid = paysMonth.fold<double>(
-                              0.0, (sum, p) => sum + p.amount);
-
-                          final buffer = StringBuffer()
-                            ..writeln(
-                                '🧾 تقرير الشهر: ${DateFormat('MMMM yyyy', 'ar').format(start)}')
-                            ..writeln('👤 الاسم: ${s.name}')
-                            ..writeln('🆔 الكود: ${s.code}')
-                            ..writeln('👥 المجموعة: ${group?.name ?? '-'}')
-                            ..writeln(
-                                '📅 بداية الحضور: ${FormatHelper.formatDate(s.attendanceStart ?? s.createdAt)}')
-                            ..writeln('')
-                            ..writeln(late > 0
-                                ? '📊 الحضور: ✅ حاضر $present (منهم ⏰ متأخر $late) • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%'
-                                : '📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
-
-                          final attsSorted = List.of(attsMonth)
-                            ..sort((a, b) => b.date.compareTo(a.date));
-                          if (attsSorted.isNotEmpty) {
-                            buffer.writeln('\n📅 سجلات الحضور:');
-                            for (final a in attsSorted.take(10)) {
-                              buffer.writeln(
-                                  '• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${attendanceStatusLabel(a.status)}');
-                            }
-                          }
-                          if (TeamModeService().canSeeFinancials) {
-                            buffer.writeln(
-                                '\n💰 المدفوعات: إجمالي ${FormatHelper.formatCurrency(totalPaid)}');
-                            for (final p in (List.of(paysMonth)
-                              ..sort((a, b) => b.date.compareTo(a.date)))) {
-                              buffer.writeln(
-                                  '• ${DateFormat('yyyy-MM-dd HH:mm').format(p.date)} — ${FormatHelper.formatCurrency(p.amount)}');
-                            }
-                          }
-
+                          final hwMonth = hw
+                              .where((h) =>
+                                  !h.date.isBefore(start) &&
+                                  !h.date.isAfter(end))
+                              .toList();
                           final examsMonth = TeamModeService().canSeeAcademics
-                              ? ((await db.getStudentExamHistory(s.id!))
-                                      .where((r) =>
-                                          !r.examDate.isBefore(start) &&
-                                          !r.examDate.isAfter(end))
-                                      .toList()
-                                    ..sort((a, b) =>
-                                        b.examDate.compareTo(a.examDate)))
+                              ? (await db.getStudentExamHistory(s.id!))
+                                  .where((r) =>
+                                      r.reportMonth.year == selMonth.year &&
+                                      r.reportMonth.month == selMonth.month)
+                                  .toList()
                               : <StudentExamRecord>[];
-                          if (examsMonth.isNotEmpty) {
-                            buffer.writeln('\n📝 الامتحانات:');
-                            for (final r in examsMonth) {
-                              final dateStr =
-                                  DateFormat('yyyy-MM-dd').format(r.examDate);
-                              if (r.isAbsent) {
-                                buffer.writeln(
-                                    '• $dateStr — ${r.examName}: غائب');
-                              } else if (r.grade != null) {
-                                buffer.writeln(
-                                    '• $dateStr — ${r.examName}: ${r.grade!.toStringAsFixed(1)}/${r.maxGrade.toStringAsFixed(0)} (${r.category.label})');
-                              } else {
-                                buffer.writeln(
-                                    '• $dateStr — ${r.examName}: لم تُدخل الدرجة بعد');
-                              }
-                            }
-                          }
 
-                          final tName = settings.teacherFullName.value.trim();
-                          final tSpec =
-                              settings.teacherSpecialization.value.trim();
-                          if (tName.isNotEmpty || tSpec.isNotEmpty) {
-                            buffer.writeln(
-                                '\n👨‍🏫 المعلم: ${tName.isNotEmpty ? tName : '-'}');
-                            buffer.writeln(
-                                '📘 التخصص: ${tSpec.isNotEmpty ? tSpec : '-'}');
-                          }
-                          buffer.writeln('\nتم الإرسال من تطبيق Active Class');
+                          final message = buildMonthlyReportMessage(
+                            student: s,
+                            month: selMonth,
+                            groupName: group?.name ?? '-',
+                            monthAtt: attsMonth,
+                            monthHw: hwMonth,
+                            monthPays: paysMonth,
+                            monthExams: examsMonth,
+                            teacherName: settings.teacherFullName.value,
+                            teacherSpecialization:
+                                settings.teacherSpecialization.value,
+                            canSeeFinancials:
+                                TeamModeService().canSeeFinancials,
+                            canSeeAcademics: TeamModeService().canSeeAcademics,
+                          );
 
                           final uri = Uri.parse(
-                              'https://wa.me/$phone?text=${Uri.encodeComponent(buffer.toString())}');
+                              'https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
                           await launchUrl(uri,
                               mode: LaunchMode.externalApplication);
                           await _gdWaitForResume();
@@ -2444,8 +2435,7 @@ void _gdShowFeesBreakdownDialog(
       final attCtrl = Get.isRegistered<AttendanceController>()
           ? Get.find<AttendanceController>()
           : Get.put(AttendanceController());
-      DateTime selected =
-          DateTime(DateTime.now().year, DateTime.now().month, 1);
+      DateTime selected = defaultCollectionMonth();
 
       String normalize(String input, String defaultDial) {
         var p = input.replaceAll(RegExp(r'[^0-9+]'), '');

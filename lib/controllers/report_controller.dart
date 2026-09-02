@@ -3,6 +3,7 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/export_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/billing_period.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/homework_model.dart';
@@ -21,8 +22,9 @@ class ReportController extends GetxController {
   final RxList<Group> allGroups = <Group>[].obs;
 
   // ─── Selected month ─────────────────────────────────────────────────────────
-  final Rx<DateTime> selectedMonth =
-      Rx<DateTime>(DateTime(DateTime.now().year, DateTime.now().month, 1));
+  // يفتح على "شهر التحصيل الافتراضي" (آخر شهر مكتمل لو أول الشهر أو
+  // التحصيل المؤخّر مفعّل) — نفس منطق باقي الشاشات الشهرية (spec 013).
+  final Rx<DateTime> selectedMonth = Rx<DateTime>(defaultCollectionMonth());
 
   final RxBool isLoading = false.obs;
 
@@ -43,7 +45,9 @@ class ReportController extends GetxController {
       allPayments.assignAll(payments);
       allAttendance.assignAll(attendance);
       allHomework.assignAll(homework);
-      allStudents.assignAll(students);
+      // الطلاب المؤرشفين مستبعدين من كل حسابات وقوائم التقارير — زي
+      // الداشبورد والإشعارات و StudentController (spec 013).
+      allStudents.assignAll(students.where((s) => !s.isArchived).toList());
       allGroups.assignAll(groups);
     } catch (e) {
       ToastHelper.error('حدث خطأ في تحميل التقارير');
@@ -339,14 +343,20 @@ class ReportController extends GetxController {
     }
   }
 
-  /// تصدير تقرير الحضور PDF
-  Future<void> exportAttendancePDF() async {
+  /// تصدير تقرير الحضور PDF — لو `from`/`to` اتمرّروا يبقى تقرير فترة
+  /// مخصصة [from, to] بدل الشهر المختار (spec 014).
+  Future<void> exportAttendancePDF({DateTime? from, DateTime? to}) async {
     if (isExporting.value) return;
     isExporting(true);
     ToastHelper.info('جاري إنشاء تقرير الحضور...');
     try {
+      final isRange = from != null && to != null;
+      // الخدمة بتفلتر بالتاريخ داخليًا — بنبعت القايمة كاملة.
       final result = await _exportSvc.exportAttendancePDF(
-        month: selectedMonth.value,
+        month: isRange
+            ? DateTime(from.year, from.month, from.day)
+            : selectedMonth.value,
+        periodEnd: isRange ? DateTime(to.year, to.month, to.day) : null,
         students: allStudents,
         attendance: allAttendance,
         groups: allGroups,
@@ -364,14 +374,18 @@ class ReportController extends GetxController {
     }
   }
 
-  /// تصدير تقرير الواجب PDF
-  Future<void> exportHomeworkPDF() async {
+  /// تصدير تقرير الواجب PDF — يدعم فترة مخصصة (spec 014).
+  Future<void> exportHomeworkPDF({DateTime? from, DateTime? to}) async {
     if (isExporting.value) return;
     isExporting(true);
     ToastHelper.info('جاري إنشاء تقرير الواجب...');
     try {
+      final isRange = from != null && to != null;
       final result = await _exportSvc.exportHomeworkPDF(
-        month: selectedMonth.value,
+        month: isRange
+            ? DateTime(from.year, from.month, from.day)
+            : selectedMonth.value,
+        periodEnd: isRange ? DateTime(to.year, to.month, to.day) : null,
         students: allStudents,
         homework: allHomework,
         groups: allGroups,

@@ -581,11 +581,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           Obx(() {
             final canSeeFinancials = TeamModeService().canSeeFinancials;
             final currency = _settingsController.currencyCode.value;
-            final paid = _dashboardController.monthPaid.value;
-            final expected = _dashboardController.monthExpected.value;
-            final rate = _dashboardController.monthPaymentRate.value;
-            final paidCount = _dashboardController.paidStudentsCount.value;
-            final unpaidCount = _dashboardController.unpaidStudentsCount.value;
+            // كارت الدفعات: شهر التحصيل + تنقّل، أرقامه من المديونية
+            // المتراكمة (spec 013 US4) — مش دفعات مؤرَّخة ÷ مستحق الشهر.
+            final paymentCardMonth =
+                _dashboardController.paymentCardMonth.value;
+            final paid = _dashboardController.paymentCardCollected.value;
+            final expected = _dashboardController.paymentCardExpected.value;
+            final rate = _dashboardController.paymentCardRate.value;
+            final unpaidCount = _dashboardController.paymentCardUnpaid.value;
+            final now = DateTime.now();
+            final canGoNextMonth = paymentCardMonth
+                .isBefore(DateTime(now.year, now.month, 1));
             final exempt = _dashboardController.exemptStudents.value;
             final present = _dashboardController.todayPresent.value;
             final absent = _dashboardController.todayAbsent.value;
@@ -658,8 +664,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     paid: paid,
                     expected: expected,
                     rate: rate,
-                    paidCount: paidCount,
                     unpaidCount: unpaidCount,
+                    month: paymentCardMonth,
+                    canGoNext: canGoNextMonth,
+                    onPrevMonth: () =>
+                        _dashboardController.shiftPaymentCardMonth(-1),
+                    onNextMonth: () =>
+                        _dashboardController.shiftPaymentCardMonth(1),
                     locked: !canSeeFinancials,
                     fmtPaid: !canSeeFinancials
                         ? '🔒'
@@ -2055,18 +2066,25 @@ class _PaymentProgressCard extends StatelessWidget {
     required this.paid,
     required this.expected,
     required this.rate,
-    required this.paidCount,
     required this.unpaidCount,
     required this.fmtPaid,
     required this.fmtExpected,
     required this.onTapUnpaid,
+    required this.month,
+    required this.onPrevMonth,
+    required this.onNextMonth,
+    required this.canGoNext,
     this.locked = false,
   });
 
   final double paid, expected, rate;
-  final int paidCount, unpaidCount;
+  final int unpaidCount;
   final String fmtPaid, fmtExpected;
   final VoidCallback onTapUnpaid;
+  final DateTime month;
+  final VoidCallback onPrevMonth;
+  final VoidCallback onNextMonth;
+  final bool canGoNext;
   final bool locked;
 
   @override
@@ -2110,13 +2128,35 @@ class _PaymentProgressCard extends StatelessWidget {
           Row(
             children: [
               Icon(Icons.bar_chart_rounded, size: 16, color: barColor),
-              const SizedBox(width: 6),
+              const SizedBox(width: 2),
+              InkWell(
+                onTap: onPrevMonth,
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(Icons.chevron_right_rounded,
+                      size: 18,
+                      color: isDark ? Colors.white54 : Colors.grey.shade500),
+                ),
+              ),
               Text(
-                'دفعات ${_arabicMonth(DateTime.now().month)}',
+                'دفعات ${_arabicMonth(month.month)}',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                   color: isDark ? Colors.white : const Color(0xFF111827),
+                ),
+              ),
+              InkWell(
+                onTap: canGoNext ? onNextMonth : null,
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(Icons.chevron_left_rounded,
+                      size: 18,
+                      color: canGoNext
+                          ? (isDark ? Colors.white54 : Colors.grey.shade500)
+                          : (isDark ? Colors.white24 : Colors.grey.shade300)),
                 ),
               ),
               const Spacer(),

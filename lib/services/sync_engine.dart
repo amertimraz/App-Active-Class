@@ -329,6 +329,7 @@ class SyncEngine {
           ...base,
           'name': payload[COL_EXAM_NAME],
           'exam_date': payload[COL_EXAM_DATE],
+          'report_month': payload[COL_EXAM_REPORT_MONTH],
           'max_grade': payload[COL_EXAM_MAX_GRADE],
           'passing_grade': payload[COL_EXAM_PASSING_GRADE],
         };
@@ -964,6 +965,7 @@ class SyncEngine {
         return {
           COL_EXAM_NAME: remote['name'],
           COL_EXAM_DATE: remote['exam_date'],
+          COL_EXAM_REPORT_MONTH: remote['report_month'],
           COL_EXAM_MAX_GRADE: remote['max_grade'],
           COL_EXAM_PASSING_GRADE: remote['passing_grade'],
           COL_SYNC_UPDATED_AT: updatedAt,
