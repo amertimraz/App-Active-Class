@@ -202,6 +202,18 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
     if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
   }
 
+  // لو التحميل جوّه التطبيق علّق أو بطيء (شبكة ضعيفة / CDN بتاع GitHub
+  // بطيء من مصر) — المدرس يقدر يكمّل التحميل من متصفح الجهاز اللي بيتعامل
+  // مع الشبكات الضعيفة أحسن بكتير (استئناف، تحميل في الخلفية).
+  Future<void> openInBrowser() async {
+    cancelled = true;
+    cancelToken.cancel();
+    closeDialogOnce();
+    final url = info.apkUrl ?? info.htmlUrl;
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    ToastHelper.info('التحميل بيكمّل في المتصفح — افتح الملف من الإشعارات');
+  }
+
   showDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -217,6 +229,7 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
         // زرار "إلغاء" يبان وكأنه مش شغال.
         closeDialogOnce();
       },
+      onOpenBrowser: openInBrowser,
     ),
   );
   // اضمن إن الحوار اتبنى قبل ما نبدأ التحميل
@@ -234,22 +247,22 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
     // بعض الـCDNs)، ممكن التحميل يوصل 100% ويفضل عالق للأبد من غير أي
     // استثناء أصلاً. مهلة إجمالية هنا (90 ثانية) هي الضمان الحقيقي.
     final dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 20),
+      connectTimeout: const Duration(seconds: 20),
+      // مهلة بين كل حزمة والتانية — شبكات مصر الضعيفة بتاخد وقفات طويلة
+      // على CDN بتاع GitHub؛ 20 ثانية كانت بتقتل التحميل بسهولة.
+      receiveTimeout: const Duration(seconds: 60),
     ));
-    await dio
-        .download(
-          info.apkUrl!,
-          path,
-          cancelToken: cancelToken,
-          onReceiveProgress: (received, total) {
-            if (total > 0) {
-              expectedBytes = total;
-              progress.value = received / total;
-            }
-          },
-        )
-        .timeout(const Duration(seconds: 90), onTimeout: () {
+    await dio.download(
+      info.apkUrl!,
+      path,
+      cancelToken: cancelToken,
+      onReceiveProgress: (received, total) {
+        if (total > 0) {
+          expectedBytes = total;
+          progress.value = received / total;
+        }
+      },
+    ).timeout(const Duration(seconds: 300), onTimeout: () {
       cancelToken.cancel();
       throw TimeoutException('انتهت مهلة التحميل');
     });
@@ -279,8 +292,22 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
     }
   } catch (_) {
     closeDialogOnce();
-    if (!cancelled) {
-      ToastHelper.error('فشل تحميل التحديث — تحقق من الاتصال بالإنترنت');
+    if (!cancelled && context.mounted) {
+      // بدل توست جاف — نعرض خيار "حمّل من المتصفح" لأن غالبًا المشكلة
+      // في سرعة/ثبات اتصال CDN بتاع GitHub، والمتصفح بيتعامل معاها أحسن.
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('فشل تحميل التحديث داخل التطبيق',
+            style: TextStyle(fontFamily: 'Cairo')),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(
+          label: 'من المتصفح',
+          onPressed: () {
+            launchUrl(Uri.parse(info.apkUrl ?? info.htmlUrl),
+                mode: LaunchMode.externalApplication);
+          },
+        ),
+      ));
     }
   }
 }
@@ -288,8 +315,11 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
 class _DownloadProgressDialog extends StatelessWidget {
   final ValueNotifier<double> progress;
   final VoidCallback onCancel;
+  final VoidCallback onOpenBrowser;
   const _DownloadProgressDialog(
-      {required this.progress, required this.onCancel});
+      {required this.progress,
+      required this.onCancel,
+      required this.onOpenBrowser});
 
   @override
   Widget build(BuildContext context) {
@@ -341,6 +371,20 @@ class _DownloadProgressDialog extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
+              Text(
+                'التحميل بطيء أو واقف؟',
+                style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    color: Colors.grey.shade500),
+              ),
+              const SizedBox(height: 2),
+              TextButton.icon(
+                onPressed: onOpenBrowser,
+                icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+                label: const Text('حمّل من المتصفح',
+                    style: TextStyle(fontFamily: 'Cairo')),
+              ),
               TextButton(
                 onPressed: onCancel,
                 child: Text('إلغاء',

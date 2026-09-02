@@ -66,6 +66,10 @@ class DashboardController extends GetxController {
   final RxDouble paymentCardRemaining = 0.0.obs;
   final RxDouble paymentCardRate = 0.0.obs;
   final RxInt paymentCardUnpaid = 0.obs;
+  // الطلاب اللي ما غطّوش مستحق الشهر المعروض (لكل شهر قائمته) — بالمبلغ
+  // الناقص على الشهر ده تحديدًا، مرتّبين تنازليًا.
+  final RxList<UnpaidStudentEntry> paymentCardUnpaidList =
+      <UnpaidStudentEntry>[].obs;
 
   // ── إحصائيات اليوم ───────────────────────────────────────────────────────
   final RxInt todayPresent = 0.obs;
@@ -317,13 +321,10 @@ class DashboardController extends GetxController {
     for (final p in payments) {
       paymentsByStudent.putIfAbsent(p.studentId, () => []).add(p);
     }
-    final graceDays = Get.isRegistered<SettingsController>()
-        ? Get.find<SettingsController>().paymentGraceDays.value
-        : 0;
 
     double expected = 0;
     double collected = 0;
-    int unpaid = 0;
+    final unpaidEntries = <UnpaidStudentEntry>[];
     for (final s in students.where((s) => !s.isFullyExempt)) {
       final group = groupById[s.groupId];
       final studentPayments = paymentsByStudent[s.id] ?? const <Payment>[];
@@ -347,27 +348,23 @@ class DashboardController extends GetxController {
         siblingGroupMembers: students,
       );
       final dueThisMonth = (dueThrough - dueBefore).clamp(0.0, double.infinity);
-      if (dueThisMonth > 0) {
-        final totalPaid =
-            studentPayments.fold<double>(0, (sum, p) => sum + p.amount);
-        final paidThisMonth = (totalPaid - dueBefore).clamp(0.0, dueThisMonth);
-        expected += dueThisMonth;
-        collected += paidThisMonth;
-      }
+      if (dueThisMonth <= 0) continue;
 
-      // "لم يدفع" — نفس منطق قائمة المتأخرين بالظبط (مديونية متراكمة
-      // فعلية + مهلة السماح للشهر الحالي)، عشان الرقم يطابق الشيت.
-      if (PricingHelper.isOverdue(
-        student: s,
-        group: group,
-        allAttendance: att.attendance,
-        payments: studentPayments,
-        graceDays: graceDays,
-        siblingGroupMembers: students,
-      )) {
-        unpaid++;
+      final totalPaid =
+          studentPayments.fold<double>(0, (sum, p) => sum + p.amount);
+      final paidThisMonth = (totalPaid - dueBefore).clamp(0.0, dueThisMonth);
+      expected += dueThisMonth;
+      collected += paidThisMonth;
+
+      // "لم يدفع [الشهر]" = ما غطّاش مستحق الشهر ده تحديدًا (بيختلف من
+      // شهر لشهر — الشهر الجاري بدري بيبقى الرقم شبه كامل). مفيش مهلة
+      // سماح هنا: الكارت بيعرض واقع، مش تنبيه "متأخر".
+      final shortfall = dueThisMonth - paidThisMonth;
+      if (shortfall > 0.5) {
+        unpaidEntries.add(UnpaidStudentEntry(student: s, amountDue: shortfall));
       }
     }
+    unpaidEntries.sort((a, b) => b.amountDue.compareTo(a.amountDue));
 
     // سحبة أحدث سبقتنا → مانكتبش نتيجة قديمة
     if (token != _payCardToken) return;
@@ -376,12 +373,13 @@ class DashboardController extends GetxController {
         (expected - collected).clamp(0.0, double.infinity).toDouble();
     paymentCardMinMonth.value = minMonth;
     if (month != paymentCardMonth.value) paymentCardMonth.value = month;
+    paymentCardUnpaidList.assignAll(unpaidEntries);
     paymentCardExpected.value = expected;
     paymentCardCollected.value = collected;
     paymentCardRemaining.value = remaining;
     paymentCardRate.value =
         expected > 0 ? (collected / expected).clamp(0.0, 1.0).toDouble() : 0.0;
-    paymentCardUnpaid.value = unpaid;
+    paymentCardUnpaid.value = unpaidEntries.length;
   }
 
   // ── تحميل إحصائيات اليوم ────────────────────────────────────────────────

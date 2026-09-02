@@ -1279,7 +1279,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   void _showUnpaidSheet(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final students = _dashboardController.unpaidList;
+    // قائمة "لم يدفع" بتخص الشهر المعروض في الكارت تحديدًا — بالمبلغ
+    // الناقص على الشهر ده، مش المديونية الكلية.
+    final students = _dashboardController.paymentCardUnpaidList;
+    final cardMonth = _dashboardController.paymentCardMonth.value;
+    final monthName = _PaymentProgressCard._arabicMonth(cardMonth.month);
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1311,7 +1315,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       color: Color(0xFFEF4444), size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    'لم يدفعوا هذا الشهر (${students.length})',
+                    'لم يدفعوا $monthName (${students.length})',
                     style: const TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 15),
                   ),
