@@ -581,17 +581,28 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           Obx(() {
             final canSeeFinancials = TeamModeService().canSeeFinancials;
             final currency = _settingsController.currencyCode.value;
-            // كارت الدفعات: شهر التحصيل + تنقّل، أرقامه من المديونية
-            // المتراكمة (spec 013 US4) — مش دفعات مؤرَّخة ÷ مستحق الشهر.
+            // كارت الدفعات: الشهر المختار وحده (مش تراكمي)، تنقّل بالسحب
+            // الأفقي داخل [أقدم شهر عليه مستحق .. الشهر الحالي] (spec 013/014).
             final paymentCardMonth =
                 _dashboardController.paymentCardMonth.value;
+            final paymentCardMinMonth =
+                _dashboardController.paymentCardMinMonth.value;
             final paid = _dashboardController.paymentCardCollected.value;
             final expected = _dashboardController.paymentCardExpected.value;
             final rate = _dashboardController.paymentCardRate.value;
             final unpaidCount = _dashboardController.paymentCardUnpaid.value;
             final now = DateTime.now();
-            final canGoNextMonth = paymentCardMonth
-                .isBefore(DateTime(now.year, now.month, 1));
+            final pcCurMonth = DateTime(now.year, now.month, 1);
+            final paymentMonthsCount = ((pcCurMonth.year -
+                        paymentCardMinMonth.year) *
+                    12 +
+                (pcCurMonth.month - paymentCardMinMonth.month) +
+                1);
+            final paymentMonthIndex = (((paymentCardMonth.year -
+                        paymentCardMinMonth.year) *
+                    12 +
+                (paymentCardMonth.month - paymentCardMinMonth.month)))
+                .clamp(0, paymentMonthsCount - 1);
             final exempt = _dashboardController.exemptStudents.value;
             final present = _dashboardController.todayPresent.value;
             final absent = _dashboardController.todayAbsent.value;
@@ -666,11 +677,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     rate: rate,
                     unpaidCount: unpaidCount,
                     month: paymentCardMonth,
-                    canGoNext: canGoNextMonth,
-                    onPrevMonth: () =>
-                        _dashboardController.shiftPaymentCardMonth(-1),
-                    onNextMonth: () =>
-                        _dashboardController.shiftPaymentCardMonth(1),
+                    monthIndex: paymentMonthIndex,
+                    monthsCount: paymentMonthsCount,
+                    onSwipe: (d) =>
+                        _dashboardController.shiftPaymentCardMonth(d),
                     locked: !canSeeFinancials,
                     fmtPaid: !canSeeFinancials
                         ? '🔒'
@@ -2071,9 +2081,9 @@ class _PaymentProgressCard extends StatelessWidget {
     required this.fmtExpected,
     required this.onTapUnpaid,
     required this.month,
-    required this.onPrevMonth,
-    required this.onNextMonth,
-    required this.canGoNext,
+    required this.onSwipe,
+    required this.monthIndex,
+    required this.monthsCount,
     this.locked = false,
   });
 
@@ -2082,9 +2092,10 @@ class _PaymentProgressCard extends StatelessWidget {
   final String fmtPaid, fmtExpected;
   final VoidCallback onTapUnpaid;
   final DateTime month;
-  final VoidCallback onPrevMonth;
-  final VoidCallback onNextMonth;
-  final bool canGoNext;
+  // اتجاه: -1 = الشهر السابق، +1 = الشهر التالي
+  final void Function(int delta) onSwipe;
+  final int monthIndex;
+  final int monthsCount;
   final bool locked;
 
   @override
@@ -2104,7 +2115,16 @@ class _PaymentProgressCard extends StatelessWidget {
                 ? const Color(0xFFF59E0B)
                 : const Color(0xFFEF4444));
 
-    return Container(
+    return GestureDetector(
+      onHorizontalDragEnd: (d) {
+        final v = d.primaryVelocity ?? 0;
+        if (v < -250) {
+          onSwipe(1); // سحب لليسار → الشهر التالي
+        } else if (v > 250) {
+          onSwipe(-1); // سحب لليمين → الشهر السابق
+        }
+      },
+      child: Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
         color: bg,
@@ -2122,41 +2142,31 @@ class _PaymentProgressCard extends StatelessWidget {
           ),
         ],
       ),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        transitionBuilder: (child, anim) => FadeTransition(
+          opacity: anim,
+          child: SlideTransition(
+            position: Tween(
+                    begin: const Offset(0.05, 0), end: Offset.zero)
+                .animate(anim),
+            child: child,
+          ),
+        ),
       child: Column(
+        key: ValueKey('paycard-${month.year}-${month.month}'),
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Icon(Icons.bar_chart_rounded, size: 16, color: barColor),
-              const SizedBox(width: 2),
-              InkWell(
-                onTap: onPrevMonth,
-                borderRadius: BorderRadius.circular(20),
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(Icons.chevron_right_rounded,
-                      size: 18,
-                      color: isDark ? Colors.white54 : Colors.grey.shade500),
-                ),
-              ),
+              const SizedBox(width: 6),
               Text(
                 'دفعات ${_arabicMonth(month.month)}',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                   color: isDark ? Colors.white : const Color(0xFF111827),
-                ),
-              ),
-              InkWell(
-                onTap: canGoNext ? onNextMonth : null,
-                borderRadius: BorderRadius.circular(20),
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(Icons.chevron_left_rounded,
-                      size: 18,
-                      color: canGoNext
-                          ? (isDark ? Colors.white54 : Colors.grey.shade500)
-                          : (isDark ? Colors.white24 : Colors.grey.shade300)),
                 ),
               ),
               const Spacer(),
@@ -2297,7 +2307,20 @@ class _PaymentProgressCard extends StatelessWidget {
                 ),
             ],
           ),
+          if (monthsCount > 1) ...[
+            const SizedBox(height: 10),
+            Center(
+              child: _MonthDots(
+                count: monthsCount,
+                index: monthIndex,
+                color: barColor,
+                isDark: isDark,
+              ),
+            ),
+          ],
         ],
+      ),
+      ),
       ),
     );
   }
@@ -2319,6 +2342,51 @@ class _PaymentProgressCard extends StatelessWidget {
       'ديسمبر'
     ];
     return months[month.clamp(1, 12)];
+  }
+}
+
+// نقاط تحت كارت الدفعات — بتوري المدرس هو في الشهر الكام من نطاق
+// الشهور اللي ليها مستحق فعلي. لو الشهور كتير جدًا نعرض نص مختصر.
+class _MonthDots extends StatelessWidget {
+  final int count;
+  final int index;
+  final Color color;
+  final bool isDark;
+  const _MonthDots({
+    required this.count,
+    required this.index,
+    required this.color,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dim = isDark ? Colors.white24 : Colors.grey.shade300;
+    if (count > 12) {
+      return Text(
+        '${index + 1} / $count',
+        style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: isDark ? Colors.white54 : Colors.grey.shade500),
+      );
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < count; i++)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: i == index ? 16 : 6,
+            height: 6,
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            decoration: BoxDecoration(
+              color: i == index ? color : dim,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+      ],
+    );
   }
 }
 

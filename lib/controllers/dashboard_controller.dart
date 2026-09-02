@@ -57,6 +57,10 @@ class DashboardController extends GetxController {
   // الأرقام مشتقّة من المديونية المتراكمة (PricingHelper) لحد الشهر
   // المختار، مش "دفعات مؤرَّخة في الشهر ÷ مستحق الشهر".
   final Rx<DateTime> paymentCardMonth  = defaultCollectionMonth().obs;
+  // أقدم شهر عليه مستحق فعلاً (أقدم تسجيل بين الطلاب النشطين) — الحد
+  // الأدنى للتنقّل، عشان مايظهرش شهر مالوش أي مستحق ولا محصّل.
+  final Rx<DateTime> paymentCardMinMonth =
+      DateTime(DateTime.now().year, DateTime.now().month, 1).obs;
   final RxDouble paymentCardExpected   = 0.0.obs;
   final RxDouble paymentCardCollected  = 0.0.obs;
   final RxDouble paymentCardRemaining  = 0.0.obs;
@@ -236,13 +240,17 @@ class DashboardController extends GetxController {
   }
 
   // ── كارت "دفعات [الشهر]" (spec 013 US4) ────────────────────────────────
-  /// المدرس يقدر يتنقّل بين الشهور بالسهمين — بحد أقصى الشهر الحالي.
+  /// تنقّل بين الشهور (سحب أفقي) — محصور في
+  /// [paymentCardMinMonth .. الشهر الحالي].
   Future<void> shiftPaymentCardMonth(int delta) async {
     final m = paymentCardMonth.value;
     final next = DateTime(m.year, m.month + delta, 1);
     final now = DateTime.now();
     final currentMonth = DateTime(now.year, now.month, 1);
-    if (next.isAfter(currentMonth)) return;
+    if (next.isAfter(currentMonth) ||
+        next.isBefore(paymentCardMinMonth.value)) {
+      return;
+    }
     paymentCardMonth.value = next;
     await _computePaymentCard();
   }
@@ -252,10 +260,6 @@ class DashboardController extends GetxController {
     // سبتمبر × المحصّل لسبتمبر، مش إجمالي تراكمي من بداية تسجيل الطالب.
     // المحصّل بيتوزّع FIFO: الدفعات بتغطّي الشهور الأقدم الأول، فطالب
     // دفع مقدَّمًا يبان الشهر ده "محصّل" حتى لو الدفعة مؤرَّخة قبله.
-    final month = DateTime(
-        paymentCardMonth.value.year, paymentCardMonth.value.month, 1);
-    final prevMonth = DateTime(month.year, month.month - 1, 1);
-
     final students =
         (await _db.getAllStudents()).where((s) => !s.isArchived).toList();
     final payments = await _db.getAllPayments();
@@ -266,6 +270,32 @@ class DashboardController extends GetxController {
         ? Get.find<AttendanceController>()
         : Get.put(AttendanceController());
     if (att.attendance.isEmpty) await att.loadAttendance();
+
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month, 1);
+
+    // أقدم شهر عليه مستحق (أقدم تسجيل بين الطلاب النشطين غير المُعفيين)
+    DateTime? earliest;
+    for (final s in students.where((s) => !s.isFullyExempt)) {
+      final st = s.attendanceStart ?? s.createdAt;
+      if (st == null) continue;
+      final m = DateTime(st.year, st.month, 1);
+      final e = earliest;
+      if (e == null || m.isBefore(e)) earliest = m;
+    }
+    final minMonth = (earliest != null && earliest.isBefore(currentMonth))
+        ? earliest
+        : currentMonth;
+    paymentCardMinMonth.value = minMonth;
+
+    // ثبّت الشهر المعروض داخل [minMonth .. currentMonth]
+    var month =
+        DateTime(paymentCardMonth.value.year, paymentCardMonth.value.month, 1);
+    if (month.isBefore(minMonth)) month = minMonth;
+    if (month.isAfter(currentMonth)) month = currentMonth;
+    if (month != paymentCardMonth.value) paymentCardMonth.value = month;
+
+    final prevMonth = DateTime(month.year, month.month - 1, 1);
 
     final paymentsByStudent = <int, List<Payment>>{};
     for (final p in payments) {
