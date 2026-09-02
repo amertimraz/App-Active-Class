@@ -248,8 +248,13 @@ class DashboardController extends GetxController {
   }
 
   Future<void> _computePaymentCard() async {
+    // الكارت بيعرض **الشهر المختار وحده** — "دفعات سبتمبر" = مستحق
+    // سبتمبر × المحصّل لسبتمبر، مش إجمالي تراكمي من بداية تسجيل الطالب.
+    // المحصّل بيتوزّع FIFO: الدفعات بتغطّي الشهور الأقدم الأول، فطالب
+    // دفع مقدَّمًا يبان الشهر ده "محصّل" حتى لو الدفعة مؤرَّخة قبله.
     final month = DateTime(
         paymentCardMonth.value.year, paymentCardMonth.value.month, 1);
+    final prevMonth = DateTime(month.year, month.month - 1, 1);
 
     final students =
         (await _db.getAllStudents()).where((s) => !s.isArchived).toList();
@@ -269,50 +274,56 @@ class DashboardController extends GetxController {
     final graceDays = Get.isRegistered<SettingsController>()
         ? Get.find<SettingsController>().paymentGraceDays.value
         : 0;
-    final now = DateTime.now();
-    final isCurrentMonth =
-        month.year == now.year && month.month == now.month;
 
     double expected = 0;
-    double remaining = 0;
+    double collected = 0;
     int unpaid = 0;
     for (final s in students.where((s) => !s.isFullyExempt)) {
       final group = groupById[s.groupId];
       final studentPayments = paymentsByStudent[s.id] ?? const <Payment>[];
-      expected += PricingHelper.totalDueThrough(
+
+      final dueThisMonth = PricingHelper.monthlyDue(
         student: s,
         group: group,
-        allAttendance: att.attendance,
         month: month,
+        allAttendance: att.attendance,
         siblingGroupMembers: students,
       );
-      final debt = PricingHelper.accumulatedDebtThrough(
+      if (dueThisMonth > 0) {
+        final totalPaid =
+            studentPayments.fold<double>(0, (sum, p) => sum + p.amount);
+        final dueBefore = PricingHelper.totalDueThrough(
+          student: s,
+          group: group,
+          allAttendance: att.attendance,
+          month: prevMonth,
+          siblingGroupMembers: students,
+        );
+        final paidThisMonth =
+            (totalPaid - dueBefore).clamp(0.0, dueThisMonth);
+        expected += dueThisMonth;
+        collected += paidThisMonth;
+      }
+
+      // "لم يدفع" — نفس منطق قائمة المتأخرين بالظبط (مديونية متراكمة
+      // فعلية + مهلة السماح للشهر الحالي)، عشان الرقم يطابق الشيت.
+      if (PricingHelper.isOverdue(
         student: s,
         group: group,
         allAttendance: att.attendance,
         payments: studentPayments,
-        month: month,
+        graceDays: graceDays,
         siblingGroupMembers: students,
-      );
-      remaining += debt;
-      // في الشهر الحالي بنحترم مهلة السماح زي قائمة "لم يدفعوا".
-      final overdue = isCurrentMonth
-          ? PricingHelper.isOverdue(
-              student: s,
-              group: group,
-              allAttendance: att.attendance,
-              payments: studentPayments,
-              graceDays: graceDays,
-              siblingGroupMembers: students,
-            )
-          : debt > 0;
-      if (overdue) unpaid++;
+      )) {
+        unpaid++;
+      }
     }
 
-    final collected = (expected - remaining).clamp(0, double.infinity);
-    paymentCardExpected.value  = expected;
-    paymentCardRemaining.value = remaining.clamp(0, double.infinity);
-    paymentCardCollected.value = collected.toDouble();
+    final remaining =
+        (expected - collected).clamp(0.0, double.infinity).toDouble();
+    paymentCardExpected.value = expected;
+    paymentCardCollected.value = collected;
+    paymentCardRemaining.value = remaining;
     paymentCardRate.value =
         expected > 0 ? (collected / expected).clamp(0.0, 1.0).toDouble() : 0.0;
     paymentCardUnpaid.value = unpaid;
