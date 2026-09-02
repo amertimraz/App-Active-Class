@@ -10,6 +10,9 @@ import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/views/exams/exam_grades_page.dart';
 import 'package:active_class/views/exams/leaderboard_page.dart';
+import 'package:active_class/views/exams/online_exams_tab.dart';
+import 'package:active_class/views/exams/online_exam_editor_page.dart';
+import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
 
@@ -65,9 +68,11 @@ class ExamsPage extends StatefulWidget {
   State<ExamsPage> createState() => _ExamsPageState();
 }
 
-class _ExamsPageState extends State<ExamsPage> {
+class _ExamsPageState extends State<ExamsPage>
+    with SingleTickerProviderStateMixin {
   late final ExamController _ec;
   late final GroupController _gc;
+  late final TabController _tab;
 
   final _searchCtrl = TextEditingController();
   String _search = '';
@@ -84,6 +89,8 @@ class _ExamsPageState extends State<ExamsPage> {
     _gc = Get.isRegistered<GroupController>()
         ? Get.find<GroupController>()
         : Get.put(GroupController());
+    _tab = TabController(length: 2, vsync: this)
+      ..addListener(() => setState(() {}));
 
     _loadAllProgress();
     // إعادة تحميل التقدم عند تغيّر قائمة الامتحانات (إضافة/تعديل/حذف)
@@ -93,6 +100,7 @@ class _ExamsPageState extends State<ExamsPage> {
   @override
   void dispose() {
     _examsWorker?.dispose();
+    _tab.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -116,6 +124,7 @@ class _ExamsPageState extends State<ExamsPage> {
 
   List<Exam> _filtered(List<Exam> all) {
     return all.where((e) {
+      if (e.isOnline) return false; // تبويب "إلكتروني" منفصل
       if (_search.isNotEmpty &&
           !e.name.toLowerCase().contains(_search.toLowerCase())) {
         return false;
@@ -164,18 +173,55 @@ class _ExamsPageState extends State<ExamsPage> {
             onPressed: () => Get.to(() => const LeaderboardPage()),
           ),
         ],
+        bottom: TabBar(
+          controller: _tab,
+          labelStyle: const TextStyle(
+              fontFamily: 'Cairo', fontWeight: FontWeight.w800, fontSize: 13),
+          tabs: const [
+            Tab(text: 'ورقي'),
+            Tab(text: 'امتحان إلكتروني'),
+          ],
+        ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showExamSheet(context, null),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('امتحان جديد',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
-        backgroundColor: AppTheme.primaryColor,
-        foregroundColor: Colors.white,
+      floatingActionButton: _tab.index == 0
+          ? FloatingActionButton.extended(
+              onPressed: () => _showExamSheet(context, null),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('امتحان جديد',
+                  style: TextStyle(
+                      fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+            )
+          : (LicenseController.to.parentPortalActiveNow
+              ? FloatingActionButton.extended(
+                  onPressed: () async {
+                    await Get.to(() => const OnlineExamEditorPage());
+                    _ec.loadExams();
+                  },
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('امتحان إلكتروني جديد',
+                      style: TextStyle(
+                          fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                )
+              : null),
+      body: TabBarView(
+        controller: _tab,
+        children: [
+          _buildPaperTab(theme, isDark, cs),
+          const OnlineExamsTab(),
+        ],
       ),
-      body: Obx(() {
+    );
+  }
+
+  Widget _buildPaperTab(ThemeData theme, bool isDark, ColorScheme cs) {
+    return Obx(() {
         final groups = _gc.groups.toList();
-        final exams = _ec.exams.toList();
+        // التبويب ده للامتحانات الورقية فقط — الإلكترونية في تبويب منفصل.
+        final exams = _ec.exams.where((e) => !e.isOnline).toList();
 
         if (_ec.isLoading.value) {
           return const Center(child: CircularProgressIndicator());
@@ -348,8 +394,7 @@ class _ExamsPageState extends State<ExamsPage> {
             ],
           ),
         );
-      }),
-    );
+      });
   }
 
   // بناء القائمة مع عناوين الشهور

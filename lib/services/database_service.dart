@@ -12,6 +12,8 @@ import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
+import 'package:active_class/models/exam_question_model.dart';
+import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 
@@ -40,6 +42,45 @@ const String _homeworkDayUniqueIndexSql = '''
   CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_HOMEWORK}_${COL_HOMEWORK_STUDENT_ID}_day
   ON $TABLE_HOMEWORK($COL_HOMEWORK_STUDENT_ID, substr($COL_HOMEWORK_DATE, 1, 10))
 ''';
+
+// spec 016 — جداول الامتحان الإلكتروني (تُستخدم في _onCreate و_onUpgrade v23).
+const String _examQuestionsTableSql = '''
+  CREATE TABLE IF NOT EXISTS $TABLE_EXAM_QUESTIONS (
+    $COL_EQ_ID            INTEGER PRIMARY KEY AUTOINCREMENT,
+    $COL_EQ_EXAM_ID       INTEGER NOT NULL,
+    $COL_EQ_POSITION      INTEGER NOT NULL DEFAULT 0,
+    $COL_EQ_TYPE          TEXT NOT NULL,
+    $COL_EQ_TEXT          TEXT NOT NULL,
+    $COL_EQ_OPTIONS       TEXT,
+    $COL_EQ_CORRECT_INDEX INTEGER NOT NULL DEFAULT 0,
+    $COL_EQ_POINTS        REAL NOT NULL DEFAULT 1,
+    $COL_EQ_CREATED_AT    TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY($COL_EQ_EXAM_ID) REFERENCES $TABLE_EXAMS($COL_EXAM_ID) ON DELETE CASCADE
+  )
+''';
+
+const String _examSubmissionsTableSql = '''
+  CREATE TABLE IF NOT EXISTS $TABLE_EXAM_SUBMISSIONS (
+    $COL_ES_ID             INTEGER PRIMARY KEY AUTOINCREMENT,
+    $COL_ES_EXAM_ID        INTEGER NOT NULL,
+    $COL_ES_STUDENT_ID     INTEGER NOT NULL,
+    $COL_ES_STARTED_AT     TEXT,
+    $COL_ES_SUBMITTED_AT   TEXT,
+    $COL_ES_ANSWERS_JSON   TEXT,
+    $COL_ES_AUTO_SCORE     REAL,
+    $COL_ES_FINAL_GRADE    REAL,
+    $COL_ES_STATUS         TEXT NOT NULL DEFAULT 'pending',
+    $COL_ES_AUTO_SUBMITTED INTEGER NOT NULL DEFAULT 0,
+    $COL_ES_PULLED_AT      TEXT,
+    UNIQUE($COL_ES_EXAM_ID, $COL_ES_STUDENT_ID),
+    FOREIGN KEY($COL_ES_EXAM_ID)    REFERENCES $TABLE_EXAMS($COL_EXAM_ID)       ON DELETE CASCADE,
+    FOREIGN KEY($COL_ES_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
+  )
+''';
+
+const String _examQuestionsExamIdIndexSql =
+    'CREATE INDEX IF NOT EXISTS idx_${TABLE_EXAM_QUESTIONS}_exam_id '
+    'ON $TABLE_EXAM_QUESTIONS($COL_EQ_EXAM_ID, $COL_EQ_POSITION)';
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -184,6 +225,11 @@ class DatabaseService {
         $COL_EXAM_MAX_GRADE     REAL NOT NULL DEFAULT 100,
         $COL_EXAM_PASSING_GRADE REAL NOT NULL DEFAULT 50,
         $COL_EXAM_REPORT_MONTH  TEXT,
+        $COL_EXAM_IS_ONLINE     INTEGER NOT NULL DEFAULT 0,
+        $COL_EXAM_ONLINE_STATUS TEXT,
+        $COL_EXAM_OPENS_AT      TEXT,
+        $COL_EXAM_CLOSES_AT     TEXT,
+        $COL_EXAM_DURATION_MIN  INTEGER,
         $COL_EXAM_CREATED_AT    TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_SYNC_UPDATED_AT    TEXT,
         $COL_SYNC_REMOTE_ID     TEXT
@@ -221,6 +267,13 @@ class DatabaseService {
         FOREIGN KEY($COL_GRADE_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
       )
     ''');
+
+    // Exam Questions (spec 016) — أسئلة الامتحان الإلكتروني. محلية فقط،
+    // خارج مزامنة الفريق في v1. correct_index/options ما بتترفعش للسحابة.
+    await db.execute(_examQuestionsTableSql);
+
+    // Exam Submissions (spec 016) — تسليم كل طالب (يُسحب من السحابة ويُصحّح محليًا).
+    await db.execute(_examSubmissionsTableSql);
 
     // App settings (key/value) — اسم المعلم، العملة، تفضيلات الواجهة...
     await db.execute('''
@@ -564,6 +617,32 @@ class DatabaseService {
       try {
         await db.execute(
             'ALTER TABLE $TABLE_EXAMS ADD COLUMN $COL_EXAM_REPORT_MONTH TEXT');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 23) {
+      // spec 016 — امتحان إلكتروني: أعمدة الحالة على exams + جدولا الأسئلة
+      // والتسليمات. كله محلي (خارج مزامنة الفريق). امتحانات قديمة:
+      // is_online = 0، online_status = NULL → صفر تغيير سلوك.
+      for (final col in [
+        'ALTER TABLE $TABLE_EXAMS ADD COLUMN $COL_EXAM_IS_ONLINE INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE $TABLE_EXAMS ADD COLUMN $COL_EXAM_ONLINE_STATUS TEXT',
+        'ALTER TABLE $TABLE_EXAMS ADD COLUMN $COL_EXAM_OPENS_AT TEXT',
+        'ALTER TABLE $TABLE_EXAMS ADD COLUMN $COL_EXAM_CLOSES_AT TEXT',
+        'ALTER TABLE $TABLE_EXAMS ADD COLUMN $COL_EXAM_DURATION_MIN INTEGER',
+      ]) {
+        try {
+          await db.execute(col);
+        } catch (_) {}
+      }
+      try {
+        await db.execute(_examQuestionsTableSql);
+      } catch (_) {}
+      try {
+        await db.execute(_examSubmissionsTableSql);
+      } catch (_) {}
+      try {
+        await db.execute(_examQuestionsExamIdIndexSql);
       } catch (_) {}
     }
   }
@@ -1599,6 +1678,9 @@ class DatabaseService {
       'CREATE INDEX IF NOT EXISTS idx_report_logs_month_start '
       'ON $TABLE_REPORT_LOGS($COL_REPORT_MONTH_START)',
     );
+
+    // Indexes for Exam Questions (spec 016)
+    await db.execute(_examQuestionsExamIdIndexSql);
   }
 
   Future<void> close() async {
@@ -1611,8 +1693,11 @@ class DatabaseService {
 
   // ========== EXAMS ==========
 
-  /// إنشاء امتحان جديد وربطه بالمجموعات المختارة
-  Future<int> insertExam(Exam exam, List<int> groupIds) async {
+  /// إنشاء امتحان جديد وربطه بالمجموعات المختارة.
+  /// [skipSync] — spec 016: الامتحان الإلكتروني محلي بالكامل، مايتزامنش
+  /// للمساعدين (وإلا بيبان عندهم كامتحان ورقي فاضي).
+  Future<int> insertExam(Exam exam, List<int> groupIds,
+      {bool skipSync = false}) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
     final egRows = <Map<String, int>>[]; // {egId, groupId}
@@ -1639,16 +1724,18 @@ class DatabaseService {
       return examId;
     });
 
-    await _queueSync(TABLE_EXAMS, examId, 'insert', payload: {
-      ...exam.copyWith(id: examId).toMap(),
-      COL_SYNC_UPDATED_AT: now,
-    });
-    for (final eg in egRows) {
-      await _queueSync(TABLE_EXAM_GROUPS, eg['egId']!, 'insert', payload: {
-        COL_EG_EXAM_ID: examId,
-        COL_EG_GROUP_ID: eg['groupId'],
+    if (!skipSync) {
+      await _queueSync(TABLE_EXAMS, examId, 'insert', payload: {
+        ...exam.copyWith(id: examId).toMap(),
         COL_SYNC_UPDATED_AT: now,
       });
+      for (final eg in egRows) {
+        await _queueSync(TABLE_EXAM_GROUPS, eg['egId']!, 'insert', payload: {
+          COL_EG_EXAM_ID: examId,
+          COL_EG_GROUP_ID: eg['groupId'],
+          COL_SYNC_UPDATED_AT: now,
+        });
+      }
     }
     return examId;
   }
@@ -1706,7 +1793,8 @@ class DatabaseService {
     return rows.map((r) => r['name'] as String).toList();
   }
 
-  Future<int> updateExam(Exam exam, List<int> groupIds) async {
+  Future<int> updateExam(Exam exam, List<int> groupIds,
+      {bool skipSync = false}) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
 
@@ -1745,20 +1833,22 @@ class DatabaseService {
       _notifyChanged();
     });
 
-    await _queueSync(TABLE_EXAMS, exam.id!, 'update', payload: {
-      ...exam.toMap(),
-      COL_SYNC_UPDATED_AT: now,
-    });
-    for (final old in oldEg) {
-      await _queueDelete(TABLE_EXAM_GROUPS, old[COL_EG_ID] as int,
-          old[COL_SYNC_REMOTE_ID] as String?);
-    }
-    for (final eg in egRows) {
-      await _queueSync(TABLE_EXAM_GROUPS, eg['egId']!, 'insert', payload: {
-        COL_EG_EXAM_ID: exam.id,
-        COL_EG_GROUP_ID: eg['groupId'],
+    if (!skipSync) {
+      await _queueSync(TABLE_EXAMS, exam.id!, 'update', payload: {
+        ...exam.toMap(),
         COL_SYNC_UPDATED_AT: now,
       });
+      for (final old in oldEg) {
+        await _queueDelete(TABLE_EXAM_GROUPS, old[COL_EG_ID] as int,
+            old[COL_SYNC_REMOTE_ID] as String?);
+      }
+      for (final eg in egRows) {
+        await _queueSync(TABLE_EXAM_GROUPS, eg['egId']!, 'insert', payload: {
+          COL_EG_EXAM_ID: exam.id,
+          COL_EG_GROUP_ID: eg['groupId'],
+          COL_SYNC_UPDATED_AT: now,
+        });
+      }
     }
     return exam.id!;
   }
@@ -1881,6 +1971,223 @@ class DatabaseService {
       COL_GRADE_IS_ABSENT: isAbsent ? 1 : 0,
       COL_SYNC_UPDATED_AT: now,
     });
+  }
+
+  // ========== ONLINE EXAM (spec 016) ==========
+  // كله محلي — خارج مزامنة الفريق (v1). لا _queueSync لأي من الدوال دي.
+
+  /// أعمدة الحالة على جدول exams (is_online/online_status/opens_at/closes_at/duration).
+  /// بتحدّث الصف مباشرة؛ payload المزامنة ما بيتغيّرش (الأعمدة دي محلية).
+  Future<void> setExamOnlineFields(
+    int examId, {
+    required bool isOnline,
+    OnlineExamStatus? status,
+    DateTime? opensAt,
+    DateTime? closesAt,
+    int? durationMinutes,
+  }) async {
+    final db = await database;
+    await db.update(
+      TABLE_EXAMS,
+      {
+        COL_EXAM_IS_ONLINE: isOnline ? 1 : 0,
+        COL_EXAM_ONLINE_STATUS: status?.dbValue,
+        COL_EXAM_OPENS_AT: opensAt?.toIso8601String(),
+        COL_EXAM_CLOSES_AT: closesAt?.toIso8601String(),
+        COL_EXAM_DURATION_MIN: durationMinutes,
+      },
+      where: '$COL_EXAM_ID = ?',
+      whereArgs: [examId],
+    );
+    _notifyChanged();
+  }
+
+  Future<void> setExamOnlineStatus(int examId, OnlineExamStatus status) async {
+    final db = await database;
+    await db.update(TABLE_EXAMS, {COL_EXAM_ONLINE_STATUS: status.dbValue},
+        where: '$COL_EXAM_ID = ?', whereArgs: [examId]);
+    _notifyChanged();
+  }
+
+  // ── أسئلة الامتحان ──────────────────────────────────────────────
+  Future<List<ExamQuestion>> getQuestionsForExam(int examId) async {
+    final db = await database;
+    final rows = await db.query(TABLE_EXAM_QUESTIONS,
+        where: '$COL_EQ_EXAM_ID = ?',
+        whereArgs: [examId],
+        orderBy: '$COL_EQ_POSITION ASC, $COL_EQ_ID ASC');
+    return rows.map(ExamQuestion.fromMap).toList();
+  }
+
+  Future<int> insertQuestion(ExamQuestion q) async {
+    final db = await database;
+    final map = q.toMap()..remove(COL_EQ_ID);
+    map[COL_EQ_CREATED_AT] = DateTime.now().toIso8601String();
+    final id = await db.insert(TABLE_EXAM_QUESTIONS, map);
+    _notifyChanged();
+    return id;
+  }
+
+  Future<void> updateQuestion(ExamQuestion q) async {
+    final db = await database;
+    await db.update(TABLE_EXAM_QUESTIONS, q.toMap()..remove(COL_EQ_CREATED_AT),
+        where: '$COL_EQ_ID = ?', whereArgs: [q.id]);
+    _notifyChanged();
+  }
+
+  Future<void> deleteQuestion(int id) async {
+    final db = await database;
+    await db.delete(TABLE_EXAM_QUESTIONS,
+        where: '$COL_EQ_ID = ?', whereArgs: [id]);
+    _notifyChanged();
+  }
+
+  Future<void> reorderQuestions(int examId, List<int> orderedIds) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (var i = 0; i < orderedIds.length; i++) {
+        await txn.update(TABLE_EXAM_QUESTIONS, {COL_EQ_POSITION: i},
+            where: '$COL_EQ_ID = ? AND $COL_EQ_EXAM_ID = ?',
+            whereArgs: [orderedIds[i], examId]);
+      }
+    });
+    _notifyChanged();
+  }
+
+  /// يستبدل مجموعة أسئلة الامتحان بالكامل بالقائمة المعطاة (insert للجديد،
+  /// update للموجود، delete لأي سؤال محلي مش في القائمة). يُستخدم من شاشة
+  /// التأليف عند الحفظ.
+  Future<void> replaceExamQuestions(
+      int examId, List<ExamQuestion> questions) async {
+    final db = await database;
+    final existing = await db.query(TABLE_EXAM_QUESTIONS,
+        columns: [COL_EQ_ID], where: '$COL_EQ_EXAM_ID = ?', whereArgs: [examId]);
+    final existingIds = existing.map((r) => r[COL_EQ_ID] as int).toSet();
+    final keptIds = <int>{};
+
+    await db.transaction((txn) async {
+      for (var i = 0; i < questions.length; i++) {
+        final q = questions[i].copyWith(examId: examId, position: i);
+        if (q.id != null && existingIds.contains(q.id)) {
+          keptIds.add(q.id!);
+          await txn.update(
+              TABLE_EXAM_QUESTIONS, q.toMap()..remove(COL_EQ_CREATED_AT),
+              where: '$COL_EQ_ID = ?', whereArgs: [q.id]);
+        } else {
+          final map = q.toMap()..remove(COL_EQ_ID);
+          map[COL_EQ_CREATED_AT] = DateTime.now().toIso8601String();
+          await txn.insert(TABLE_EXAM_QUESTIONS, map);
+        }
+      }
+      final toDelete = existingIds.difference(keptIds);
+      for (final id in toDelete) {
+        await txn.delete(TABLE_EXAM_QUESTIONS,
+            where: '$COL_EQ_ID = ?', whereArgs: [id]);
+      }
+    });
+    _notifyChanged();
+  }
+
+  // ── تسليمات الطلاب ─────────────────────────────────────────────
+  Future<void> upsertSubmission(ExamSubmission s) async {
+    final db = await database;
+    // لو الصف موجود وحالته approved، ما ندهسش final_grade/status (idempotency
+    // السحب — R9). نجيب الموجود الأول.
+    final existing = await db.query(TABLE_EXAM_SUBMISSIONS,
+        where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
+        whereArgs: [s.examId, s.studentId],
+        limit: 1);
+    final now = DateTime.now().toIso8601String();
+    final map = s.toMap()
+      ..remove(COL_ES_ID)
+      ..[COL_ES_PULLED_AT] = now;
+
+    if (existing.isEmpty) {
+      await db.insert(TABLE_EXAM_SUBMISSIONS, map);
+    } else {
+      final prevStatus =
+          SubmissionStatusX.fromDb(existing.first[COL_ES_STATUS] as String?);
+      if (prevStatus == SubmissionStatus.approved) {
+        // حافظ على الاعتماد اليدوي: حدّث الإجابات/الدرجة المحسوبة فقط.
+        map
+          ..remove(COL_ES_STATUS)
+          ..remove(COL_ES_FINAL_GRADE);
+      }
+      await db.update(TABLE_EXAM_SUBMISSIONS, map,
+          where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
+          whereArgs: [s.examId, s.studentId]);
+    }
+    _notifyChanged();
+  }
+
+  Future<List<ExamSubmission>> getSubmissionsForExam(int examId) async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT sub.*, s.$COL_STUDENT_NAME AS student_name
+      FROM $TABLE_EXAM_SUBMISSIONS sub
+      INNER JOIN $TABLE_STUDENTS s ON s.$COL_STUDENT_ID = sub.$COL_ES_STUDENT_ID
+      WHERE sub.$COL_ES_EXAM_ID = ?
+      ORDER BY s.$COL_STUDENT_NAME ASC
+    ''', [examId]);
+    return rows.map(ExamSubmission.fromMap).toList();
+  }
+
+  Future<ExamSubmission?> getSubmissionForStudent(
+      int examId, int studentId) async {
+    final db = await database;
+    final rows = await db.query(TABLE_EXAM_SUBMISSIONS,
+        where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
+        whereArgs: [examId, studentId],
+        limit: 1);
+    if (rows.isEmpty) return null;
+    return ExamSubmission.fromMap(rows.first);
+  }
+
+  Future<void> updateSubmissionApproval(
+      int examId, int studentId, double finalGrade, SubmissionStatus status) async {
+    final db = await database;
+    await db.update(
+        TABLE_EXAM_SUBMISSIONS,
+        {COL_ES_FINAL_GRADE: finalGrade, COL_ES_STATUS: status.dbValue},
+        where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
+        whereArgs: [examId, studentId]);
+    _notifyChanged();
+  }
+
+  /// الطلاب المسموح لهم بامتحان إلكتروني لمجموعات معيّنة — يستبعد
+  /// المؤرشفين ومن ليس له 4 أرقام على الأقل في تليفون ولي الأمر.
+  /// بيرجّع بيانات كافية عشان [OnlineExamService.publish] يقدر يتأكد إن
+  /// ملخص كل طالب منشور في بوابة الأهالي (فحص الهوية بيقراه).
+  Future<({List<AllowedExamStudent> students, int excludedCount})>
+      allowedStudentsForGroups(List<int> groupIds) async {
+    if (groupIds.isEmpty) {
+      return (students: <AllowedExamStudent>[], excludedCount: 0);
+    }
+    final db = await database;
+    final placeholders = groupIds.map((_) => '?').join(',');
+    final rows = await db.rawQuery('''
+      SELECT $COL_STUDENT_ID AS id, $COL_STUDENT_CODE AS code,
+             $COL_STUDENT_GUARDIAN_PHONE AS phone
+      FROM $TABLE_STUDENTS
+      WHERE $COL_STUDENT_GROUP_ID IN ($placeholders)
+        AND $COL_STUDENT_IS_ARCHIVED = 0
+    ''', groupIds);
+    final students = <AllowedExamStudent>[];
+    var excluded = 0;
+    for (final r in rows) {
+      final code = (r['code'] as String? ?? '').trim().toUpperCase();
+      final digits =
+          (r['phone'] as String? ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+      if (code.isEmpty || digits.length < 4 || r['id'] == null) {
+        excluded++;
+        continue;
+      }
+      students.add(AllowedExamStudent(
+          id: r['id'] as int,
+          code: code,
+          last4: digits.substring(digits.length - 4)));
+    }
+    return (students: students, excludedCount: excluded);
   }
 
   /// إحصائيات امتحان لمجموعة معينة (مع التوزيع)

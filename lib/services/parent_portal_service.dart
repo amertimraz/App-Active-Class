@@ -152,6 +152,9 @@ class ParentPortalService {
   /// (ثابت عبر إعادة التثبيت). غير كده (تجربة/بدون ترخيص) → عشوائي محفوظ
   /// محليًا. لو الرابط اتغيّر من رابط قديم مخزّن، بنرفع كل الطلاب للرابط
   /// الجديد مرة واحدة عشان مايبقاش فاضي.
+  ///
+  /// spec 016 — ده كمان مصدر الـslug المشترك للامتحانات الإلكترونية
+  /// (OnlineExamService بيستدعيها) عشان يفضل مصدر واحد لاشتقاق الرابط.
   Future<String> ensureSlug() async {
     final code = LicenseController.to.licenseCode.value?.trim();
 

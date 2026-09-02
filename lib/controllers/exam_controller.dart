@@ -3,7 +3,11 @@ import 'dart:async';
 import 'package:get/get.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
+import 'package:active_class/models/exam_question_model.dart';
+import 'package:active_class/models/exam_submission_model.dart';
+import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/online_exam_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/helpers.dart';
 
@@ -132,6 +136,271 @@ class ExamController extends GetxController {
     int? groupId,
   }) =>
       _db.getLeaderboard(examId: examId, groupId: groupId);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // spec 016 — امتحان إلكتروني
+  // ══════════════════════════════════════════════════════════════════════════
+
+  final _online = OnlineExamService();
+
+  List<Exam> get onlineExams =>
+      exams.where((e) => e.isOnline).toList();
+
+  Future<List<ExamQuestion>> getQuestions(int examId) =>
+      _db.getQuestionsForExam(examId);
+
+  Future<List<ExamSubmission>> getSubmissions(int examId) =>
+      _db.getSubmissionsForExam(examId);
+
+  /// ينشئ مسودّة امتحان إلكتروني (صف exams بـ is_online=1, status=draft).
+  Future<int> createOnlineExamDraft({required String name}) async {
+    final examId = await _db.insertExam(
+      Exam(name: name.trim().isEmpty ? 'امتحان إلكتروني' : name.trim(),
+          date: DateTime.now()),
+      const [],
+      skipSync: true, // spec 016 — محلي، مايتزامنش للمساعدين
+    );
+    await _db.setExamOnlineFields(examId, isOnline: true, status: OnlineExamStatus.draft);
+    await loadExams();
+    return examId;
+  }
+
+  /// يحفظ مسودّة امتحان إلكتروني: بيانات الامتحان + الأسئلة + المجموعات.
+  Future<String?> saveOnlineExamDraft({
+    required Exam exam,
+    required List<ExamQuestion> questions,
+    required List<int> groupIds,
+  }) async {
+    if (exam.name.trim().isEmpty) return 'أدخل اسم الامتحان';
+    try {
+      final totalPoints = questions.fold<double>(0, (s, q) => s + q.points);
+      await _db.updateExam(
+        exam.copyWith(
+          maxGrade: totalPoints <= 0 ? 100 : totalPoints,
+          passingGrade: totalPoints <= 0 ? 50 : totalPoints / 2,
+        ),
+        groupIds,
+        skipSync: true, // spec 016 — محلي، مايتزامنش للمساعدين
+      );
+      await _db.setExamOnlineFields(
+        exam.id!,
+        isOnline: true,
+        status: exam.onlineStatus ?? OnlineExamStatus.draft,
+        opensAt: exam.opensAt,
+        closesAt: exam.closesAt,
+        durationMinutes: exam.durationMinutes,
+      );
+      await _db.replaceExamQuestions(exam.id!, questions);
+      await loadExams();
+      return null;
+    } catch (e) {
+      return 'فشل الحفظ: $e';
+    }
+  }
+
+  /// ينشر امتحانًا إلكترونيًا للسحابة (بدون مفتاح إجابة). يرجّع رسالة خطأ أو null.
+  Future<String?> publishOnlineExam(int examId) async {
+    if (!LicenseController.to.parentPortalActiveNow) {
+      return 'الامتحانات الإلكترونية ضمن إضافة بوابة متابعة أولياء الأمور';
+    }
+    final exam = exams.firstWhereOrNull((e) => e.id == examId);
+    if (exam == null) return 'الامتحان غير موجود';
+    final questions = await _db.getQuestionsForExam(examId);
+    if (questions.isEmpty) return 'أضف سؤالًا واحدًا على الأقل';
+    if (questions.any((q) => !q.isValid)) {
+      return 'فيه سؤال ناقص — تأكّد من النص والاختيارات والإجابة الصحيحة والدرجة';
+    }
+    if (exam.groupIds.isEmpty) return 'اختر مجموعة واحدة على الأقل';
+    final opens = exam.opensAt, closes = exam.closesAt, dur = exam.durationMinutes;
+    if (opens == null || closes == null || dur == null) {
+      return 'حدّد وقت الفتح ووقت القفل ومدة الحل';
+    }
+    if (!closes.isAfter(opens)) return 'وقت القفل لازم يكون بعد وقت الفتح';
+    if (dur <= 0) return 'مدة الحل لازم تكون أكبر من صفر';
+    if (dur * 60 > closes.difference(opens).inSeconds) {
+      return 'مدة الحل أطول من النافذة الزمنية';
+    }
+
+    final allowed = await _db.allowedStudentsForGroups(exam.groupIds);
+    if (allowed.students.isEmpty) {
+      return 'مفيش طلاب لهم رقم ولي أمر صالح في المجموعات المختارة';
+    }
+
+    final allGroups = await _db.getAllGroups();
+    final groupNames = allGroups
+        .where((g) => exam.groupIds.contains(g.id))
+        .map((g) => g.name)
+        .toList();
+
+    try {
+      await _online.publish(exam, questions, allowed.students, groupNames);
+      await _db.setExamOnlineStatus(examId, OnlineExamStatus.published);
+      await loadExams();
+      if (allowed.excludedCount > 0) {
+        return '__WARN__ تم النشر. ${allowed.excludedCount} طالب مستبعد (رقم ولي أمر ناقص)';
+      }
+      return null;
+    } catch (e) {
+      return 'فشل النشر — تحقق من اتصالك بالإنترنت';
+    }
+  }
+
+  Future<String?> unpublishOnlineExam(int examId) async {
+    try {
+      await _online.unpublish(examId);
+      await _db.setExamOnlineStatus(examId, OnlineExamStatus.draft);
+      await loadExams();
+      return null;
+    } catch (e) {
+      return 'فشل — تحقق من اتصالك بالإنترنت';
+    }
+  }
+
+  Future<String?> stopOnlineExam(int examId) async {
+    try {
+      await _online.stopNow(examId, DateTime.now().toUtc());
+      await _db.setExamOnlineStatus(examId, OnlineExamStatus.stopped);
+      await loadExams();
+      return null;
+    } catch (e) {
+      return 'فشل — تحقق من اتصالك بالإنترنت';
+    }
+  }
+
+  Future<String?> removeOnlineExamFromWeb(int examId) async {
+    try {
+      await _online.deleteRemote(examId);
+      await _db.setExamOnlineStatus(examId, OnlineExamStatus.removed);
+      await loadExams();
+      return null;
+    } catch (e) {
+      return 'فشل الحذف من الويب';
+    }
+  }
+
+  /// يسحب التسليمات من السحابة، يصحّح الأسئلة الموضوعية محليًا، ويكتبها في
+  /// exam_submissions بحالة "بانتظار الاعتماد". يرجّع عدد التسليمات أو رسالة خطأ.
+  Future<({int pulled, int notSubmitted, String? error})> pullAndGradeOnlineExam(
+      int examId) async {
+    final exam = exams.firstWhereOrNull((e) => e.id == examId);
+    if (exam == null) return (pulled: 0, notSubmitted: 0, error: 'الامتحان غير موجود');
+    List<CloudSubmission> subs;
+    try {
+      subs = await _online.fetchSubmissions(examId);
+    } catch (e) {
+      return (pulled: 0, notSubmitted: 0, error: 'فشل السحب — تحقق من الإنترنت');
+    }
+
+    final questions = await _db.getQuestionsForExam(examId);
+    final byKey = {for (final q in questions) 'q${q.id}': q};
+
+    final matchedStudentIds = <int>{};
+    for (final s in subs) {
+      final student = await _db.getStudentByCode(s.code);
+      if (student?.id == null) continue;
+      matchedStudentIds.add(student!.id!);
+
+      var auto = 0.0;
+      byKey.forEach((key, q) {
+        final chosen = s.answers[key];
+        if (chosen != null && chosen == q.correctIndex) auto += q.points;
+      });
+
+      final answersByQid = <int, int>{};
+      s.answers.forEach((key, v) {
+        final q = byKey[key];
+        if (q?.id != null) answersByQid[q!.id!] = v;
+      });
+
+      await _db.upsertSubmission(ExamSubmission(
+        examId: examId,
+        studentId: student.id!,
+        startedAt: s.startedAt,
+        submittedAt: s.submittedAt,
+        answers: answersByQid,
+        autoScore: auto,
+        finalGrade: auto,
+        status: SubmissionStatus.pending,
+        autoSubmitted: s.autoSubmitted,
+      ));
+    }
+
+    // طلاب مسموح لهم بلا تسليم والنافذة انتهت → "لم يسلّم"
+    var notSubmitted = 0;
+    final closed = exam.closesAt == null ||
+        DateTime.now().toUtc().isAfter(exam.closesAt!) ||
+        exam.onlineStatus == OnlineExamStatus.stopped;
+    if (closed) {
+      final allowed =
+          (await _db.allowedStudentsForGroups(exam.groupIds)).students;
+      for (final st in allowed) {
+        if (matchedStudentIds.contains(st.id)) continue;
+        final existing = await _db.getSubmissionForStudent(examId, st.id);
+        if (existing?.status == SubmissionStatus.approved) continue;
+        await _db.upsertSubmission(ExamSubmission(
+          examId: examId,
+          studentId: st.id,
+          status: SubmissionStatus.notSubmitted,
+          autoScore: 0,
+          finalGrade: 0,
+        ));
+        notSubmitted++;
+      }
+    }
+
+    return (pulled: matchedStudentIds.length, notSubmitted: notSubmitted, error: null);
+  }
+
+  /// تفاصيل نتيجة كل سؤال لتسليم — للعرض في شاشة المراجعة.
+  Future<List<QuestionResult>> questionResults(ExamSubmission sub) async {
+    final questions = await _db.getQuestionsForExam(sub.examId);
+    return questions
+        .map((q) => QuestionResult(
+              questionId: q.id!,
+              questionText: q.text,
+              options: q.options,
+              correctIndex: q.correctIndex,
+              chosenIndex: sub.answers[q.id],
+              points: q.points,
+            ))
+        .toList();
+  }
+
+  /// يعتمد درجة طالب: يكتب في exam_submissions + exam_grades (نفس مسار
+  /// الدرجة اليدوية → pushStudentSummary يشتغل).
+  Future<void> approveOnlineGrade(
+    int examId,
+    int studentId, {
+    double? overrideGrade,
+  }) async {
+    final sub = await _db.getSubmissionForStudent(examId, studentId);
+    if (sub == null) return;
+    if (sub.status == SubmissionStatus.approved && overrideGrade == null) return;
+
+    final isAbsent = sub.status == SubmissionStatus.notSubmitted;
+    final grade = isAbsent ? null : (overrideGrade ?? sub.autoScore ?? 0);
+
+    await _db.updateSubmissionApproval(
+        examId, studentId, grade ?? 0, SubmissionStatus.approved);
+    await saveGrade(
+      examId: examId,
+      studentId: studentId,
+      grade: grade,
+      notes: isAbsent ? null : 'امتحان إلكتروني — تصحيح تلقائي',
+      isAbsent: isAbsent,
+    );
+  }
+
+  /// "اعتماد الكل" — يعتمد الطلاب اللي **سلّموا** فقط (حالة pending).
+  /// اللي "لم يسلّم" بيتساب للمدرس يعلّمه غائبًا بنفسه (FR-026) — مش
+  /// افتراض تلقائي إن كل من لم يسلّم = غائب.
+  Future<void> approveAllOnlineGrades(int examId) async {
+    final subs = await _db.getSubmissionsForExam(examId);
+    for (final s in subs) {
+      if (s.status != SubmissionStatus.pending) continue;
+      await approveOnlineGrade(examId, s.studentId);
+    }
+  }
 
   // ── رسالة نتيجة الامتحان لولي الأمر (واتساب) ───────────────────────────────
   // راجع specs/008-exam-whatsapp-results. بتتولّد وقت الإرسال بس — مفيش

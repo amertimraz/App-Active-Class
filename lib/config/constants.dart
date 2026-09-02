@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 22;
+const int DATABASE_VERSION = 23;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -50,6 +50,10 @@ const String TABLE_REPORT_LOGS  = 'report_logs';
 const String TABLE_EXAMS        = 'exams';
 const String TABLE_EXAM_GROUPS  = 'exam_groups';
 const String TABLE_EXAM_GRADES  = 'exam_grades';
+// spec 016 — امتحان إلكتروني: أسئلة الامتحان وتسليمات الطلاب (محلية فقط،
+// خارج مزامنة الفريق في v1).
+const String TABLE_EXAM_QUESTIONS   = 'exam_questions';
+const String TABLE_EXAM_SUBMISSIONS = 'exam_submissions';
 // إعدادات التطبيق (اسم المعلم، العملة، ...) كجدول key/value — عشان
 // تتضمن تلقائيًا في أي نسخة احتياطية (اللي بتنسخ ملف قاعدة البيانات فقط).
 const String TABLE_APP_SETTINGS = 'app_settings';
@@ -66,6 +70,36 @@ const String COL_EXAM_CREATED_AT    = 'created_at';
 // spec 013 — الشهر اللي يُحسب له الامتحان في التقارير الشهرية (نص "YYYY-M").
 // null → بديله شهر تاريخ الامتحان (توافق خلفي).
 const String COL_EXAM_REPORT_MONTH  = 'report_month';
+// spec 016 — أعمدة الامتحان الإلكتروني على جدول exams (null/0 للامتحان الورقي).
+const String COL_EXAM_IS_ONLINE      = 'is_online';       // INTEGER 0/1
+const String COL_EXAM_ONLINE_STATUS  = 'online_status';   // draft|published|stopped|removed
+const String COL_EXAM_OPENS_AT       = 'opens_at';        // ISO-8601 UTC
+const String COL_EXAM_CLOSES_AT      = 'closes_at';       // ISO-8601 UTC
+const String COL_EXAM_DURATION_MIN   = 'duration_minutes';// INTEGER
+
+// Column Names - Exam Questions (spec 016)
+const String COL_EQ_ID            = 'id';
+const String COL_EQ_EXAM_ID       = 'exam_id';
+const String COL_EQ_POSITION      = 'position';
+const String COL_EQ_TYPE          = 'type';          // true_false | mcq
+const String COL_EQ_TEXT          = 'text';
+const String COL_EQ_OPTIONS       = 'options';       // JSON list<String>
+const String COL_EQ_CORRECT_INDEX = 'correct_index';
+const String COL_EQ_POINTS        = 'points';
+const String COL_EQ_CREATED_AT    = 'created_at';
+
+// Column Names - Exam Submissions (spec 016)
+const String COL_ES_ID             = 'id';
+const String COL_ES_EXAM_ID        = 'exam_id';
+const String COL_ES_STUDENT_ID     = 'student_id';
+const String COL_ES_STARTED_AT     = 'started_at';
+const String COL_ES_SUBMITTED_AT   = 'submitted_at';
+const String COL_ES_ANSWERS_JSON   = 'answers_json';
+const String COL_ES_AUTO_SCORE     = 'auto_score';
+const String COL_ES_FINAL_GRADE    = 'final_grade';
+const String COL_ES_STATUS         = 'status';       // pending | approved | not_submitted
+const String COL_ES_AUTO_SUBMITTED = 'auto_submitted';
+const String COL_ES_PULLED_AT      = 'pulled_at';
 
 // Column Names - Exam Groups
 const String COL_EG_ID       = 'id';

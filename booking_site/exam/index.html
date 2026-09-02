@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title id="pageTitle">امتحان إلكتروني</title>
+<link id="favicon" rel="icon" href="data:," />
+<meta name="robots" content="noindex" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#4F46E5;
+    --primary-dark:#3730A3;
+    --accent:#0EA5E9;
+    --bg-top:#EEF2FF;
+    --bg-bottom:#F7F8FF;
+    --card-bg:#FFFFFF;
+    --text:#111827;
+    --text-muted:#6B7280;
+    --border:#E5E7EB;
+    --danger:#EF4444;
+    --success:#16A34A;
+    --radius:20px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;overflow-x:hidden;max-width:100%;}
+  body{
+    font-family:'Cairo', sans-serif;
+    background:linear-gradient(180deg,var(--bg-top) 0%,var(--bg-bottom) 260px);
+    min-height:100vh;width:100%;color:var(--text);
+    display:flex;flex-direction:column;align-items:center;
+    padding:32px 14px 60px;
+  }
+  .wrap{width:100%;max-width:480px;}
+  .hero{text-align:center;margin-bottom:20px;}
+  .hero-icon{
+    width:60px;height:60px;border-radius:50%;
+    background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+    display:flex;align-items:center;justify-content:center;
+    margin:0 auto 12px;font-size:26px;color:#fff;
+    box-shadow:0 8px 22px rgba(79,70,229,.3);
+  }
+  .hero-title{font-size:18px;font-weight:800;margin:0 0 4px;}
+  .hero-sub{font-size:13px;color:var(--text-muted);margin:0;}
+  .card{
+    background:var(--card-bg);border-radius:var(--radius);
+    box-shadow:0 12px 34px rgba(17,24,39,.07);border:1px solid var(--border);
+    padding:22px;animation:fadeIn .25s ease;
+  }
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:6px;}
+  .field input{
+    width:100%;padding:13px 14px;border-radius:12px;border:1.5px solid var(--border);
+    font-family:'Cairo';font-size:16px;background:#F9FAFB;text-align:center;letter-spacing:1px;
+  }
+  .field input:focus{outline:none;border-color:var(--primary);background:#fff;}
+  .btn{
+    width:100%;padding:14px;border-radius:12px;border:none;
+    background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+    color:#fff;font-family:'Cairo';font-weight:800;font-size:15px;cursor:pointer;
+    transition:opacity .15s,transform .1s;
+  }
+  .btn:disabled{opacity:.6;cursor:default;}
+  .btn:not(:disabled):active{opacity:.85;transform:scale(.99);}
+  .btn.ghost{background:none;color:var(--text-muted);box-shadow:none;font-weight:700;font-size:13px;padding:10px;}
+  .err{
+    background:#FEF2F2;border:1px solid #FECACA;color:var(--danger);
+    padding:10px 12px;border-radius:10px;font-size:12px;margin-bottom:14px;text-align:center;
+  }
+  .state{text-align:center;padding:14px 6px;}
+  .state .ico{font-size:34px;margin-bottom:10px;}
+  .state .t{font-weight:800;margin:0 0 6px;font-size:16px;}
+  .state .s{font-size:13px;color:var(--text-muted);margin:0;line-height:1.7;}
+  .spinner{
+    width:26px;height:26px;border:3px solid #E5E7EB;border-top-color:var(--primary);
+    border-radius:50%;animation:spin .7s linear infinite;margin:24px auto;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .exam-pick{
+    display:block;width:100%;text-align:right;padding:14px;border-radius:12px;
+    border:1.5px solid var(--border);background:#F9FAFB;margin-bottom:10px;cursor:pointer;
+    font-family:'Cairo';font-size:14px;font-weight:700;
+  }
+  .exam-pick small{display:block;color:var(--text-muted);font-weight:400;margin-top:3px;font-size:12px;}
+
+  .exam-bar{
+    position:sticky;top:0;z-index:5;background:var(--card-bg);
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 0 12px;border-bottom:1px solid var(--border);margin-bottom:14px;
+  }
+  .timer{font-weight:900;font-size:18px;color:var(--primary-dark);font-variant-numeric:tabular-nums;}
+  .timer.low{color:var(--danger);}
+  .q{margin-bottom:20px;}
+  .q-head{font-weight:800;font-size:14px;margin-bottom:10px;line-height:1.7;}
+  .q-num{color:var(--primary);}
+  .opt{
+    display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;
+    border:1.5px solid var(--border);background:#F9FAFB;margin-bottom:8px;cursor:pointer;
+    font-size:14px;transition:border-color .12s,background .12s;
+  }
+  .opt.sel{border-color:var(--primary);background:#EEF2FF;font-weight:700;}
+  .opt input{accent-color:var(--primary);width:18px;height:18px;flex-shrink:0;}
+  .retry-note{font-size:12px;color:var(--danger);text-align:center;margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="hero-icon">📝</div>
+    <p class="hero-title" id="heroTitle">امتحان إلكتروني</p>
+    <p class="hero-sub" id="heroSub">أدخل بياناتك لبدء الامتحان</p>
+  </div>
+  <div class="card" id="card"><div class="spinner"></div></div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import {
+    getFirestore, doc, getDoc, getDocFromServer, setDoc, collection, getDocs, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAqFLZ4kHEgPLVgLgDGbbIjxnZheBqMjMc",
+    authDomain: "active-class-72e0f.firebaseapp.com",
+    projectId: "active-class-72e0f",
+    storageBucket: "active-class-72e0f.firebasestorage.app",
+    messagingSenderId: "822461821604",
+    appId: "1:822461821604:web:3bd266a9833ce045916c31",
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  const card = document.getElementById('card');
+  const heroTitle = document.getElementById('heroTitle');
+  const heroSub = document.getElementById('heroSub');
+
+  function getSlug(){
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const idx = parts.indexOf('exam');
+    if (idx !== -1 && parts[idx + 1]) return parts[idx + 1];
+    return parts[parts.length - 1] || '';
+  }
+  const slug = getSlug();
+
+  function escapeHtml(str){ const d = document.createElement('div'); d.innerText = str ?? ''; return d.innerHTML; }
+  function fmtTime(ms){
+    if (ms < 0) ms = 0;
+    const s = Math.floor(ms/1000);
+    const m = Math.floor(s/60);
+    return `${String(m).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  }
+  function fmtClock(d){
+    try { return new Date(d).toLocaleTimeString('ar-EG',{hour:'numeric',minute:'2-digit'}); } catch(e){ return ''; }
+  }
+  // PRNG حتمي — نفس الترتيب المخلوط للطالب عبر إعادة التحميل/الاستئناف.
+  function mulberry32(seed){
+    return function(){
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function seedFromString(str){
+    let h = 2166136261;
+    for (let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function shuffled(arr, rnd){
+    const a = arr.map((v,i)=>({v,i}));
+    for (let i=a.length-1;i>0;i--){ const j = Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+    return a;
+  }
+
+  function stateScreen(ico,t,s){
+    card.innerHTML = `<div class="state"><div class="ico">${ico}</div><p class="t">${escapeHtml(t)}</p><p class="s">${escapeHtml(s)}</p></div>`;
+  }
+
+  // ── الحالة ──
+  let ctx = { code:'', last4:'', groupName:'' };
+
+  function renderForm(err){
+    heroTitle.textContent = window.__teacherName || 'امتحان إلكتروني';
+    heroSub.textContent = 'أدخل بياناتك لبدء الامتحان';
+    card.innerHTML = `
+      ${err ? `<div class="err">${escapeHtml(err)}</div>` : ''}
+      <div class="field">
+        <label>كود الطالب</label>
+        <input id="codeInput" type="text" placeholder="مثلاً A05" autocapitalize="characters">
+      </div>
+      <div class="field">
+        <label>آخر 4 أرقام من رقم تليفون ولي الأمر</label>
+        <input id="phoneInput" type="tel" placeholder="1234" maxlength="4" inputmode="numeric">
+      </div>
+      <button class="btn" id="go">دخول</button>`;
+    document.getElementById('go').onclick = handleIdentity;
+    document.getElementById('phoneInput').addEventListener('keydown', e => { if (e.key === 'Enter') handleIdentity(); });
+  }
+
+  async function handleIdentity(){
+    const code = document.getElementById('codeInput').value.trim().toUpperCase();
+    const phone = document.getElementById('phoneInput').value.trim();
+    if (!code) { renderForm('أدخل كود الطالب'); return; }
+    if (!/^\d{4}$/.test(phone)) { renderForm('أدخل آخر 4 أرقام صحيحة'); return; }
+    card.innerHTML = '<div class="spinner"></div>';
+    try {
+      if (!auth.currentUser) await signInAnonymously(auth);
+      const snap = await getDoc(doc(db, 'parent_portal', slug, 'students', `${code}_${phone}`));
+      if (!snap.exists()) { renderForm('الكود أو الأرقام غير صحيحة'); return; }
+      ctx = { code, last4: phone, groupName: snap.data().groupName || '' };
+      await listExams();
+    } catch (e) {
+      renderForm('حصل خطأ — حاول تاني');
+    }
+  }
+
+  // مهلة دخول ±دقيقتين لامتصاص انحراف بسيط في ساعة جهاز الطالب — المؤقّت
+  // نفسه مربوط بوقت الخادم (startedAt) فالموعد النهائي الحقيقي محمي.
+  const ENTRY_SKEW_MS = 2 * 60 * 1000;
+  function examWindowState(ex){
+    const now = Date.now();
+    const opens = ex.opensAt ? new Date(ex.opensAt).getTime() : null;
+    const closes = ex.closesAt ? new Date(ex.closesAt).getTime() : null;
+    if (ex.status === 'stopped') return 'closed';
+    if (opens && now < opens - ENTRY_SKEW_MS) return 'early';
+    if (closes && now >= closes) return 'closed';
+    return 'open';
+  }
+
+  async function listExams(){
+    card.innerHTML = '<div class="spinner"></div>';
+    let docs;
+    try {
+      const snap = await getDocs(collection(db, 'online_exams', slug, 'exams'));
+      docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) { renderForm('حصل خطأ في تحميل الامتحانات'); return; }
+
+    const mine = docs.filter(ex =>
+      (ex.status === 'published' || ex.status === 'stopped') &&
+      ex.allowedCodes && ex.allowedCodes[ctx.code] === true);
+
+    if (mine.length === 0) { stateScreen('🔒','غير متاح','مفيش امتحان متاح لمجموعتك حاليًا.'); return; }
+
+    const openable = mine.filter(ex => examWindowState(ex) === 'open');
+    const early = mine.filter(ex => examWindowState(ex) === 'early');
+
+    if (openable.length === 0 && early.length > 0) {
+      const ex = early[0];
+      stateScreen('⏳','الامتحان لسه ما بدأش', `يبدأ الساعة ${fmtClock(ex.opensAt)}.`);
+      return;
+    }
+    if (openable.length === 0) { stateScreen('⏰','انتهى وقت الامتحان','مواعيد الامتحانات المتاحة لك انتهت.'); return; }
+    if (openable.length === 1) { openExam(openable[0]); return; }
+
+    card.innerHTML = `<p class="hero-title" style="font-size:15px;margin:0 0 14px;">اختر الامتحان</p>` +
+      openable.map((ex,i) => `<button class="exam-pick" data-i="${i}">${escapeHtml(ex.title || 'امتحان')}
+        <small>${ex.questionCount || 0} سؤال · ${ex.durationMinutes || 0} دقيقة</small></button>`).join('');
+    card.querySelectorAll('.exam-pick').forEach(b => b.onclick = () => openExam(openable[+b.dataset.i]));
+  }
+
+  const attemptKey = () => `${ctx.code}_${ctx.last4}`;
+  const lsKey = (examId) => `exam_${slug}_${examId}_${ctx.code}`;
+
+  async function openExam(ex){
+    card.innerHTML = '<div class="spinner"></div>';
+    const examRef = doc(db, 'online_exams', slug, 'exams', ex.id);
+    try {
+      const subSnap = await getDoc(doc(examRef, 'submissions', attemptKey()));
+      if (subSnap.exists()) { stateScreen('✅','لقد سلّمت هذا الامتحان بالفعل','تم استلام إجاباتك. المعلم هيراجعها ويعتمد النتيجة.'); return; }
+
+      let startedAtMs;
+      let serverOffset = 0;   // (وقت الخادم − ساعة الجهاز) — يصحّح انحراف الساعة
+      const attRef = doc(examRef, 'attempts', attemptKey());
+      let attSnap = await getDoc(attRef);
+      const freshAttempt = !attSnap.exists();
+      if (freshAttempt) {
+        try {
+          await setDoc(attRef, { code: ctx.code, startedAt: serverTimestamp() });
+        } catch (e) {
+          // سباق: جهاز تاني أنشأ المحاولة في نفس اللحظة (update مرفوض).
+          // نكمّل بالقراءة الموجودة بدل ما نعرض خطأ.
+        }
+      }
+      const readAt = Date.now();
+      try { attSnap = await getDocFromServer(attRef); } catch (e) { /* بلا نت — نستخدم القراءة السابقة */ }
+      const ts = attSnap && attSnap.exists() ? attSnap.data().startedAt : null;
+      startedAtMs = ts && ts.toMillis ? ts.toMillis() : Date.now();
+      // لو المحاولة جديدة، startedAt ≈ وقت الخادم الآن → نحسب فرق الساعة
+      // ونستخدمه طول الجلسة عشان المؤقّت يعتمد على وقت الخادم مش الجهاز.
+      if (freshAttempt && ts && ts.toMillis) serverOffset = startedAtMs - readAt;
+
+      const durMs = (ex.durationMinutes || 0) * 60000;
+      const closesMs = ex.closesAt ? new Date(ex.closesAt).getTime() : Infinity;
+      const deadline = Math.min(startedAtMs + durMs, closesMs);
+      runExam(ex, examRef, deadline, serverOffset);
+    } catch (e) {
+      stateScreen('⚠️','حصل خطأ','تأكد من اتصالك بالإنترنت وافتح الرابط تاني.');
+    }
+  }
+
+  function runExam(ex, examRef, deadline, serverOffset){
+    const now = () => Date.now() + (serverOffset || 0);
+    const questions = Array.isArray(ex.questions) ? ex.questions : [];
+    const rnd = mulberry32(seedFromString(ctx.code + ':' + ex.id));
+    const qOrder = shuffled(questions, rnd);            // [{v:question, i:origIndex}]
+    // ترتيب اختيارات مخلوط لكل سؤال + خريطة shuffledPos → originalPos
+    const optMaps = qOrder.map(q => shuffled(q.v.options || [], rnd));
+
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(lsKey(ex.id)) || '{}') || {}; } catch (e) { saved = {}; }
+    const answers = saved;   // { questionId(str): originalOptionIndex }
+
+    let done = false;
+
+    function persist(){ try { localStorage.setItem(lsKey(ex.id), JSON.stringify(answers)); } catch (e){} }
+
+    function render(){
+      card.innerHTML = `
+        <div class="exam-bar">
+          <span style="font-weight:800;font-size:13px;">${escapeHtml(ex.title || 'امتحان')}</span>
+          <span class="timer" id="timer">--:--</span>
+        </div>
+        <p class="hero-sub" style="margin:0 0 16px;">${questions.length} سؤال · ${ex.totalPoints || 0} درجة</p>
+        <div id="qs"></div>
+        <button class="btn" id="submitBtn">تسليم الامتحان</button>
+        <div id="retryNote"></div>`;
+      const qsEl = document.getElementById('qs');
+      qOrder.forEach((q, qi) => {
+        const qid = q.v.id;
+        const wrap = document.createElement('div');
+        wrap.className = 'q';
+        wrap.innerHTML = `<div class="q-head"><span class="q-num">${qi+1}.</span> ${escapeHtml(q.v.text || '')}</div>`;
+        optMaps[qi].forEach(op => {
+          const row = document.createElement('label');
+          row.className = 'opt' + (answers[qid] === op.i ? ' sel' : '');
+          row.innerHTML = `<input type="radio" name="q${qi}" ${answers[qid] === op.i ? 'checked' : ''}><span>${escapeHtml(op.v)}</span>`;
+          row.querySelector('input').onchange = () => {
+            answers[qid] = op.i;
+            persist();
+            wrap.querySelectorAll('.opt').forEach(o => o.classList.remove('sel'));
+            row.classList.add('sel');
+          };
+          wrap.appendChild(row);
+        });
+        qsEl.appendChild(wrap);
+      });
+      document.getElementById('submitBtn').onclick = () => submit(false);
+    }
+
+    function tick(){
+      if (done) return;
+      const left = deadline - now();
+      const el = document.getElementById('timer');
+      if (el){ el.textContent = fmtTime(left); el.classList.toggle('low', left < 60000); }
+      if (left <= 0){ submit(true); return; }
+      setTimeout(tick, 500);
+    }
+
+    let inFlight = false;      // طلب setDoc جارٍ الآن
+    let wantsSubmit = false;   // اتطلب تسليم (زر/مؤقّت) ولسه ما نجحش
+    let wantsAuto = false;
+    let retryTimer = null;
+
+    async function submit(auto){
+      if (done) return;
+      wantsSubmit = true;
+      wantsAuto = wantsAuto || !!auto;
+      if (inFlight) return;
+      inFlight = true;
+
+      const btn = document.getElementById('submitBtn');
+      if (btn){ btn.disabled = true; btn.textContent = 'جاري الإرسال...'; }
+      const payload = {
+        code: ctx.code,
+        answers: { ...answers },
+        submittedAt: serverTimestamp(),
+        autoSubmitted: wantsAuto,
+        startedAtClient: new Date().toISOString(),
+      };
+      try {
+        await setDoc(doc(examRef, 'submissions', attemptKey()), payload);
+        done = true;
+        clearTimeout(retryTimer);
+        try { localStorage.removeItem(lsKey(ex.id)); } catch (e){}
+        stateScreen(wantsAuto ? '⏰' : '✅',
+          wantsAuto ? 'انتهى الوقت — تم إرسال إجاباتك' : 'تم إرسال إجاباتك',
+          'المعلم هيراجع إجاباتك ويعتمد النتيجة.');
+      } catch (e) {
+        inFlight = false;
+        const code = (e && e.code) || '';
+        if (code === 'permission-denied'){
+          // المستند موجود بالفعل = اتسلّم قبل كده (تسليم واحد مضمون بالقاعدة).
+          done = true;
+          clearTimeout(retryTimer);
+          stateScreen('✅','لقد سلّمت هذا الامتحان بالفعل','تم استلام إجاباتك من قبل.');
+          return;
+        }
+        if (btn){ btn.disabled = false; btn.textContent = 'تسليم الامتحان'; }
+        const note = document.getElementById('retryNote');
+        if (note) note.innerHTML = `<div class="retry-note">لم يُرسَل بعد — لا تغلق الصفحة. جاري إعادة المحاولة تلقائيًا...</div>`;
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => submit(wantsAuto), 5000);
+      }
+    }
+    // رجوع النت → حاول فورًا بدل انتظار دورة الـ5 ثوانٍ.
+    window.addEventListener('online', () => {
+      if (!done && wantsSubmit && !inFlight){ clearTimeout(retryTimer); submit(wantsAuto); }
+    });
+
+    render();
+    tick();
+  }
+
+  async function init(){
+    if (!slug) { stateScreen('🔗','الرابط غير متاح','تأكد إنك فتحت الرابط الصحيح من المعلم.'); return; }
+    try {
+      if (!auth.currentUser) await signInAnonymously(auth);
+      const pSnap = await getDoc(doc(db, 'parent_portal', slug));
+      if (pSnap.exists()){
+        const p = pSnap.data();
+        if (p.active === false ||
+            (p.parentPortalExpiresAt && new Date(p.parentPortalExpiresAt) < new Date())){
+          stateScreen('⏸️','الخدمة دي غير متاحة حاليًا','تواصل مع المعلم.');
+          return;
+        }
+        const title = p.teacherGender === 'female' ? 'مس' : 'مستر';
+        if (p.teacherName){
+          window.__teacherName = `${title} ${p.teacherName}`;
+          document.getElementById('pageTitle').textContent = `امتحان — ${window.__teacherName}`;
+        }
+      }
+      const oSnap = await getDoc(doc(db, 'online_exams', slug));
+      if (oSnap.exists() && oSnap.data().active === false){
+        stateScreen('⏸️','الخدمة دي غير متاحة حاليًا','تواصل مع المعلم.');
+        return;
+      }
+    } catch (e) {}
+    renderForm();
+  }
+
+  init();
+</script>
+</body>
+</html>

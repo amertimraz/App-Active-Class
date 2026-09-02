@@ -167,5 +167,56 @@ service cloud.firestore {
                        == request.auth.uid;
       }
     }
+
+    // ── الامتحانات الإلكترونية (spec 016) ────────────────────────────
+    // نفس نمط parent_portal: {slug} مشتق حتميًا من كود الترخيص، الحماية
+    // في معرفة الـslug + معرّف المستند {code}_{last4}. الإجابات الصحيحة
+    // مش موجودة في أي مستند هنا إطلاقًا (التصحيح داخل تطبيق المدرس).
+    function _oeOwner(slug) {
+      return request.auth != null
+        && get(/databases/$(database)/documents/online_exams/$(slug)).data.ownerUid
+           == request.auth.uid;
+    }
+
+    match /online_exams/{slug} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if request.auth != null
+                    && (resource.data.ownerUid == request.auth.uid
+                        || request.resource.data.deviceId == resource.data.deviceId);
+      allow delete: if false;
+
+      match /exams/{examId} {
+        allow read: if true;
+        allow write: if _oeOwner(slug);
+
+        match /attempts/{docId} {
+          allow read: if _oeOwner(slug);
+          allow create: if request.resource.data.keys().hasOnly(['code','startedAt'])
+                        && request.resource.data.code is string
+                        && request.resource.data.code.size() > 0
+                        && request.resource.data.code.size() < 20
+                        && request.resource.data.startedAt == request.time;
+          allow update: if false;
+          allow delete: if _oeOwner(slug);
+        }
+
+        match /submissions/{docId} {
+          allow read: if _oeOwner(slug);
+          // تسليم واحد فقط: create بيتقيّم على مستند غير موجود؛ بمجرد
+          // وجوده أي create تاني بيفشل.
+          allow create: if request.resource.data.code is string
+                        && request.resource.data.code.size() > 0
+                        && request.resource.data.code.size() < 20
+                        && request.resource.data.answers is map
+                        && request.resource.data.submittedAt == request.time
+                        && request.resource.data.keys().hasOnly(
+                             ['code','answers','submittedAt','autoSubmitted','startedAtClient']);
+          allow update: if false;
+          allow delete: if _oeOwner(slug);
+        }
+      }
+    }
   }
 }
