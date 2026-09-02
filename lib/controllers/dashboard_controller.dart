@@ -295,6 +295,10 @@ class DashboardController extends GetxController {
 
     final now = DateTime.now();
     final currentMonth = DateTime(now.year, now.month, 1);
+    // الكارت بيوصل لحد الشهر الحالي دايمًا — أول ما الشهر يبدأ بيبقى
+    // "المتوقع" = مجموع أسعار كل الطلاب المسجّلين، و"المحصّل" 0 وبيزيد
+    // مع الدفع. (مش بيتأثر بوضع "التحصيل المؤخّر" — ده بيخص تنبيه
+    // "متأخر"، مش تقدّم التحصيل.)
 
     // أقدم شهر عليه مستحق (أقدم تسجيل بين الطلاب النشطين غير المُعفيين)
     DateTime? earliest;
@@ -309,7 +313,7 @@ class DashboardController extends GetxController {
         ? earliest
         : currentMonth;
 
-    // ثبّت الشهر المعروض داخل [minMonth .. currentMonth]
+    // ثبّت الشهر المعروض داخل [minMonth .. الشهر الحالي]
     var month =
         DateTime(paymentCardMonth.value.year, paymentCardMonth.value.month, 1);
     if (month.isBefore(minMonth)) month = minMonth;
@@ -329,10 +333,25 @@ class DashboardController extends GetxController {
       final group = groupById[s.groupId];
       final studentPayments = paymentsByStudent[s.id] ?? const <Payment>[];
 
-      // مستحق الشهر ده وحده = (المستحق التراكمي لحد الشهر) − (لحد الشهر
-      // اللي قبله). بنستخدم totalDueThrough عشان بتبدأ من شهر تسجيل
-      // الطالب فعلًا (مفيش عدّ لطالب اتسجّل بعد الشهر ده)، وبتحترم وضع
-      // "التحصيل المؤخّر" للشهر الجاري. monthlyDue لوحدها مابتعملش ده.
+      // اتسجّل بعد الشهر ده؟ → مايتحسبش فيه.
+      final start = s.attendanceStart ?? s.createdAt;
+      if (start == null) continue;
+      if (DateTime(start.year, start.month, 1).isAfter(month)) continue;
+
+      // مستحق الشهر ده = سعره لهذا الشهر (كامل، أو نسبي لشهر الانضمام،
+      // أو بعدد الحصص للمجموعات بالحصة). أول ما الشهر يبدأ بيتحسب كامل
+      // — مش مرتبط بوضع "التحصيل المؤخّر" اللي بيخص تنبيه "متأخر" بس.
+      final dueThisMonth = PricingHelper.monthlyDue(
+        student: s,
+        group: group,
+        month: month,
+        allAttendance: att.attendance,
+        siblingGroupMembers: students,
+      );
+      if (dueThisMonth <= 0) continue;
+
+      // كام من دفعات الطالب راح للشهور اللي قبل ده (FIFO) — الباقي هو
+      // اللي اتحسب للشهر ده.
       final dueBefore = PricingHelper.totalDueThrough(
         student: s,
         group: group,
@@ -340,16 +359,6 @@ class DashboardController extends GetxController {
         month: prevMonth,
         siblingGroupMembers: students,
       );
-      final dueThrough = PricingHelper.totalDueThrough(
-        student: s,
-        group: group,
-        allAttendance: att.attendance,
-        month: month,
-        siblingGroupMembers: students,
-      );
-      final dueThisMonth = (dueThrough - dueBefore).clamp(0.0, double.infinity);
-      if (dueThisMonth <= 0) continue;
-
       final totalPaid =
           studentPayments.fold<double>(0, (sum, p) => sum + p.amount);
       final paidThisMonth = (totalPaid - dueBefore).clamp(0.0, dueThisMonth);

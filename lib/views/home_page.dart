@@ -2310,6 +2310,16 @@ class _PaymentProgressCard extends StatelessWidget {
                               ),
                             ),
                           )
+                        else if (expected <= 0)
+                          Text(
+                            'لا مستحقات للشهر ده',
+                            style: TextStyle(
+                                color: isDark
+                                    ? Colors.white38
+                                    : Colors.grey.shade500,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11),
+                          )
                         else
                           Row(
                             children: const [
