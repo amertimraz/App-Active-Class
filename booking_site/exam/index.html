@@ -179,6 +179,28 @@
     background:linear-gradient(180deg,rgba(255,255,255,0),#fff 32%);
   }
   .retry-note{font-size:11.5px;color:#B91C1C;text-align:center;margin-top:10px;font-weight:700;}
+
+  /* ── شاشة تعريف الامتحان ─────────────────── */
+  .brief{text-align:center;padding:10px 4px 4px;}
+  .brief-ico{
+    width:72px;height:72px;border-radius:22px;margin:0 auto 14px;
+    background:linear-gradient(135deg,var(--primary),var(--primary-2));
+    display:flex;align-items:center;justify-content:center;font-size:32px;color:#fff;
+    box-shadow:0 14px 30px rgba(79,70,229,.30);
+  }
+  .brief-title{font-size:18px;font-weight:900;margin:0 0 14px;line-height:1.6;}
+  .brief-meta{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-bottom:16px;}
+  .brief-meta span{
+    background:#F1F2FB;border:1px solid var(--line);border-radius:12px;
+    padding:8px 12px;font-size:12px;font-weight:800;color:var(--ink);
+  }
+  .brief-hint{
+    font-size:12px;color:var(--muted);line-height:1.9;margin:0 0 18px;font-weight:600;
+    background:#F8F9FD;border-radius:14px;padding:12px 14px;
+  }
+  .brief-hint b{color:var(--primary-dark);}
+  .grade-bar{height:8px;border-radius:20px;background:#EDEEF6;overflow:hidden;margin:12px auto 8px;max-width:220px;}
+  .grade-bar>i{display:block;height:100%;border-radius:20px;background:linear-gradient(90deg,var(--primary),var(--primary-2));}
 </style>
 </head>
 <body>
@@ -289,6 +311,7 @@
       const snap = await getDoc(doc(db, 'parent_portal', slug, 'students', `${code}_${phone}`));
       if (!snap.exists()) { renderForm('الكود أو الأرقام غير صحيحة'); return; }
       ctx = { code, last4: phone, groupName: snap.data().groupName || '' };
+      window.__studentName = snap.data().name || '';
       await listExams();
     } catch (e) {
       renderForm('حصل خطأ — حاول تاني');
@@ -345,34 +368,103 @@
   const attemptKey = () => `${ctx.code}_${ctx.last4}`;
   const lsKey = (examId) => `exam_${slug}_${examId}_${ctx.code}`;
 
+  function fmtGrade(n){ const v = Number(n); return Number.isInteger(v) ? String(v) : v.toFixed(1); }
+
   async function openExam(ex){
     card.innerHTML = '<div class="spinner"></div>';
     const examRef = doc(db, 'online_exams', slug, 'exams', ex.id);
     try {
       const subSnap = await getDoc(doc(examRef, 'submissions', attemptKey()));
-      if (subSnap.exists()) { stateScreen('✅','لقد سلّمت هذا الامتحان بالفعل','تم استلام إجاباتك. المعلم هيراجعها ويعتمد النتيجة.','ok'); return; }
+      if (subSnap.exists()) { await showResult(ex); return; }
 
-      let startedAtMs;
-      let serverOffset = 0;   // (وقت الخادم − ساعة الجهاز) — يصحّح انحراف الساعة
+      // محاولة موجودة؟ → استئناف (المؤقّت اشتغل قبل كده). غير كده → شاشة تعريف.
       const attRef = doc(examRef, 'attempts', attemptKey());
-      let attSnap = await getDoc(attRef);
-      const freshAttempt = !attSnap.exists();
-      if (freshAttempt) {
+      const attSnap = await getDoc(attRef);
+      if (attSnap.exists()) {
+        const ts = attSnap.data().startedAt;
+        const startedAtMs = ts && ts.toMillis ? ts.toMillis() : Date.now();
+        showBriefing(ex, examRef, { resume: true, startedAtMs });
+      } else {
+        showBriefing(ex, examRef, { resume: false });
+      }
+    } catch (e) {
+      stateScreen('⚠️','حصل خطأ','تأكد من اتصالك بالإنترنت وافتح الرابط تاني.','err');
+    }
+  }
+
+  // ── نتيجة الطالب بعد اعتماد المعلم ─────────────────────────────
+  async function showResult(ex){
+    card.innerHTML = '<div class="spinner"></div>';
+    let hist = [];
+    try {
+      const s = await getDoc(doc(db, 'parent_portal', slug, 'students', attemptKey()));
+      if (s.exists() && Array.isArray(s.data().examHistory)) hist = s.data().examHistory;
+    } catch (e) {}
+    const rec = hist.find(h => String(h.examId) === String(ex.id));
+    if (rec && rec.absent === true) {
+      stateScreen('📋','مُسجّل غياب','المعلم سجّلك غائب عن هذا الامتحان.','stop');
+      return;
+    }
+    if (rec && typeof rec.grade === 'number') {
+      const g = rec.grade, m = Number(rec.maxGrade) || Number(ex.totalPoints) || 0;
+      const pct = m > 0 ? Math.round(g / m * 100) : 0;
+      card.innerHTML = `
+        <div class="state ok">
+          <div class="ring">🎯</div>
+          <p class="t">درجتك: ${fmtGrade(g)} <span style="color:#94A3B8;font-weight:700;">من ${fmtGrade(m)}</span></p>
+          <div class="grade-bar"><i style="width:${Math.max(4,pct)}%"></i></div>
+          <p class="s">${pct}% — اعتمدها المعلم.</p>
+        </div>`;
+      return;
+    }
+    stateScreen('✅','تم تسليم إجاباتك','المعلم بيراجع النتيجة، وهتظهر هنا أول ما يعتمدها.','ok');
+  }
+
+  // ── شاشة تعريف الامتحان (اسم + مدة + عدد أسئلة + زر ابدأ) ───────
+  function showBriefing(ex, examRef, opt){
+    const qCount = Array.isArray(ex.questions) ? ex.questions.length : (ex.questionCount || 0);
+    let hint;
+    if (opt.resume){
+      const durMs = (ex.durationMinutes || 0) * 60000;
+      const closesMs = ex.closesAt ? new Date(ex.closesAt).getTime() : Infinity;
+      const left = Math.min(opt.startedAtMs + durMs, closesMs) - Date.now();
+      hint = `إنت بدأت الامتحان قبل كده — الوقت المتبقّي <b>${left > 0 ? fmtTime(left) : '00:00'}</b>`;
+    } else {
+      hint = 'أول ما تضغط "ابدأ" المؤقّت يشتغل ومينفعش يتوقف. جاوب كل الأسئلة وسلّم قبل انتهاء الوقت.';
+    }
+    card.innerHTML = `
+      <div class="brief">
+        <div class="brief-ico">📝</div>
+        <h2 class="brief-title">${escapeHtml(ex.title || 'امتحان')}</h2>
+        <div class="brief-meta">
+          <span>❓ ${qCount} سؤال</span>
+          <span>🎯 ${ex.totalPoints || 0} درجة</span>
+          <span>⏱️ ${ex.durationMinutes || 0} دقيقة</span>
+        </div>
+        <p class="brief-hint">${hint}</p>
+        <button class="btn" id="startBtn">${opt.resume ? 'إكمال الامتحان' : 'ابدأ الامتحان'}</button>
+      </div>`;
+    document.getElementById('startBtn').onclick = () => beginExam(ex, examRef, opt);
+  }
+
+  async function beginExam(ex, examRef, opt){
+    card.innerHTML = '<div class="spinner"></div>';
+    const attRef = doc(examRef, 'attempts', attemptKey());
+    try {
+      let startedAtMs, serverOffset = 0;
+      if (opt.resume) {
+        startedAtMs = opt.startedAtMs;
+      } else {
         try {
           await setDoc(attRef, { code: ctx.code, startedAt: serverTimestamp() });
-        } catch (e) {
-          // سباق: جهاز تاني أنشأ المحاولة في نفس اللحظة (update مرفوض).
-          // نكمّل بالقراءة الموجودة بدل ما نعرض خطأ.
-        }
+        } catch (e) { /* سباق جهازين — نكمّل بالقراءة الموجودة */ }
+        const readAt = Date.now();
+        let attSnap = null;
+        try { attSnap = await getDocFromServer(attRef); } catch (e) {}
+        const ts = attSnap && attSnap.exists() ? attSnap.data().startedAt : null;
+        startedAtMs = ts && ts.toMillis ? ts.toMillis() : Date.now();
+        if (ts && ts.toMillis) serverOffset = startedAtMs - readAt;
       }
-      const readAt = Date.now();
-      try { attSnap = await getDocFromServer(attRef); } catch (e) { /* بلا نت — نستخدم القراءة السابقة */ }
-      const ts = attSnap && attSnap.exists() ? attSnap.data().startedAt : null;
-      startedAtMs = ts && ts.toMillis ? ts.toMillis() : Date.now();
-      // لو المحاولة جديدة، startedAt ≈ وقت الخادم الآن → نحسب فرق الساعة
-      // ونستخدمه طول الجلسة عشان المؤقّت يعتمد على وقت الخادم مش الجهاز.
-      if (freshAttempt && ts && ts.toMillis) serverOffset = startedAtMs - readAt;
-
       const durMs = (ex.durationMinutes || 0) * 60000;
       const closesMs = ex.closesAt ? new Date(ex.closesAt).getTime() : Infinity;
       const deadline = Math.min(startedAtMs + durMs, closesMs);

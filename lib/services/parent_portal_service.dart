@@ -375,6 +375,9 @@ class ParentPortalService {
           }).toList(),
       'examCount': examRecords.length,
       'examHistory': examRecords.take(15).map((e) => {
+            // examId — عشان صفحة الامتحان الإلكتروني (spec 016) تلاقي
+            // نتيجة هذا الامتحان بالتحديد وتعرضها للطالب بعد اعتماد المدرس.
+            'examId': e.examId,
             'name': e.examName,
             'date': e.examDate.toIso8601String(),
             'absent': e.isAbsent,
