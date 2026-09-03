@@ -158,6 +158,8 @@
   }
   .q.answered .q-num{background:var(--primary);color:#fff;}
   .q-text{font-weight:800;font-size:13.5px;line-height:1.85;padding-top:2px;}
+  .q-img{display:block;max-width:100%;height:auto;border-radius:10px;
+    margin:2px 0 12px;border:1px solid var(--line);}
   .opt{
     display:flex;align-items:center;gap:11px;padding:12px 13px;border-radius:12px;
     border:1.6px solid var(--line);background:#F8F9FD;margin-bottom:8px;cursor:pointer;
@@ -523,7 +525,10 @@
         const qid = q.v.id;
         const wrap = document.createElement('div');
         wrap.className = 'q' + (answers[qid] !== undefined ? ' answered' : '');
-        wrap.innerHTML = `<div class="q-head"><span class="q-num">${qi+1}</span><span class="q-text">${escapeHtml(q.v.text || '')}</span></div>`;
+        const qImg = q.v.imageUrl
+          ? `<img class="q-img" src="${escapeHtml(q.v.imageUrl)}" alt="" loading="lazy">`
+          : '';
+        wrap.innerHTML = `<div class="q-head"><span class="q-num">${qi+1}</span><span class="q-text">${escapeHtml(q.v.text || '')}</span></div>${qImg}`;
         optMaps[qi].forEach(op => {
           const row = document.createElement('label');
           row.className = 'opt' + (answers[qid] === op.i ? ' sel' : '');

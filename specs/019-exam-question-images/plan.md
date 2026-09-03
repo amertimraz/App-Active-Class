@@ -1,0 +1,34 @@
+# Implementation Plan: صور الأسئلة في الامتحان الإلكتروني
+
+**Branch**: `019-exam-question-images` | **Date**: 2026-09-03 | **Spec**: [spec.md](spec.md)
+
+## Summary
+
+حقل `imageUrl` واحد على `ExamQuestion` بيمشي من شاشة التأليف (رفع Storage) → DB (عمود جديد + migration v24) → payload النشر (`toCloudMap`) → صفحة الطالب (`<img>` فوق النص). صفر حزم جديدة، صفر قراءات Firestore زيادة.
+
+## Technical Context
+
+- **Language**: Dart 3.5.4 / Flutter 3.38.1 + JS (صفحة الطالب).
+- **Deps**: `image_picker: ^1.0.7`، `firebase_storage: ^12.0.0` (موجودان). لا جديد.
+- **Storage**: `exam_images/{slug}_{examId}_{ts}.jpg` — رفع anonymous، قراءة عامة.
+- **DB**: `exam_questions` + `image_url TEXT`. `DATABASE_VERSION` 23 → **24**.
+- **Testing**: `flutter analyze` صفر تحذيرات + تحقّق يدوي (نشر امتحان بصورة + فتحه من موبايل).
+
+## Constitution Check
+
+PASS — نفس نمط spec 016 (`OnlineExamService` + `toCloudMap` بدون مفاتيح إجابة) + نمط رفع `receipts/` الموجود في `LicenseController`.
+
+## Source Changes
+
+```text
+lib/config/constants.dart              # + COL_EQ_IMAGE_URL = 'image_url'؛ DATABASE_VERSION 24
+lib/models/exam_question_model.dart    # + imageUrl؛ toMap/fromMap/copyWith/toCloudMap
+lib/services/database_service.dart     # migration oldVersion < 24 (ALTER TABLE) + _examQuestionsTableSql
+lib/services/online_exam_service.dart  # + uploadQuestionImage(XFile) → String (ensureAuth + Storage)
+lib/controllers/exam_controller.dart   # + uploadQuestionImage wrapper
+lib/views/exams/online_exam_editor_page.dart  # _QDraft.imageUrl + زر/مصغّرة/حذف في _questionCard
+storage.rules                          # + match /exam_images/{fileName}
+booking_site/exam/index.html           # عرض <img class="q-img"> + CSS
+```
+
+**صفر migration جدول جديد** — عمود واحد فقط. `_examQuestionsTableSql` (لتثبيتات جديدة) يكسب العمود كمان.

@@ -20,6 +20,19 @@ service firebase.storage {
       allow update, delete: if false;
     }
 
+    // صور أسئلة الامتحان الإلكتروني (spec 019): رفع فقط لأي مستخدم
+    // مسجّل دخول (anonymous من التطبيق)، صورة، أقل من 5 ميجا. القراءة
+    // عامة — صفحة امتحان الطالب بتعرض الصورة بـ<img> بدون مصادقة، واسم
+    // الملف = slug + examId + توقيت بالمللي (غير قابل للتخمين).
+    // التعديل/الحذف ممنوعان من الكلاينت.
+    match /exam_images/{fileName} {
+      allow create: if request.auth != null
+                    && request.resource.size < 5 * 1024 * 1024
+                    && request.resource.contentType.matches('image/.*');
+      allow read: if true;
+      allow update, delete: if false;
+    }
+
     // كل حاجة تانية — مقفولة
     match /{allPaths=**} {
       allow read, write: if false;

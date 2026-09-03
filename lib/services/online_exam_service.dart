@@ -9,8 +9,11 @@
 // بدون correctIndex/points. التصحيح كله في ExamController محليًا.
 import 'dart:async';
 
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 
 import 'package:active_class/models/exam_model.dart';
@@ -60,6 +63,23 @@ class OnlineExamService {
 
   DocumentReference<Map<String, dynamic>> _examDoc(String slug, int examId) =>
       _db.collection('online_exams').doc(slug).collection('exams').doc('$examId');
+
+  // ── صور الأسئلة (spec 019) ─────────────────────────────────────
+  /// يرفع صورة سؤال لـFirebase Storage تحت exam_images/ ويرجّع الرابط
+  /// العام (tokenized). بيضمن المصادقة المجهولة أولاً.
+  Future<String> uploadQuestionImage({
+    required int examId,
+    required Uint8List bytes,
+  }) async {
+    await _ensureAuth();
+    final slug = await _slug();
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final ref = FirebaseStorage.instance
+        .ref()
+        .child('exam_images/${slug}_${examId}_$ts.jpg');
+    await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+    return ref.getDownloadURL();
+  }
 
   // ── النشر ───────────────────────────────────────────────────────
   Future<void> publish(

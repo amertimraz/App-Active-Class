@@ -54,6 +54,7 @@ const String _examQuestionsTableSql = '''
     $COL_EQ_OPTIONS       TEXT,
     $COL_EQ_CORRECT_INDEX INTEGER NOT NULL DEFAULT 0,
     $COL_EQ_POINTS        REAL NOT NULL DEFAULT 1,
+    $COL_EQ_IMAGE_URL     TEXT,
     $COL_EQ_CREATED_AT    TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY($COL_EQ_EXAM_ID) REFERENCES $TABLE_EXAMS($COL_EXAM_ID) ON DELETE CASCADE
   )
@@ -643,6 +644,14 @@ class DatabaseService {
       } catch (_) {}
       try {
         await db.execute(_examQuestionsExamIdIndexSql);
+      } catch (_) {}
+    }
+
+    if (oldVersion < 24) {
+      // spec 019 — عمود صورة السؤال (اختياري). أسئلة قديمة: NULL → صفر تغيير.
+      try {
+        await db.execute(
+            'ALTER TABLE $TABLE_EXAM_QUESTIONS ADD COLUMN $COL_EQ_IMAGE_URL TEXT');
       } catch (_) {}
     }
   }

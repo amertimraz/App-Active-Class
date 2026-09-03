@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import 'package:active_class/config/theme.dart';
@@ -30,6 +31,8 @@ class _QDraft {
   final List<TextEditingController> options;
   int correctIndex;
   double points;
+  String? imageUrl; // spec 019
+  bool uploadingImage = false;
 
   _QDraft({
     this.id,
@@ -38,6 +41,7 @@ class _QDraft {
     List<String>? options,
     this.correctIndex = 0,
     this.points = 1,
+    this.imageUrl,
   })  : text = TextEditingController(text: text),
         options = (options ??
                 (type == ExamQuestionType.trueFalse
@@ -62,6 +66,7 @@ class _QDraft {
         options: options.map((o) => o.text.trim()).toList(),
         correctIndex: correctIndex,
         points: points,
+        imageUrl: imageUrl,
       );
 }
 
@@ -109,6 +114,7 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
               options: q.options,
               correctIndex: q.correctIndex,
               points: q.points,
+              imageUrl: q.imageUrl,
             )));
       _loading = false;
     });
@@ -130,6 +136,37 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
 
   void _addQuestion(ExamQuestionType type) {
     setState(() => _questions.add(_QDraft(type: type)));
+  }
+
+  // ── صورة السؤال (spec 019) ──────────────────────────────────────────────
+  Future<void> _pickQuestionImage(int i) async {
+    final XFile? file;
+    try {
+      file = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+        maxWidth: 1600,
+      );
+    } catch (_) {
+      ToastHelper.error('تعذّر فتح المعرض');
+      return;
+    }
+    if (file == null || !mounted) return;
+
+    _examId ??= await _ec.createOnlineExamDraft(name: _nameCtrl.text.trim());
+    if (!mounted) return;
+    setState(() => _questions[i].uploadingImage = true);
+    final bytes = await file.readAsBytes();
+    final url = await _ec.uploadQuestionImage(_examId!, bytes);
+    if (!mounted) return;
+    setState(() {
+      _questions[i].uploadingImage = false;
+      if (url != null) {
+        _questions[i].imageUrl = url;
+      } else {
+        ToastHelper.error('تعذّر رفع الصورة — حاول تاني');
+      }
+    });
   }
 
   Future<int?> _ensureSaved({required OnlineExamStatus status}) async {
@@ -459,6 +496,63 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                 fontSize: 13)),
       );
 
+  Widget _questionImage(int i, _QDraft q) {
+    if (q.uploadingImage) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Row(children: [
+          SizedBox(
+              width: 15,
+              height: 15,
+              child: CircularProgressIndicator(strokeWidth: 2)),
+          SizedBox(width: 8),
+          Text('جاري رفع الصورة...',
+              style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+        ]),
+      );
+    }
+    if (q.imageUrl != null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                q.imageUrl!,
+                height: 120,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  height: 120,
+                  alignment: Alignment.center,
+                  color: Colors.grey.withValues(alpha: 0.15),
+                  child: const Icon(Icons.broken_image_outlined),
+                ),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () => setState(() => _questions[i].imageUrl = null),
+              icon: const Icon(Icons.delete_outline, size: 16),
+              label: const Text('حذف الصورة',
+                  style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+            ),
+          ],
+        ),
+      );
+    }
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: TextButton.icon(
+        onPressed: () => _pickQuestionImage(i),
+        icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+        label: const Text('إضافة صورة',
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+      ),
+    );
+  }
+
   Widget _questionCard(int i) {
     final q = _questions[i];
     return Card(
@@ -491,6 +585,7 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                   isDense: true),
             ),
             const SizedBox(height: 8),
+            _questionImage(i, q),
             RadioGroup<int>(
               groupValue: q.correctIndex,
               onChanged: (v) => setState(() => q.correctIndex = v ?? 0),

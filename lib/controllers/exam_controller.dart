@@ -1,5 +1,6 @@
 // lib/controllers/exam_controller.dart
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:get/get.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
@@ -311,6 +312,15 @@ class ExamController extends GetxController {
 
   Future<List<ExamQuestion>> getQuestions(int examId) =>
       _db.getQuestionsForExam(examId);
+
+  /// يرفع صورة سؤال (spec 019) ويرجّع الرابط، أو null عند الفشل.
+  Future<String?> uploadQuestionImage(int examId, Uint8List bytes) async {
+    try {
+      return await _online.uploadQuestionImage(examId: examId, bytes: bytes);
+    } catch (e) {
+      return null;
+    }
+  }
 
   Future<List<ExamSubmission>> getSubmissions(int examId) =>
       _db.getSubmissionsForExam(examId);

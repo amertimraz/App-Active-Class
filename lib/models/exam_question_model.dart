@@ -7,6 +7,9 @@ import 'dart:convert';
 
 import 'package:active_class/config/constants.dart';
 
+/// sentinel لـ copyWith عشان نفرّق بين "ما تغيّرش" و"صار null" (لحذف الصورة).
+const Object _unset = Object();
+
 enum ExamQuestionType { trueFalse, mcq }
 
 extension ExamQuestionTypeX on ExamQuestionType {
@@ -33,6 +36,10 @@ class ExamQuestion {
   final List<String> options;
   final int correctIndex;
   final double points;
+
+  /// spec 019 — رابط صورة السؤال في Firebase Storage (اختياري). محلي +
+  /// بيترفع للسحابة في toCloudMap (مش مفتاح إجابة).
+  final String? imageUrl;
   final DateTime? createdAt;
 
   const ExamQuestion({
@@ -44,6 +51,7 @@ class ExamQuestion {
     required this.options,
     required this.correctIndex,
     this.points = 1,
+    this.imageUrl,
     this.createdAt,
   });
 
@@ -65,6 +73,7 @@ class ExamQuestion {
         COL_EQ_OPTIONS: jsonEncode(options),
         COL_EQ_CORRECT_INDEX: correctIndex,
         COL_EQ_POINTS: points,
+        COL_EQ_IMAGE_URL: imageUrl,
         COL_EQ_CREATED_AT: createdAt?.toIso8601String(),
       };
 
@@ -85,6 +94,9 @@ class ExamQuestion {
       options: opts,
       correctIndex: (m[COL_EQ_CORRECT_INDEX] as int?) ?? 0,
       points: (m[COL_EQ_POINTS] as num?)?.toDouble() ?? 1,
+      imageUrl: (m[COL_EQ_IMAGE_URL] as String?)?.isNotEmpty == true
+          ? m[COL_EQ_IMAGE_URL] as String
+          : null,
       createdAt: m[COL_EQ_CREATED_AT] != null
           ? DateTime.tryParse(m[COL_EQ_CREATED_AT] as String)
           : null,
@@ -100,6 +112,7 @@ class ExamQuestion {
     List<String>? options,
     int? correctIndex,
     double? points,
+    Object? imageUrl = _unset,
   }) =>
       ExamQuestion(
         id: id ?? this.id,
@@ -110,6 +123,9 @@ class ExamQuestion {
         options: options ?? this.options,
         correctIndex: correctIndex ?? this.correctIndex,
         points: points ?? this.points,
+        imageUrl: identical(imageUrl, _unset)
+            ? this.imageUrl
+            : imageUrl as String?,
         createdAt: createdAt,
       );
 
@@ -121,5 +137,6 @@ class ExamQuestion {
         'type': type.dbValue,
         'text': text,
         'options': options,
+        if (imageUrl != null && imageUrl!.isNotEmpty) 'imageUrl': imageUrl,
       };
 }
