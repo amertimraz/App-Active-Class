@@ -81,8 +81,6 @@ class SettingsPage extends StatelessWidget {
                         title: 'المساعدين والحسابات',
                         icon: Icons.account_circle_rounded,
                         color: const Color(0xFF4F46E5),
-                        collapsible: true,
-                        initiallyExpanded: false,
                         children: [
                           Obx(() {
                             final auth = Get.find<AuthController>();
@@ -103,51 +101,37 @@ class SettingsPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 14),
 
-                      // ── الإضافات المدفوعة: بوابة الأهالي + الحجوزات (spec 016/017) ──
+                      // ── متابعة أولياء الأمور (إضافة مدفوعة، spec 016) ──
                       Obx(() {
                         final lic = Get.find<LicenseController>();
                         // قراءة العدادين دول مقصودة عشان الـObx يعيد البناء:
                         // - recheckTick كل 5 دقايق (الفحص الدوري لانتهاء المدة)
                         // - verifiedTick بعد كل قراءة ترخيص ناجحة (عشان القسم
-                        //   يظهر فورًا لما القراءة تخلص بعد تحديث التطبيق)
+                        //   يظهر فورًا لما القراءة تخلص/تتغيّر، مش بعد 5 دقايق)
                         // ignore: unnecessary_statements
                         lic.parentPortalRecheckTick.value;
                         // ignore: unnecessary_statements
                         lic.licenseVerifiedTick.value;
 
-                        final portalOn = lic.parentPortalEnabled.value;
-                        final bookingOn = lic.canBooking;
-                        if (!portalOn && !bookingOn) {
+                        // نعرض القسم طول ما الإضافة مفعّلة على الترخيص — حتى لو
+                        // مدتها المستقلة انتهت — عشان المدرس يشوف تاريخ الانتهاء
+                        // ويعرف يجدّد، بدل ما تختفي وتبان وكأنها "اتلغت".
+                        if (!lic.parentPortalEnabled.value) {
                           return const SizedBox.shrink();
                         }
-                        // نعرض بوابة الأهالي طول ما الإضافة مفعّلة على الترخيص —
-                        // حتى لو مدتها المستقلة انتهت — عشان المدرس يشوف تاريخ
-                        // الانتهاء ويعرف يجدّد، بدل ما تختفي وتبان وكأنها "اتلغت".
-                        final expired = portalOn && !lic.parentPortalActiveNow;
+                        final expired = !lic.parentPortalActiveNow;
                         return Column(children: [
                           _buildSection(
                             context,
                             isDark,
-                            title: 'الإضافات المدفوعة',
-                            icon: Icons.workspace_premium_rounded,
+                            title: 'متابعة أولياء الأمور',
+                            icon: Icons.family_restroom_rounded,
                             color: expired
                                 ? const Color(0xFFEF4444)
                                 : const Color(0xFF10B981),
                             children: [
-                              if (portalOn)
-                                _ParentPortalTile(
-                                    isDark: isDark, expired: expired),
-                              if (portalOn && bookingOn) _buildDivider(isDark),
-                              if (bookingOn)
-                                _buildNavTile(
-                                  context,
-                                  isDark,
-                                  icon: Icons.event_available_rounded,
-                                  iconColor: const Color(0xFF6366F1),
-                                  title: 'الحجوزات',
-                                  subtitle: 'استمارة حجز مكان على الموقع + الطلبات',
-                                  onTap: () => Get.toNamed(ROUTE_BOOKINGS),
-                                ),
+                              _ParentPortalTile(
+                                  isDark: isDark, expired: expired),
                             ],
                           ),
                           const SizedBox(height: 14),
@@ -161,8 +145,6 @@ class SettingsPage extends StatelessWidget {
                         title: 'العملة ورمز الدولة',
                         icon: Icons.language_rounded,
                         color: const Color(0xFF10B981),
-                        collapsible: true,
-                        initiallyExpanded: false,
                         children: [
                           Obx(() {
                             final items = SettingsController.supported;
@@ -313,8 +295,6 @@ class SettingsPage extends StatelessWidget {
                         title: 'المظهر والتوقيت',
                         icon: Icons.palette_rounded,
                         color: const Color(0xFF8B5CF6),
-                        collapsible: true,
-                        initiallyExpanded: false,
                         children: [
                           _buildSwitchTile(
                             context,
@@ -351,8 +331,6 @@ class SettingsPage extends StatelessWidget {
                         title: 'الإشعارات',
                         icon: Icons.notifications_rounded,
                         color: const Color(0xFFEF4444),
-                        collapsible: true,
-                        initiallyExpanded: false,
                         children: [
                           _buildNavTile(
                             context,
@@ -375,8 +353,6 @@ class SettingsPage extends StatelessWidget {
                         title: 'الواتساب والتقارير',
                         icon: Icons.chat_rounded,
                         color: const Color(0xFF25D366),
-                        collapsible: true,
-                        initiallyExpanded: false,
                         children: [
                           _buildNavTile(
                             context,
@@ -760,19 +736,14 @@ class SettingsPage extends StatelessWidget {
       );
     }
 
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        initiallyExpanded: initiallyExpanded,
-        tilePadding: const EdgeInsets.only(right: 4),
-        childrenPadding: EdgeInsets.zero,
-        shape: const Border(),
-        collapsedShape: const Border(),
-        iconColor: color,
-        collapsedIconColor: isDark ? Colors.white38 : const Color(0xFF9CA3AF),
-        title: header,
-        children: [card],
-      ),
+    // قسم قابل للطي — ترويسة واضحة (كارت + سهم كبير ملوّن + "اضغط للفتح")
+    // بدل السهم الرمادي الصغير القديم.
+    return _CollapsibleSection(
+      isDark: isDark,
+      color: color,
+      header: header,
+      card: card,
+      initiallyExpanded: initiallyExpanded,
     );
   }
 
@@ -2660,6 +2631,97 @@ class _ParentPortalTileState extends State<_ParentPortalTile> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─── قسم إعدادات قابل للطي بترويسة واضحة ──────────────────────────────────────
+class _CollapsibleSection extends StatefulWidget {
+  final bool isDark;
+  final Color color;
+  final Widget header;
+  final Widget card;
+  final bool initiallyExpanded;
+  const _CollapsibleSection({
+    required this.isDark,
+    required this.color,
+    required this.header,
+    required this.card,
+    required this.initiallyExpanded,
+  });
+
+  @override
+  State<_CollapsibleSection> createState() => _CollapsibleSectionState();
+}
+
+class _CollapsibleSectionState extends State<_CollapsibleSection> {
+  late bool _open = widget.initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final headerBar = InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () => setState(() => _open = !_open),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: widget.isDark
+              ? const Color(0xFF131D31).withValues(alpha: 0.95)
+              : Colors.white.withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: widget.isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : const Color(0xFFE7E9F3),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(child: widget.header),
+            if (!_open)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text('اضغط للفتح',
+                    style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: widget.color.withValues(alpha: 0.75))),
+              ),
+            AnimatedRotation(
+              turns: _open ? 0.5 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: widget.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(Icons.keyboard_arrow_down_rounded,
+                    color: widget.color, size: 22),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        headerBar,
+        AnimatedCrossFade(
+          firstChild: const SizedBox(width: double.infinity),
+          secondChild: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: widget.card,
+          ),
+          crossFadeState:
+              _open ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 180),
+        ),
+      ],
     );
   }
 }
