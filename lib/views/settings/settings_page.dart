@@ -106,26 +106,39 @@ class SettingsPage extends StatelessWidget {
                       // ── 1ج. بوابة متابعة أولياء الأمور (إضافة مدفوعة) ──
                       Obx(() {
                         final lic = Get.find<LicenseController>();
-                        // قراءة العداد دي مقصودة بس عشان الـObx يسجّل
-                        // اعتماد عليه ويعيد البناء كل 5 دقايق (الفحص
-                        // الدوري) حتى لو مفيش تغيير فعلي — بدونها،
-                        // انتهاء المدة والتطبيق فاضل مفتوح مش هيتصرف
-                        // إلا بعد حدث Firestore جديد أو إعادة فتح التطبيق.
+                        // قراءة العدادين دول مقصودة عشان الـObx يعيد البناء:
+                        // - recheckTick كل 5 دقايق (الفحص الدوري لانتهاء المدة)
+                        // - verifiedTick بعد كل قراءة ترخيص ناجحة (عشان القسم
+                        //   يظهر فورًا لما القراءة تخلص بعد تحديث التطبيق، مش
+                        //   بعد 5 دقايق)
                         // ignore: unnecessary_statements
                         lic.parentPortalRecheckTick.value;
-                        if (!lic.parentPortalActiveNow) {
+                        // ignore: unnecessary_statements
+                        lic.licenseVerifiedTick.value;
+
+                        // نعرض القسم طول ما الإضافة مفعّلة على الترخيص —
+                        // حتى لو مدتها المستقلة انتهت — عشان المدرس يشوف
+                        // تاريخ الانتهاء ويعرف يجدّد، بدل ما القسم يختفي
+                        // تمامًا ويبان وكأنه "اتلغى".
+                        if (!lic.parentPortalEnabled.value) {
                           return const SizedBox.shrink();
                         }
+                        final expired = !lic.parentPortalActiveNow;
                         return Column(children: [
                           _buildSection(
                             context,
                             isDark,
                             title: 'متابعة أولياء الأمور',
                             icon: Icons.family_restroom_rounded,
-                            color: const Color(0xFF10B981),
+                            color: expired
+                                ? const Color(0xFFEF4444)
+                                : const Color(0xFF10B981),
                             collapsible: true,
-                            initiallyExpanded: false,
-                            children: [_ParentPortalTile(isDark: isDark)],
+                            initiallyExpanded: expired,
+                            children: [
+                              _ParentPortalTile(
+                                  isDark: isDark, expired: expired)
+                            ],
                           ),
                           const SizedBox(height: 14),
                         ]);
@@ -2380,7 +2393,8 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
 
 class _ParentPortalTile extends StatefulWidget {
   final bool isDark;
-  const _ParentPortalTile({required this.isDark});
+  final bool expired;
+  const _ParentPortalTile({required this.isDark, this.expired = false});
   @override
   State<_ParentPortalTile> createState() => _ParentPortalTileState();
 }
@@ -2440,13 +2454,71 @@ class _ParentPortalTileState extends State<_ParentPortalTile> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'ابعت الرابط ده لأولياء الأمور — هيقدروا يدخلوا كود الطالب وآخر 4 أرقام من رقم تليفونهم يشوفوا حضوره ومدفوعاته.',
-            style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 12,
-                color: isDark ? Colors.white60 : Colors.black45),
-          ),
+          // حالة الاشتراك + تاريخ الانتهاء
+          Obx(() {
+            final lic = Get.find<LicenseController>();
+            // ignore: unnecessary_statements
+            lic.parentPortalRecheckTick.value;
+            // ignore: unnecessary_statements
+            lic.licenseVerifiedTick.value;
+            final exp = lic.parentPortalExpiresAt.value;
+            final active = lic.parentPortalActiveNow;
+            final Color c = active
+                ? const Color(0xFF10B981)
+                : const Color(0xFFEF4444);
+            final String line;
+            if (!active) {
+              line = exp != null
+                  ? 'انتهت مدة الإضافة في ${FormatHelper.formatFullDate(exp)} — تواصل معنا لتجديدها.'
+                  : 'الإضافة غير مفعّلة حاليًا.';
+            } else if (exp == null) {
+              line = 'الإضافة مفعّلة — مدى الحياة.';
+            } else {
+              final days = exp.difference(DateTime.now()).inDays;
+              line = days <= 7
+                  ? 'الإضافة مفعّلة — تنتهي بعد $days يوم (${FormatHelper.formatFullDate(exp)}).'
+                  : 'الإضافة مفعّلة — تنتهي في ${FormatHelper.formatFullDate(exp)}.';
+            }
+            return Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: c.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: c.withValues(alpha: 0.35)),
+              ),
+              child: Row(children: [
+                Icon(active ? Icons.check_circle_rounded : Icons.error_rounded,
+                    size: 16, color: c),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(line,
+                      style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: c)),
+                ),
+              ]),
+            );
+          }),
+          if (widget.expired)
+            Text(
+              'صفحة المتابعة مقفولة على أولياء الأمور لحد ما تجدّد الاشتراك.',
+              style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 12,
+                  color: isDark ? Colors.white60 : Colors.black45),
+            )
+          else
+            Text(
+              'ابعت الرابط ده لأولياء الأمور — هيقدروا يدخلوا كود الطالب وآخر 4 أرقام من رقم تليفونهم يشوفوا حضوره ومدفوعاته.',
+              style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 12,
+                  color: isDark ? Colors.white60 : Colors.black45),
+            ),
           const SizedBox(height: 10),
           Container(
             width: double.infinity,

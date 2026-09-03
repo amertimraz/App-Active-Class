@@ -414,7 +414,7 @@ class LicenseController extends GetxController {
           .collection('licenses')
           .doc(code)
           .get()
-          .timeout(const Duration(seconds: 6));
+          .timeout(const Duration(seconds: 12));
 
       if (!doc.exists) {
         // كود غير موجود — نرجع للتجربة
@@ -517,6 +517,14 @@ class LicenseController extends GetxController {
         return;
       }
 
+      // استعِد حالة بوابة أولياء الأمور من الكاش في كل مسارات الأوفلاين —
+      // البوابة إضافة مدفوعة مدتها المستقلة (parentPortalExpiresAt) هي اللي
+      // بتحكمها (parentPortalActiveNow بيعيد فحصها)، فمش منطقي تختفي لمجرد
+      // إن قراءة الترخيص الأساسي فشلت (نت بطيء بعد تحديث التطبيق مثلاً).
+      // من غير ده كانت البوابة "بتتلغي" من التطبيق بعد أي تحديث لو أول
+      // قراءة Firestore بعده اتأخرت أو فشلت.
+      _restoreParentPortal(prefs);
+
       final daysSinceVerified = DateTime.now()
           .difference(DateTime.fromMillisecondsSinceEpoch(lastVerified))
           .inDays;
@@ -528,9 +536,6 @@ class LicenseController extends GetxController {
         expiresAt.value = cachedExpiresMs != null
             ? DateTime.fromMillisecondsSinceEpoch(cachedExpiresMs)
             : null;
-        // استعِد حالة بوابة أولياء الأمور من الكاش — من غير ده كانت
-        // بتختفي بعد كل إعادة تثبيت لحد ما يحصل تحقق أونلاين ناجح.
-        _restoreParentPortal(prefs);
         state.value = LicenseState.active;
       } else {
         // انتهت مهلة الاستخدام بدون اتصال — لازم يتأكد من السيرفر تاني
