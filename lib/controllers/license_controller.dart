@@ -537,6 +537,11 @@ class LicenseController extends GetxController {
             ? DateTime.fromMillisecondsSinceEpoch(cachedExpiresMs)
             : null;
         state.value = LicenseState.active;
+        // ابدأ الاستماع الفوري حتى في مسار الأوفلاين — أول ما النت يرجع،
+        // .snapshots() بيوصل بيانات الترخيص الحالية فيلتقط أي تغيير عمله
+        // الأدمن (تفعيل بوابة الأهالي مثلاً) من غير ما المدرس يعيد تشغيل
+        // التطبيق. skipFirst: false لأن مفيش emission اتعالجت هنا.
+        _watchLicense(code, prefs, skipFirst: false);
       } else {
         // انتهت مهلة الاستخدام بدون اتصال — لازم يتأكد من السيرفر تاني
         licenseCode.value = code;
@@ -546,13 +551,17 @@ class LicenseController extends GetxController {
   }
 
   // ── Real-time License Watcher ─────────────────────────────────────────────
-  void _watchLicense(String code, SharedPreferences prefs) {
+  /// [skipFirst] — true لو أول emission اتعالجت بالفعل في _validateLicense
+  /// (المسار الناجح)؛ false لو _validateLicense فشل ودخلنا مسار الأوفلاين
+  /// (وقتها محتاجين أول emission يوصل عشان يوفّق الحالة أول ما النت يرجع).
+  void _watchLicense(String code, SharedPreferences prefs,
+      {bool skipFirst = true}) {
     _licenseSubscription?.cancel();
     _licenseSubscription = _db
         .collection('licenses')
         .doc(code)
         .snapshots()
-        .skip(1) // تخطي أول emission (محمّلة بالفعل في _validateLicense)
+        .skip(skipFirst ? 1 : 0)
         .listen((doc) async {
       if (!doc.exists) {
         // ✅ الترخيص اتحذف من الـ admin
