@@ -294,9 +294,18 @@ class ExamController extends GetxController {
     final questions = await _db.getQuestionsForExam(examId);
     final byKey = {for (final q in questions) 'q${q.id}': q};
 
+    // مطابقة الكود case-insensitive — أكواد الطلاب مش مضمون تبقى كلها
+    // uppercase (كود المجموعة اللي المدرس بيكتبه بحرية)، بينما التسليم
+    // من السحابة بييجي بالكود uppercase دايمًا.
+    final allStudents = await _db.getAllStudents();
+    final byCode = {
+      for (final st in allStudents)
+        if (st.id != null) st.code.trim().toUpperCase(): st,
+    };
+
     final matchedStudentIds = <int>{};
     for (final s in subs) {
-      final student = await _db.getStudentByCode(s.code);
+      final student = byCode[s.code.trim().toUpperCase()];
       if (student?.id == null) continue;
       matchedStudentIds.add(student!.id!);
 
