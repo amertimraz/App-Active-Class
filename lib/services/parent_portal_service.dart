@@ -64,24 +64,37 @@ class ParentPortalService {
   /// تاريخ الانتهاء القديم (المنتهي) لحد ما يحصل أي نشر عرضي تاني.
   /// مسجَّلة من غير أي شرط على الحالة الحالية (فعّالة/منتهية) عشان
   /// تلتقط التفعيل الأول والتجديد بعد الانتهاء على السواء.
+  /// آخر حالة "شغّالة" شفناها — عشان نلقط انتقال false→true (تفعيل أو
+  /// رجوع البوابة بعد تحديث التطبيق) فنعمل نشر جماعي لمّة لأي بيانات
+  /// اتسجّلت والبوابة كانت "متلغية" (وقتها pushStudentSummary كان بيسكت).
+  bool? _lastPortalActive;
+
   void _watchLicenseChanges() {
     if (_licenseWorker != null) return;
     if (!Get.isRegistered<LicenseController>()) return;
     final lic = LicenseController.to;
+    _lastPortalActive ??= lic.parentPortalActiveNow;
     _licenseWorker = everAll(
       // licenseVerifiedTick كمان — عشان الـcallback يفير حتى لو الأدمن
       // قفل البوابة والتطبيق كان مقفول (ساعتها parentPortalEnabled بيفضل
       // false→false ومفيش تغيير)، فأول تحقق ترخيص بعد الفتح بيوفّق الحالة.
       [lic.parentPortalEnabled, lic.parentPortalExpiresAt, lic.licenseVerifiedTick],
       (_) {
-        // لو البوابة اتعطّلت (شِيلت العلامة أو عدّى تاريخ الانتهاء)،
-        // اكتب active:false على المستند العام عشان صفحة الأهالي تعرض
-        // "غير متاحة" بدل ما تفضل عارضة بيانات متجمّدة للأبد.
-        if (lic.parentPortalActiveNow) {
+        final active = lic.parentPortalActiveNow;
+        if (active) {
           publishProfile();
+          // انتقال من "متلغية" لـ"شغّالة" → لمّة شاملة مرة واحدة لأي
+          // حضور/دفعات اتسجّلت والبوابة كانت واقفة.
+          if (_lastPortalActive == false) {
+            unawaited(publishAllStudents().catchError((_) => 0));
+          }
         } else {
+          // لو البوابة اتعطّلت (شِيلت العلامة أو عدّى تاريخ الانتهاء)،
+          // اكتب active:false على المستند العام عشان صفحة الأهالي تعرض
+          // "غير متاحة" بدل ما تفضل عارضة بيانات متجمّدة للأبد.
           publishPortalClosed();
         }
+        _lastPortalActive = active;
       },
     );
   }
