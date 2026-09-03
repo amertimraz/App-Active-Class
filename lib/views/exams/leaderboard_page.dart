@@ -45,6 +45,14 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
 
   Future<void> _load() async {
     if (!mounted) return;
+    // فلتر بيشير لمجموعة/امتحان اتحذف → رجوع تلقائي لـ"الكل".
+    if (_filter.scope == LbScope.group &&
+        !_gc.groups.any((g) => g.id == _filter.groupId)) {
+      _filter = const LbFilter();
+    } else if (_filter.scope == LbScope.exam &&
+        !_ec.exams.any((e) => e.id == _filter.examId)) {
+      _filter = const LbFilter();
+    }
     setState(() => _loading = true);
     final entries = await _ec.leaderboard(_filter);
     if (!mounted) return;
@@ -116,7 +124,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
       'اختَر مجموعة',
       [for (final g in groups) (g.id!, g.name)],
     );
-    if (id != null) {
+    if (id != null && mounted) {
       setState(() => _filter = LbFilter(scope: LbScope.group, groupId: id));
       _load();
     }
@@ -132,7 +140,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
       'اختَر امتحانًا',
       [for (final e in exams) (e.id!, e.name)],
     );
-    if (id != null) {
+    if (id != null && mounted) {
       setState(() => _filter = LbFilter(scope: LbScope.exam, examId: id));
       _load();
     }
@@ -148,7 +156,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
       'اختَر شهرًا',
       [for (final m in months) (m, DateFormat('MMMM yyyy', 'ar').format(m))],
     );
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() => _filter = LbFilter(scope: LbScope.month, month: picked));
       _load();
     }

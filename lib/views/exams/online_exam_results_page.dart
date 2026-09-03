@@ -244,6 +244,7 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
     if (ok != true || !mounted) return;
 
     for (final (g, phone) in ready) {
+      if (!mounted) break;
       final msg = _ec.buildGuardianExamResultMessage(
         grade: g,
         exam: widget.exam,
@@ -262,13 +263,18 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
     }
   }
 
+  // يستنى رجوع التطبيق من واتساب قبل فتح الرسالة اللي بعدها — مع مهلة
+  // أمان لو الفتح فشل أصلاً (واتساب مش متثبّت) عشان اللوب ما يعلّقش.
   Future<void> _waitForResume() {
     final c = Completer<void>();
     late final AppLifecycleListener l;
-    l = AppLifecycleListener(onResume: () {
+    void done() {
       l.dispose();
       if (!c.isCompleted) c.complete();
-    });
+    }
+
+    l = AppLifecycleListener(onResume: done);
+    Future.delayed(const Duration(seconds: 60), done);
     return c.future;
   }
 

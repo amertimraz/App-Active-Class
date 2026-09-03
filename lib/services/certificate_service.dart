@@ -76,6 +76,24 @@ class CertificateService {
     return doc.save();
   }
 
+  // زخرفة بسيطة مرسومة (بدل رموز يونيكود اللي مش مضمونة في خط Cairo).
+  pw.Widget _diamonds(PdfColor c) => pw.Row(
+        mainAxisSize: pw.MainAxisSize.min,
+        children: [
+          for (var i = 0; i < 3; i++) ...[
+            if (i > 0) pw.SizedBox(width: 7),
+            pw.Container(
+              width: i == 1 ? 8 : 6,
+              height: i == 1 ? 8 : 6,
+              decoration: pw.BoxDecoration(
+                color: c,
+                shape: pw.BoxShape.circle,
+              ),
+            ),
+          ],
+        ],
+      );
+
   // اسم الطالب: نقلّل الخط تدريجيًا لو طويل بدل ما نقصّه.
   double _nameSize(String name, {double base = 30}) {
     final n = name.trim().length;
@@ -109,8 +127,8 @@ class CertificateService {
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Column(children: [
-                pw.Text('✦', style: _st(size: 30, color: _gold)),
-                pw.SizedBox(height: 10),
+                _diamonds(_gold),
+                pw.SizedBox(height: 12),
                 pw.Text('شهادة تقدير',
                     style: _st(size: 34, bold: true, color: _navy)),
                 pw.SizedBox(height: 6),
@@ -212,8 +230,8 @@ class CertificateService {
             child: pw.Column(
               mainAxisAlignment: pw.MainAxisAlignment.center,
               children: [
-                pw.Text('★', style: _st(size: 22, color: PdfColors.white)),
-                pw.SizedBox(height: 4),
+                _diamonds(PdfColors.white),
+                pw.SizedBox(height: 8),
                 pw.Text('شهادة تقدير',
                     style: _st(size: 30, bold: true, color: PdfColors.white)),
               ],
