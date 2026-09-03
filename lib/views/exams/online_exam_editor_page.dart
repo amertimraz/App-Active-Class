@@ -286,15 +286,12 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
   }
 
   Future<void> _publish() async {
-    debugPrint('[ui] _publish tapped: q=${_questions.length} '
-        'groups=${_groupIds.length} opens=$_opensAt closes=$_closesAt busy=$_busy');
     final gaps = _publishGaps();
     if (gaps.isNotEmpty) {
       await _blockingMsg('محتاج تكمّل قبل النشر',
           'الناقص:\n\n${gaps.map((g) => '•  $g').join('\n')}');
       return;
     }
-    debugPrint('[ui] _publish validations passed, calling _ensureSaved…');
     setState(() => _busy = true);
     String? err;
     int? id;
@@ -311,7 +308,6 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-    debugPrint('[ui] publish result err=$err');
     if (id == null || !mounted) return;
 
     if (err == '__TIMEOUT__') {

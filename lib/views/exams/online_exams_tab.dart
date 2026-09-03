@@ -3,8 +3,10 @@
 // spec 016 — تبويب "امتحان إلكتروني" داخل شاشة الامتحانات.
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/exam_controller.dart';
@@ -12,6 +14,7 @@ import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/views/exams/online_exam_editor_page.dart';
 import 'package:active_class/views/exams/online_exam_results_page.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -492,6 +495,7 @@ class _OnlineExamCard extends StatelessWidget {
             await Get.to(() => OnlineExamResultsPage(exam: exam));
             await onChanged();
           }, primary: true),
+          _btn('رابط الطلاب', Icons.link_rounded, () => _showLink(context)),
           _btn('تعديل الامتحان', Icons.tune_rounded, () async {
             final res = await showDialog<_Schedule>(
               context: context,
@@ -547,6 +551,73 @@ class _OnlineExamCard extends StatelessWidget {
           }),
         ];
     }
+  }
+
+  // رابط الطلاب — نفس الرابط لكل امتحانات المدرس الإلكترونية (مشتق من
+  // slug المدرس). الطالب يفتحه ويشوف الامتحانات المتاحة لكوده.
+  Future<void> _showLink(BuildContext context) async {
+    final slug = await ParentPortalService().ensureSlug();
+    final link = 'active-class.online/exam/$slug';
+    if (!context.mounted) return;
+    await showModalBottomSheet(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.link_rounded, size: 30, color: AppTheme.primaryColor),
+            const SizedBox(height: 8),
+            const Text('رابط دخول الطلاب',
+                style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15)),
+            const SizedBox(height: 4),
+            const Text('نفس الرابط لكل امتحاناتك الإلكترونية — الطالب يدخل بكوده',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5)),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: SelectableText(link,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(height: 14),
+            Row(children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: 'https://$link'));
+                    ToastHelper.success('اتنسخ');
+                  },
+                  icon: const Icon(Icons.copy_rounded, size: 17),
+                  label: const Text('نسخ',
+                      style: TextStyle(fontFamily: 'Cairo')),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => Share.share('https://$link',
+                      subject: 'رابط الامتحان الإلكتروني'),
+                  style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor),
+                  icon: const Icon(Icons.share_rounded, size: 17),
+                  label: const Text('مشاركة',
+                      style: TextStyle(fontFamily: 'Cairo')),
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    );
   }
 
   Widget _btn(String label, IconData icon, VoidCallback onTap,
