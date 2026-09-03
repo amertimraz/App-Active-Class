@@ -344,92 +344,42 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                         'الامتحان منشور. لازم تلغي النشر قبل التعديل.',
                         style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
                   ),
-                TextField(
-                  controller: _nameCtrl,
-                  style: const TextStyle(fontFamily: 'Cairo'),
-                  decoration: const InputDecoration(
-                    labelText: 'اسم الامتحان',
-                    labelStyle: TextStyle(fontFamily: 'Cairo'),
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _sectionTitle('المجموعات المسموح لها'),
-                Obx(() => Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: _gc.groups.map((g) {
-                        final sel = _groupIds.contains(g.id);
-                        return FilterChip(
-                          label: Text(g.name,
-                              style: const TextStyle(
-                                  fontFamily: 'Cairo', fontSize: 12)),
-                          selected: sel,
-                          onSelected: (v) => setState(() {
-                            if (v) {
-                              _groupIds.add(g.id!);
-                            } else {
-                              _groupIds.remove(g.id);
-                            }
-                          }),
-                        );
-                      }).toList(),
-                    )),
-                const SizedBox(height: 16),
-                _sectionTitle('التوقيت'),
-                Row(children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _pickDateTime(true),
-                      child: Text(
-                          _opensAt == null ? 'وقت الفتح' : fmt.format(_opensAt!),
-                          style: const TextStyle(
-                              fontFamily: 'Cairo', fontSize: 12)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _pickDateTime(false),
-                      child: Text(
-                          _closesAt == null ? 'وقت القفل' : fmt.format(_closesAt!),
-                          style: const TextStyle(
-                              fontFamily: 'Cairo', fontSize: 12)),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 10),
-                Row(children: [
-                  const Text('مدة الحل (دقيقة):',
-                      style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Slider(
-                      value: _durationMinutes.toDouble().clamp(5, 180),
-                      min: 5,
-                      max: 180,
-                      divisions: 35,
-                      label: '$_durationMinutes',
-                      onChanged: (v) =>
-                          setState(() => _durationMinutes = v.round()),
-                    ),
-                  ),
-                  Text('$_durationMinutes',
-                      style: const TextStyle(
-                          fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
-                ]),
-                const SizedBox(height: 16),
+                _setupCard(fmt),
+                const SizedBox(height: 18),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _sectionTitle('الأسئلة (${_questions.length})'),
-                    Text('الدرجة: ${FormatHelper.formatGrade(_totalPoints)}',
+                    Container(
+                      width: 22,
+                      height: 22,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor,
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                      child: const Text('٢',
+                          style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white)),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('الأسئلة (${_questions.length})',
                         style: const TextStyle(
                             fontFamily: 'Cairo',
                             fontWeight: FontWeight.w800,
-                            fontSize: 12)),
+                            fontSize: 14)),
+                    const Spacer(),
+                    if (_questions.isNotEmpty)
+                      Text('الدرجة ${FormatHelper.formatGrade(_totalPoints)}',
+                          style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
+                              color: AppTheme.primaryColor)),
                   ],
                 ),
+                const SizedBox(height: 8),
                 ..._questions.asMap().entries.map((e) => _questionCard(e.key)),
                 const SizedBox(height: 8),
                 Row(children: [
@@ -485,90 +435,253 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
     );
   }
 
-  Widget _sectionTitle(String t) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
+  Widget _miniLabel(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 6, top: 2),
         child: Text(t,
-            style: const TextStyle(
+            style: TextStyle(
                 fontFamily: 'Cairo',
-                fontWeight: FontWeight.w800,
-                fontSize: 13)),
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6))),
       );
 
-  Widget _questionImage(int i, _QDraft q) {
+  // القسم ①: كل إعدادات الامتحان مجمّعة في كارت واحد بدل ما تكون
+  // متفرّقة على طول الشاشة.
+  Widget _setupCard(DateFormat fmt) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor,
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: const Text('١',
+                  style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white)),
+            ),
+            const SizedBox(width: 8),
+            const Text('إعدادات الامتحان',
+                style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14)),
+          ]),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _nameCtrl,
+            style: const TextStyle(fontFamily: 'Cairo', fontSize: 14),
+            decoration: const InputDecoration(
+              labelText: 'اسم الامتحان',
+              labelStyle: TextStyle(fontFamily: 'Cairo'),
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 14),
+          _miniLabel('المجموعات المسموح لها'),
+          Obx(() => Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: _gc.groups.map((g) {
+                  final sel = _groupIds.contains(g.id);
+                  return FilterChip(
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    label: Text(g.name,
+                        style: const TextStyle(
+                            fontFamily: 'Cairo', fontSize: 12)),
+                    selected: sel,
+                    onSelected: (v) => setState(() {
+                      if (v) {
+                        _groupIds.add(g.id!);
+                      } else {
+                        _groupIds.remove(g.id);
+                      }
+                    }),
+                  );
+                }).toList(),
+              )),
+          const SizedBox(height: 14),
+          _miniLabel('التوقيت'),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _pickDateTime(true),
+                icon: const Icon(Icons.play_circle_outline, size: 16),
+                style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8)),
+                label: Text(
+                    _opensAt == null ? 'يفتح' : fmt.format(_opensAt!),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 11.5)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _pickDateTime(false),
+                icon: const Icon(Icons.stop_circle_outlined, size: 16),
+                style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8)),
+                label: Text(
+                    _closesAt == null ? 'يقفل' : fmt.format(_closesAt!),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 11.5)),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          Row(children: [
+            Text('مدة الحل: $_durationMinutes دقيقة',
+                style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700)),
+            Expanded(
+              child: Slider(
+                value: _durationMinutes.toDouble().clamp(5, 180),
+                min: 5,
+                max: 180,
+                divisions: 35,
+                label: '$_durationMinutes',
+                onChanged: (v) =>
+                    setState(() => _durationMinutes = v.round()),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  // صورة السؤال — مصغّرة صغيرة تحت النص لو موجودة. زر الإضافة نفسه
+  // أيقونة في ترويسة الكارت (مش سطر كامل) عشان الكارت ما يطولش.
+  Widget _questionImageThumb(int i, _QDraft q) {
     if (q.uploadingImage) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8),
+        padding: EdgeInsets.only(top: 8),
         child: Row(children: [
           SizedBox(
-              width: 15,
-              height: 15,
+              width: 14,
+              height: 14,
               child: CircularProgressIndicator(strokeWidth: 2)),
           SizedBox(width: 8),
           Text('جاري رفع الصورة...',
-              style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+              style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5)),
         ]),
       );
     }
-    if (q.imageUrl != null) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                q.imageUrl!,
-                height: 120,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  height: 120,
-                  alignment: Alignment.center,
-                  color: Colors.grey.withValues(alpha: 0.15),
-                  child: const Icon(Icons.broken_image_outlined),
-                ),
+    if (q.imageUrl == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              q.imageUrl!,
+              height: 90,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                height: 90,
+                alignment: Alignment.center,
+                color: Colors.grey.withValues(alpha: 0.15),
+                child: const Icon(Icons.broken_image_outlined),
               ),
             ),
-            TextButton.icon(
-              onPressed: () => setState(() => _questions[i].imageUrl = null),
-              icon: const Icon(Icons.delete_outline, size: 16),
-              label: const Text('حذف الصورة',
-                  style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
+          ),
+          Positioned(
+            top: 4,
+            left: 4,
+            child: GestureDetector(
+              onTap: () => setState(() => _questions[i].imageUrl = null),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close,
+                    size: 14, color: Colors.white),
+              ),
             ),
-          ],
-        ),
-      );
-    }
-    return Align(
-      alignment: AlignmentDirectional.centerStart,
-      child: TextButton.icon(
-        onPressed: () => _pickQuestionImage(i),
-        icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
-        label: const Text('إضافة صورة',
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+          ),
+        ],
       ),
     );
   }
 
   Widget _questionCard(int i) {
     final q = _questions[i];
+    final cs = Theme.of(context).colorScheme;
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 6),
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: cs.onSurface.withValues(alpha: 0.12)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(10, 8, 6, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Text('${i + 1}. ${q.type.label}',
-                  style: const TextStyle(
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text('س${i + 1}',
+                    style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.w900,
+                        fontSize: 11,
+                        color: AppTheme.primaryColor)),
+              ),
+              const SizedBox(width: 6),
+              Text(q.type.label,
+                  style: TextStyle(
                       fontFamily: 'Cairo',
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12)),
+                      fontSize: 11,
+                      color: cs.onSurface.withValues(alpha: 0.55))),
               const Spacer(),
               IconButton(
-                icon: const Icon(Icons.delete_outline, size: 20),
+                visualDensity: VisualDensity.compact,
+                tooltip: q.imageUrl == null ? 'إضافة صورة' : 'استبدال الصورة',
+                icon: Icon(
+                    q.imageUrl == null
+                        ? Icons.add_photo_alternate_outlined
+                        : Icons.image_rounded,
+                    size: 19,
+                    color: q.imageUrl == null
+                        ? cs.onSurface.withValues(alpha: 0.6)
+                        : AppTheme.primaryColor),
+                onPressed:
+                    q.uploadingImage ? null : () => _pickQuestionImage(i),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.delete_outline, size: 19),
                 onPressed: () => setState(() {
                   _questions.removeAt(i).dispose();
                 }),
@@ -577,13 +690,15 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
             TextField(
               controller: q.text,
               style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+              minLines: 1,
+              maxLines: 3,
               decoration: const InputDecoration(
                   hintText: 'نص السؤال',
                   hintStyle: TextStyle(fontFamily: 'Cairo'),
                   isDense: true),
             ),
-            const SizedBox(height: 8),
-            _questionImage(i, q),
+            _questionImageThumb(i, q),
+            const SizedBox(height: 6),
             RadioGroup<int>(
               groupValue: q.correctIndex,
               onChanged: (v) => setState(() => q.correctIndex = v ?? 0),
@@ -591,7 +706,7 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
             ...q.options.asMap().entries.map((e) {
               final idx = e.key;
               return Row(children: [
-                Radio<int>(value: idx),
+                Radio<int>(value: idx, visualDensity: VisualDensity.compact),
                 Expanded(
                   child: TextField(
                     controller: e.value,
@@ -600,12 +715,15 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                     decoration: InputDecoration(
                         hintText: 'اختيار ${idx + 1}',
                         hintStyle: const TextStyle(fontFamily: 'Cairo'),
-                        isDense: true),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 8)),
                   ),
                 ),
                 if (q.type == ExamQuestionType.mcq && q.options.length > 2)
                   IconButton(
-                    icon: const Icon(Icons.close, size: 16),
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.close, size: 15),
                     onPressed: () => setState(() {
                       q.options.removeAt(idx).dispose();
                       if (q.correctIndex >= q.options.length) {

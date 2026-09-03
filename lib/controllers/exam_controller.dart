@@ -407,9 +407,23 @@ class ExamController extends GetxController {
         .toList();
 
     try {
-      await _online.publish(exam, questions, allowed.students, groupNames);
+      // كتابات Firestore بتتعلّق للأبد لو النت مقطوع/ضعيف (الـFuture
+      // مبيكملش غير لما السيرفر يأكّد) — سقف زمني عشان زر "نشر" ما
+      // يفضلش معلّق. الكتابات بتتحفظ محليًا وبتتزامن أول ما النت يرجع.
+      var slowNetwork = false;
+      try {
+        await _online
+            .publish(exam, questions, allowed.students, groupNames)
+            .timeout(const Duration(seconds: 20));
+      } on TimeoutException {
+        slowNetwork = true;
+      }
       await _db.setExamOnlineStatus(examId, OnlineExamStatus.published);
       await loadExams();
+      if (slowNetwork) {
+        return '__WARN__ تم الحفظ. النت ضعيف — ممكن الامتحان ياخد دقيقة '
+            'عشان يبان للطلاب. تأكد إنك أونلاين.';
+      }
       if (allowed.excludedCount > 0) {
         return '__WARN__ تم النشر. ${allowed.excludedCount} طالب مستبعد (رقم ولي أمر ناقص)';
       }
