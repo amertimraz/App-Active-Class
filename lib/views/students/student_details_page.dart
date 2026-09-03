@@ -28,6 +28,8 @@ import 'package:active_class/widgets/edit_student_sheet.dart';
 import 'package:active_class/widgets/remove_student_dialog.dart';
 import 'package:active_class/widgets/locked_feature.dart';
 import 'package:active_class/views/exams/student_exam_history_page.dart';
+import 'package:active_class/views/exams/certificates_sheet.dart';
+import 'package:active_class/models/certificate_model.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -325,6 +327,74 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
     );
   }
 
+  // ─── شهادة تقدير لطالب واحد (spec 018) ──────────────────────────────────
+  Future<void> _openStudentCertificate(Student s) async {
+    if (s.id == null) return;
+    final history = await DatabaseService().getStudentExamHistory(s.id!);
+    final passed = history
+        .where((r) =>
+            r.grade != null && !r.isAbsent && r.grade! > r.passingGrade)
+        .toList();
+    if (!mounted) return;
+    if (passed.isEmpty) {
+      ToastHelper.info(
+          'الطالب لسه مجابش أكتر من درجة النجاح في أي امتحان');
+      return;
+    }
+
+    StudentExamRecord? rec = passed.first;
+    if (passed.length > 1) {
+      rec = await showModalBottomSheet<StudentExamRecord>(
+        context: context,
+        builder: (_) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Text('اختَر امتحانًا للشهادة',
+                    style: TextStyle(
+                        fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+              ),
+              ...passed.map((r) => ListTile(
+                    title: Text(r.examName,
+                        style: const TextStyle(fontFamily: 'Cairo')),
+                    subtitle: Text(
+                        '${FormatHelper.formatGrade(r.grade!)} / ${FormatHelper.formatGrade(r.maxGrade)}',
+                        style: const TextStyle(
+                            fontFamily: 'Cairo', fontSize: 12)),
+                    onTap: () => Navigator.pop(context, r),
+                  )),
+            ],
+          ),
+        ),
+      );
+    }
+    if (rec == null || !mounted) return;
+
+    final settings = Get.find<SettingsController>();
+    final pct = rec.maxGrade > 0 ? rec.grade! / rec.maxGrade * 100 : 0.0;
+    final tn = settings.teacherFullName.value.trim();
+    final ts = settings.teacherSpecialization.value.trim();
+    final data = CertificateData(
+      studentName: s.name,
+      kind: CertKind.examExcellence,
+      achievementText: 'تقديرًا لتفوّقه في امتحان «${rec.examName}»',
+      gradeText:
+          'الدرجة: ${FormatHelper.formatGrade(rec.grade!)} من ${FormatHelper.formatGrade(rec.maxGrade)} (${pct.toStringAsFixed(0)}%)',
+      dateText: FormatHelper.formatFullDate(rec.examDate),
+      teacherName: tn.isEmpty ? null : tn,
+      teacherSpecialization: ts.isEmpty ? null : ts,
+      teacherTitle: settings.teacherTitle,
+    );
+    Get.to(() => CertificatesSheet(
+          title: 'شهادة تقدير — ${s.name}',
+          fileName: 'شهادة_${s.name}',
+          items: [data],
+        ));
+  }
+
   // ─── تعديل الطالب ────────────────────────────────────────────────────────
   Future<void> _editStudent(Student s) async {
     final updated = await showEditStudentSheet(
@@ -374,6 +444,12 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
             icon: const Icon(Icons.qr_code_rounded),
             onPressed: () => _showQRDialog(context, s),
           ),
+          if (_canSeeAcademics)
+            IconButton(
+              tooltip: 'شهادة تقدير',
+              icon: const Icon(Icons.workspace_premium_rounded),
+              onPressed: () => _openStudentCertificate(s),
+            ),
           if (!s.isArchived)
             IconButton(
               tooltip: 'حذف الطالب',

@@ -16,8 +16,11 @@ import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/models/certificate_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/views/exams/certificates_sheet.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/phone_format.dart';
 
 class ExamGradesPage extends StatefulWidget {
   final Exam exam;
@@ -283,6 +286,29 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
     final uri =
         Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  // ── شهادات تقدير (spec 018) ───────────────────────────────────────────────
+  void _openCertificates() {
+    final ex = widget.exam;
+    final items = <CertificateData>[];
+    for (final g in _grades) {
+      final v = g.grade;
+      if (v == null || g.isAbsent || v <= ex.passingGrade) continue;
+      items.add(_ec.buildExamCert(
+        studentName: g.studentName ?? 'طالب',
+        grade: v,
+        maxGrade: ex.maxGrade,
+        examName: ex.name,
+        date: ex.date,
+      ));
+    }
+    items.sort((a, b) => a.studentName.compareTo(b.studentName));
+    Get.to(() => CertificatesSheet(
+          title: 'شهادات تقدير — ${ex.name}',
+          fileName: 'شهادات_${ex.name}',
+          items: items,
+        ));
   }
 
   Future<void> _confirmSendAllResults() async {
@@ -594,6 +620,11 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
             onPressed: _confirmSendAllResults,
           ),
           IconButton(
+            icon: const Icon(Icons.workspace_premium_rounded),
+            tooltip: 'شهادات تقدير',
+            onPressed: _openCertificates,
+          ),
+          IconButton(
             icon: const Icon(Icons.share_rounded),
             tooltip: 'مشاركة النص',
             onPressed: _shareText,
@@ -898,14 +929,8 @@ class _ArabicDigitsInputFormatter extends TextInputFormatter {
 
 // ── مساعدات إرسال واتساب (نفس منطق attendance_page.dart._showSendReportConfirm) ──
 
-String _normalizePhone(String input, String defaultDial) {
-  var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
-  if (p.startsWith('+')) p = p.substring(1);
-  if (p.startsWith('00')) p = p.substring(2);
-  if (p.startsWith(defaultDial)) return p;
-  if (RegExp(r'^[1-9][0-9]{6,}$').hasMatch(p)) return p;
-  return defaultDial + p.replaceFirst(RegExp(r'^0+'), '');
-}
+String _normalizePhone(String input, String defaultDial) =>
+    normalizeWhatsappPhone(input, defaultDial);
 
 // بيستنى رجوع التطبيق من الخلفية (المستخدم يرجع من واتساب) قبل ما يفتح
 // رسالة تانية في حلقة الإرسال الجماعي — نفس آلية attendance_page.dart.

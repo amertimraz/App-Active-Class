@@ -2419,19 +2419,30 @@ class DatabaseService {
     return map;
   }
 
-  /// قائمة الأوائل لامتحان معين (كل المجموعات أو مجموعة محددة)
+  /// قائمة الأوائل — كل الامتحانات، أو امتحان واحد، أو مجموعة، أو مجموعة
+  /// امتحانات (examIds — لفلتر الشهر في spec 018). المؤرشفون مستبعدون
+  /// دائمًا (FR-016)، والتعادل في النسبة يُحلّ بترتيب الاسم أبجديًا
+  /// (tie-break ثابت — FR-017 / SC-005).
   Future<List<LeaderboardEntry>> getLeaderboard({
     int? examId,
     int? groupId,
+    List<int>? examIds,
   }) async {
     final db = await database;
 
-    String where = 'eg.$COL_GRADE_VALUE IS NOT NULL';
+    String where = 'eg.$COL_GRADE_VALUE IS NOT NULL'
+        ' AND s.$COL_STUDENT_IS_ARCHIVED = 0';
     final args = <dynamic>[];
 
     if (examId != null) {
       where += ' AND eg.$COL_GRADE_EXAM_ID = ?';
       args.add(examId);
+    }
+    if (examIds != null) {
+      if (examIds.isEmpty) return [];
+      where += ' AND eg.$COL_GRADE_EXAM_ID IN '
+          '(${List.filled(examIds.length, '?').join(',')})';
+      args.addAll(examIds);
     }
     if (groupId != null) {
       where += ' AND s.$COL_STUDENT_GROUP_ID = ?';
@@ -2453,7 +2464,8 @@ class DatabaseService {
       INNER JOIN $TABLE_EXAMS    e ON e.$COL_EXAM_ID    = eg.$COL_GRADE_EXAM_ID
       WHERE $where
       GROUP BY s.$COL_STUDENT_ID
-      ORDER BY (SUM(eg.$COL_GRADE_VALUE) * 1.0 / SUM(e.$COL_EXAM_MAX_GRADE)) DESC
+      ORDER BY (SUM(eg.$COL_GRADE_VALUE) * 1.0 / SUM(e.$COL_EXAM_MAX_GRADE)) DESC,
+               s.$COL_STUDENT_NAME ASC
     ''', args);
 
     final list = rows.asMap().entries.map((entry) {

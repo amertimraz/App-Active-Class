@@ -2,14 +2,23 @@
 //
 // spec 016 — سحب تسليمات الامتحان الإلكتروني، تصحيح تلقائي، مراجعة،
 // تعديل يدوي، اعتماد → exam_grades.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/exam_controller.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/exam_model.dart';
+import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/exam_submission_model.dart';
+import 'package:active_class/models/student_model.dart';
+import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/phone_format.dart';
+import 'package:active_class/views/exams/certificates_sheet.dart';
 
 class OnlineExamResultsPage extends StatefulWidget {
   final Exam exam;
@@ -155,9 +164,139 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
     if (result != null) await _approve(s, override: result);
   }
 
+  // ── درجات معتمَدة (exam_grades) عبر كل مجموعات الامتحان ───────────────────
+  Future<List<ExamGrade>> _approvedGrades() async {
+    final byId = <int, ExamGrade>{};
+    for (final gid in widget.exam.groupIds) {
+      for (final g in await _ec.getGradesForExamGroup(_examId, gid)) {
+        if (g.isEntered) byId[g.studentId] = g;
+      }
+    }
+    return byId.values.toList();
+  }
+
+  // ── إرسال النتائج واتساب (spec 018 US3) ──────────────────────────────────
+  Future<void> _sendResults() async {
+    final grades = await _approvedGrades();
+    if (!mounted) return;
+    if (grades.isEmpty) {
+      ToastHelper.info('مفيش درجات معتمَدة للإرسال — اعتمد الدرجات الأول');
+      return;
+    }
+    final students = <int, Student>{};
+    for (final gid in widget.exam.groupIds) {
+      for (final s in await DatabaseService().getStudentsByGroup(gid)) {
+        if (s.id != null) students[s.id!] = s;
+      }
+    }
+    final settings = Get.find<SettingsController>();
+    final ready = <(ExamGrade, String)>[];
+    final skipped = <String>[];
+    for (final g in grades) {
+      final raw = students[g.studentId]?.guardianPhone?.trim() ?? '';
+      final phone = raw.isEmpty
+          ? ''
+          : normalizeWhatsappPhone(raw, settings.countryDial.value);
+      if (phone.isEmpty) {
+        skipped.add(g.studentName ?? '؟');
+      } else {
+        ready.add((g, phone));
+      }
+    }
+    if (!mounted) return;
+    if (ready.isEmpty) {
+      ToastHelper.error('مفيش أرقام أولياء أمور مسجّلة للطلاب المعتمَدين');
+      return;
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('إرسال نتائج الامتحان؟',
+            style: TextStyle(fontFamily: 'Cairo')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('هيتبعت نتيجة "${widget.exam.name}" لـ ${ready.length} ولي أمر.',
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+            if (skipped.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('${skipped.length} هيتم تخطّيهم (مفيش رقم): ${skipped.join("، ")}',
+                  style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 11,
+                      color: Colors.orange.shade800)),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('إرسال', style: TextStyle(fontFamily: 'Cairo'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    for (final (g, phone) in ready) {
+      final msg = _ec.buildGuardianExamResultMessage(
+        grade: g,
+        exam: widget.exam,
+        teacherName: settings.teacherFullName.value.trim(),
+        teacherSpecialization: settings.teacherSpecialization.value.trim(),
+      );
+      await launchUrl(
+        Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}'),
+        mode: LaunchMode.externalApplication,
+      );
+      await _waitForResume();
+    }
+    if (mounted) {
+      ToastHelper.success('تم فتح ${ready.length} رسالة'
+          '${skipped.isNotEmpty ? " (تم تخطّي ${skipped.length})" : ""}');
+    }
+  }
+
+  Future<void> _waitForResume() {
+    final c = Completer<void>();
+    late final AppLifecycleListener l;
+    l = AppLifecycleListener(onResume: () {
+      l.dispose();
+      if (!c.isCompleted) c.complete();
+    });
+    return c.future;
+  }
+
+  // ── شهادات تقدير (spec 018) ─────────────────────────────────────────────
+  Future<void> _openCertificates() async {
+    final cands = await _ec.certifiableStudents(_examId);
+    if (!mounted) return;
+    final items = cands
+        .map((c) => _ec.buildExamCert(
+              studentName: c.name,
+              grade: c.grade,
+              maxGrade: c.maxGrade,
+              examName: widget.exam.name,
+              date: widget.exam.date,
+            ))
+        .toList();
+    Get.to(() => CertificatesSheet(
+          title: 'شهادات تقدير — ${widget.exam.name}',
+          fileName: 'شهادات_${widget.exam.name}',
+          items: items,
+        ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final pending = _subs.where((s) => s.status == SubmissionStatus.pending).length;
+    final approved =
+        _subs.where((s) => s.status == SubmissionStatus.approved).length;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.exam.name,
@@ -170,6 +309,18 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
               child: const Text('اعتماد الكل',
                   style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
             ),
+          if (approved > 0) ...[
+            IconButton(
+              icon: const Icon(Icons.workspace_premium_rounded),
+              tooltip: 'شهادات تقدير',
+              onPressed: _openCertificates,
+            ),
+            IconButton(
+              icon: const Icon(Icons.chat_rounded),
+              tooltip: 'إرسال النتائج واتساب',
+              onPressed: _sendResults,
+            ),
+          ],
         ],
       ),
       body: _loading

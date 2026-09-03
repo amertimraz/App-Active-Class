@@ -278,6 +278,10 @@ const String SETTING_TEAM_IS_OWNER = 'team_mode_is_owner';
 const String SETTING_REPORT_ON_COMPLETION_ENABLED =
     'attendance_report_on_completion_enabled';
 
+// app_settings key — spec 018: آخر قالب شهادة تقدير اختاره المدرس
+// ('classic' | 'modern' | 'simple'). بيتذكّره التطبيق بين المرات.
+const String SETTING_CERT_TEMPLATE = 'cert_template';
+
 // المدة الافتراضية للحصة (بالدقايق) لما جدول المجموعة يحدد ميعاد
 // البداية بس من غير مدة صريحة — بتُستخدم لحساب وقت نهاية الحصة
 // وبالتالي العداد التنازلي.

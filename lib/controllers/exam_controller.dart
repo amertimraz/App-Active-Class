@@ -9,7 +9,33 @@ import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/online_exam_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
+import 'package:active_class/controllers/settings_controller.dart';
+import 'package:active_class/models/certificate_model.dart';
 import 'package:active_class/utils/helpers.dart';
+
+/// نطاق فلتر صفحة المراكز (spec 018 — واحد نشط في كل مرة).
+enum LbScope { all, group, exam, month }
+
+class LbFilter {
+  final LbScope scope;
+  final int? groupId; // scope == group
+  final int? examId; // scope == exam
+  final DateTime? month; // scope == month (اليوم 1)
+  const LbFilter({
+    this.scope = LbScope.all,
+    this.groupId,
+    this.examId,
+    this.month,
+  });
+}
+
+/// طالب مؤهّل لشهادة تقدير من امتحان (grade > passingGrade وغير غائب).
+typedef CertCandidate = ({
+  int studentId,
+  String name,
+  double grade,
+  double maxGrade,
+});
 
 class ExamController extends GetxController {
   static ExamController get to => Get.find();
@@ -134,8 +160,145 @@ class ExamController extends GetxController {
   Future<List<LeaderboardEntry>> getLeaderboard({
     int? examId,
     int? groupId,
+    List<int>? examIds,
   }) =>
-      _db.getLeaderboard(examId: examId, groupId: groupId);
+      _db.getLeaderboard(examId: examId, groupId: groupId, examIds: examIds);
+
+  /// قائمة المراكز حسب الفلتر النشط (spec 018).
+  Future<List<LeaderboardEntry>> leaderboard(LbFilter f) {
+    switch (f.scope) {
+      case LbScope.group:
+        // لو المجموعة اتحذفت أثناء ما الفلتر مختارها → رجوع لـ"الكل".
+        return _db.getLeaderboard(groupId: f.groupId);
+      case LbScope.exam:
+        final ok = exams.any((e) => e.id == f.examId);
+        return ok
+            ? _db.getLeaderboard(examId: f.examId)
+            : _db.getLeaderboard();
+      case LbScope.month:
+        final m = f.month;
+        if (m == null) return _db.getLeaderboard();
+        final ids = exams
+            .where((e) {
+              final r = e.effectiveReportMonth;
+              return r.year == m.year && r.month == m.month;
+            })
+            .map((e) => e.id)
+            .whereType<int>()
+            .toList();
+        return _db.getLeaderboard(examIds: ids); // ids فاضية → []
+      case LbScope.all:
+        return _db.getLeaderboard();
+    }
+  }
+
+  // ── شهادات تقدير (spec 018) ───────────────────────────────────────────────
+
+  /// طلاب امتحان (كل مجموعاته) اللي `grade > passingGrade` وغير غائبين.
+  /// مرتّبين بالنسبة تنازليًا ثم بالاسم.
+  Future<List<CertCandidate>> certifiableStudents(int examId) async {
+    Exam? exam;
+    for (final e in exams) {
+      if (e.id == examId) {
+        exam = e;
+        break;
+      }
+    }
+    if (exam == null) return [];
+    final max = exam.maxGrade;
+    final pass = exam.passingGrade;
+    final seen = <int>{};
+    final out = <CertCandidate>[];
+    for (final gid in exam.groupIds) {
+      for (final g in await _db.getGradesForExamGroup(examId, gid)) {
+        final v = g.grade;
+        if (v == null || g.isAbsent || v <= pass) continue;
+        if (!seen.add(g.studentId)) continue;
+        out.add((
+          studentId: g.studentId,
+          name: g.studentName ?? 'طالب',
+          grade: v,
+          maxGrade: max,
+        ));
+      }
+    }
+    out.sort((a, b) {
+      final pa = a.maxGrade > 0 ? a.grade / a.maxGrade : 0.0;
+      final pb = b.maxGrade > 0 ? b.grade / b.maxGrade : 0.0;
+      final c = pb.compareTo(pa);
+      return c != 0 ? c : a.name.compareTo(b.name);
+    });
+    return out;
+  }
+
+  /// يبني CertificateData لتفوّق في امتحان (أو مركز — بتمرير kind/scopeLabel).
+  CertificateData buildExamCert({
+    required String studentName,
+    required double grade,
+    required double maxGrade,
+    required String examName,
+    required DateTime date,
+    CertKind kind = CertKind.examExcellence,
+    String? scopeLabel,
+  }) {
+    final s = Get.find<SettingsController>();
+    final pct = maxGrade > 0 ? (grade / maxGrade * 100) : 0.0;
+    final scope =
+        (scopeLabel != null && scopeLabel.trim().isNotEmpty) ? ' ${scopeLabel.trim()}' : '';
+    final achievement = switch (kind) {
+      CertKind.examExcellence => 'تقديرًا لتفوّقه في امتحان «$examName»',
+      CertKind.rank1 => 'لحصوله على المركز الأول$scope',
+      CertKind.rank2 => 'لحصوله على المركز الثاني$scope',
+      CertKind.rank3 => 'لحصوله على المركز الثالث$scope',
+      CertKind.appreciation => 'تقديرًا لتميّزه والتزامه',
+    };
+    final tn = s.teacherFullName.value.trim();
+    final ts = s.teacherSpecialization.value.trim();
+    return CertificateData(
+      studentName: studentName,
+      kind: kind,
+      achievementText: achievement,
+      gradeText:
+          'الدرجة: ${FormatHelper.formatGrade(grade)} من ${FormatHelper.formatGrade(maxGrade)} (${pct.toStringAsFixed(0)}%)',
+      dateText: FormatHelper.formatFullDate(date),
+      teacherName: tn.isEmpty ? null : tn,
+      teacherSpecialization: ts.isEmpty ? null : ts,
+      teacherTitle: s.teacherTitle,
+    );
+  }
+
+  /// شهادة مركز من صفحة الأوائل — النص بمعدّل النسبة عبر عدة امتحانات.
+  CertificateData buildRankCert({
+    required String studentName,
+    required CertKind kind,
+    required double pct,
+    required int examCount,
+    String? scopeLabel,
+  }) {
+    final s = Get.find<SettingsController>();
+    final scope =
+        (scopeLabel != null && scopeLabel.trim().isNotEmpty) ? ' ${scopeLabel.trim()}' : '';
+    final rank = switch (kind) {
+      CertKind.rank1 => 'المركز الأول',
+      CertKind.rank2 => 'المركز الثاني',
+      CertKind.rank3 => 'المركز الثالث',
+      _ => 'مركز متقدّم',
+    };
+    final tn = s.teacherFullName.value.trim();
+    final ts = s.teacherSpecialization.value.trim();
+    return CertificateData(
+      studentName: studentName,
+      kind: kind,
+      achievementText: 'لحصوله على $rank$scope',
+      gradeText: examCount > 1
+          ? 'بمعدّل ${pct.toStringAsFixed(0)}% عبر $examCount امتحانات'
+          : 'بنسبة ${pct.toStringAsFixed(0)}%',
+      dateText: FormatHelper.formatFullDate(DateTime.now()),
+      teacherName: tn.isEmpty ? null : tn,
+      teacherSpecialization: ts.isEmpty ? null : ts,
+      teacherTitle: s.teacherTitle,
+    );
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // spec 016 — امتحان إلكتروني
