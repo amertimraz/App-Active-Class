@@ -13,6 +13,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 
+import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
 import 'package:active_class/models/exam_submission_model.dart';
@@ -82,6 +83,10 @@ class OnlineExamService {
     debugPrint('[publish] 3 profile ok, set online_exams/$slug…');
     await _db.collection('online_exams').doc(slug).set({
       'ownerUid': _auth.currentUser?.uid,
+      // deviceId ضروري: بعد تحديث/إعادة تثبيت بيتغيّر uid المجهول، فقاعدة
+      // الأمان بتسمح بإعادة الربط لو الـdeviceId (الثابت) في الكتابة =
+      // المخزّن. من غيره كان النشر بيترفض للأبد بـ permission-denied.
+      'deviceId': LicenseController.to.deviceId.value,
       'active': true,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));

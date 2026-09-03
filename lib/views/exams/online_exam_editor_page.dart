@@ -215,34 +215,86 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
   }
 
   Future<void> _saveDraft() async {
+    if (_nameCtrl.text.trim().isEmpty) {
+      await _blockingMsg('محتاج اسم', 'اكتب اسم الامتحان الأول.');
+      return;
+    }
     setState(() => _busy = true);
     int? id;
+    String? err;
     try {
       id = await _ensureSaved(status: OnlineExamStatus.draft);
     } catch (e) {
-      ToastHelper.error('فشل الحفظ: $e');
+      err = '$e';
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-    if (id != null && mounted) {
+    if (!mounted) return;
+    if (id != null) {
       ToastHelper.success('اتحفظ كمسودّة');
       Navigator.pop(context);
+    } else if (err != null) {
+      await _blockingMsg('مقدرش يحفظ', err);
     }
   }
 
-  Future<void> _publish() async {
+  // رسالة واضحة لا تُفوَّت — بدل toast بيلمع ويختفي. بترجّع لما المستخدم
+  // يقفلها.
+  Future<void> _blockingMsg(String title, String body) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title,
+            style: const TextStyle(
+                fontFamily: 'Cairo', fontWeight: FontWeight.w800, fontSize: 15)),
+        content: Text(body,
+            style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, height: 1.6)),
+        actions: [
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('تمام', style: TextStyle(fontFamily: 'Cairo'))),
+        ],
+      ),
+    );
+  }
+
+  List<String> _publishGaps() {
+    final gaps = <String>[];
+    if (_nameCtrl.text.trim().isEmpty) gaps.add('اسم الامتحان');
+    if (_groupIds.isEmpty) gaps.add('اختيار مجموعة واحدة على الأقل');
     if (_questions.isEmpty) {
-      ToastHelper.error('أضف سؤالًا واحدًا على الأقل');
+      gaps.add('إضافة سؤال واحد على الأقل');
+    } else {
+      for (var i = 0; i < _questions.length; i++) {
+        final q = _questions[i];
+        if (q.text.text.trim().isEmpty) {
+          gaps.add('نص السؤال رقم ${i + 1}');
+        }
+        if (q.type == ExamQuestionType.mcq &&
+            q.options.any((o) => o.text.trim().isEmpty)) {
+          gaps.add('كل اختيارات السؤال رقم ${i + 1}');
+        }
+      }
+    }
+    if (_opensAt == null) gaps.add('وقت فتح الامتحان');
+    if (_closesAt == null) gaps.add('وقت قفل الامتحان');
+    if (_opensAt != null && _closesAt != null && !_closesAt!.isAfter(_opensAt!)) {
+      gaps.add('وقت القفل لازم يكون بعد وقت الفتح');
+    }
+    return gaps;
+  }
+
+  Future<void> _publish() async {
+    debugPrint('[ui] _publish tapped: q=${_questions.length} '
+        'groups=${_groupIds.length} opens=$_opensAt closes=$_closesAt busy=$_busy');
+    final gaps = _publishGaps();
+    if (gaps.isNotEmpty) {
+      await _blockingMsg('محتاج تكمّل قبل النشر',
+          'الناقص:\n\n${gaps.map((g) => '•  $g').join('\n')}');
       return;
     }
-    if (_groupIds.isEmpty) {
-      ToastHelper.error('اختر مجموعة واحدة على الأقل');
-      return;
-    }
-    if (_opensAt == null || _closesAt == null) {
-      ToastHelper.error('حدّد وقت الفتح والقفل');
-      return;
-    }
+    debugPrint('[ui] _publish validations passed, calling _ensureSaved…');
     setState(() => _busy = true);
     String? err;
     int? id;
@@ -259,21 +311,26 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+    debugPrint('[ui] publish result err=$err');
     if (id == null || !mounted) return;
 
     if (err == '__TIMEOUT__') {
-      ToastHelper.error(
-          'النشر أخد وقت طويل — تأكد من الإنترنت وإن التطبيق مسجّل دخول، وجرّب تاني');
+      await _blockingMsg('النشر أخد وقت طويل',
+          'تأكد إنك متصل بالإنترنت وإن التطبيق مسجّل دخول، وجرّب تاني.\n'
+          'لو الامتحان ظهر في القايمة "منشور" يبقى تمام.');
       return;
     }
     if (err == null || err.startsWith('__WARN__')) {
-      if (err != null) ToastHelper.info(err.replaceFirst('__WARN__ ', ''));
       final slug = await ParentPortalService().ensureSlug();
+      if (!mounted) return;
+      if (err != null) {
+        await _blockingMsg('تم', err.replaceFirst('__WARN__ ', ''));
+      }
       if (!mounted) return;
       await _showLinkSheet(slug);
       if (mounted) Navigator.pop(context);
     } else {
-      ToastHelper.error(err);
+      await _blockingMsg('مقدرش ينشر', err);
     }
   }
 
@@ -470,6 +527,40 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
     );
   }
 
+  Widget _timeBtn(
+      String label, DateTime? value, DateFormat fmt, VoidCallback onTap) {
+    final missing = value == null;
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        foregroundColor: missing ? Colors.red.shade700 : null,
+        side: BorderSide(
+            color: missing
+                ? Colors.red.shade400
+                : Theme.of(context).colorScheme.outline),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(missing ? Icons.error_outline : Icons.check_circle, size: 13),
+            const SizedBox(width: 4),
+            Text(label,
+                style: const TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 2),
+          Text(missing ? 'اضغط للتحديد' : fmt.format(value),
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 11)),
+        ],
+      ),
+    );
+  }
+
   Widget _miniLabel(String t) => Padding(
         padding: const EdgeInsets.only(bottom: 6, top: 2),
         child: Text(t,
@@ -553,33 +644,11 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                 }).toList(),
               )),
           const SizedBox(height: 14),
-          _miniLabel('التوقيت'),
+          _miniLabel('توقيت الامتحان (لازم الاتنين)'),
           Row(children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _pickDateTime(true),
-                icon: const Icon(Icons.play_circle_outline, size: 16),
-                style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8)),
-                label: Text(
-                    _opensAt == null ? 'يفتح' : fmt.format(_opensAt!),
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 11.5)),
-              ),
-            ),
+            Expanded(child: _timeBtn('يفتح', _opensAt, fmt, () => _pickDateTime(true))),
             const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _pickDateTime(false),
-                icon: const Icon(Icons.stop_circle_outlined, size: 16),
-                style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8)),
-                label: Text(
-                    _closesAt == null ? 'يقفل' : fmt.format(_closesAt!),
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 11.5)),
-              ),
-            ),
+            Expanded(child: _timeBtn('يقفل', _closesAt, fmt, () => _pickDateTime(false))),
           ]),
           const SizedBox(height: 6),
           Row(children: [

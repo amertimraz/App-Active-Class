@@ -146,7 +146,13 @@ service cloud.firestore {
                     && request.resource.data.ownerUid == request.auth.uid;
       allow update: if request.auth != null
                     && (resource.data.ownerUid == request.auth.uid
-                        || request.resource.data.deviceId == resource.data.deviceId);
+                        || request.resource.data.deviceId == resource.data.deviceId
+                        // إعادة ربط بعد تحديث/إعادة تثبيت غيّرت uid المجهول:
+                        // لو المستند لسه مافيهوش deviceId (اتعمل قبل آلية
+                        // الربط دي)، صاحب الجهاز يقدر يطالب بالملكية مرة —
+                        // بعدها deviceId يتخزّن والقاعدة العادية تسري.
+                        || (!('deviceId' in resource.data)
+                            && request.resource.data.ownerUid == request.auth.uid));
 
       // ملخص كل طالب — الحماية الفعلية هي إن الـ document ID نفسه
       // {code}_{آخر 4 أرقام من تليفون ولي الأمر} — رابط سرّي غير قابل
@@ -178,7 +184,12 @@ service cloud.firestore {
                     && request.resource.data.ownerUid == request.auth.uid;
       allow update: if request.auth != null
                     && (resource.data.ownerUid == request.auth.uid
-                        || request.resource.data.deviceId == resource.data.deviceId);
+                        || request.resource.data.deviceId == resource.data.deviceId
+                        // إعادة ربط بعد تغيّر uid المجهول (تحديث/إعادة تثبيت):
+                        // مستندات اتعملت قبل ما publish() يكتب deviceId
+                        // مكانش ليها مسار إصلاح — النشر كان بيترفض للأبد.
+                        || (!('deviceId' in resource.data)
+                            && request.resource.data.ownerUid == request.auth.uid));
       allow delete: if false;
 
       match /exams/{examId} {

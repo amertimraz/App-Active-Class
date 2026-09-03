@@ -233,20 +233,45 @@ class ParentPortalService {
   /// بتُنشر لوحدها (مش مربوطة بنجاح نشر طالب) — لو مفيش أي طالب عنده
   /// رقم تليفون صحيح لسه، كان المستند ده مبيتعملش خالص، فصفحة المتابعة
   /// تفضل من غير اسم المدرس وكأنها رابط عام مش رابط المدرس ده تحديدًا.
+  DateTime? _lastProfilePublishAttempt;
+  bool _profilePublishInFlight = false;
+  int _profilePublishFailStreak = 0;
+
   Future<void> publishProfile() async {
     _watchLicenseChanges();
     if (!LicenseController.to.parentPortalActiveNow) return;
     _watchProfileChanges();
+
+    // منع الحلقة: لو فيه نداء شغّال، أو آخر نداء كان من ثوانٍ قليلة —
+    // بلاش نكرر. بعد فشل متتالي (صلاحيات/شبكة) بنطوّل فترة الانتظار
+    // تصاعديًا لحد دقيقة بدل ما نفضل نطق كل نص ثانية.
+    if (_profilePublishInFlight) return;
+    final now = DateTime.now();
+    final backoff = Duration(
+        seconds: _profilePublishFailStreak == 0
+            ? 3
+            : (5 * _profilePublishFailStreak).clamp(5, 60));
+    if (_lastProfilePublishAttempt != null &&
+        now.difference(_lastProfilePublishAttempt!) < backoff) {
+      return;
+    }
+    _lastProfilePublishAttempt = now;
+    _profilePublishInFlight = true;
     try {
       await _ensureAuth();
       final slug = await ensureSlug();
       await _publishProfile(slug);
+      _profilePublishFailStreak = 0;
     } catch (e) {
+      _profilePublishFailStreak++;
       // best-effort — بنسجّل بس عشان فشل صامت زي ده (mismatch في هوية
       // الجهاز/الحساب بعد إعادة تثبيت أو مسح بيانات، مثلاً) يبقى قابل
       // للتشخيص من لوج الجهاز بدل ما يفضل مخفي تمامًا (راجع
       // specs/003-parent-portal-expiry — الحادثة اللي اكتشفناها فيها).
-      debugPrint('ParentPortalService: publishProfile failed — $e');
+      debugPrint('ParentPortalService: publishProfile failed '
+          '(streak $_profilePublishFailStreak) — $e');
+    } finally {
+      _profilePublishInFlight = false;
     }
   }
 
