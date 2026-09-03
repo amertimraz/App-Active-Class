@@ -9,7 +9,6 @@ import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/widgets/clock_text.dart';
 import 'package:active_class/utils/pricing_helper.dart';
-import 'package:active_class/utils/billing_period.dart';
 import 'package:active_class/models/payment_model.dart' show Payment;
 import 'package:active_class/models/student_model.dart' show Student;
 import 'package:active_class/models/group_model.dart' show Group;
@@ -45,9 +44,13 @@ class _PaymentsPageState extends State<PaymentsPage> {
     studentController.loadAllStudents();
     groupController.loadGroups();
     attendanceController.loadAttendance();
-    // شهر التحصيل الافتراضي (spec 013) — يوم 1–2 من شهر جديد يفتح على
-    // الشهر اللي فات لأن المدرس لسه بيحصّله.
-    controller.selectedMonth.value ??= defaultCollectionMonth();
+    // شاشة المدفوعات هي مكان *تسجيل* الدفعات — فتفتح على الشهر الحالي
+    // (اللي بيتسجّل فيه النهارده)، مش شهر التحصيل. لو فتحناها على الشهر
+    // اللي فات (spec 013)، المدرس يسجّل دفعة النهارده وماتظهرش في القائمة
+    // لأنها مفلترة على شهر تاني، وطلاب الحصص بيتحجبوا لغياب "شهر التحصيل".
+    // اللي عايز يحصّل الشهر اللي فات يرجع شهر واحد بالسهم.
+    final now = DateTime.now();
+    controller.selectedMonth.value ??= DateTime(now.year, now.month, 1);
     _searchController =
         TextEditingController(text: controller.searchName.value);
     _searchController.addListener(() {
