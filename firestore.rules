@@ -188,7 +188,11 @@ service cloud.firestore {
         allow write: if _oeOwner(slug);
 
         match /attempts/{docId} {
-          allow read: if _oeOwner(slug);
+          // قراءة عامة — مقفولة فعليًا بمعرفة docId = {code}_{last4} (نفس
+          // منطق parent_portal/{slug}/students). الطالب لازم يقرا محاولته
+          // هو عشان يعرف الوقت المتبقّي ويستأنف؛ ومحدش يعرف docId غيره
+          // من غير كود الطالب + آخر 4 أرقام تليفون وليّه.
+          allow read: if true;
           // إنشاء مرة واحدة فقط — الطالب المجهول يثبّت لحظة بدايته.
           allow create: if request.resource.data.keys().hasOnly(['code','startedAt'])
                         && request.resource.data.code is string
@@ -200,7 +204,10 @@ service cloud.firestore {
         }
 
         match /submissions/{docId} {
-          allow read: if _oeOwner(slug);
+          // قراءة عامة — مقفولة بمعرفة docId = {code}_{last4}. الطالب لازم
+          // يقرا تسليمه هو عشان صفحة الويب تعرف تعرض "سلّمت بالفعل".
+          // المستند فيه اختيارات الطالب فقط (مفيش مفتاح إجابة).
+          allow read: if true;
           // تسليم واحد فقط لكل طالب — create بيتقيّم على مستند غير موجود؛
           // بمجرد وجوده أي create تاني (أو setDoc) بيتحوّل update ويُرفض.
           allow create: if request.resource.data.code is string
