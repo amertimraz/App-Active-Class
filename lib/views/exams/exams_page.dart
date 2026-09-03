@@ -176,10 +176,37 @@ class _ExamsPageState extends State<ExamsPage>
         bottom: TabBar(
           controller: _tab,
           labelStyle: const TextStyle(
-              fontFamily: 'Cairo', fontWeight: FontWeight.w800, fontSize: 13),
+              fontFamily: 'Cairo', fontWeight: FontWeight.w800, fontSize: 12.5),
+          unselectedLabelStyle: const TextStyle(
+              fontFamily: 'Cairo', fontWeight: FontWeight.w600, fontSize: 12.5),
+          indicatorSize: TabBarIndicatorSize.tab,
+          indicator: BoxDecoration(
+            gradient: const LinearGradient(
+                colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)]),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          indicatorPadding: const EdgeInsets.all(6),
+          labelColor: Colors.white,
+          dividerColor: Colors.transparent,
           tabs: const [
-            Tab(text: 'ورقي'),
-            Tab(text: 'امتحان إلكتروني'),
+            Tab(
+                height: 42,
+                child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.description_rounded, size: 15),
+                      SizedBox(width: 6),
+                      Text('ورقي'),
+                    ])),
+            Tab(
+                height: 42,
+                child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.wifi_tethering_rounded, size: 15),
+                      SizedBox(width: 6),
+                      Text('إلكتروني'),
+                    ])),
           ],
         ),
       ),

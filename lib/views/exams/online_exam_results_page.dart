@@ -179,28 +179,58 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
                 children: [
-                  FilledButton.icon(
-                    onPressed: _pulling ? null : _pull,
-                    style: FilledButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor),
-                    icon: _pulling
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.cloud_download_outlined, size: 18),
-                    label: const Text('تحديث النتائج',
-                        style: TextStyle(fontFamily: 'Cairo')),
+                  _summaryHeader(),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _pulling ? null : _pull,
+                      style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12))),
+                      icon: _pulling
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.cloud_sync_rounded, size: 18),
+                      label: Text(
+                          _pulling ? 'جاري السحب...' : 'تحديث النتائج من السحابة',
+                          style: const TextStyle(
+                              fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+                    ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   if (_subs.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 40),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 50),
                       child: Center(
-                        child: Text('مفيش تسليمات بعد',
-                            style: TextStyle(
-                                fontFamily: 'Cairo', color: Colors.grey)),
+                        child: Column(children: [
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                                color: const Color(0xFF6366F1)
+                                    .withValues(alpha: 0.10),
+                                shape: BoxShape.circle),
+                            child: const Icon(Icons.inbox_rounded,
+                                size: 40, color: Color(0xFF6366F1)),
+                          ),
+                          const SizedBox(height: 14),
+                          const Text('مفيش تسليمات بعد',
+                              style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14)),
+                          const SizedBox(height: 4),
+                          Text('اضغط "تحديث النتائج" بعد ما الطلاب يسلّموا.',
+                              style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 12,
+                                  color: Colors.grey.shade500)),
+                        ]),
                       ),
                     ),
                   ..._subs.map(_row),
@@ -210,41 +240,208 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
     );
   }
 
+  Widget _summaryHeader() {
+    final total = _subs.length;
+    final approved =
+        _subs.where((s) => s.status == SubmissionStatus.approved).length;
+    final pending =
+        _subs.where((s) => s.status == SubmissionStatus.pending).length;
+    final notSub =
+        _subs.where((s) => s.status == SubmissionStatus.notSubmitted).length;
+    final graded = _subs.where((s) =>
+        s.status != SubmissionStatus.notSubmitted && s.autoScore != null);
+    final avg = graded.isEmpty
+        ? 0.0
+        : graded.map((s) => s.finalGrade ?? s.autoScore ?? 0).reduce((a, b) => a + b) /
+            graded.length;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFF4F46E5).withValues(alpha: 0.3),
+              blurRadius: 18,
+              offset: const Offset(0, 8)),
+        ],
+      ),
+      child: Column(children: [
+        Row(children: [
+          _hStat('$total', 'تسليم'),
+          _hDivider(),
+          _hStat('$approved', 'معتمَد'),
+          _hDivider(),
+          _hStat('$pending', 'بانتظار'),
+          _hDivider(),
+          _hStat('$notSub', 'لم يسلّم'),
+        ]),
+        if (graded.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(height: 1, color: Colors.white.withValues(alpha: 0.18)),
+          const SizedBox(height: 10),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.insights_rounded,
+                size: 16, color: Colors.white.withValues(alpha: 0.85)),
+            const SizedBox(width: 6),
+            Text(
+              'متوسط الدرجات: ${FormatHelper.formatGrade(avg)} / ${FormatHelper.formatGrade(_maxGrade)}',
+              style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white),
+            ),
+          ]),
+        ],
+      ]),
+    );
+  }
+
+  Widget _hDivider() => Container(
+      width: 1, height: 34, color: Colors.white.withValues(alpha: 0.18));
+
+  Widget _hStat(String v, String l) => Expanded(
+        child: Column(children: [
+          Text(v,
+              style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white)),
+          Text(l,
+              style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 10,
+                  color: Colors.white.withValues(alpha: 0.78))),
+        ]),
+      );
+
   Widget _row(ExamSubmission s) {
     final notSubmitted = s.status == SubmissionStatus.notSubmitted;
+    final approved = s.status == SubmissionStatus.approved;
     final grade = s.finalGrade ?? s.autoScore ?? 0;
-    final color = s.status == SubmissionStatus.approved
-        ? Colors.green
-        : (notSubmitted ? Colors.grey : Colors.orange);
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ListTile(
-        title: Text(s.studentName ?? 'طالب',
-            style: const TextStyle(
-                fontFamily: 'Cairo', fontWeight: FontWeight.w700, fontSize: 13)),
-        subtitle: Text(
-          notSubmitted
-              ? 'لم يسلّم'
-              : '${FormatHelper.formatGrade(grade)} / ${FormatHelper.formatGrade(_maxGrade)}  ·  ${s.status.label}',
-          style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: color),
-        ),
-        onTap: notSubmitted ? null : () => _showDetails(s),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!notSubmitted)
-              IconButton(
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                onPressed: () => _editGrade(s),
+    final pct = _maxGrade > 0 ? (grade / _maxGrade) : 0.0;
+    final Color color = approved
+        ? const Color(0xFF10B981)
+        : (notSubmitted ? const Color(0xFF94A3B8) : const Color(0xFFF59E0B));
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: notSubmitted ? null : () => _showDetails(s),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+            child: Row(children: [
+              // دائرة الدرجة
+              Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color.withValues(alpha: 0.4)),
+                ),
+                child: notSubmitted
+                    ? Icon(Icons.remove_rounded, color: color, size: 20)
+                    : Text(FormatHelper.formatGrade(grade),
+                        style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14,
+                            color: color)),
               ),
-            if (s.status != SubmissionStatus.approved)
-              IconButton(
-                icon: const Icon(Icons.check_circle_outline, size: 20),
-                color: AppTheme.primaryColor,
-                tooltip: notSubmitted ? 'تعليم غائب' : 'اعتماد',
-                onPressed: () => _approve(s),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(s.studentName ?? 'طالب',
+                        style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: cs.onSurface)),
+                    const SizedBox(height: 3),
+                    Row(children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.13),
+                            borderRadius: BorderRadius.circular(20)),
+                        child: Text(s.status.label,
+                            style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                color: color)),
+                      ),
+                      if (!notSubmitted) ...[
+                        const SizedBox(width: 6),
+                        Text('من ${FormatHelper.formatGrade(_maxGrade)}',
+                            style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 10,
+                                color: cs.onSurface.withValues(alpha: 0.45))),
+                      ],
+                      if (s.autoSubmitted) ...[
+                        const SizedBox(width: 6),
+                        Icon(Icons.timer_off_rounded,
+                            size: 11,
+                            color: cs.onSurface.withValues(alpha: 0.4)),
+                      ],
+                    ]),
+                    if (!notSubmitted) ...[
+                      const SizedBox(height: 5),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: pct.clamp(0.0, 1.0),
+                          minHeight: 4,
+                          backgroundColor: color.withValues(alpha: 0.12),
+                          valueColor: AlwaysStoppedAnimation<Color>(color),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-          ],
+              if (!notSubmitted)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.edit_outlined, size: 17),
+                  onPressed: () => _editGrade(s),
+                ),
+              if (!approved)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                      notSubmitted
+                          ? Icons.person_off_rounded
+                          : Icons.check_circle_rounded,
+                      size: 20),
+                  color: AppTheme.primaryColor,
+                  tooltip: notSubmitted ? 'تعليم غائب' : 'اعتماد',
+                  onPressed: () => _approve(s),
+                ),
+            ]),
+          ),
         ),
       ),
     );

@@ -270,6 +270,27 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
         title: Text(widget.existing == null ? 'امتحان إلكتروني جديد' : 'تعديل الامتحان',
             style: const TextStyle(
                 fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+        actions: [
+          if (_questions.isNotEmpty)
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(left: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                    '${_questions.length} س · ${FormatHelper.formatGrade(_totalPoints)} د',
+                    style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white)),
+              ),
+            ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
