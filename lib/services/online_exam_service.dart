@@ -131,6 +131,25 @@ class OnlineExamService {
     }, SetOptions(merge: true));
   }
 
+  /// تعديل ميعاد امتحان منشور (تأجيل / تشغيل الآن) بدون لمس الأسئلة ولا
+  /// التسليمات. بيرجّع الحالة لـ published (لو كانت stopped) بالنافذة الجديدة.
+  Future<void> updateSchedule(
+    int examId, {
+    required DateTime opensAtUtc,
+    required DateTime closesAtUtc,
+    required int durationMinutes,
+  }) async {
+    await _ensureAuth();
+    final slug = await _slug();
+    await _examDoc(slug, examId).set({
+      'status': 'published',
+      'opensAt': opensAtUtc.toUtc().toIso8601String(),
+      'closesAt': closesAtUtc.toUtc().toIso8601String(),
+      'durationMinutes': durationMinutes,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   Future<void> deleteRemote(int examId) async {
     try {
       await _ensureAuth();

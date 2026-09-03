@@ -221,6 +221,19 @@ class _OnlineExamCard extends StatelessWidget {
           _btn('النتائج', Icons.assignment_turned_in_outlined, () {
             Get.to(() => OnlineExamResultsPage(exam: exam));
           }, primary: true),
+          _btn('تعديل الميعاد', Icons.schedule_rounded, () async {
+            final res = await showDialog<_Schedule>(
+              context: context,
+              builder: (_) => _RescheduleDialog(exam: exam),
+            );
+            if (res == null) return;
+            await _run(
+                () => _ec.rescheduleOnlineExam(exam.id!,
+                    opensAt: res.opensAt,
+                    closesAt: res.closesAt,
+                    durationMinutes: res.duration),
+                'اتعدّل الميعاد');
+          }),
           if (status == OnlineExamStatus.published)
             _btn('إيقاف الآن', Icons.stop_circle_outlined, () {
               _confirm(context,
@@ -278,5 +291,131 @@ class _OnlineExamCard extends StatelessWidget {
             label: Text(label,
                 style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
           );
+  }
+}
+
+class _Schedule {
+  final DateTime opensAt;
+  final DateTime closesAt;
+  final int duration;
+  const _Schedule(this.opensAt, this.closesAt, this.duration);
+}
+
+/// حوار تعديل ميعاد امتحان منشور — تأجيل أو "تشغيل الآن".
+class _RescheduleDialog extends StatefulWidget {
+  final Exam exam;
+  const _RescheduleDialog({required this.exam});
+
+  @override
+  State<_RescheduleDialog> createState() => _RescheduleDialogState();
+}
+
+class _RescheduleDialogState extends State<_RescheduleDialog> {
+  late DateTime _opens;
+  late DateTime _closes;
+  late int _duration;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _opens = widget.exam.opensAt?.toLocal() ?? now;
+    _closes = widget.exam.closesAt?.toLocal() ?? now.add(const Duration(hours: 1));
+    _duration = widget.exam.durationMinutes ?? 30;
+  }
+
+  Future<void> _pick(bool opens) async {
+    final base = opens ? _opens : _closes;
+    final d = await showDatePicker(
+      context: context,
+      initialDate: base,
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (d == null || !mounted) return;
+    final t = await showTimePicker(
+        context: context, initialTime: TimeOfDay.fromDateTime(base));
+    if (t == null) return;
+    setState(() {
+      final dt = DateTime(d.year, d.month, d.day, t.hour, t.minute);
+      if (opens) {
+        _opens = dt;
+      } else {
+        _closes = dt;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = DateFormat('d MMM · h:mm a', 'ar');
+    return AlertDialog(
+      title: const Text('تعديل الميعاد',
+          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          OutlinedButton.icon(
+            onPressed: () {
+              final now = DateTime.now();
+              setState(() {
+                _opens = now;
+                if (!_closes.isAfter(now.add(Duration(minutes: _duration)))) {
+                  _closes = now.add(Duration(minutes: _duration + 30));
+                }
+              });
+            },
+            icon: const Icon(Icons.play_arrow_rounded, size: 18),
+            label: const Text('تشغيل الآن',
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+          ),
+          const SizedBox(height: 10),
+          Row(children: [
+            const Text('يفتح:',
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+            const Spacer(),
+            TextButton(
+                onPressed: () => _pick(true),
+                child: Text(fmt.format(_opens),
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12))),
+          ]),
+          Row(children: [
+            const Text('يقفل:',
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+            const Spacer(),
+            TextButton(
+                onPressed: () => _pick(false),
+                child: Text(fmt.format(_closes),
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 12))),
+          ]),
+          Row(children: [
+            const Text('المدة (دقيقة):',
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+            const Spacer(),
+            SizedBox(
+              width: 64,
+              child: TextFormField(
+                initialValue: '$_duration',
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                decoration: const InputDecoration(isDense: true),
+                onChanged: (v) => _duration = int.tryParse(v) ?? _duration,
+              ),
+            ),
+          ]),
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo'))),
+        FilledButton(
+            onPressed: () => Navigator.pop(
+                context, _Schedule(_opens, _closes, _duration)),
+            child: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo'))),
+      ],
+    );
   }
 }

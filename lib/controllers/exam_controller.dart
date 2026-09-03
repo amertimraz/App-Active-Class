@@ -256,6 +256,41 @@ class ExamController extends GetxController {
     }
   }
 
+  /// تعديل ميعاد امتحان منشور/موقوف (تأجيل أو تشغيل الآن) بدون إعادة نشر.
+  /// [opensAt]/[closesAt] بالتوقيت المحلي — بنحوّلها UTC.
+  Future<String?> rescheduleOnlineExam(
+    int examId, {
+    required DateTime opensAt,
+    required DateTime closesAt,
+    required int durationMinutes,
+  }) async {
+    if (!closesAt.isAfter(opensAt)) return 'وقت القفل لازم يكون بعد وقت الفتح';
+    if (durationMinutes <= 0) return 'مدة الحل لازم تكون أكبر من صفر';
+    if (durationMinutes * 60 > closesAt.difference(opensAt).inSeconds) {
+      return 'مدة الحل أطول من النافذة الزمنية';
+    }
+    try {
+      await _online.updateSchedule(
+        examId,
+        opensAtUtc: opensAt.toUtc(),
+        closesAtUtc: closesAt.toUtc(),
+        durationMinutes: durationMinutes,
+      );
+      await _db.setExamOnlineFields(
+        examId,
+        isOnline: true,
+        status: OnlineExamStatus.published,
+        opensAt: opensAt.toUtc(),
+        closesAt: closesAt.toUtc(),
+        durationMinutes: durationMinutes,
+      );
+      await loadExams();
+      return null;
+    } catch (e) {
+      return 'فشل التعديل — تحقق من اتصالك بالإنترنت';
+    }
+  }
+
   Future<String?> stopOnlineExam(int examId) async {
     try {
       await _online.stopNow(examId, DateTime.now().toUtc());
