@@ -17,6 +17,13 @@ import 'package:active_class/controllers/theme_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/controllers/auth_controller.dart';
+import 'package:active_class/controllers/student_controller.dart';
+import 'package:active_class/controllers/group_controller.dart';
+import 'package:active_class/controllers/exam_controller.dart';
+import 'package:active_class/controllers/attendance_controller.dart';
+import 'package:active_class/controllers/payment_controller.dart';
+import 'package:active_class/controllers/homework_controller.dart';
+import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/views/settings/account_team_screen.dart';
 import 'package:active_class/widgets/custom_dialogs.dart';
 import 'package:active_class/widgets/progress_dialog.dart';
@@ -1642,19 +1649,44 @@ class SettingsPage extends StatelessWidget {
     if (!context.mounted) return;
 
     if (success) {
+      // كل الكنترولرز لسه فاكرة بيانات ما قبل الاستعادة في الذاكرة —
+      // لازم نعيد تحميلها كلها من القاعدة المستعادة، وإلا التطبيق يفضل
+      // يعرض الطلاب/المجموعات/الامتحانات القديمة (أو فاضية لو استعادة
+      // على تثبيت جديد) رغم إن القاعدة اتغيّرت فعلاً.
+      await _reloadAllControllers();
+      if (!context.mounted) return;
       ToastHelper.success('تم استعادة النسخة الاحتياطية بنجاح');
-      // إعادة تحميل الإعدادات (اسم المعلم، العملة، ...) من القاعدة
-      // المستعادة قبل ما نرجع للرئيسية — الكنترولر لسه فاكر القيم
-      // القديمة في الذاكرة غير كده.
-      if (Get.isRegistered<SettingsController>()) {
-        await Get.find<SettingsController>().reloadFromDatabase();
-      }
-      // إعادة تهيئة كاملة للتطبيق
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 400));
       Get.offAllNamed(ROUTE_HOME);
     } else {
       ToastHelper.error('فشل الاستعادة — البيانات الأصلية لا تزال سليمة');
     }
+  }
+
+  Future<void> _reloadAllControllers() async {
+    Future<void> tryReload(bool registered, Future<void> Function() fn) async {
+      if (!registered) return;
+      try {
+        await fn();
+      } catch (_) {}
+    }
+
+    await tryReload(Get.isRegistered<SettingsController>(),
+        () => Get.find<SettingsController>().reloadFromDatabase());
+    await tryReload(Get.isRegistered<GroupController>(),
+        () => Get.find<GroupController>().loadGroups());
+    await tryReload(Get.isRegistered<StudentController>(),
+        () => Get.find<StudentController>().loadAllStudents());
+    await tryReload(Get.isRegistered<ExamController>(),
+        () => Get.find<ExamController>().loadExams());
+    await tryReload(Get.isRegistered<AttendanceController>(),
+        () => Get.find<AttendanceController>().loadAttendance());
+    await tryReload(Get.isRegistered<PaymentController>(),
+        () => Get.find<PaymentController>().loadPayments());
+    await tryReload(Get.isRegistered<HomeworkController>(),
+        () => Get.find<HomeworkController>().loadHomework());
+    await tryReload(Get.isRegistered<DashboardController>(),
+        () async => Get.find<DashboardController>().refresh());
   }
 
   // ── Manage backups ────────────────────────────────────────────────────────

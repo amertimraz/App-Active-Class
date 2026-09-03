@@ -101,6 +101,15 @@ class BackupService {
         return BackupResult.failure('قاعدة البيانات غير موجودة');
       }
 
+      // تفريغ أي كتابات معلّقة في الـ WAL جوّه ملف القاعدة الرئيسي قبل
+      // النسخ — من غير كده لو القاعدة في وضع WAL، آخر التعديلات (مثلاً
+      // امتحان أو درجات اتسجّلت للتو) بتفضل في active_class.db-wal
+      // والنسخة بتطلع ناقصاها. لا ضرر في وضع journal العادي.
+      try {
+        final db = await DatabaseService().database;
+        await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+      } catch (_) {}
+
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final fileName  = 'active_class_backup_$timestamp.db';
 
@@ -227,6 +236,17 @@ class BackupService {
 
       // استبدال قاعدة البيانات
       await backupFile.copy(targetPath);
+
+      // مهم: امسح ملفات SQLite الجانبية (journal/WAL) القديمة — لو فضلت
+      // موجودة، SQLite عند إعادة الفتح ممكن يعمل rollback بيها فوق
+      // القاعدة المستعادة (journal ساخن) أو يطبّق كتابات قديمة (WAL) —
+      // فتظهر بيانات ناقصة/غلط رغم إن الاستعادة نجحت.
+      for (final ext in const ['-journal', '-wal', '-shm']) {
+        try {
+          final side = File('$targetPath$ext');
+          if (side.existsSync()) side.deleteSync();
+        } catch (_) {}
+      }
 
       // حذف الـ .bak إذا نجح كل شيء
       try { File('$targetPath.bak').deleteSync(); } catch (_) {}
