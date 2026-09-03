@@ -72,16 +72,20 @@ class OnlineExamService {
     List<AllowedExamStudent> students,
     List<String> allowedGroupNames,
   ) async {
+    debugPrint('[publish] 1 ensureAuth…');
     await _ensureAuth();
     final slug = await _slug();
+    debugPrint('[publish] 2 auth ok, slug=$slug, publishProfile…');
 
     // يضمن وجود مستند البروفايل العام (online_exams/{slug} + parent_portal).
     await ParentPortalService().publishProfile();
+    debugPrint('[publish] 3 profile ok, set online_exams/$slug…');
     await _db.collection('online_exams').doc(slug).set({
       'ownerUid': _auth.currentUser?.uid,
       'active': true,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+    debugPrint('[publish] 4 root doc ok, ensuring ${students.length} summaries…');
 
     // فحص الهوية على صفحة الطالب بيقرا
     // parent_portal/{slug}/students/{code}_{last4}. نتأكد إن ملخص كل طالب
@@ -99,6 +103,7 @@ class OnlineExamService {
     } catch (e) {
       debugPrint('OnlineExamService.publish: ensure summaries failed — $e');
     }
+    debugPrint('[publish] 5 summaries done, writing exam doc…');
 
     final totalPoints = questions.fold<double>(0, (s, q) => s + q.points);
     final allowedCodes = {for (final st in students) st.code: true};
@@ -117,6 +122,7 @@ class OnlineExamService {
       'publishedAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    debugPrint('[publish] 6 DONE');
   }
 
   Future<void> unpublish(int examId) async {

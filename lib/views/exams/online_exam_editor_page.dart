@@ -202,11 +202,17 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
 
   Future<void> _saveDraft() async {
     setState(() => _busy = true);
-    final id = await _ensureSaved(status: OnlineExamStatus.draft);
-    setState(() => _busy = false);
-    if (id != null) {
+    int? id;
+    try {
+      id = await _ensureSaved(status: OnlineExamStatus.draft);
+    } catch (e) {
+      ToastHelper.error('فشل الحفظ: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (id != null && mounted) {
       ToastHelper.success('اتحفظ كمسودّة');
-      if (mounted) Navigator.pop(context);
+      Navigator.pop(context);
     }
   }
 
@@ -224,13 +230,28 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
       return;
     }
     setState(() => _busy = true);
-    final id = await _ensureSaved(status: OnlineExamStatus.draft);
-    if (id == null) {
-      setState(() => _busy = false);
+    String? err;
+    int? id;
+    try {
+      id = await _ensureSaved(status: OnlineExamStatus.draft);
+      if (id == null) return;
+      // سقف نهائي — حتى لو أي استدعاء جوّه publishOnlineExam اتعلّق
+      // (App Check / Auth / أي حاجة)، الزر ما يفضلش معلّق للأبد.
+      err = await _ec
+          .publishOnlineExam(id)
+          .timeout(const Duration(seconds: 25), onTimeout: () => '__TIMEOUT__');
+    } catch (e) {
+      err = 'فشل النشر: $e';
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (id == null || !mounted) return;
+
+    if (err == '__TIMEOUT__') {
+      ToastHelper.error(
+          'النشر أخد وقت طويل — تأكد من الإنترنت وإن التطبيق مسجّل دخول، وجرّب تاني');
       return;
     }
-    final err = await _ec.publishOnlineExam(id);
-    setState(() => _busy = false);
     if (err == null || err.startsWith('__WARN__')) {
       if (err != null) ToastHelper.info(err.replaceFirst('__WARN__ ', ''));
       final slug = await ParentPortalService().ensureSlug();
