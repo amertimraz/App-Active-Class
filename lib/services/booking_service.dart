@@ -127,7 +127,11 @@ class BookingService {
       final dio = Dio();
       final formData = FormData.fromMap({
         if (slug.isNotEmpty) 'slug': slug,
-        'image': MultipartFile.fromBytes(bytes, filename: 'q.jpg'),
+        'image': MultipartFile.fromBytes(
+          bytes,
+          filename: 'q.jpg',
+          contentType: DioMediaType('image', 'jpeg'),
+        ),
       });
       final response = await dio.post(
         '$_uploadBase/exam-image',
