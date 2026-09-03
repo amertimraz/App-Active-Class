@@ -153,11 +153,9 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
     }
     if (file == null || !mounted) return;
 
-    _examId ??= await _ec.createOnlineExamDraft(name: _nameCtrl.text.trim());
-    if (!mounted) return;
     setState(() => _questions[i].uploadingImage = true);
     final bytes = await file.readAsBytes();
-    final url = await _ec.uploadQuestionImage(_examId!, bytes);
+    final url = await _ec.uploadQuestionImage(_examId ?? 0, bytes);
     if (!mounted) return;
     setState(() {
       _questions[i].uploadingImage = false;

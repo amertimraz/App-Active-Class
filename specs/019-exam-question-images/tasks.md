@@ -8,11 +8,11 @@
 - [x] T002 `lib/models/exam_question_model.dart`: حقل `final String? imageUrl`؛ في `toMap` (`COL_EQ_IMAGE_URL: imageUrl`)، `fromMap`، `copyWith` (بـ sentinel أو nullable عادي)، و`toCloudMap` (`if (imageUrl != null) 'imageUrl': imageUrl`).
 - [x] T003 `lib/services/database_service.dart`: أضف `$COL_EQ_IMAGE_URL TEXT` لـ`_examQuestionsTableSql`؛ migration `if (oldVersion < 24) { ALTER TABLE exam_questions ADD COLUMN image_url TEXT }` (داخل try/catch زي البقية).
 
-## Phase 2: Upload
+## Phase 2: Upload (عبر خدمة الـVPS — مش Firebase Storage)
 
-- [x] T004 `lib/services/online_exam_service.dart`: `Future<String> uploadQuestionImage(Uint8List bytes)` — `_ensureAuth()` ثم رفع لـ`exam_images/${slug}_${examId}_${ts}.jpg` (contentType image/jpeg) ثم `getDownloadURL()`. (توقيع ياخد bytes عشان يشتغل web/mobile زي `submitUpgradeRequest`.)
-- [x] T005 `storage.rules`: `match /exam_images/{fileName} { allow create: if request.auth != null && request.resource.size < 5*1024*1024 && request.resource.contentType.matches('image/.*'); allow read: if true; allow update, delete: if false; }`
-- [x] T006 `lib/controllers/exam_controller.dart`: `Future<String?> uploadQuestionImage(int examId, XFile file)` wrapper — يقرأ bytes، ينده الخدمة، يرجّع الرابط أو null عند الفشل.
+- [x] T004 VPS `/opt/booking-upload/server.js`: endpoint `POST /api/upload/exam-image` (requireAuth + multer) — اسم ملف عشوائي (اختياريًا مسبوق بالـslug)، يتخزن تحت `/var/www/active-class.online/exam-photos/`، يرجّع `{ url }`. + `EXAM_DIR` + `mkdirSync`. **+ systemd unit `booking-upload.service`** (الخدمة كانت واقعة، مفيش auto-start).
+- [x] T005 `lib/services/booking_service.dart`: `Future<String?> uploadExamImage(List<int> bytes, {String slug})` — `dio` multipart لـ`/api/upload/exam-image` بهيدر `x-upload-secret`. `storage.rules`: شيل بلوك `exam_images/` (مش محتاجينه).
+- [x] T006 `lib/controllers/exam_controller.dart`: `uploadQuestionImage(int examId, List<int> bytes)` wrapper — يجيب slug، ينده `BookingService().uploadExamImage`. `online_exam_service.dart`: شيل كود Firebase Storage.
 
 ## Phase 3: Editor UI
 
@@ -27,4 +27,5 @@
 
 - [x] T010 `flutter analyze` صفر أخطاء/تحذيرات.
 - [ ] T011 تحقّق يدوي: نشر امتحان بسؤال له صورة، فتحه من موبايل، تأكد الصورة تظهر responsive وامتحان قديم ما اتأثرش.
-- [x] T012 تحديث ملاحظات الجلسة + نشر `storage.rules` و`booking_site/exam/` على VPS (يدوي من المستخدم).
+- [x] T012 تحديث ملاحظات الجلسة. نشر `booking_site/exam/index.html` على VPS (اتعمل). **يدوي من المستخدم**: رفع `server.js` + `booking-upload.service`، `systemctl enable --now booking-upload`.
+- [x] T013 `plan.md` + `spec.md` FR-008/009: تعديل من Firebase Storage لخدمة الـVPS.

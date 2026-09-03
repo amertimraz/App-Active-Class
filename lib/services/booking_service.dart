@@ -117,7 +117,28 @@ class BookingService {
   // السر ده ثابت في الكود عمدًا (مش حساس أمنيًا) — أقصى ضرر ممكن لو
   // اتسرّب هو حد يستبدل صورة معلم تاني، مش وصول لبيانات حساسة.
   static const _uploadUrl = 'https://active-class.online/api/upload/photo';
+  static const _uploadBase = 'https://active-class.online/api/upload';
   static const _uploadSecret = '88657c22c85c635ac84ddf4a6a20a3455c082f08e3e8dd47';
+
+  /// يرفع صورة سؤال امتحان إلكتروني (spec 019) لنفس خدمة الرفع على الـVPS.
+  /// كل رفعة ملف جديد باسم عشوائي. بيرجّع الرابط أو null عند الفشل.
+  Future<String?> uploadExamImage(List<int> bytes, {String slug = ''}) async {
+    try {
+      final dio = Dio();
+      final formData = FormData.fromMap({
+        if (slug.isNotEmpty) 'slug': slug,
+        'image': MultipartFile.fromBytes(bytes, filename: 'q.jpg'),
+      });
+      final response = await dio.post(
+        '$_uploadBase/exam-image',
+        data: formData,
+        options: Options(headers: {'x-upload-secret': _uploadSecret}),
+      );
+      return response.data['url'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<String?> uploadPhoto(String slug, File file, {String kind = 'photo'}) async {
     try {

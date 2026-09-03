@@ -33,13 +33,13 @@
 
 - **FR-001**: نموذج `ExamQuestion` MUST يكسب حقل `imageUrl` نصي اختياري (nullable).
 - **FR-002**: جدول `exam_questions` MUST يكسب عمود `image_url TEXT` عبر migration (`DATABASE_VERSION` 23 → 24). امتحانات قديمة: `NULL` → صفر تغيير سلوك.
-- **FR-003**: شاشة تأليف السؤال MUST توفّر زر "إضافة صورة" لكل سؤال — يفتح معرض الصور، يرفع لـFirebase Storage تحت `exam_images/`، ويخزّن الرابط في السؤال.
+- **FR-003**: شاشة تأليف السؤال MUST توفّر زر "إضافة صورة" لكل سؤال — يفتح معرض الصور، يرفع لخدمة الرفع على الـVPS (`/api/upload/exam-image`، نفس خدمة صور المعلّم)، ويخزّن الرابط الراجع في السؤال.
 - **FR-004**: الصورة MUST تُضغط قبل الرفع (جودة ~70%، عرض أقصى ~1600px).
 - **FR-005**: كارت السؤال MUST يعرض الصورة مصغّرة + زر حذف عند وجودها.
 - **FR-006**: `toCloudMap` MUST يضمّن `imageUrl` (لو موجود) في payload النشر — **بدون** أي مفتاح إجابة (زي باقي الحقول).
 - **FR-007**: صفحة امتحان الطالب (`booking_site/exam/index.html`) MUST تعرض صورة السؤال فوق نصه، responsive، لو `imageUrl` موجود.
-- **FR-008**: قواعد Firebase Storage MUST تسمح: `create` لأي مستخدم مصادَق (anonymous) بصورة < 5 ميجا تحت `exam_images/`؛ `read` عام (الطالب يعرضها بدون مصادقة)؛ `update`/`delete` ممنوعان من الكلاينت.
-- **FR-009**: رفع الصورة MUST يضمن مصادقة مجهولة أولاً (نفس `OnlineExamService._ensureAuth`).
+- **FR-008**: endpoint الرفع على الـVPS MUST: يتحقّق من `x-upload-secret`؛ يقبل صورة (jpeg/png/webp) < 5 ميجا؛ يخزّن باسم عشوائي تحت `/var/www/active-class.online/exam-photos/`؛ يرجّع `{ url }`. القراءة عامة (Caddy `file_server` على webroot).
+- **FR-009**: مفيش Firebase Storage — المشروع على خطة Spark. نفس نمط `BookingService.uploadPhoto` الموجود (`dio` multipart + سرّ ثابت في الكود، غير حسّاس).
 
 ## Success Criteria
 

@@ -1,6 +1,5 @@
 // lib/controllers/exam_controller.dart
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:get/get.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
@@ -9,6 +8,7 @@ import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/online_exam_service.dart';
+import 'package:active_class/services/booking_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/certificate_model.dart';
@@ -313,13 +313,14 @@ class ExamController extends GetxController {
   Future<List<ExamQuestion>> getQuestions(int examId) =>
       _db.getQuestionsForExam(examId);
 
-  /// يرفع صورة سؤال (spec 019) ويرجّع الرابط، أو null عند الفشل.
-  Future<String?> uploadQuestionImage(int examId, Uint8List bytes) async {
+  /// يرفع صورة سؤال (spec 019) لخدمة الرفع على الـVPS ويرجّع الرابط،
+  /// أو null عند الفشل. examId مش مُستخدم في المسار — بيتساب للتوافق.
+  Future<String?> uploadQuestionImage(int examId, List<int> bytes) async {
+    String slug = '';
     try {
-      return await _online.uploadQuestionImage(examId: examId, bytes: bytes);
-    } catch (e) {
-      return null;
-    }
+      slug = await ParentPortalService().ensureSlug();
+    } catch (_) {}
+    return BookingService().uploadExamImage(bytes, slug: slug);
   }
 
   Future<List<ExamSubmission>> getSubmissions(int examId) =>
