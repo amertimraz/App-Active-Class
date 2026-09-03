@@ -246,7 +246,57 @@ class _PaymentsPageState extends State<PaymentsPage> {
                         ],
                       ),
                       const Divider(height: 1),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
+                      // ── توضيح: القائمة مفلترة بشهر تاريخ الدفعة ──
+                      // الدفعة مالهاش "شهر" مخزّن — بس تاريخ. لو المدرس
+                      // بيحصّل شهر فات وهو في أوائل الشهر الجديد، الدفعة
+                      // اللي بيسجّلها النهارده تظهر في الشهر الحالي مش
+                      // اللي هو شايفه — بس المديونية الكلية بتتظبط FIFO
+                      // مهما كان الشهر المعروض.
+                      Builder(builder: (_) {
+                        final n = DateTime.now();
+                        final isCurrent =
+                            month.year == n.year && month.month == n.month;
+                        final cs = Theme.of(context).colorScheme;
+                        final txt = isCurrent
+                            ? 'بتشوف دفعات ${dateFmt.format(month)} — أي دفعة تسجّلها بتاريخ الشهر ده بتظهر هنا فورًا.'
+                            : 'بتشوف ${dateFmt.format(month)}. الدفعة اللي تسجّلها النهارده بتظهر في ${dateFmt.format(DateTime(n.year, n.month, 1))} — بس مديونية الطالب الكلية بتتحسب صح مهما كان الشهر المعروض.';
+                        return Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: (isCurrent
+                                    ? cs.primary
+                                    : Colors.orange)
+                                .withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(children: [
+                            Icon(
+                                isCurrent
+                                    ? Icons.info_outline_rounded
+                                    : Icons.history_rounded,
+                                size: 15,
+                                color: isCurrent
+                                    ? cs.primary
+                                    : Colors.orange.shade800),
+                            const SizedBox(width: 7),
+                            Expanded(
+                              child: Text(txt,
+                                  style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 10.5,
+                                      height: 1.6,
+                                      fontWeight: FontWeight.w600,
+                                      color: isCurrent
+                                          ? cs.primary
+                                          : Colors.orange.shade900)),
+                            ),
+                          ]),
+                        );
+                      }),
                       // Total amount
                       Center(
                         child: Column(
@@ -790,29 +840,24 @@ class _PaymentsPageState extends State<PaymentsPage> {
       return (due - paidThisMonth).clamp(0.0, double.infinity);
     }
 
-    // لطلاب التسعير بالحصة بس — مينفعش تتسجل دفعة لطالب لسه ماحضرش أي
-    // حصة اتسجلت "حاضر" في الشهر ده (مفيش أساس نحسب عليه المبلغ)، ولا
-    // لطالب دافع بالفعل عن كل الحصص اللي حضرها (منع دفع مكرر يدوي، زي
-    // نفس الحماية المطبّقة في مسار الدفع بالـ QR).
-    bool blockedForNoAttendance(Student student) {
+    // لطلاب التسعير بالحصة — تنبيه (مش حجب) لو الطالب لسه ماحضرش أي حصة
+    // في الشهر المعروض، أو دافع عن كل حصصه. الزر لازم يفتح دايمًا (المدرس
+    // ممكن يكون بيحصّل مقدّمًا أو بيسجّل دفعة قديمة) — بس نوضّح الموقف.
+    void warnForAttendance(Student student) {
       final group = groupController.groups
           .firstWhereOrNull((g) => g.id == student.groupId);
-      if (group == null || !group.isPerSession) return false;
+      if (group == null || !group.isPerSession) return;
       final attended = PricingHelper.sessionsAttended(
           student: student,
           month: month,
           allAttendance: attendanceController.attendance);
       if (attended == 0) {
-        ToastHelper.error(
-            '${student.name} لسه متسجلش حضور لأي حصة الشهر ده — سجّل الحضور الأول قبل الدفع');
-        return true;
+        ToastHelper.info(
+            '${student.name} لسه محضرش حصص في ${DateFormat('MMMM', 'ar').format(month)} — تقدر تسجّل الدفعة برضه');
+      } else if (thisMonthRemaining(student) <= 0) {
+        ToastHelper.info(
+            '${student.name} دافع عن كل حصصه الحاضرة — أي دفعة زيادة هتتحسب رصيد');
       }
-      if (thisMonthRemaining(student) <= 0) {
-        ToastHelper.error(
-            '${student.name} مدفوع بالكامل عن كل الحصص اللي حضرها بالفعل');
-        return true;
-      }
-      return false;
     }
 
     if (preselectedStudentId != null) {
@@ -823,7 +868,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
             '${student.name} معفي بالكامل من الرسوم — لا داعي لتسجيل دفعة');
         return;
       }
-      if (student != null && blockedForNoAttendance(student)) return;
+      if (student != null) warnForAttendance(student);
       openSheet(preselectedStudentId,
           price: defaultAmount ?? dueFor(student), studentName: student?.name);
       return;
@@ -844,7 +889,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
               '${student.name} معفي بالكامل من الرسوم — لا داعي لتسجيل دفعة');
           return;
         }
-        if (student != null && blockedForNoAttendance(student)) return;
+        if (student != null) warnForAttendance(student);
         openSheet(studentId,
             price: dueFor(student), studentName: student?.name);
       },
