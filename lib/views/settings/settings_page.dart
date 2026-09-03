@@ -103,82 +103,56 @@ class SettingsPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 14),
 
-                      // ── 1ج. بوابة متابعة أولياء الأمور (إضافة مدفوعة) ──
+                      // ── الإضافات المدفوعة: بوابة الأهالي + الحجوزات (spec 016/017) ──
                       Obx(() {
                         final lic = Get.find<LicenseController>();
                         // قراءة العدادين دول مقصودة عشان الـObx يعيد البناء:
                         // - recheckTick كل 5 دقايق (الفحص الدوري لانتهاء المدة)
                         // - verifiedTick بعد كل قراءة ترخيص ناجحة (عشان القسم
-                        //   يظهر فورًا لما القراءة تخلص بعد تحديث التطبيق، مش
-                        //   بعد 5 دقايق)
+                        //   يظهر فورًا لما القراءة تخلص بعد تحديث التطبيق)
                         // ignore: unnecessary_statements
                         lic.parentPortalRecheckTick.value;
                         // ignore: unnecessary_statements
                         lic.licenseVerifiedTick.value;
 
-                        // نعرض القسم طول ما الإضافة مفعّلة على الترخيص —
-                        // حتى لو مدتها المستقلة انتهت — عشان المدرس يشوف
-                        // تاريخ الانتهاء ويعرف يجدّد، بدل ما القسم يختفي
-                        // تمامًا ويبان وكأنه "اتلغى".
-                        if (!lic.parentPortalEnabled.value) {
+                        final portalOn = lic.parentPortalEnabled.value;
+                        final bookingOn = lic.canBooking;
+                        if (!portalOn && !bookingOn) {
                           return const SizedBox.shrink();
                         }
-                        final expired = !lic.parentPortalActiveNow;
+                        // نعرض بوابة الأهالي طول ما الإضافة مفعّلة على الترخيص —
+                        // حتى لو مدتها المستقلة انتهت — عشان المدرس يشوف تاريخ
+                        // الانتهاء ويعرف يجدّد، بدل ما تختفي وتبان وكأنها "اتلغت".
+                        final expired = portalOn && !lic.parentPortalActiveNow;
                         return Column(children: [
                           _buildSection(
                             context,
                             isDark,
-                            title: 'متابعة أولياء الأمور',
-                            icon: Icons.family_restroom_rounded,
+                            title: 'الإضافات المدفوعة',
+                            icon: Icons.workspace_premium_rounded,
                             color: expired
                                 ? const Color(0xFFEF4444)
                                 : const Color(0xFF10B981),
-                            collapsible: true,
-                            initiallyExpanded: expired,
                             children: [
-                              _ParentPortalTile(
-                                  isDark: isDark, expired: expired)
+                              if (portalOn)
+                                _ParentPortalTile(
+                                    isDark: isDark, expired: expired),
+                              if (portalOn && bookingOn) _buildDivider(isDark),
+                              if (bookingOn)
+                                _buildNavTile(
+                                  context,
+                                  isDark,
+                                  icon: Icons.event_available_rounded,
+                                  iconColor: const Color(0xFF6366F1),
+                                  title: 'الحجوزات',
+                                  subtitle: 'استمارة حجز مكان على الموقع + الطلبات',
+                                  onTap: () => Get.toNamed(ROUTE_BOOKINGS),
+                                ),
                             ],
                           ),
                           const SizedBox(height: 14),
                         ]);
                       }),
-
-                      // ── 2. المظهر والتوقيت ───────────────────────
-                      _buildSection(
-                        context,
-                        isDark,
-                        title: 'المظهر والتوقيت',
-                        icon: Icons.palette_rounded,
-                        color: const Color(0xFF8B5CF6),
-                        children: [
-                          _buildSwitchTile(
-                            context,
-                            isDark,
-                            icon: Icons.dark_mode_rounded,
-                            iconColor: const Color(0xFF8B5CF6),
-                            title: 'الوضع الليلي',
-                            subtitle: 'تغيير مظهر التطبيق',
-                            rxValue: themeController.isDarkMode,
-                            onChanged: themeController.setTheme,
-                          ),
-                          _buildDivider(isDark),
-                          Obx(() => _buildSwitchTile(
-                                context,
-                                isDark,
-                                icon: Icons.access_time_rounded,
-                                iconColor: const Color(0xFF06B6D4),
-                                title: 'نظام الساعة 24',
-                                subtitle: settings.use24hFormat.value
-                                    ? 'يعرض 14:30'
-                                    : 'يعرض 2:30 م',
-                                rxValue: settings.use24hFormat,
-                                onChanged: (v) async =>
-                                    await settings.setUse24hFormat(v),
-                              )),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
 
                       // ── 3. العملة ورمز الدولة ────────────────────
                       _buildSection(
@@ -248,6 +222,128 @@ class SettingsPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 14),
 
+                      // ── الفوترة والتحصيل (spec 012/013 — منقولة من قسم الواتساب) ──
+                      _buildSection(
+                        context,
+                        isDark,
+                        title: 'الفوترة والتحصيل',
+                        icon: Icons.payments_rounded,
+                        color: const Color(0xFF10B981),
+                        children: [
+                          // ── مهلة السماح قبل اعتبار الطالب "متأخر" ──
+                          Obx(() => _buildDropdownTile<int>(
+                                context,
+                                isDark,
+                                icon: Icons.hourglass_bottom_rounded,
+                                iconColor: const Color(0xFFEF4444),
+                                title: 'مهلة السماح قبل "متأخر"',
+                                value: settings.paymentGraceDays.value,
+                                items: List.generate(15, (i) => i)
+                                    .map((d) => DropdownMenuItem(
+                                          value: d,
+                                          child: Text(d == 0
+                                              ? 'بدون مهلة (من أول يوم)'
+                                              : 'بعد $d يوم من بداية الشهر'),
+                                        ))
+                                    .toList(),
+                                onChanged: (d) async {
+                                  if (d != null) {
+                                    await settings.setPaymentGraceDays(d);
+                                    ToastHelper.success(
+                                      d == 0
+                                          ? 'هيظهر الطالب "متأخر" من أول يوم في الشهر'
+                                          : 'هيظهر الطالب "متأخر" بعد $d يوم من بداية الشهر',
+                                      title: 'تم التغيير',
+                                    );
+                                  }
+                                },
+                              )),
+                          _buildDivider(isDark),
+                          // ── نظام التحصيل: مقدّم / مؤخّر (spec 012) ──
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.event_repeat_rounded,
+                                iconColor: const Color(0xFF0EA5E9),
+                                title: 'تحصيل مؤخّر (بالمنقضي)',
+                                subtitle: settings.billingArrears.value
+                                    ? 'الشهر الجاري ما يتحسبش في المديونية لحد ما يخلص'
+                                    : 'مقدّم — الشهر مستحق من أول يومه (الافتراضي)',
+                                rxValue: settings.billingArrears,
+                                onChanged: (v) async {
+                                  await settings.setBillingArrears(v);
+                                  ToastHelper.success(
+                                    v
+                                        ? 'الشهر الجاري مش هيتحسب لحد ما يخلص'
+                                        : 'الشهر مستحق من أول يومه',
+                                    title: 'نظام التحصيل',
+                                  );
+                                },
+                              )),
+                          _buildDivider(isDark),
+                          // ── حساب نسبي للشهر الأول (spec 012) ──
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.pie_chart_outline_rounded,
+                                iconColor: const Color(0xFF0EA5E9),
+                                title: 'حساب نسبي للشهر الأول',
+                                subtitle: settings.prorateFirstMonth.value
+                                    ? 'الطالب اللي بينضم نص الشهر يدفع نسبة الأيام (تقريب لأقرب 5 ج)'
+                                    : 'الشهر الأول شهر كامل زي أي شهر (الافتراضي)',
+                                rxValue: settings.prorateFirstMonth,
+                                onChanged: (v) async {
+                                  await settings.setProrateFirstMonth(v);
+                                  ToastHelper.success(
+                                    v
+                                        ? 'شهر الانضمام هيتحسب بنسبة أيامه'
+                                        : 'شهر الانضمام شهر كامل',
+                                    title: 'الحساب النسبي',
+                                  );
+                                },
+                              )),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // ── المظهر والتوقيت ─────────────────────────
+                      _buildSection(
+                        context,
+                        isDark,
+                        title: 'المظهر والتوقيت',
+                        icon: Icons.palette_rounded,
+                        color: const Color(0xFF8B5CF6),
+                        collapsible: true,
+                        initiallyExpanded: false,
+                        children: [
+                          _buildSwitchTile(
+                            context,
+                            isDark,
+                            icon: Icons.dark_mode_rounded,
+                            iconColor: const Color(0xFF8B5CF6),
+                            title: 'الوضع الليلي',
+                            subtitle: 'تغيير مظهر التطبيق',
+                            rxValue: themeController.isDarkMode,
+                            onChanged: themeController.setTheme,
+                          ),
+                          _buildDivider(isDark),
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.access_time_rounded,
+                                iconColor: const Color(0xFF06B6D4),
+                                title: 'نظام الساعة 24',
+                                subtitle: settings.use24hFormat.value
+                                    ? 'يعرض 14:30'
+                                    : 'يعرض 2:30 م',
+                                rxValue: settings.use24hFormat,
+                                onChanged: (v) async =>
+                                    await settings.setUse24hFormat(v),
+                              )),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
                       // ── 4. الإشعارات ─────────────────────────────
                       _buildSection(
                         context,
@@ -255,6 +351,8 @@ class SettingsPage extends StatelessWidget {
                         title: 'الإشعارات',
                         icon: Icons.notifications_rounded,
                         color: const Color(0xFFEF4444),
+                        collapsible: true,
+                        initiallyExpanded: false,
                         children: [
                           _buildNavTile(
                             context,
@@ -270,11 +368,11 @@ class SettingsPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 14),
 
-                      // ── 5. الواتساب ──────────────────────────────
+                      // ── 5. الواتساب والتقارير ────────────────────
                       _buildSection(
                         context,
                         isDark,
-                        title: 'الواتساب',
+                        title: 'الواتساب والتقارير',
                         icon: Icons.chat_rounded,
                         color: const Color(0xFF25D366),
                         collapsible: true,
@@ -361,79 +459,6 @@ class SettingsPage extends StatelessWidget {
                                 rxValue: settings.reportOnCompletionEnabled,
                                 onChanged: (v) async =>
                                     await settings.setReportOnCompletionEnabled(v),
-                              )),
-                          _buildDivider(isDark),
-                          // ── مهلة السماح قبل اعتبار الطالب "متأخر" ──
-                          Obx(() => _buildDropdownTile<int>(
-                                context,
-                                isDark,
-                                icon: Icons.hourglass_bottom_rounded,
-                                iconColor: const Color(0xFFEF4444),
-                                title: 'مهلة السماح قبل "متأخر"',
-                                value: settings.paymentGraceDays.value,
-                                items: List.generate(15, (i) => i)
-                                    .map((d) => DropdownMenuItem(
-                                          value: d,
-                                          child: Text(d == 0
-                                              ? 'بدون مهلة (من أول يوم)'
-                                              : 'بعد $d يوم من بداية الشهر'),
-                                        ))
-                                    .toList(),
-                                onChanged: (d) async {
-                                  if (d != null) {
-                                    await settings.setPaymentGraceDays(d);
-                                    ToastHelper.success(
-                                      d == 0
-                                          ? 'هيظهر الطالب "متأخر" من أول يوم في الشهر'
-                                          : 'هيظهر الطالب "متأخر" بعد $d يوم من بداية الشهر',
-                                      title: 'تم التغيير',
-                                    );
-                                  }
-                                },
-                              )),
-                          _buildDivider(isDark),
-                          // ── نظام التحصيل: مقدّم / مؤخّر (spec 012) ──
-                          Obx(() => _buildSwitchTile(
-                                context,
-                                isDark,
-                                icon: Icons.event_repeat_rounded,
-                                iconColor: const Color(0xFF0EA5E9),
-                                title: 'تحصيل مؤخّر (بالمنقضي)',
-                                subtitle: settings.billingArrears.value
-                                    ? 'الشهر الجاري ما يتحسبش في المديونية لحد ما يخلص'
-                                    : 'مقدّم — الشهر مستحق من أول يومه (الافتراضي)',
-                                rxValue: settings.billingArrears,
-                                onChanged: (v) async {
-                                  await settings.setBillingArrears(v);
-                                  ToastHelper.success(
-                                    v
-                                        ? 'الشهر الجاري مش هيتحسب لحد ما يخلص'
-                                        : 'الشهر مستحق من أول يومه',
-                                    title: 'نظام التحصيل',
-                                  );
-                                },
-                              )),
-                          _buildDivider(isDark),
-                          // ── حساب نسبي للشهر الأول (spec 012) ──
-                          Obx(() => _buildSwitchTile(
-                                context,
-                                isDark,
-                                icon: Icons.pie_chart_outline_rounded,
-                                iconColor: const Color(0xFF0EA5E9),
-                                title: 'حساب نسبي للشهر الأول',
-                                subtitle: settings.prorateFirstMonth.value
-                                    ? 'الطالب اللي بينضم نص الشهر يدفع نسبة الأيام (تقريب لأقرب 5 ج)'
-                                    : 'الشهر الأول شهر كامل زي أي شهر (الافتراضي)',
-                                rxValue: settings.prorateFirstMonth,
-                                onChanged: (v) async {
-                                  await settings.setProrateFirstMonth(v);
-                                  ToastHelper.success(
-                                    v
-                                        ? 'شهر الانضمام هيتحسب بنسبة أيامه'
-                                        : 'شهر الانضمام شهر كامل',
-                                    title: 'الحساب النسبي',
-                                  );
-                                },
                               )),
                         ],
                       ),
@@ -618,6 +643,10 @@ class SettingsPage extends StatelessWidget {
                       const SizedBox(height: 14),
 
                       // ── 7. عن التطبيق ─────────────────────────────
+                      // ── المجتمع والدعم (spec 017) ────────────────
+                      _buildCommunitySection(context, isDark),
+                      const SizedBox(height: 14),
+
                       _buildAboutSection(context, isDark),
                     ],
                   ),
@@ -1023,6 +1052,66 @@ class SettingsPage extends StatelessWidget {
           title: 'سياسة الخصوصية',
           subtitle: 'كيف نتعامل مع بياناتك',
           onTap: () => _openPrivacyPolicy(),
+        ),
+      ],
+    );
+  }
+
+  // spec 017 — قناة واتساب المجتمع (تحديثات + دعم + اقتراحات). رابط ثابت.
+  static const String _kCommunityChannelUrl =
+      'https://whatsapp.com/channel/0029VbDFTCsEquiR7nSaO52X';
+
+  Future<void> _openCommunityChannel() async {
+    try {
+      await launchUrl(Uri.parse(_kCommunityChannelUrl),
+          mode: LaunchMode.externalApplication);
+    } catch (_) {
+      ToastHelper.error('تعذّر فتح القناة، حاول تاني');
+    }
+  }
+
+  Widget _buildCommunitySection(BuildContext context, bool isDark) {
+    return _buildSection(
+      context,
+      isDark,
+      title: 'المجتمع والدعم',
+      icon: Icons.forum_rounded,
+      color: const Color(0xFF25D366),
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'قناة التحديثات والدعم — تابع الجديد أول بأول، وشارك مشاكلك واقتراحاتك مع مجتمع المدرسين.',
+                style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 12,
+                  height: 1.7,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _openCommunityChannel,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF25D366),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.chat_rounded, size: 18),
+                  label: const Text('انضم لقناة التحديثات والدعم',
+                      style: TextStyle(
+                          fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
