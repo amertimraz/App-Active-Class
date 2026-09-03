@@ -492,7 +492,7 @@ class _OnlineExamCard extends StatelessWidget {
             await Get.to(() => OnlineExamResultsPage(exam: exam));
             await onChanged();
           }, primary: true),
-          _btn('تعديل الميعاد', Icons.schedule_rounded, () async {
+          _btn('تعديل الامتحان', Icons.tune_rounded, () async {
             final res = await showDialog<_Schedule>(
               context: context,
               builder: (_) => _RescheduleDialog(exam: exam),
@@ -502,8 +502,9 @@ class _OnlineExamCard extends StatelessWidget {
                 () => _ec.rescheduleOnlineExam(exam.id!,
                     opensAt: res.opensAt,
                     closesAt: res.closesAt,
-                    durationMinutes: res.duration),
-                'اتعدّل الميعاد');
+                    durationMinutes: res.duration,
+                    name: res.name),
+                'اتحفظ التعديل');
           }),
           if (status == OnlineExamStatus.published)
             _btn('إيقاف الآن', Icons.stop_circle_outlined, () {
@@ -714,7 +715,8 @@ class _Schedule {
   final DateTime opensAt;
   final DateTime closesAt;
   final int duration;
-  const _Schedule(this.opensAt, this.closesAt, this.duration);
+  final String name;
+  const _Schedule(this.opensAt, this.closesAt, this.duration, this.name);
 }
 
 class _RescheduleDialog extends StatefulWidget {
@@ -729,6 +731,7 @@ class _RescheduleDialogState extends State<_RescheduleDialog> {
   late DateTime _opens;
   late DateTime _closes;
   late int _duration;
+  late final TextEditingController _nameCtrl;
 
   @override
   void initState() {
@@ -738,6 +741,13 @@ class _RescheduleDialogState extends State<_RescheduleDialog> {
     _closes =
         widget.exam.closesAt?.toLocal() ?? now.add(const Duration(hours: 1));
     _duration = widget.exam.durationMinutes ?? 30;
+    _nameCtrl = TextEditingController(text: widget.exam.name);
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _pick(bool opens) async {
@@ -778,7 +788,7 @@ class _RescheduleDialogState extends State<_RescheduleDialog> {
               color: AppTheme.primaryColor, size: 20),
         ),
         const SizedBox(width: 10),
-        const Text('تعديل الميعاد',
+        const Text('تعديل الامتحان',
             style: TextStyle(
                 fontFamily: 'Cairo', fontWeight: FontWeight.w800, fontSize: 15)),
       ]),
@@ -786,6 +796,17 @@ class _RescheduleDialogState extends State<_RescheduleDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          TextField(
+            controller: _nameCtrl,
+            style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+            decoration: const InputDecoration(
+              labelText: 'اسم الامتحان',
+              labelStyle: TextStyle(fontFamily: 'Cairo'),
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 14),
           FilledButton.tonalIcon(
             onPressed: () {
               final now = DateTime.now();
@@ -831,8 +852,8 @@ class _RescheduleDialogState extends State<_RescheduleDialog> {
         FilledButton(
             style:
                 FilledButton.styleFrom(backgroundColor: AppTheme.primaryColor),
-            onPressed: () => Navigator.pop(
-                context, _Schedule(_opens, _closes, _duration)),
+            onPressed: () => Navigator.pop(context,
+                _Schedule(_opens, _closes, _duration, _nameCtrl.text.trim())),
             child: const Text('حفظ', style: TextStyle(fontFamily: 'Cairo'))),
       ],
     );

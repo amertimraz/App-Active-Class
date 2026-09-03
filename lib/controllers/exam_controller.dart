@@ -256,14 +256,16 @@ class ExamController extends GetxController {
     }
   }
 
-  /// تعديل ميعاد امتحان منشور/موقوف (تأجيل أو تشغيل الآن) بدون إعادة نشر.
+  /// تعديل ميعاد/اسم امتحان منشور/موقوف بدون إعادة نشر.
   /// [opensAt]/[closesAt] بالتوقيت المحلي — بنحوّلها UTC.
   Future<String?> rescheduleOnlineExam(
     int examId, {
     required DateTime opensAt,
     required DateTime closesAt,
     required int durationMinutes,
+    String? name,
   }) async {
+    if (name != null && name.trim().isEmpty) return 'أدخل اسم الامتحان';
     if (!closesAt.isAfter(opensAt)) return 'وقت القفل لازم يكون بعد وقت الفتح';
     if (durationMinutes <= 0) return 'مدة الحل لازم تكون أكبر من صفر';
     if (durationMinutes * 60 > closesAt.difference(opensAt).inSeconds) {
@@ -275,7 +277,9 @@ class ExamController extends GetxController {
         opensAtUtc: opensAt.toUtc(),
         closesAtUtc: closesAt.toUtc(),
         durationMinutes: durationMinutes,
+        title: name?.trim(),
       );
+      if (name != null) await _db.setExamName(examId, name.trim());
       await _db.setExamOnlineFields(
         examId,
         isOnline: true,
@@ -288,6 +292,23 @@ class ExamController extends GetxController {
       return null;
     } catch (e) {
       return 'فشل التعديل — تحقق من اتصالك بالإنترنت';
+    }
+  }
+
+  /// تعديل اسم امتحان (مسودّة أو منشور) — الاسم مش مفتاح إجابة فآمن أي وقت.
+  Future<String?> renameOnlineExam(int examId, String name) async {
+    if (name.trim().isEmpty) return 'أدخل اسم الامتحان';
+    final exam = exams.firstWhereOrNull((e) => e.id == examId);
+    try {
+      await _db.setExamName(examId, name.trim());
+      if (exam?.onlineStatus == OnlineExamStatus.published ||
+          exam?.onlineStatus == OnlineExamStatus.stopped) {
+        await _online.updateTitle(examId, name.trim());
+      }
+      await loadExams();
+      return null;
+    } catch (e) {
+      return 'فشل — تحقق من اتصالك بالإنترنت';
     }
   }
 

@@ -2009,6 +2009,14 @@ class DatabaseService {
     _notifyChanged();
   }
 
+  /// تعديل اسم الامتحان فقط (بدون لمس المجموعات ولا payload المزامنة).
+  Future<void> setExamName(int examId, String name) async {
+    final db = await database;
+    await db.update(TABLE_EXAMS, {COL_EXAM_NAME: name},
+        where: '$COL_EXAM_ID = ?', whereArgs: [examId]);
+    _notifyChanged();
+  }
+
   // ── أسئلة الامتحان ──────────────────────────────────────────────
   Future<List<ExamQuestion>> getQuestionsForExam(int examId) async {
     final db = await database;

@@ -131,21 +131,33 @@ class OnlineExamService {
     }, SetOptions(merge: true));
   }
 
-  /// تعديل ميعاد امتحان منشور (تأجيل / تشغيل الآن) بدون لمس الأسئلة ولا
-  /// التسليمات. بيرجّع الحالة لـ published (لو كانت stopped) بالنافذة الجديدة.
+  /// تعديل ميعاد/اسم امتحان منشور بدون لمس الأسئلة ولا التسليمات.
+  /// بيرجّع الحالة لـ published (لو كانت stopped) بالنافذة الجديدة.
   Future<void> updateSchedule(
     int examId, {
     required DateTime opensAtUtc,
     required DateTime closesAtUtc,
     required int durationMinutes,
+    String? title,
   }) async {
     await _ensureAuth();
     final slug = await _slug();
     await _examDoc(slug, examId).set({
       'status': 'published',
+      if (title != null) 'title': title,
       'opensAt': opensAtUtc.toUtc().toIso8601String(),
       'closesAt': closesAtUtc.toUtc().toIso8601String(),
       'durationMinutes': durationMinutes,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  /// تعديل اسم امتحان منشور فقط (بدون تغيير الميعاد).
+  Future<void> updateTitle(int examId, String title) async {
+    await _ensureAuth();
+    final slug = await _slug();
+    await _examDoc(slug, examId).set({
+      'title': title,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
