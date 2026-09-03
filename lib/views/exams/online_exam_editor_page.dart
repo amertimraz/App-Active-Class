@@ -140,16 +140,30 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
 
   // ── صورة السؤال (spec 019) ──────────────────────────────────────────────
   Future<void> _pickQuestionImage(int i) async {
-    final XFile? file;
+    XFile? file;
     try {
       file = await ImagePicker().pickImage(
         source: ImageSource.gallery,
         imageQuality: 70,
         maxWidth: 1600,
+        // requestFullMetadata: false يتجنّب قراءة الـEXIF/الموقع اللي
+        // بتكراش على بعض أجهزة MIUI/شاومي (NullPointerException في
+        // deliverResultsIfNeeded) — إحنا مش محتاجين الميتاداتا أصلاً.
+        requestFullMetadata: false,
       );
     } catch (_) {
-      ToastHelper.error('تعذّر فتح المعرض');
-      return;
+      // بعض أجهزة MIUI بترجّع نتيجة activity ناقصة — نجرّب استرجاع
+      // الصورة الضائعة قبل ما نستسلم.
+      try {
+        final lost = await ImagePicker().retrieveLostData();
+        if (!lost.isEmpty && lost.file != null) {
+          file = lost.file;
+        }
+      } catch (_) {}
+      if (file == null) {
+        if (mounted) ToastHelper.error('تعذّر اختيار الصورة — جرّب تاني');
+        return;
+      }
     }
     if (file == null || !mounted) return;
 
