@@ -230,6 +230,17 @@ class ParentPortalService {
     return digits.substring(digits.length - 4);
   }
 
+  /// نفس معرّف المستند {code}_{last4} المستخدَم في كل مكان (بوابة
+  /// الأهالي، الامتحان الإلكتروني) — بمعنى `attemptKey()` في صفحة
+  /// الامتحان بالضبط. null لو الطالب مالوش رقم ولي أمر صالح.
+  String? attemptKeyFor(Student student) {
+    final last4 = _last4(student.guardianPhone);
+    if (last4 == null) return null;
+    final code = student.code.trim().toUpperCase();
+    if (code.isEmpty) return null;
+    return '${code}_$last4';
+  }
+
   /// بتُنشر لوحدها (مش مربوطة بنجاح نشر طالب) — لو مفيش أي طالب عنده
   /// رقم تليفون صحيح لسه، كان المستند ده مبيتعملش خالص، فصفحة المتابعة
   /// تفضل من غير اسم المدرس وكأنها رابط عام مش رابط المدرس ده تحديدًا.

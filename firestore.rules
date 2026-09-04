@@ -239,6 +239,14 @@ service cloud.firestore {
           allow update: if false;
           allow delete: if _oeOwner(slug);
         }
+
+        match /results/{docId} {
+          // مراجعة الطالب بعد الاعتماد — الوحيدة اللي فيها الإجابة الصحيحة،
+          // ومكتوبة بس بمعرفة المدرس (_oeOwner) بعد ما يعتمد الدرجة. نفس
+          // حماية docId = {code}_{last4} زي submissions/attempts.
+          allow read: if true;
+          allow write: if _oeOwner(slug);
+        }
       }
     }
   }

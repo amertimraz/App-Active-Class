@@ -182,6 +182,23 @@
   }
   .retry-note{font-size:11.5px;color:#B91C1C;text-align:center;margin-top:10px;font-weight:700;}
 
+  /* ── مراجعة الإجابات بعد الاعتماد ─────────────── */
+  .review{margin-top:18px;text-align:right;}
+  .review-h{font-size:13.5px;font-weight:900;margin:0 0 10px;}
+  .review-q{cursor:default;}
+  .review-opt{cursor:default;font-weight:600;}
+  .review-opt .mark{font-size:12px;font-weight:900;color:#fff;border-color:transparent;background:#CBD2E0;}
+  .review-opt.correct{border-color:var(--success);background:rgba(16,185,129,.08);}
+  .review-opt.correct .mark{background:var(--success);}
+  .review-opt.wrong{border-color:var(--danger);background:rgba(239,68,68,.08);}
+  .review-opt.wrong .mark{background:var(--danger);}
+  .rfoot{display:flex;align-items:center;justify-content:space-between;margin-top:4px;}
+  .rbadge{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;}
+  .rbadge-ok{background:rgba(16,185,129,.12);color:#047857;}
+  .rbadge-bad{background:rgba(239,68,68,.12);color:#B91C1C;}
+  .rbadge-none{background:rgba(100,116,139,.12);color:var(--muted);}
+  .rpoints{font-size:11.5px;font-weight:800;color:var(--muted);}
+
   /* ── شاشة تعريف الامتحان ─────────────────── */
   .brief{text-align:center;padding:10px 4px 4px;}
   .brief-ico{
@@ -410,16 +427,59 @@
     if (rec && typeof rec.grade === 'number') {
       const g = rec.grade, m = Number(rec.maxGrade) || Number(ex.totalPoints) || 0;
       const pct = m > 0 ? Math.round(g / m * 100) : 0;
+
+      // مراجعة تفصيلية (إجابتك + الإجابة الصحيحة) — بتُنشر لحظة الاعتماد،
+      // فممكن توصل بعد ظهور الدرجة بلحظات على أبطأ اتصال. غيابها مش خطأ.
+      let review = null;
+      try {
+        const rSnap = await getDoc(doc(db, 'online_exams', slug, 'exams', ex.id, 'results', attemptKey()));
+        if (rSnap.exists() && Array.isArray(rSnap.data().questions)) review = rSnap.data().questions;
+      } catch (e) {}
+
       card.innerHTML = `
         <div class="state ok">
           <div class="ring">🎯</div>
           <p class="t">درجتك: ${fmtGrade(g)} <span style="color:#94A3B8;font-weight:700;">من ${fmtGrade(m)}</span></p>
           <div class="grade-bar"><i style="width:${Math.max(4,pct)}%"></i></div>
           <p class="s">${pct}% — اعتمدها المعلم.</p>
-        </div>`;
+        </div>
+        ${review ? '<div class="review" id="review"></div>' : ''}`;
+      if (review) renderReview(review);
       return;
     }
     stateScreen('✅','تم تسليم إجاباتك','المعلم بيراجع النتيجة، وهتظهر هنا أول ما يعتمدها.','ok');
+  }
+
+  // ── مراجعة الإجابات (إجابتك بالأخضر/الأحمر + الإجابة الصحيحة) ───
+  function renderReview(questions){
+    const el = document.getElementById('review');
+    if (!el) return;
+    el.innerHTML = `<p class="review-h">مراجعة الإجابات</p>` + questions.map((q, i) => {
+      const chosen = q.chosenIndex;
+      const correct = q.correctIndex;
+      const answered = chosen !== null && chosen !== undefined;
+      const isCorrect = answered && chosen === correct;
+      const qImg = q.imageUrl
+        ? `<img class="q-img" src="${escapeHtml(q.imageUrl)}" alt="" loading="lazy">`
+        : '';
+      const opts = (q.options || []).map((opt, oi) => {
+        let cls = 'opt review-opt';
+        if (oi === correct) cls += ' correct';
+        else if (oi === chosen) cls += ' wrong';
+        return `<div class="${cls}"><span class="mark">${oi === correct ? '✓' : (oi === chosen ? '✕' : '')}</span><span>${escapeHtml(opt)}</span></div>`;
+      }).join('');
+      const badge = !answered
+        ? '<span class="rbadge rbadge-none">⚪ لم تُجب</span>'
+        : (isCorrect
+            ? '<span class="rbadge rbadge-ok">✅ صح</span>'
+            : '<span class="rbadge rbadge-bad">❌ غلط</span>');
+      return `<div class="q review-q">
+          <div class="q-head"><span class="q-num">${i+1}</span><span class="q-text">${escapeHtml(q.text || '')}</span></div>
+          ${qImg}
+          ${opts}
+          <div class="rfoot">${badge}<span class="rpoints">${fmtGrade(q.earned || 0)}/${fmtGrade(q.points || 0)}</span></div>
+        </div>`;
+    }).join('');
   }
 
   // ── شاشة تعريف الامتحان (اسم + مدة + عدد أسئلة + زر ابدأ) ───────

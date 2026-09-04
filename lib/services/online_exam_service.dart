@@ -5,8 +5,12 @@
 // استخدامه من ParentPortalService.ensureSlug)، مصادقة مجهولة، الحماية في
 // معرفة الـslug + معرّف المستند {code}_{last4}.
 //
-// ⚠️ الإجابات الصحيحة **لا تُرفع أبدًا** — toCloudMap على السؤال بيرجّعه
-// بدون correctIndex/points. التصحيح كله في ExamController محليًا.
+// ⚠️ الإجابات الصحيحة **لا تُرفع أبدًا** مع مستند الامتحان نفسه —
+// toCloudMap على السؤال بيرجّعه بدون correctIndex/points، والتصحيح كله
+// في ExamController محليًا. الاستثناء الوحيد: publishReview — بتُكتب
+// **بعد اعتماد المدرس** بس، لكل طالب في مستنده الخاص (results/{attemptKey})،
+// عشان صفحة النتيجة تقدر تعرض مراجعة كاملة (إجابته + الإجابة الصحيحة)
+// لسؤال اعتمدت درجته فعلاً.
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -122,6 +126,43 @@ class OnlineExamService {
       'publishedAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  /// بينشر مراجعة كاملة لطالب واحد بعد اعتماد درجته — إجابته + الإجابة
+  /// الصحيحة لكل سؤال. مستند مستقل لكل طالب (results/{attemptKey})، مش
+  /// جزء من مستند الامتحان العام — عشان يفضل مقفول بمعرفة {code}_{last4}
+  /// زي submissions/attempts بالظبط، ومحدّث فقط لما المدرس يعتمد.
+  /// Best-effort — فشل النشر (مثلاً مفيش نت) ما يفشّلش الاعتماد نفسه.
+  Future<void> publishReview({
+    required int examId,
+    required String attemptKey,
+    required double grade,
+    required double maxGrade,
+    required List<QuestionResult> results,
+  }) async {
+    try {
+      await _ensureAuth();
+      final slug = await _slug();
+      await _examDoc(slug, examId).collection('results').doc(attemptKey).set({
+        'grade': grade,
+        'maxGrade': maxGrade,
+        'questions': results
+            .map((r) => {
+                  'text': r.questionText,
+                  'options': r.options,
+                  'correctIndex': r.correctIndex,
+                  'chosenIndex': r.chosenIndex,
+                  'points': r.points,
+                  'earned': r.earned,
+                  if (r.imageUrl != null && r.imageUrl!.isNotEmpty)
+                    'imageUrl': r.imageUrl,
+                })
+            .toList(),
+        'approvedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('OnlineExamService.publishReview($examId) failed — $e');
+    }
   }
 
   Future<void> unpublish(int examId) async {

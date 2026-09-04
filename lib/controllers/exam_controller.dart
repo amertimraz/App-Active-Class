@@ -615,6 +615,7 @@ class ExamController extends GetxController {
               correctIndex: q.correctIndex,
               chosenIndex: sub.answers[q.id],
               points: q.points,
+              imageUrl: q.imageUrl,
             ))
         .toList();
   }
@@ -642,6 +643,31 @@ class ExamController extends GetxController {
       notes: isAbsent ? null : 'امتحان إلكتروني — تصحيح تلقائي',
       isAbsent: isAbsent,
     );
+
+    // مراجعة تفصيلية لصفحة الطالب — إجابته + الإجابة الصحيحة لكل سؤال.
+    // بعد الاعتماد بس، وطبعًا مش لطالب غايب (مفيش إجابات أصلاً).
+    if (!isAbsent) {
+      try {
+        final exam = exams.firstWhereOrNull((e) => e.id == examId);
+        final student = await _db.getStudent(studentId);
+        final attemptKey =
+            student != null ? ParentPortalService().attemptKeyFor(student) : null;
+        if (exam != null && attemptKey != null) {
+          // sub.answers هي كل اللي questionResults محتاجه — الدرجة/الحالة
+          // بتتبعت لـpublishReview لوحدها تحت.
+          final results = await questionResults(sub);
+          await _online.publishReview(
+            examId: examId,
+            attemptKey: attemptKey,
+            grade: grade ?? 0,
+            maxGrade: exam.maxGrade,
+            results: results,
+          );
+        }
+      } catch (e) {
+        // best-effort — الطالب هيشوف الدرجة الإجمالية من examHistory برضو.
+      }
+    }
   }
 
   /// "اعتماد الكل" — يعتمد الطلاب اللي **سلّموا** فقط (حالة pending).

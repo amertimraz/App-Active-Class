@@ -160,6 +160,7 @@ class QuestionResult {
   final int correctIndex;
   final int? chosenIndex;
   final double points;
+  final String? imageUrl;
 
   const QuestionResult({
     required this.questionId,
@@ -168,6 +169,7 @@ class QuestionResult {
     required this.correctIndex,
     required this.chosenIndex,
     required this.points,
+    this.imageUrl,
   });
 
   bool get answered => chosenIndex != null;
