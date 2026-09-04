@@ -543,9 +543,16 @@ class LicenseController extends GetxController {
         // التطبيق. skipFirst: false لأن مفيش emission اتعالجت هنا.
         _watchLicense(code, prefs, skipFirst: false);
       } else {
-        // انتهت مهلة الاستخدام بدون اتصال — لازم يتأكد من السيرفر تاني
+        // تعدّت مهلة الاستخدام أوفلاين (٣ أيام بدون تحقق ناجح) — نعرض
+        // "منتهي" مؤقتًا، **بس** نبدأ الاستماع الفوري كمان: لو السبب كان
+        // انقطاع نت مؤقت أو مشكلة App Check (شائع على النسخ المثبّتة من
+        // GitHub مش Play)، أول ما القراءة تنجح .snapshots() بيوصل الحالة
+        // الحقيقية ويصلّح state من غير ما المدرس يقفل التطبيق ويفتحه.
+        // من غير ده مدرس مشترك ساري كان بيفضل شايف بانر "انتهت الصلاحية"
+        // لحد ما يعيد التشغيل.
         licenseCode.value = code;
         state.value = LicenseState.expired;
+        _watchLicense(code, prefs, skipFirst: false);
       }
     }
   }
