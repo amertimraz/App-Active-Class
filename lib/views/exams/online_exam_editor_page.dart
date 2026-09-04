@@ -13,6 +13,7 @@ import 'package:active_class/controllers/exam_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
+import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/helpers.dart';
 
@@ -617,27 +618,10 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
           ),
           const SizedBox(height: 14),
           _miniLabel('المجموعات المسموح لها'),
-          Obx(() => Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: _gc.groups.map((g) {
-                  final sel = _groupIds.contains(g.id);
-                  return FilterChip(
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    label: Text(g.name,
-                        style: const TextStyle(
-                            fontFamily: 'Cairo', fontSize: 12)),
-                    selected: sel,
-                    onSelected: (v) => setState(() {
-                      if (v) {
-                        _groupIds.add(g.id!);
-                      } else {
-                        _groupIds.remove(g.id);
-                      }
-                    }),
-                  );
-                }).toList(),
+          Obx(() => _GroupPickerField(
+                allGroups: _gc.groups.toList(),
+                selectedIds: _groupIds,
+                onChanged: () => setState(() {}),
               )),
           const SizedBox(height: 14),
           _miniLabel('توقيت الامتحان (لازم الاتنين)'),
@@ -862,6 +846,124 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
             ]),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── منتقي المجموعات (قايمة منسدلة بدل شرائح) ─────────────────────────────
+class _GroupPickerField extends StatelessWidget {
+  final List<Group> allGroups;
+  final Set<int> selectedIds;
+  final VoidCallback onChanged;
+  const _GroupPickerField({
+    required this.allGroups,
+    required this.selectedIds,
+    required this.onChanged,
+  });
+
+  String get _summary {
+    if (allGroups.isEmpty) return 'مفيش مجموعات';
+    final names = allGroups
+        .where((g) => selectedIds.contains(g.id))
+        .map((g) => g.name)
+        .toList();
+    if (names.isEmpty) return 'اضغط لاختيار المجموعات';
+    if (names.length == 1) return names.first;
+    if (names.length <= 2) return names.join('، ');
+    return '${names.length} مجموعات: ${names.take(2).join('، ')}…';
+  }
+
+  Future<void> _open(BuildContext context) async {
+    if (allGroups.isEmpty) return;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => SafeArea(
+        child: StatefulBuilder(
+          builder: (ctx, setSheet) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 14, 16, 6),
+                child: Text('المجموعات المسموح لها بالامتحان',
+                    style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14)),
+              ),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: allGroups.map((g) {
+                    final on = selectedIds.contains(g.id);
+                    return CheckboxListTile(
+                      dense: true,
+                      value: on,
+                      title: Text(g.name,
+                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+                      onChanged: (v) {
+                        if (v == true) {
+                          selectedIds.add(g.id!);
+                        } else {
+                          selectedIds.remove(g.id);
+                        }
+                        setSheet(() {});
+                        onChanged();
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('تم', style: TextStyle(fontFamily: 'Cairo')),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final empty = selectedIds.isEmpty;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => _open(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+              color: empty
+                  ? Colors.red.shade300
+                  : cs.outline.withValues(alpha: 0.6)),
+        ),
+        child: Row(children: [
+          Icon(Icons.groups_rounded,
+              size: 18,
+              color: empty ? Colors.red.shade400 : AppTheme.primaryColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(_summary,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 13,
+                    color: empty ? Colors.red.shade700 : cs.onSurface)),
+          ),
+          Icon(Icons.arrow_drop_down_rounded,
+              color: cs.onSurface.withValues(alpha: 0.5)),
+        ]),
       ),
     );
   }

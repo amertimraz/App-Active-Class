@@ -745,8 +745,9 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
   late bool _reportSent;
 
   // spec 020 — الطلاب اللي اتنده عليهم عشوائيًا في فتح الشيت ده. in-memory،
-  // بيتصفّر لما الشيت يتقفل (State جديد كل مرة).
-  final Set<int> _calledStudentIds = {};
+  // بيتصفّر لما الشيت يتقفل (State جديد كل مرة). بنخزّن الأسماء (مش الـid)
+  // عشان يفضل شغّال حتى لو طالب لسه ماتحفظش (id = null).
+  final Set<String> _calledNames = {};
 
   void _pickRandomStudent(
       List<Student> groupStudents, Map<int, String> statusMap) {
@@ -755,26 +756,34 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
         .where((s) => attendanceCountsAsPresent(statusMap[s.id]))
         .toList();
     final pool = present.isNotEmpty ? present : groupStudents;
+    final poolNames = pool.map((s) => s.name).toList();
 
-    var eligible =
-        pool.where((s) => !_calledStudentIds.contains(s.id)).toList();
+    // شيل من "المتنادى عليهم" أي اسم مش في الـpool الحالي (اتغيّر الحضور).
+    _calledNames.removeWhere((n) => !poolNames.contains(n));
+
+    var eligible = pool.where((s) => !_calledNames.contains(s.name)).toList();
+    bool cycleReset = false;
     if (eligible.isEmpty) {
-      _calledStudentIds.clear();
+      _calledNames.clear();
       eligible = pool.toList();
-      if (pool.length > 1) {
-        ToastHelper.info('خلصنا الكل — بندأ دورة جديدة');
-      }
+      cycleReset = pool.length > 1;
     }
     if (eligible.isEmpty) return;
 
     final pick = eligible[math.Random().nextInt(eligible.length)];
-    if (pick.id != null) _calledStudentIds.add(pick.id!);
+    _calledNames.add(pick.name);
+
+    final remaining = pool.length - _calledNames.length; // الفاضل في الدورة
 
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (_) => _RandomPickDialog(
-        allNames: pool.map((s) => s.name).toList(),
+        shuffleNames: eligible.map((s) => s.name).toList(),
         finalName: pick.name,
+        remainingInCycle: remaining,
+        cycleSize: pool.length,
+        cycleReset: cycleReset,
         onAgain: () => _pickRandomStudent(groupStudents, statusMap),
       ),
     );
@@ -1245,12 +1254,18 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
 
 // ── spec 020 — حوار "اختيار طالب عشوائي" ──────────────────────────────────
 class _RandomPickDialog extends StatefulWidget {
-  final List<String> allNames; // لتأثير الخلط
+  final List<String> shuffleNames; // أسماء الدورة الحالية (للخلط)
   final String finalName;
+  final int remainingInCycle; // كام فاضل قبل ما الدورة تخلص
+  final int cycleSize; // إجمالي المجموعة/الحاضرين في الدورة
+  final bool cycleReset; // الدورة اتصفّرت لتوها (كله اتنده عليه)
   final VoidCallback onAgain;
   const _RandomPickDialog({
-    required this.allNames,
+    required this.shuffleNames,
     required this.finalName,
+    required this.remainingInCycle,
+    required this.cycleSize,
+    required this.cycleReset,
     required this.onAgain,
   });
 
@@ -1266,14 +1281,16 @@ class _RandomPickDialogState extends State<_RandomPickDialog> {
   @override
   void initState() {
     super.initState();
-    final names = widget.allNames.length > 1 ? widget.allNames : [widget.finalName];
+    final names = widget.shuffleNames.length > 1
+        ? widget.shuffleNames
+        : [widget.finalName];
     if (names.length > 1) {
       final rnd = math.Random();
-      _shuffle = Timer.periodic(const Duration(milliseconds: 60), (_) {
+      _shuffle = Timer.periodic(const Duration(milliseconds: 55), (_) {
         if (!mounted) return;
         setState(() => _shown = names[rnd.nextInt(names.length)]);
       });
-      Timer(const Duration(milliseconds: 950), () {
+      Timer(const Duration(milliseconds: 900), () {
         _shuffle?.cancel();
         if (!mounted) return;
         setState(() {
@@ -1294,22 +1311,43 @@ class _RandomPickDialogState extends State<_RandomPickDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    // نص التقدّم: كام اتنده عليهم من الدورة
+    final done = widget.cycleSize - widget.remainingInCycle;
+    final progress = widget.cycleSize <= 1
+        ? null
+        : widget.remainingInCycle <= 0
+            ? 'آخر واحد في الدورة'
+            : 'اتنده على $done من ${widget.cycleSize} · فاضل ${widget.remainingInCycle}';
+
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      contentPadding: const EdgeInsets.fromLTRB(20, 26, 20, 12),
+      contentPadding: const EdgeInsets.fromLTRB(20, 22, 20, 12),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('🎯', style: TextStyle(fontSize: 34)),
-          const SizedBox(height: 10),
-          Text(_settled ? 'الدور على' : '...',
+          if (_settled && widget.cycleReset)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text('🔄 اتنده على الكل — دورة جديدة',
+                  style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF10B981))),
+            ),
+          const Text('🎯', style: TextStyle(fontSize: 32)),
+          const SizedBox(height: 8),
+          Text(_settled ? 'الدور على' : 'بنختار...',
               style: TextStyle(
                   fontFamily: 'Cairo',
                   fontSize: 12,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.6))),
+                  color: cs.onSurface.withValues(alpha: 0.6))),
           const SizedBox(height: 6),
           AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 120),
@@ -1319,10 +1357,18 @@ class _RandomPickDialogState extends State<_RandomPickDialog> {
               fontSize: _settled ? 30 : 22,
               color: _settled
                   ? AppTheme.primaryColor
-                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                  : cs.onSurface.withValues(alpha: 0.4),
             ),
             child: Text(_shown, textAlign: TextAlign.center),
           ),
+          if (_settled && progress != null) ...[
+            const SizedBox(height: 10),
+            Text(progress,
+                style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    color: cs.onSurface.withValues(alpha: 0.5))),
+          ],
         ],
       ),
       actions: [
@@ -1331,7 +1377,8 @@ class _RandomPickDialogState extends State<_RandomPickDialog> {
             Navigator.of(context).pop();
             widget.onAgain();
           },
-          child: const Text('تاني', style: TextStyle(fontFamily: 'Cairo')),
+          child: const Text('اختيار تاني',
+              style: TextStyle(fontFamily: 'Cairo')),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(),
