@@ -1,5 +1,6 @@
 // lib/views/attendance/attendance_page.dart
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:active_class/config/constants.dart';
@@ -743,6 +744,42 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
   // ما يستني إعادة بناء الأب (اللي هيحصل برضه عبر onReportSent).
   late bool _reportSent;
 
+  // spec 020 — الطلاب اللي اتنده عليهم عشوائيًا في فتح الشيت ده. in-memory،
+  // بيتصفّر لما الشيت يتقفل (State جديد كل مرة).
+  final Set<int> _calledStudentIds = {};
+
+  void _pickRandomStudent(
+      List<Student> groupStudents, Map<int, String> statusMap) {
+    if (groupStudents.isEmpty) return;
+    final present = groupStudents
+        .where((s) => attendanceCountsAsPresent(statusMap[s.id]))
+        .toList();
+    final pool = present.isNotEmpty ? present : groupStudents;
+
+    var eligible =
+        pool.where((s) => !_calledStudentIds.contains(s.id)).toList();
+    if (eligible.isEmpty) {
+      _calledStudentIds.clear();
+      eligible = pool.toList();
+      if (pool.length > 1) {
+        ToastHelper.info('خلصنا الكل — بندأ دورة جديدة');
+      }
+    }
+    if (eligible.isEmpty) return;
+
+    final pick = eligible[math.Random().nextInt(eligible.length)];
+    if (pick.id != null) _calledStudentIds.add(pick.id!);
+
+    showDialog(
+      context: context,
+      builder: (_) => _RandomPickDialog(
+        allNames: pool.map((s) => s.name).toList(),
+        finalName: pick.name,
+        onAgain: () => _pickRandomStudent(groupStudents, statusMap),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -945,6 +982,28 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                   sortBy: _sortBy,
                   ascending: _sortAscending,
                   onChanged: _onSortTap,
+                ),
+                const SizedBox(width: 4),
+                // spec 020 — اختيار طالب عشوائي للتسميع/السؤال أثناء الحصة
+                Material(
+                  color: groupStudents.isEmpty
+                      ? Colors.grey.withValues(alpha: 0.12)
+                      : AppTheme.primaryColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: groupStudents.isEmpty
+                        ? null
+                        : () => _pickRandomStudent(groupStudents, statusMap),
+                    child: Padding(
+                      padding: const EdgeInsets.all(9),
+                      child: Icon(Icons.casino_rounded,
+                          size: 20,
+                          color: groupStudents.isEmpty
+                              ? Colors.grey
+                              : AppTheme.primaryColor),
+                    ),
+                  ),
                 ),
               ]),
             ),
@@ -1181,6 +1240,105 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                         ),
                       ),
                     );
+  }
+}
+
+// ── spec 020 — حوار "اختيار طالب عشوائي" ──────────────────────────────────
+class _RandomPickDialog extends StatefulWidget {
+  final List<String> allNames; // لتأثير الخلط
+  final String finalName;
+  final VoidCallback onAgain;
+  const _RandomPickDialog({
+    required this.allNames,
+    required this.finalName,
+    required this.onAgain,
+  });
+
+  @override
+  State<_RandomPickDialog> createState() => _RandomPickDialogState();
+}
+
+class _RandomPickDialogState extends State<_RandomPickDialog> {
+  late String _shown = widget.finalName;
+  Timer? _shuffle;
+  bool _settled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final names = widget.allNames.length > 1 ? widget.allNames : [widget.finalName];
+    if (names.length > 1) {
+      final rnd = math.Random();
+      _shuffle = Timer.periodic(const Duration(milliseconds: 60), (_) {
+        if (!mounted) return;
+        setState(() => _shown = names[rnd.nextInt(names.length)]);
+      });
+      Timer(const Duration(milliseconds: 950), () {
+        _shuffle?.cancel();
+        if (!mounted) return;
+        setState(() {
+          _shown = widget.finalName;
+          _settled = true;
+        });
+      });
+    } else {
+      _settled = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    _shuffle?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      contentPadding: const EdgeInsets.fromLTRB(20, 26, 20, 12),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('🎯', style: TextStyle(fontSize: 34)),
+          const SizedBox(height: 10),
+          Text(_settled ? 'الدور على' : '...',
+              style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 12,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.6))),
+          const SizedBox(height: 6),
+          AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 120),
+            style: TextStyle(
+              fontFamily: 'Cairo',
+              fontWeight: FontWeight.w900,
+              fontSize: _settled ? 30 : 22,
+              color: _settled
+                  ? AppTheme.primaryColor
+                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+            ),
+            child: Text(_shown, textAlign: TextAlign.center),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+            widget.onAgain();
+          },
+          child: const Text('تاني', style: TextStyle(fontFamily: 'Cairo')),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('تم', style: TextStyle(fontFamily: 'Cairo')),
+        ),
+      ],
+    );
   }
 }
 
