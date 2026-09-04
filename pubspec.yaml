@@ -111,6 +111,7 @@ flutter:
     - assets/
     - assets/fonts/
     - assets/icon/
+    - assets/images/
     - assets/sounds/
 
   fonts:

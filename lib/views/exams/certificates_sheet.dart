@@ -32,7 +32,7 @@ class CertificatesSheet extends StatefulWidget {
 class _CertificatesSheetState extends State<CertificatesSheet> {
   final _db = DatabaseService();
   late final Set<int> _selected;
-  CertTemplate _template = CertTemplate.classic;
+  CertTemplate _template = CertTemplate.blueWhite;
   bool _busy = false;
 
   @override
@@ -198,32 +198,52 @@ class _CertificatesSheetState extends State<CertificatesSheet> {
   Widget _templatePicker(ColorScheme cs) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: CertTemplate.values.map((t) {
             final on = t == _template;
+            final accent = on
+                ? AppTheme.primaryColor
+                : cs.onSurface.withValues(alpha: 0.12);
             return Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: GestureDetector(
                   onTap: () => setState(() => _template = t),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    alignment: Alignment.center,
+                    padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
                       color: on
-                          ? AppTheme.primaryColor
-                          : cs.onSurface.withValues(alpha: 0.05),
+                          ? AppTheme.primaryColor.withValues(alpha: 0.08)
+                          : cs.onSurface.withValues(alpha: 0.04),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                          color: on
-                              ? AppTheme.primaryColor
-                              : cs.onSurface.withValues(alpha: 0.12)),
+                          color: accent, width: on ? 2 : 1),
                     ),
-                    child: Text(t.label,
-                        style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                            color: on ? Colors.white : cs.onSurface)),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: AspectRatio(
+                            aspectRatio: 1.414,
+                            child: Image.asset(
+                              'assets/images/${t.bgAsset}',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(t.label,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: on
+                                    ? AppTheme.primaryColor
+                                    : cs.onSurface)),
+                      ],
+                    ),
                   ),
                 ),
               ),

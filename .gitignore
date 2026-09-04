@@ -88,3 +88,8 @@ build
 # Firebase config — فيه API key، ملهوش داعي في الريبو
 google-services.json
 
+# مخرجات أداة معاينة الشهادات (tool/cert_preview.dart)
+/cert_preview.pdf
+/certificates_v2.pdf
+/certpng/
+

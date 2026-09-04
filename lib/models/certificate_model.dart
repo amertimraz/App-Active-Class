@@ -3,14 +3,21 @@
 // spec 018 — شهادات تقدير. مخرَج PDF فقط، مفيش تخزين. البيانات كلها
 // تُبنى وقت التوليد من درجة الطالب + الامتحان + إعدادات المدرس.
 
-/// قوالب التصميم الجاهزة داخل التطبيق (FR-005).
-enum CertTemplate { classic, modern, simple }
+/// قوالب التصميم — كل واحد صورة خلفية جاهزة في assets/images والتطبيق
+/// يركّب النص فوقها (FR-005).
+enum CertTemplate { blueGold, blueWhite, goldWhite }
 
 extension CertTemplateX on CertTemplate {
   String get label => switch (this) {
-        CertTemplate.classic => 'كلاسيكي',
-        CertTemplate.modern => 'حديث',
-        CertTemplate.simple => 'بسيط',
+        CertTemplate.blueGold => 'أزرق وذهبي',
+        CertTemplate.blueWhite => 'أزرق وأبيض',
+        CertTemplate.goldWhite => 'ذهبي وأبيض',
+      };
+
+  String get bgAsset => switch (this) {
+        CertTemplate.blueGold => 'cert_bg_1.png',
+        CertTemplate.blueWhite => 'cert_bg_2.png',
+        CertTemplate.goldWhite => 'cert_bg_3.png',
       };
 
   /// المفتاح المخزَّن في app_settings.
@@ -18,7 +25,7 @@ extension CertTemplateX on CertTemplate {
 
   static CertTemplate fromStorage(String? v) => CertTemplate.values.firstWhere(
         (t) => t.name == v,
-        orElse: () => CertTemplate.classic,
+        orElse: () => CertTemplate.blueWhite,
       );
 }
 
