@@ -1,9 +1,12 @@
 // lib/views/exams/certificates_sheet.dart
 //
 // spec 018 — شاشة موحّدة لتوليد شهادات التقدير: قائمة طلاب قابلة
-// للاختيار (كلها معلَّمة افتراضيًا) + منتقي قالب + زر "توليد ومشاركة".
+// للاختيار (كلها معلَّمة افتراضيًا) + منتقي قالب + معاينة قبل المشاركة.
+
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 
 import 'package:active_class/config/constants.dart';
@@ -61,7 +64,14 @@ class _CertificatesSheetState extends State<CertificatesSheet> {
       await _db.setSetting(SETTING_CERT_TEMPLATE, _template.storageKey);
       final bytes =
           await CertificateService().buildCertificatesPdf(chosen, _template);
-      await Printing.sharePdf(bytes: bytes, filename: '${widget.fileName}.pdf');
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => _CertPreviewPage(
+          bytes: bytes,
+          fileName: '${widget.fileName}.pdf',
+          count: chosen.length,
+        ),
+      ));
     } catch (e) {
       if (mounted) ToastHelper.error('تعذّر إنشاء الشهادات — حاول تاني');
     } finally {
@@ -185,8 +195,8 @@ class _CertificatesSheetState extends State<CertificatesSheet> {
                           height: 16,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.workspace_premium_rounded, size: 18),
-                  label: Text(_busy ? 'جاري التوليد...' : 'توليد ومشاركة',
+                      : const Icon(Icons.visibility_rounded, size: 18),
+                  label: Text(_busy ? 'جاري التوليد...' : 'معاينة ومشاركة',
                       style: const TextStyle(
                           fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
                 ),
@@ -264,4 +274,39 @@ class _CertificatesSheetState extends State<CertificatesSheet> {
                   color: cs.onSurface.withValues(alpha: 0.5))),
         ]),
       );
+}
+
+/// معاينة الشهادات المولَّدة (صفحة لكل طالب) مع أزرار مشاركة/طباعة/حفظ.
+class _CertPreviewPage extends StatelessWidget {
+  final Uint8List bytes;
+  final String fileName;
+  final int count;
+
+  const _CertPreviewPage({
+    required this.bytes,
+    required this.fileName,
+    required this.count,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('معاينة $count شهادة',
+            style: const TextStyle(
+                fontFamily: 'Cairo',
+                fontWeight: FontWeight.w800,
+                fontSize: 15)),
+      ),
+      body: PdfPreview(
+        build: (_) => bytes,
+        initialPageFormat: PdfPageFormat.a4.landscape,
+        canChangePageFormat: false,
+        canChangeOrientation: false,
+        canDebug: false,
+        pdfFileName: fileName,
+        loadingWidget: const Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
 }
