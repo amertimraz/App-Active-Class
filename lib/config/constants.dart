@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 24;
+const int DATABASE_VERSION = 25;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -247,6 +247,10 @@ const String ROUTE_ACCOUNT             = '/account';
 const String ROUTE_TEAM_MODE           = '/team_mode';
 const String ROUTE_TEAM_JOIN           = '/team_join';
 const String ROUTE_TEAM_MEMBERS        = '/team_members';
+// spec 021 — طلاب محتاجين متابعة (إنذار مبكّر). مسجّلة كـ GetPage (مش
+// Get.to مباشر) عشان NotificationService يقدر يفتحها بالاسم عند الضغط
+// على الإشعار الأسبوعي من غير مرجع لـwidget builder.
+const String ROUTE_AT_RISK_STUDENTS    = '/at_risk_students';
 
 // Standalone login system (self-hosted Supabase) — app_settings keys
 const String SETTING_HAS_LOGGED_IN_BEFORE = 'auth_has_logged_in_before';
@@ -287,3 +291,36 @@ const String SETTING_CERT_TEMPLATE = 'cert_template';
 // البداية بس من غير مدة صريحة — بتُستخدم لحساب وقت نهاية الحصة
 // وبالتالي العداد التنازلي.
 const int DEFAULT_SESSION_MINUTES = 60;
+
+// ─────────────────────────────────────────────────────────────────
+//  spec 021 — طلاب محتاجين متابعة (إنذار مبكّر). الرصد نفسه قراءة/
+//  تجميع فوق جداول موجودة (حضور/واجب/درجات/مدفوعات) — الجدول ده
+//  الوحيد الجديد، لواقعة "تمّت المتابعة" بس. متزامَن عبر الفريق
+//  بنفس آلية outbox الموجودة (زي TABLE_HOMEWORK/TABLE_PAYMENTS).
+// ─────────────────────────────────────────────────────────────────
+const String TABLE_STUDENT_FOLLOW_UPS = 'student_follow_ups';
+const String COL_SFU_ID              = 'id';
+const String COL_SFU_STUDENT_ID      = 'student_id';
+const String COL_SFU_REASON_TYPES    = 'reason_types';    // JSON list<String>
+const String COL_SFU_ACKNOWLEDGED_AT = 'acknowledged_at'; // ISO-8601
+const String COL_SFU_NOTE            = 'note';             // اختياري
+
+// app_settings keys — تفعيل/عتبة كل إشارة رصد + مدة التهدئة. غياب أي
+// مفتاح منهم = القيمة الافتراضية المكتوبة جنبه (يشتغل من غير أي ضبط).
+const String SETTING_ATRISK_ABSENCE_ENABLED    = 'atrisk_absence_enabled';    // true
+const String SETTING_ATRISK_ABSENCE_THRESHOLD  = 'atrisk_absence_threshold';  // 2 (K حصص متتالية)
+const String SETTING_ATRISK_HOMEWORK_ENABLED   = 'atrisk_homework_enabled';   // true
+const String SETTING_ATRISK_HOMEWORK_M         = 'atrisk_homework_m';         // 3
+const String SETTING_ATRISK_HOMEWORK_W         = 'atrisk_homework_w';         // 5
+const String SETTING_ATRISK_GRADE_ENABLED      = 'atrisk_grade_enabled';      // true
+const String SETTING_ATRISK_GRADE_DROP_POINTS  = 'atrisk_grade_drop_points';  // 15 (نقطة مئوية)
+// ملحوظة: إشارة "تأخّر الدفع" تعيد استخدام SETTING_LATE_GRACE_MINUTES؟ لأ —
+// تستخدم SettingsController.paymentGraceDays الموجود بالفعل (مفتاحه
+// المنفصل مُعرَّف في مكانه)، مش مفتاح atrisk_payment_threshold جديد —
+// عشان "متأخّر" يفضل له تعريف واحد في التطبيق كله (راجع data-model.md).
+const String SETTING_ATRISK_PAYMENT_ENABLED    = 'atrisk_payment_enabled';    // true
+const String SETTING_ATRISK_COOLDOWN_DAYS      = 'atrisk_cooldown_days';      // 7
+const String SETTING_ATRISK_NOTIF_ENABLED = 'atrisk_weekly_notif_enabled';    // true
+const String SETTING_ATRISK_NOTIF_DAY     = 'atrisk_weekly_notif_day';        // 'الأحد'
+const String SETTING_ATRISK_NOTIF_HOUR    = 'atrisk_weekly_notif_hour';       // 9
+const String SETTING_ATRISK_NOTIF_MINUTE  = 'atrisk_weekly_notif_minute';     // 0

@@ -17,6 +17,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/controllers/at_risk_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/exam_controller.dart';
@@ -73,6 +74,9 @@ class SyncEngine {
     TABLE_EXAMS,
     TABLE_EXAM_GROUPS,
     TABLE_EXAM_GRADES,
+    // spec 021 — واقعة "تمّت المتابعة"؛ محتاجة student_remote_id، فلازم
+    // تيجي بعد TABLE_STUDENTS فوق (زي TABLE_HOMEWORK بالظبط).
+    TABLE_STUDENT_FOLLOW_UPS,
   ];
 
   final DatabaseService _dbService = DatabaseService();
@@ -91,6 +95,7 @@ class SyncEngine {
         TABLE_EXAMS => COL_EXAM_ID,
         TABLE_EXAM_GROUPS => COL_EG_ID,
         TABLE_EXAM_GRADES => COL_GRADE_ID,
+        TABLE_STUDENT_FOLLOW_UPS => COL_SFU_ID,
         _ => throw ArgumentError('جدول غير قابل للمزامنة: $table'),
       };
 
@@ -372,6 +377,21 @@ class SyncEngine {
           'notes': payload[COL_GRADE_NOTES],
           'is_absent': (payload[COL_GRADE_IS_ABSENT] as int? ?? 0) == 1,
         };
+      case TABLE_STUDENT_FOLLOW_UPS:
+        final studentLocalId = payload[COL_SFU_STUDENT_ID] as int?;
+        String? studentRemoteId;
+        if (studentLocalId != null) {
+          studentRemoteId = await _localRemoteId(
+              TABLE_STUDENTS, COL_STUDENT_ID, studentLocalId);
+          if (studentRemoteId == null) return null;
+        }
+        return {
+          ...base,
+          'student_remote_id': studentRemoteId,
+          'reason_types': payload[COL_SFU_REASON_TYPES],
+          'acknowledged_at': payload[COL_SFU_ACKNOWLEDGED_AT],
+          'note': payload[COL_SFU_NOTE],
+        };
     }
     return null;
   }
@@ -622,6 +642,11 @@ class SyncEngine {
       case TABLE_EXAM_GRADES:
         if (Get.isRegistered<ExamController>()) {
           Get.find<ExamController>().loadExams();
+        }
+        break;
+      case TABLE_STUDENT_FOLLOW_UPS:
+        if (Get.isRegistered<AtRiskController>()) {
+          Get.find<AtRiskController>().refresh();
         }
         break;
     }
@@ -1010,6 +1035,22 @@ class SyncEngine {
           COL_GRADE_VALUE: remote['grade'],
           COL_GRADE_NOTES: remote['notes'],
           COL_GRADE_IS_ABSENT: (remote['is_absent'] as bool? ?? false) ? 1 : 0,
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_STUDENT_FOLLOW_UPS:
+        final studentRemoteId = remote['student_remote_id'] as String?;
+        final localStudentId = studentRemoteId != null
+            ? await _localIdForRemote(
+                TABLE_STUDENTS, COL_STUDENT_ID, studentRemoteId,
+                executor: executor)
+            : null;
+        if (studentRemoteId != null && localStudentId == null) return null;
+        return {
+          COL_SFU_STUDENT_ID: localStudentId,
+          COL_SFU_REASON_TYPES: remote['reason_types'],
+          COL_SFU_ACKNOWLEDGED_AT: remote['acknowledged_at'],
+          COL_SFU_NOTE: remote['note'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };

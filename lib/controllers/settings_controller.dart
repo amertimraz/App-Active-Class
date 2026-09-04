@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/controllers/at_risk_controller.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/utils/pricing_helper.dart';
@@ -140,6 +141,7 @@ class SettingsController extends GetxController {
       _loadPaymentGraceDays(),
       _loadLateAttendanceSettings(),
       _loadBillingSettings(),
+      _loadAtRiskSettings(),
     ]);
   }
 
@@ -252,6 +254,9 @@ class SettingsController extends GetxController {
     try {
       await _dbSet(_keyPaymentGraceDays, d.toString());
     } catch (_) {}
+    // إشارة "تأخّر الدفع" في spec 021 بتستخدم نفس المهلة دي — لازم
+    // تتحدّث فورًا زيها بالظبط.
+    _refreshAtRiskController();
   }
 
   // ── حالة حضور "متأخر" (spec 011) ──────────────────────────────
@@ -327,6 +332,148 @@ class SettingsController extends GetxController {
     try {
       await _dbSet(_keyWaSendDay, d.toString());
     } catch (_) {}
+  }
+
+  // ── طلاب محتاجين متابعة (spec 021) ────────────────────────────
+  // تفعيل/عتبة كل إشارة + مدة التهدئة + جدولة الإشعار الأسبوعي.
+  // تأخّر الدفع بيستخدم paymentGraceDays فوق — مفيش عتبة مستقلة له هنا.
+  final RxBool atRiskAbsenceEnabled = true.obs;
+  final RxInt atRiskAbsenceThreshold = 2.obs;
+  final RxBool atRiskHomeworkEnabled = true.obs;
+  final RxInt atRiskHomeworkM = 3.obs;
+  final RxInt atRiskHomeworkW = 5.obs;
+  final RxBool atRiskGradeEnabled = true.obs;
+  final RxInt atRiskGradeDropPoints = 15.obs;
+  final RxBool atRiskPaymentEnabled = true.obs;
+  final RxInt atRiskCooldownDays = 7.obs;
+  final RxBool atRiskWeeklyNotifEnabled = true.obs;
+  final RxString atRiskWeeklyNotifDay = 'الأحد'.obs;
+  final RxInt atRiskWeeklyNotifHour = 9.obs;
+  final RxInt atRiskWeeklyNotifMinute = 0.obs;
+
+  Future<void> _loadAtRiskSettings() async {
+    try {
+      atRiskAbsenceEnabled.value =
+          await _migrateBool(SETTING_ATRISK_ABSENCE_ENABLED) ?? true;
+      atRiskAbsenceThreshold.value =
+          await _migrateInt(SETTING_ATRISK_ABSENCE_THRESHOLD) ?? 2;
+      atRiskHomeworkEnabled.value =
+          await _migrateBool(SETTING_ATRISK_HOMEWORK_ENABLED) ?? true;
+      atRiskHomeworkM.value = await _migrateInt(SETTING_ATRISK_HOMEWORK_M) ?? 3;
+      atRiskHomeworkW.value = await _migrateInt(SETTING_ATRISK_HOMEWORK_W) ?? 5;
+      atRiskGradeEnabled.value =
+          await _migrateBool(SETTING_ATRISK_GRADE_ENABLED) ?? true;
+      atRiskGradeDropPoints.value =
+          await _migrateInt(SETTING_ATRISK_GRADE_DROP_POINTS) ?? 15;
+      atRiskPaymentEnabled.value =
+          await _migrateBool(SETTING_ATRISK_PAYMENT_ENABLED) ?? true;
+      atRiskCooldownDays.value =
+          await _migrateInt(SETTING_ATRISK_COOLDOWN_DAYS) ?? 7;
+      atRiskWeeklyNotifEnabled.value =
+          await _migrateBool(SETTING_ATRISK_NOTIF_ENABLED) ?? true;
+      atRiskWeeklyNotifDay.value =
+          await _migrateString(SETTING_ATRISK_NOTIF_DAY) ?? 'الأحد';
+      atRiskWeeklyNotifHour.value =
+          await _migrateInt(SETTING_ATRISK_NOTIF_HOUR) ?? 9;
+      atRiskWeeklyNotifMinute.value =
+          await _migrateInt(SETTING_ATRISK_NOTIF_MINUTE) ?? 0;
+    } catch (_) {}
+  }
+
+  // FR-019: أي تغيير في إعدادات المتابعة لازم ينعكس على الرصد فورًا —
+  // مش لازم نستنى المدرس يقفل ويفتح الشاشة. AtRiskController مسجَّل من
+  // home_page.dart (أول شاشة)، فبيكون موجود دايمًا وقت ما شاشة الإعدادات
+  // بتتفتح؛ الفحص هنا احتياطي بس.
+  void _refreshAtRiskController() {
+    if (Get.isRegistered<AtRiskController>()) {
+      Get.find<AtRiskController>().refresh();
+    }
+  }
+
+  Future<void> setAtRiskAbsence({bool? enabled, int? threshold}) async {
+    if (enabled != null) {
+      atRiskAbsenceEnabled.value = enabled;
+      await _dbSet(SETTING_ATRISK_ABSENCE_ENABLED, enabled ? '1' : '0');
+    }
+    if (threshold != null) {
+      final t = threshold.clamp(1, 10);
+      atRiskAbsenceThreshold.value = t;
+      await _dbSet(SETTING_ATRISK_ABSENCE_THRESHOLD, t.toString());
+    }
+    _refreshAtRiskController();
+  }
+
+  Future<void> setAtRiskHomework({bool? enabled, int? m, int? w}) async {
+    if (enabled != null) {
+      atRiskHomeworkEnabled.value = enabled;
+      await _dbSet(SETTING_ATRISK_HOMEWORK_ENABLED, enabled ? '1' : '0');
+    }
+    if (w != null) {
+      final ww = w.clamp(1, 20);
+      atRiskHomeworkW.value = ww;
+      await _dbSet(SETTING_ATRISK_HOMEWORK_W, ww.toString());
+    }
+    if (m != null) {
+      final mm = m.clamp(1, atRiskHomeworkW.value);
+      atRiskHomeworkM.value = mm;
+      await _dbSet(SETTING_ATRISK_HOMEWORK_M, mm.toString());
+    }
+    _refreshAtRiskController();
+  }
+
+  Future<void> setAtRiskGrade({bool? enabled, int? dropPoints}) async {
+    if (enabled != null) {
+      atRiskGradeEnabled.value = enabled;
+      await _dbSet(SETTING_ATRISK_GRADE_ENABLED, enabled ? '1' : '0');
+    }
+    if (dropPoints != null) {
+      final p = dropPoints.clamp(1, 100);
+      atRiskGradeDropPoints.value = p;
+      await _dbSet(SETTING_ATRISK_GRADE_DROP_POINTS, p.toString());
+    }
+    _refreshAtRiskController();
+  }
+
+  Future<void> setAtRiskPaymentEnabled(bool v) async {
+    atRiskPaymentEnabled.value = v;
+    await _dbSet(SETTING_ATRISK_PAYMENT_ENABLED, v ? '1' : '0');
+    _refreshAtRiskController();
+  }
+
+  Future<void> setAtRiskCooldownDays(int days) async {
+    final d = days.clamp(1, 60);
+    atRiskCooldownDays.value = d;
+    await _dbSet(SETTING_ATRISK_COOLDOWN_DAYS, d.toString());
+    _refreshAtRiskController();
+  }
+
+  Future<void> setAtRiskWeeklyNotif({
+    bool? enabled,
+    String? day,
+    int? hour,
+    int? minute,
+  }) async {
+    if (enabled != null) {
+      atRiskWeeklyNotifEnabled.value = enabled;
+      await _dbSet(SETTING_ATRISK_NOTIF_ENABLED, enabled ? '1' : '0');
+    }
+    if (day != null) {
+      atRiskWeeklyNotifDay.value = day;
+      await _dbSet(SETTING_ATRISK_NOTIF_DAY, day);
+    }
+    if (hour != null) {
+      final h = hour.clamp(0, 23);
+      atRiskWeeklyNotifHour.value = h;
+      await _dbSet(SETTING_ATRISK_NOTIF_HOUR, h.toString());
+    }
+    if (minute != null) {
+      final m = minute.clamp(0, 59);
+      atRiskWeeklyNotifMinute.value = m;
+      await _dbSet(SETTING_ATRISK_NOTIF_MINUTE, m.toString());
+    }
+    // نفس نمط setUse24hFormat: تغيير ميعاد/تفعيل الإشعار لازم إعادة
+    // جدولة فورية عشان يعكس القيمة الجديدة على طول.
+    unawaited(NotificationService().scheduleWeeklyAtRiskDigest());
   }
 
   Future<void> _loadCurrency() async {

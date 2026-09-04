@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
+import 'package:active_class/controllers/at_risk_controller.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/theme_controller.dart';
@@ -31,6 +32,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final DashboardController _dashboardController =
       Get.put(DashboardController());
   final SettingsController _settingsController = Get.find<SettingsController>();
+  // spec 021 — مسجّل من هنا (أول شاشة بتتفتح) عشان عدّاد "محتاجين
+  // متابعة" يفضل حيّ حتى قبل ما المدرس يفتح الشاشة المخصّصة بنفسه.
+  final AtRiskController _atRiskController =
+      Get.put(AtRiskController());
   bool _statsVisible = true;
 
   @override
@@ -66,6 +71,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // عند العودة من الخلفية → تحديث تلقائي
     if (state == AppLifecycleState.resumed) {
       _dashboardController.loadDashboardData();
+      _atRiskController.refresh();
     }
   }
 
@@ -273,6 +279,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   delegate: StudentSearchDelegate(),
                 ),
               ),
+              const SizedBox(width: 8),
+              // spec 021 — نقطة دخول مؤقتة لشاشة "محتاجين متابعة" (بديل
+              // كارت لوحة التحكم الكامل الجاي في US3).
+              Obx(() {
+                final n = _atRiskController.count.value;
+                return Badge(
+                  label: Text('$n'),
+                  isLabelVisible: n > 0,
+                  backgroundColor: const Color(0xFFEF4444),
+                  child: _AppBarIcon(
+                    icon: Icons.groups_rounded,
+                    isDark: isDark,
+                    onTap: () => Get.toNamed(ROUTE_AT_RISK_STUDENTS),
+                  ),
+                );
+              }),
               const SizedBox(width: 8),
               Obx(() {
                 final tc = Get.find<ThemeController>();
@@ -693,6 +715,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         : showLockedPermissionHint,
                   ),
                 ),
+                // spec 021 — كارت "محتاجين متابعة" (FR-012): يظهر بس لو
+                // فيه طلاب مرصودين، ويفتح الشاشة المخصّصة عند الضغط.
+                Obx(() {
+                  final n = _atRiskController.count.value;
+                  if (n == 0) return const SizedBox.shrink();
+                  return Column(children: [
+                    const SizedBox(height: 8),
+                    _AtRiskDashboardCard(
+                      count: n,
+                      onTap: () => Get.toNamed(ROUTE_AT_RISK_STUDENTS),
+                    ),
+                  ]);
+                }),
                 const SizedBox(height: 8),
                 // ── صف 3: حضور اليوم + مدفوعات اليوم جنب بعض ──
                 IntrinsicHeight(
@@ -1955,6 +1990,84 @@ class _AttendanceCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// spec 021 — كارت "محتاجين متابعة" في لوحة التحكم (FR-012). ما بيظهرش
+/// خالص لو العدّاد صفر (بيتحكّم فيه الـcaller).
+class _AtRiskDashboardCard extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _AtRiskDashboardCard({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    const color = Color(0xFFEF4444);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF131D31) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.35)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.warning_amber_rounded,
+                  size: 20, color: color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    count == 1
+                        ? 'طالب واحد محتاج متابعة'
+                        : '$count طلاب محتاجين متابعة',
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13.5,
+                      color: isDark ? Colors.white : const Color(0xFF111827),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'غياب متتالي، واجب ناقص، هبوط درجات، أو تأخّر دفع',
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 10.5,
+                      color: isDark ? Colors.white38 : Colors.grey.shade500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_left_rounded,
+                size: 20, color: isDark ? Colors.white38 : Colors.grey.shade400),
+          ],
         ),
       ),
     );

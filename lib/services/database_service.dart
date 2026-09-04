@@ -9,6 +9,7 @@ import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/homework_model.dart';
+import 'package:active_class/models/student_follow_up_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
@@ -82,6 +83,25 @@ const String _examSubmissionsTableSql = '''
 const String _examQuestionsExamIdIndexSql =
     'CREATE INDEX IF NOT EXISTS idx_${TABLE_EXAM_QUESTIONS}_exam_id '
     'ON $TABLE_EXAM_QUESTIONS($COL_EQ_EXAM_ID, $COL_EQ_POSITION)';
+
+// spec 021 — واقعة "تمّت المتابعة" (تُستخدم في _createTables و_onUpgrade v25).
+// متزامَنة عبر الفريق (COL_SYNC_*) زي TABLE_HOMEWORK/TABLE_PAYMENTS.
+const String _studentFollowUpsTableSql = '''
+  CREATE TABLE IF NOT EXISTS $TABLE_STUDENT_FOLLOW_UPS (
+    $COL_SFU_ID              INTEGER PRIMARY KEY AUTOINCREMENT,
+    $COL_SFU_STUDENT_ID      INTEGER NOT NULL,
+    $COL_SFU_REASON_TYPES    TEXT NOT NULL,
+    $COL_SFU_ACKNOWLEDGED_AT TEXT NOT NULL,
+    $COL_SFU_NOTE            TEXT,
+    $COL_SYNC_UPDATED_AT     TEXT,
+    $COL_SYNC_REMOTE_ID      TEXT,
+    FOREIGN KEY($COL_SFU_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
+  )
+''';
+
+const String _studentFollowUpsIndexSql =
+    'CREATE INDEX IF NOT EXISTS idx_${TABLE_STUDENT_FOLLOW_UPS}_student '
+    'ON $TABLE_STUDENT_FOLLOW_UPS($COL_SFU_STUDENT_ID)';
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -275,6 +295,10 @@ class DatabaseService {
 
     // Exam Submissions (spec 016) — تسليم كل طالب (يُسحب من السحابة ويُصحّح محليًا).
     await db.execute(_examSubmissionsTableSql);
+
+    // Student Follow-ups (spec 021) — واقعة "تمّت المتابعة"، متزامَنة عبر الفريق.
+    await db.execute(_studentFollowUpsTableSql);
+    await db.execute(_studentFollowUpsIndexSql);
 
     // App settings (key/value) — اسم المعلم، العملة، تفضيلات الواجهة...
     await db.execute('''
@@ -652,6 +676,17 @@ class DatabaseService {
       try {
         await db.execute(
             'ALTER TABLE $TABLE_EXAM_QUESTIONS ADD COLUMN $COL_EQ_IMAGE_URL TEXT');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 25) {
+      // spec 021 — جدول جديد بالكامل (زي exam_questions/exam_submissions
+      // في v23) — صفر تأثير على أي جدول موجود.
+      try {
+        await db.execute(_studentFollowUpsTableSql);
+      } catch (_) {}
+      try {
+        await db.execute(_studentFollowUpsIndexSql);
       } catch (_) {}
     }
   }
@@ -1410,6 +1445,69 @@ class DatabaseService {
     final db = await database;
     final result = await db.query(TABLE_HOMEWORK, orderBy: '$COL_HOMEWORK_DATE DESC');
     return result.map((map) => Homework.fromMap(map)).toList();
+  }
+
+  // ========== STUDENT FOLLOW-UPS (spec 021) ==========
+  Future<int> insertFollowUpAcknowledgement(StudentFollowUp followUp) async {
+    final db = await database;
+    final map = {
+      ...followUp.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
+    final id = await db.insert(TABLE_STUDENT_FOLLOW_UPS, map);
+    _notifyChanged();
+    await _queueSync(TABLE_STUDENT_FOLLOW_UPS, id, 'insert',
+        payload: {...map, COL_SFU_ID: id});
+    return id;
+  }
+
+  Future<int> deleteFollowUp(int id) async {
+    final db = await database;
+    final remoteId =
+        await _remoteIdOf(db, TABLE_STUDENT_FOLLOW_UPS, COL_SFU_ID, id);
+    final n = await db.delete(
+      TABLE_STUDENT_FOLLOW_UPS,
+      where: '$COL_SFU_ID = ?',
+      whereArgs: [id],
+    );
+    _notifyChanged();
+    await _queueDelete(TABLE_STUDENT_FOLLOW_UPS, id, remoteId);
+    return n;
+  }
+
+  /// كل وقائع المتابعة، أو بس اللي خلال آخر [sinceDays] يوم لو محدَّدة
+  /// (كافية لحساب التهدئة — مفيش داعي نجيب تاريخ كامل).
+  Future<List<StudentFollowUp>> getRecentFollowUps({int? sinceDays}) async {
+    final db = await database;
+    String? where;
+    List<Object?>? whereArgs;
+    if (sinceDays != null) {
+      final cutoff =
+          DateTime.now().subtract(Duration(days: sinceDays)).toIso8601String();
+      where = '$COL_SFU_ACKNOWLEDGED_AT >= ?';
+      whereArgs = [cutoff];
+    }
+    final result = await db.query(
+      TABLE_STUDENT_FOLLOW_UPS,
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: '$COL_SFU_ACKNOWLEDGED_AT DESC',
+    );
+    return result.map((map) => StudentFollowUp.fromMap(map)).toList();
+  }
+
+  /// آخر واقعة متابعة نشطة لطالب معيّن (لو موجودة) — لزر "رجّعه للقائمة".
+  Future<StudentFollowUp?> getLatestFollowUpForStudent(int studentId) async {
+    final db = await database;
+    final result = await db.query(
+      TABLE_STUDENT_FOLLOW_UPS,
+      where: '$COL_SFU_STUDENT_ID = ?',
+      whereArgs: [studentId],
+      orderBy: '$COL_SFU_ACKNOWLEDGED_AT DESC',
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return StudentFollowUp.fromMap(result.first);
   }
 
   // ========== PAYMENTS ==========
@@ -2491,6 +2589,33 @@ class DatabaseService {
       );
     }).toList();
     return list;
+  }
+
+  /// كل درجات الامتحانات لطلاب غير مؤرشفين، مع بيانات الامتحان
+  /// (max_grade/passing_grade) عبر JOIN — نفس نمط getLeaderboard، بس صف
+  /// لكل درجة (مش مجمّعة) ومرتّبة بتاريخ الامتحان تنازليًا (الأحدث
+  /// أولاً لكل طالب). spec 021 — AtRiskService محتاج تاريخ الدرجات
+  /// الفردي، مش مجموع زي المراكز.
+  Future<List<ExamGrade>> getAllExamGradesWithExamInfo() async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT
+        eg.$COL_GRADE_ID         AS id,
+        eg.$COL_GRADE_EXAM_ID    AS exam_id,
+        eg.$COL_GRADE_STUDENT_ID AS student_id,
+        eg.$COL_GRADE_VALUE      AS grade,
+        eg.$COL_GRADE_NOTES      AS notes,
+        eg.$COL_GRADE_IS_ABSENT  AS is_absent,
+        eg.$COL_GRADE_CREATED_AT AS created_at,
+        e.$COL_EXAM_MAX_GRADE     AS max_grade,
+        e.$COL_EXAM_PASSING_GRADE AS passing_grade
+      FROM $TABLE_EXAM_GRADES eg
+      INNER JOIN $TABLE_STUDENTS s ON s.$COL_STUDENT_ID = eg.$COL_GRADE_STUDENT_ID
+      INNER JOIN $TABLE_EXAMS    e ON e.$COL_EXAM_ID    = eg.$COL_GRADE_EXAM_ID
+      WHERE s.$COL_STUDENT_IS_ARCHIVED = 0
+      ORDER BY eg.$COL_GRADE_STUDENT_ID ASC, e.$COL_EXAM_DATE DESC
+    ''');
+    return rows.map((r) => ExamGrade.fromMap(r)).toList();
   }
 }
 

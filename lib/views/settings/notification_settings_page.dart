@@ -1,12 +1,19 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 import 'package:active_class/config/theme.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/utils/helpers.dart';
+
+// نفس أسماء أيام الأسبوع المستخدَمة في NotificationService._dayNameToWeekday.
+const List<String> _weekDayNames = [
+  'السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'
+];
 
 class NotificationSettingsPage extends StatefulWidget {
   const NotificationSettingsPage({super.key});
@@ -283,6 +290,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
           icon: Icons.payment_rounded,
           isDark: isDark,
         ),
+        const SizedBox(height: 14),
+        _buildAtRiskWeeklyNotifTile(isDark),
         const SizedBox(height: 24),
         _buildSectionTitle('اختبار الإشعارات', isDark),
         const SizedBox(height: 12),
@@ -513,6 +522,112 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
         ],
       ),
     );
+  }
+
+  // spec 021 — إشعار أسبوعي ملخّص بعدد الطلاب المحتاجين متابعة. القيم
+  // في SettingsController (Rx) بدل حالة محلية — عشان يوم/وقت الإرسال
+  // يبقوا متاحين لـ NotificationService.scheduleWeeklyAtRiskDigest من
+  // غير تكرار تخزين.
+  Widget _buildAtRiskWeeklyNotifTile(bool isDark) {
+    final settings = Get.find<SettingsController>();
+    final bg = isDark ? const Color(0xFF1E1E2E) : Colors.white;
+    return Obx(() {
+      final enabled = settings.atRiskWeeklyNotifEnabled.value;
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.warning_amber_rounded,
+                      color: Color(0xFFEF4444), size: 22),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('إشعار محتاجين متابعة',
+                          style: TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w700)),
+                      SizedBox(height: 3),
+                      Text('تذكير أسبوعي بعدد الطلاب المحتاجين متابعة',
+                          style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: enabled,
+                  onChanged: (v) => settings.setAtRiskWeeklyNotif(enabled: v),
+                  activeThumbColor: AppTheme.primaryColor,
+                  activeTrackColor: AppTheme.primaryColor.withValues(alpha: 0.5),
+                ),
+              ],
+            ),
+            if (enabled) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: settings.atRiskWeeklyNotifDay.value,
+                      isDense: true,
+                      decoration: const InputDecoration(
+                          labelText: 'اليوم', isDense: true),
+                      items: _weekDayNames
+                          .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                          .toList(),
+                      onChanged: (d) {
+                        if (d != null) settings.setAtRiskWeeklyNotif(day: d);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.access_time_rounded, size: 18),
+                      label: Text(
+                          '${settings.atRiskWeeklyNotifHour.value.toString().padLeft(2, '0')}'
+                          ':${settings.atRiskWeeklyNotifMinute.value.toString().padLeft(2, '0')}'),
+                      onPressed: () async {
+                        final t = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay(
+                              hour: settings.atRiskWeeklyNotifHour.value,
+                              minute: settings.atRiskWeeklyNotifMinute.value),
+                        );
+                        if (t != null) {
+                          settings.setAtRiskWeeklyNotif(
+                              hour: t.hour, minute: t.minute);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      );
+    });
   }
 
   Widget _buildTestButton({

@@ -13,6 +13,7 @@ import 'package:active_class/views/groups/group_details_page.dart';
 import 'package:active_class/views/students/students_page.dart';
 import 'package:active_class/views/students/student_details_page.dart';
 import 'package:active_class/views/students/archived_students_page.dart';
+import 'package:active_class/views/students/at_risk_students_page.dart';
 import 'package:active_class/views/attendance/attendance_page.dart';
 import 'package:active_class/views/payments/payments_page.dart';
 import 'package:active_class/views/qr_scanner/qr_scanner_attendance_page.dart';
@@ -244,6 +245,9 @@ class MyApp extends StatelessWidget {
             GetPage(
                 name: ROUTE_ARCHIVED_STUDENTS,
                 page: () => const ArchivedStudentsPage()),
+            GetPage(
+                name: ROUTE_AT_RISK_STUDENTS,
+                page: () => const AtRiskStudentsPage()),
             GetPage(name: ROUTE_REPORTS, page: () => const ReportsPage()),
             GetPage(name: ROUTE_SETTINGS, page: () => const SettingsPage()),
             GetPage(

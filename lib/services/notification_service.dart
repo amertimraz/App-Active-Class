@@ -5,8 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:get/get.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:active_class/config/constants.dart';
+import 'package:active_class/services/at_risk_service.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
@@ -31,6 +34,8 @@ class NotificationService {
   static const int _digestNotificationIdBase = 950000000;
   // تذكير الدفع المتأخر — إشعار واحد يومي بعدد الطلاب المتأخرين.
   static const int _latePaymentNotificationId = 990000000;
+  // spec 021 — إشعار أسبوعي ملخّص بعدد "محتاجين متابعة".
+  static const int _atRiskNotificationId = 991000000;
 
   // مفاتيح app_settings للتحكم في تفعيل/تعطيل كل نوع إشعار — نفس
   // نمط setting/getSetting الموجود بالفعل (زي payment_grace_days).
@@ -39,6 +44,9 @@ class NotificationService {
   static const String _keyBirthdayEnabled = 'notif_birthday_enabled';
   static const String _keyClassEnabled = 'notif_class_enabled';
   static const String _keyLatePaymentEnabled = 'notif_late_payment_enabled';
+  // ملحوظة: مفتاح تفعيل الإشعار الأسبوعي هو نفسه SETTING_ATRISK_NOTIF_ENABLED
+  // (مُعرَّف في constants.dart) — مش مفتاح notif_* منفصل، عشان يتقرا بنفس
+  // مفتاح إعدادات "متابعة الطلاب" في SettingsController من غير تكرار.
 
   Future<bool> _readToggle(String key) async {
     final v = await _dbService.getSetting(key);
@@ -55,6 +63,10 @@ class NotificationService {
       _dbService.setSetting(_keyClassEnabled, v ? '1' : '0');
   Future<void> setLatePaymentEnabled(bool v) =>
       _dbService.setSetting(_keyLatePaymentEnabled, v ? '1' : '0');
+
+  Future<bool> isAtRiskEnabled() => _readToggle(SETTING_ATRISK_NOTIF_ENABLED);
+  Future<void> setAtRiskEnabled(bool v) =>
+      _dbService.setSetting(SETTING_ATRISK_NOTIF_ENABLED, v ? '1' : '0');
 
   static const Map<String, int> _dayNameToWeekday = {
     'السبت': DateTime.saturday,
@@ -161,8 +173,17 @@ class NotificationService {
     }
   }
 
+  // spec 021 — أول تنقّل-من-إشعار في المشروع (باقي الأنواع بتفتح
+  // التطبيق بس من غير توجيه). GetMaterialApp بيوفّر Get.toNamed من أي
+  // مكان من غير navigatorKey يدوي. الحالة دي بتغطّي "التطبيق شغّال في
+  // الخلفية" بس — لو التطبيق مقفول تمامًا والإشعار هو اللي فتحه (cold
+  // start)، getNotificationAppLaunchDetails() محتاجة معالجة منفصلة وقت
+  // initialize() — قيد معروف، لسه مش متنفّذ.
   void _onNotificationTap(NotificationResponse response) {
     debugPrint('Notification tapped: ${response.payload}');
+    if (response.payload == 'at_risk') {
+      Get.toNamed(ROUTE_AT_RISK_STUDENTS);
+    }
   }
 
   // Show immediate notification
@@ -248,6 +269,14 @@ class NotificationService {
       } catch (e) {
         debugPrint('NotificationService: فشلت جدولة تذكير الدفع المتأخر — $e');
       }
+
+      // نفس المنطق — scheduleWeeklyAtRiskDigest بتتحقق من isAtRiskEnabled
+      // بنفسها (spec 021).
+      try {
+        await scheduleWeeklyAtRiskDigest();
+      } catch (e) {
+        debugPrint('NotificationService: فشلت جدولة إشعار محتاجين متابعة — $e');
+      }
     } catch (e) {
       debugPrint('NotificationService: فشلت مزامنة الإشعارات — $e');
     }
@@ -320,6 +349,95 @@ class NotificationService {
       channelName: 'الدفع المتأخر',
       channelDescription: 'تذكير يومي بعدد الطلاب المتأخرين في الدفع',
       matchDateTimeComponents: DateTimeComponents.time,
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  spec 021 — إشعار أسبوعي ملخّص بعدد "محتاجين متابعة". نفس نمط
+  //  scheduleLatePaymentReminder بالظبط (يعيد الحساب من الـDB مباشرة
+  //  وقت الجدولة) لكن بتكرار أسبوعي (يوم/وقت قابلين للتعديل) بدل يومي.
+  // ─────────────────────────────────────────────────────────────────
+  Future<AtRiskSettings> _readAtRiskSettings() async {
+    Future<bool> flag(String key, bool def) async {
+      final v = await _dbService.getSetting(key);
+      return v == null ? def : v == '1';
+    }
+
+    Future<int> num(String key, int def) async {
+      final v = await _dbService.getSetting(key);
+      return v == null ? def : (int.tryParse(v) ?? def);
+    }
+
+    final paymentGraceDays =
+        await num('payment_grace_days', 0); // نفس مفتاح SettingsController
+    return AtRiskSettings(
+      absenceEnabled: await flag(SETTING_ATRISK_ABSENCE_ENABLED, true),
+      absenceThreshold: await num(SETTING_ATRISK_ABSENCE_THRESHOLD, 2),
+      homeworkEnabled: await flag(SETTING_ATRISK_HOMEWORK_ENABLED, true),
+      homeworkM: await num(SETTING_ATRISK_HOMEWORK_M, 3),
+      homeworkW: await num(SETTING_ATRISK_HOMEWORK_W, 5),
+      gradeEnabled: await flag(SETTING_ATRISK_GRADE_ENABLED, true),
+      gradeDropPoints: await num(SETTING_ATRISK_GRADE_DROP_POINTS, 15),
+      paymentEnabled: await flag(SETTING_ATRISK_PAYMENT_ENABLED, true),
+      paymentGraceDays: paymentGraceDays,
+      cooldownDays: await num(SETTING_ATRISK_COOLDOWN_DAYS, 7),
+    );
+  }
+
+  Future<void> scheduleWeeklyAtRiskDigest() async {
+    if (!await isAtRiskEnabled()) {
+      await cancelNotification(_atRiskNotificationId);
+      return;
+    }
+
+    final settings = await _readAtRiskSettings();
+    final students =
+        (await _dbService.getAllStudents()).where((s) => !s.isArchived).toList();
+    if (students.isEmpty) {
+      await cancelNotification(_atRiskNotificationId);
+      return;
+    }
+
+    final atRisk = computeAtRiskStudents(
+      students: students,
+      groups: await _dbService.getAllGroups(),
+      attendance: await _dbService.getAllAttendance(),
+      homework: await _dbService.getAllHomework(),
+      examGrades: await _dbService.getAllExamGradesWithExamInfo(),
+      payments: await _dbService.getAllPayments(),
+      recentFollowUps:
+          await _dbService.getRecentFollowUps(sinceDays: settings.cooldownDays),
+      settings: settings,
+    );
+
+    if (atRisk.isEmpty) {
+      await cancelNotification(_atRiskNotificationId);
+      return;
+    }
+
+    final dayName = await _dbService.getSetting(SETTING_ATRISK_NOTIF_DAY) ?? 'الأحد';
+    final hour = int.tryParse(
+            await _dbService.getSetting(SETTING_ATRISK_NOTIF_HOUR) ?? '') ??
+        9;
+    final minute = int.tryParse(
+            await _dbService.getSetting(SETTING_ATRISK_NOTIF_MINUTE) ?? '') ??
+        0;
+    final weekday = _dayNameToWeekday[dayName] ?? DateTime.sunday;
+
+    final scheduled = _nextInstanceOfWeekdayTime(
+        weekday, TimeOfDay(hour: hour, minute: minute));
+    await _scheduleById(
+      id: _atRiskNotificationId,
+      title: '📋 طلاب محتاجين متابعة',
+      body: atRisk.length == 1
+          ? 'فيه طالب واحد محتاج متابعة'
+          : 'فيه ${atRisk.length} طلاب محتاجين متابعة',
+      scheduledTime: scheduled,
+      payload: 'at_risk',
+      channelId: 'at_risk_channel',
+      channelName: 'محتاجين متابعة',
+      channelDescription: 'إشعار أسبوعي ملخّص بعدد الطلاب المحتاجين متابعة',
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
     );
   }
 
