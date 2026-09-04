@@ -147,12 +147,17 @@ service cloud.firestore {
       allow update: if request.auth != null
                     && (resource.data.ownerUid == request.auth.uid
                         || request.resource.data.deviceId == resource.data.deviceId
-                        // إعادة ربط بعد تحديث/إعادة تثبيت غيّرت uid المجهول:
-                        // لو المستند لسه مافيهوش deviceId (اتعمل قبل آلية
-                        // الربط دي)، صاحب الجهاز يقدر يطالب بالملكية مرة —
-                        // بعدها deviceId يتخزّن والقاعدة العادية تسري.
-                        || (!('deviceId' in resource.data)
-                            && request.resource.data.ownerUid == request.auth.uid));
+                        // إعادة ربط بعد تغيّر uid المجهول (تحديث / إعادة تثبيت /
+                        // تبديل مصدر التثبيت). الكتابة مقصورة على حقول البروفايل
+                        // + الهوية فقط — ممنوع حقن أي حاجة تانية، وكتابة ملخصات
+                        // الطلاب في المجموعة الفرعية ليها قاعدتها المستقلة.
+                        // نفس فلسفة teacher_profiles، ومسموح لأن {slug} مشتق من
+                        // كود الترخيص (مش عام) والبيانات هنا مقروءة أصلاً بالـslug.
+                        || (request.resource.data.ownerUid == request.auth.uid
+                            && request.resource.data.diff(resource.data).affectedKeys()
+                                 .hasOnly(['ownerUid', 'deviceId', 'teacherName',
+                                           'teacherGender', 'parentPortalExpiresAt',
+                                           'active', 'updatedAt'])));
 
       // ملخص كل طالب — الحماية الفعلية هي إن الـ document ID نفسه
       // {code}_{آخر 4 أرقام من تليفون ولي الأمر} — رابط سرّي غير قابل
@@ -185,11 +190,14 @@ service cloud.firestore {
       allow update: if request.auth != null
                     && (resource.data.ownerUid == request.auth.uid
                         || request.resource.data.deviceId == resource.data.deviceId
-                        // إعادة ربط بعد تغيّر uid المجهول (تحديث/إعادة تثبيت):
-                        // مستندات اتعملت قبل ما publish() يكتب deviceId
-                        // مكانش ليها مسار إصلاح — النشر كان بيترفض للأبد.
-                        || (!('deviceId' in resource.data)
-                            && request.resource.data.ownerUid == request.auth.uid));
+                        // إعادة ربط بعد تغيّر uid المجهول (تحديث / إعادة تثبيت /
+                        // تبديل مصدر التثبيت). الكتابة مقصورة على حقول الهوية —
+                        // ممنوع حقن أي حاجة تانية، ومستندات الامتحانات نفسها في
+                        // مجموعة فرعية ليها _oeOwner. النشر كان بيترفض للأبد
+                        // permission-denied من غير ده.
+                        || (request.resource.data.ownerUid == request.auth.uid
+                            && request.resource.data.diff(resource.data).affectedKeys()
+                                 .hasOnly(['ownerUid', 'deviceId', 'active', 'updatedAt'])));
       allow delete: if false;
 
       match /exams/{examId} {
