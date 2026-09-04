@@ -745,35 +745,36 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
   late bool _reportSent;
 
   // spec 020 — الطلاب اللي اتنده عليهم عشوائيًا في فتح الشيت ده. in-memory،
-  // بيتصفّر لما الشيت يتقفل (State جديد كل مرة). بنخزّن الأسماء (مش الـid)
-  // عشان يفضل شغّال حتى لو طالب لسه ماتحفظش (id = null).
-  final Set<String> _calledNames = {};
+  // بيتصفّر لما الشيت يتقفل (State جديد كل مرة). بالـid مش الاسم — عشان
+  // لو فيه طالبين بنفس الاسم كل واحد ياخد دوره لوحده.
+  final Set<int> _calledIds = {};
 
   void _pickRandomStudent(
       List<Student> groupStudents, Map<int, String> statusMap) {
-    if (groupStudents.isEmpty) return;
-    final present = groupStudents
+    final withId = groupStudents.where((s) => s.id != null).toList();
+    if (withId.isEmpty) return;
+    final present = withId
         .where((s) => attendanceCountsAsPresent(statusMap[s.id]))
         .toList();
-    final pool = present.isNotEmpty ? present : groupStudents;
-    final poolNames = pool.map((s) => s.name).toList();
+    final pool = present.isNotEmpty ? present : withId;
+    final poolIds = pool.map((s) => s.id).toSet();
 
-    // شيل من "المتنادى عليهم" أي اسم مش في الـpool الحالي (اتغيّر الحضور).
-    _calledNames.removeWhere((n) => !poolNames.contains(n));
+    // شيل من "المتنادى عليهم" أي طالب مش في الـpool الحالي (اتغيّر الحضور).
+    _calledIds.removeWhere((id) => !poolIds.contains(id));
 
-    var eligible = pool.where((s) => !_calledNames.contains(s.name)).toList();
+    var eligible = pool.where((s) => !_calledIds.contains(s.id)).toList();
     bool cycleReset = false;
     if (eligible.isEmpty) {
-      _calledNames.clear();
+      _calledIds.clear();
       eligible = pool.toList();
       cycleReset = pool.length > 1;
     }
     if (eligible.isEmpty) return;
 
     final pick = eligible[math.Random().nextInt(eligible.length)];
-    _calledNames.add(pick.name);
+    _calledIds.add(pick.id!);
 
-    final remaining = pool.length - _calledNames.length; // الفاضل في الدورة
+    final remaining = pool.length - _calledIds.length; // الفاضل في الدورة
 
     showDialog(
       context: context,
