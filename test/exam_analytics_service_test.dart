@@ -1,5 +1,4 @@
 // spec 023 — وحدات ExamAnalyticsService (حساب نقي).
-import 'package:active_class/models/exam_analytics_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
 import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/services/exam_analytics_service.dart';

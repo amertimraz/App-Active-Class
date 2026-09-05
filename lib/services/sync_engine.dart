@@ -63,30 +63,50 @@ class SyncEngine {
     this.onReconnected,
   });
 
+  // الترتيب مهم للـpull/push: كل جدول لازم يتطبّق بعد آبائه (exam_questions
+  // و exam_groups و exam_grades بعد exams؛ exam_submissions بعد exams
+  // و students).
   static const _tables = [
     TABLE_GROUPS,
     TABLE_STUDENTS,
     TABLE_ATTENDANCE,
     TABLE_PAYMENTS,
     TABLE_HOMEWORK,
-    // الترتيب مهم: exams لازم تتطبّق قبل exam_groups/exam_grades (الاتنين
-    // محتاجين exam_remote_id بتاع الامتحان الأب موجود بالفعل).
+    TABLE_EXAMS,
+    TABLE_EXAM_QUESTIONS, // spec 024
+    TABLE_EXAM_GROUPS,
+    TABLE_EXAM_GRADES,
+    TABLE_EXAM_SUBMISSIONS, // spec 024 — آخر القائمة (محتاج exams + students)
+    // ملحوظة: spec 021 أضاف TABLE_STUDENT_FOLLOW_UPS هنا، لكن جدول
+    // student_follow_ups على Supabase (migration_student_follow_ups.sql)
+    // لسه مش مُطبَّق على كل الـ backends — نرجّعه للمزامنة في إصدار لاحق
+    // بعد تأكيد الـmigration. راجع _drainOutbox (يمسح صفوف الجداول المشالة).
+  ];
+
+  // spec 024 — قناتان Realtime: الأساسية (_channel) للجداول اللي migration
+  // بتاعها مؤكّد على كل الـbackends؛ الممتدة (_channelX) للجداول الأحدث.
+  // فشل اشتراك جدول ناقص على قناة بيرمي CHANNEL_ERROR للقناة **دي بس** —
+  // فعزل الجداول الجديدة يمنع تكرار حادثة student_follow_ups (spec 021).
+  static const _coreTables = [
+    TABLE_GROUPS,
+    TABLE_STUDENTS,
+    TABLE_ATTENDANCE,
+    TABLE_PAYMENTS,
+    TABLE_HOMEWORK,
     TABLE_EXAMS,
     TABLE_EXAM_GROUPS,
     TABLE_EXAM_GRADES,
-    // ملحوظة: spec 021 أضاف TABLE_STUDENT_FOLLOW_UPS هنا، لكن جدول
-    // student_follow_ups على Supabase (migration_student_follow_ups.sql)
-    // لسه مش مُطبَّق على كل الـ backends — واشتراك Realtime بجدول غير
-    // موجود بيرمي CHANNEL_ERROR للقناة كلها، فيتعطّل بثّ الواجب/الدرجات
-    // لكل الفريق. رصد "تمّت المتابعة" محلي أصلًا (باقي محرّك at-risk
-    // كله محلي) — نرجّعه للمزامنة في إصدار لاحق بعد ما الـ migration
-    // يتأكد إنه مُطبَّق. راجع _drainOutbox (يمسح صفوف الجداول المشالة).
+  ];
+  static const _extendedTables = [
+    TABLE_EXAM_QUESTIONS,
+    TABLE_EXAM_SUBMISSIONS,
   ];
 
   final DatabaseService _dbService = DatabaseService();
   Timer? _pushTimer;
   Timer? _membershipTimer;
   RealtimeChannel? _channel;
+  RealtimeChannel? _channelX; // spec 024 — القناة الممتدة
   bool _draining = false;
   bool _pulling = false;
 
@@ -97,8 +117,10 @@ class SyncEngine {
         TABLE_PAYMENTS => COL_PAYMENT_ID,
         TABLE_HOMEWORK => COL_HOMEWORK_ID,
         TABLE_EXAMS => COL_EXAM_ID,
+        TABLE_EXAM_QUESTIONS => COL_EQ_ID,
         TABLE_EXAM_GROUPS => COL_EG_ID,
         TABLE_EXAM_GRADES => COL_GRADE_ID,
+        TABLE_EXAM_SUBMISSIONS => COL_ES_ID,
         TABLE_STUDENT_FOLLOW_UPS => COL_SFU_ID,
         _ => throw ArgumentError('جدول غير قابل للمزامنة: $table'),
       };
@@ -130,9 +152,14 @@ class SyncEngine {
     _membershipTimer?.cancel();
     _membershipTimer = null;
     final ch = _channel;
+    final chX = _channelX;
     _channel = null;
+    _channelX = null;
     if (ch != null) {
       await client.removeChannel(ch);
+    }
+    if (chX != null) {
+      await client.removeChannel(chX);
     }
   }
 
@@ -349,6 +376,59 @@ class SyncEngine {
           'report_month': payload[COL_EXAM_REPORT_MONTH],
           'max_grade': payload[COL_EXAM_MAX_GRADE],
           'passing_grade': payload[COL_EXAM_PASSING_GRADE],
+          // spec 024 — حقول الامتحان الإلكتروني
+          'is_online': (payload[COL_EXAM_IS_ONLINE] as int? ?? 0) == 1,
+          'online_status': payload[COL_EXAM_ONLINE_STATUS],
+          'opens_at': payload[COL_EXAM_OPENS_AT],
+          'closes_at': payload[COL_EXAM_CLOSES_AT],
+          'duration_minutes': payload[COL_EXAM_DURATION_MIN],
+        };
+      case TABLE_EXAM_QUESTIONS:
+        final examLocalId = payload[COL_EQ_EXAM_ID] as int?;
+        String? examRemoteId;
+        if (examLocalId != null) {
+          examRemoteId =
+              await _localRemoteId(TABLE_EXAMS, COL_EXAM_ID, examLocalId);
+          if (examRemoteId == null) return null;
+        }
+        return {
+          ...base,
+          'exam_remote_id': examRemoteId,
+          'position': payload[COL_EQ_POSITION],
+          'type': payload[COL_EQ_TYPE],
+          'text': payload[COL_EQ_TEXT],
+          'options': payload[COL_EQ_OPTIONS],
+          'correct_index': payload[COL_EQ_CORRECT_INDEX],
+          'points': payload[COL_EQ_POINTS],
+          'image_url': payload[COL_EQ_IMAGE_URL],
+          'explanation': payload[COL_EQ_EXPLANATION],
+        };
+      case TABLE_EXAM_SUBMISSIONS:
+        final examLocalId = payload[COL_ES_EXAM_ID] as int?;
+        final studentLocalId = payload[COL_ES_STUDENT_ID] as int?;
+        String? examRemoteId, studentRemoteId;
+        if (examLocalId != null) {
+          examRemoteId =
+              await _localRemoteId(TABLE_EXAMS, COL_EXAM_ID, examLocalId);
+          if (examRemoteId == null) return null;
+        }
+        if (studentLocalId != null) {
+          studentRemoteId = await _localRemoteId(
+              TABLE_STUDENTS, COL_STUDENT_ID, studentLocalId);
+          if (studentRemoteId == null) return null;
+        }
+        return {
+          ...base,
+          'exam_remote_id': examRemoteId,
+          'student_remote_id': studentRemoteId,
+          'started_at': payload[COL_ES_STARTED_AT],
+          'submitted_at': payload[COL_ES_SUBMITTED_AT],
+          'answers_json': payload[COL_ES_ANSWERS_JSON],
+          'auto_score': payload[COL_ES_AUTO_SCORE],
+          'final_grade': payload[COL_ES_FINAL_GRADE],
+          'status': payload[COL_ES_STATUS],
+          'auto_submitted': (payload[COL_ES_AUTO_SUBMITTED] as int? ?? 0) == 1,
+          // pulled_at مستبعد عمدًا — محلي لكل جهاز.
         };
       case TABLE_EXAM_GROUPS:
         final examLocalId = payload[COL_EG_EXAM_ID] as int?;
@@ -581,6 +661,10 @@ class SyncEngine {
                   .isFilter('deleted_at', null);
           return rows;
         } catch (e) {
+          // spec 024 — يشمل حالة جدول مش موجود على الخادم بعد
+          // (migration_online_exam_sync.sql لسه ماتشغّلش): "relation
+          // ... does not exist" → null → يتخطّى في حلقة التطبيق تحت،
+          // وباقي الجداول تتحمّل عادي.
           debugPrint('SyncEngine: فشل تحميل جدول $table — $e');
           return null;
         }
@@ -650,8 +734,10 @@ class SyncEngine {
         }
         break;
       case TABLE_EXAMS:
+      case TABLE_EXAM_QUESTIONS:
       case TABLE_EXAM_GROUPS:
       case TABLE_EXAM_GRADES:
+      case TABLE_EXAM_SUBMISSIONS:
         if (Get.isRegistered<ExamController>()) {
           Get.find<ExamController>().loadExams();
         }
@@ -668,9 +754,19 @@ class SyncEngine {
   }
 
   // ── Pull: اشتراك Realtime ─────────────────────────────────────────
+  // spec 024 — قناتان: الأساسية (_coreTables) والممتدة (_extendedTables).
+  // كل قناة بتشترك لوحدها؛ لو جدول على القناة الممتدة مش موجود على
+  // الخادم (migration_online_exam_sync.sql لسه ماتشغّلش)، القناة الممتدة
+  // تدخل CHANNEL_ERROR **بس** — الأساسية تفضل شغّالة 100% وبثّ الواجب/
+  // الحضور/الدرجات ما يتأثرش. (درس student_follow_ups — spec 021.)
   void _subscribeRealtime() {
-    final channel = client.channel('team-$teamId');
-    for (final table in _tables) {
+    _channel = _makeChannel('team-$teamId', _coreTables);
+    _channelX = _makeChannel('team-$teamId-x', _extendedTables);
+  }
+
+  RealtimeChannel _makeChannel(String name, List<String> tables) {
+    final channel = client.channel(name);
+    for (final table in tables) {
       channel.onPostgresChanges(
         event: PostgresChangeEvent.all,
         schema: 'public',
@@ -690,13 +786,14 @@ class SyncEngine {
     }
     // بتتنادى وقت أول اشتراك ناجح، وكمان أوتوماتيك كل ما الـ socket
     // يعيد الاتصال بعد انقطاع (الحزمة بتعمل reconnect+rejoin لوحدها) —
-    // فبتغطي بالظبط اللحظة اللي كنا محتاجين فيها تحميل لحاق.
+    // فبتغطي بالظبط اللحظة اللي كنا محتاجين فيها تحميل لحاق. النداء من
+    // القناتين آمن — catchUpPull عنده _pulling guard (idempotent).
     channel.subscribe((status, error) {
       if (status == RealtimeSubscribeStatus.subscribed) {
         unawaited(catchUpPull());
       }
     });
-    _channel = channel;
+    return channel;
   }
 
   Future<void> _applyRemoteRow(String table, Map<String, dynamic> remote,
@@ -826,6 +923,23 @@ class SyncEngine {
           if (dup.isNotEmpty) {
             debugPrint(
                 'SyncEngine: تجاهل درجة مكررة (امتحان $examId، طالب $studentId) وارد من جهاز تاني');
+            return;
+          }
+        }
+      }
+      // spec 024 — نفس المنطق: تسليم لنفس الطالب في نفس الامتحان
+      // (UNIQUE(exam_id, student_id) محلي) اتعمل على الجهازين قبل تبادل
+      // المزامنة.
+      if (table == TABLE_EXAM_SUBMISSIONS) {
+        final examId = localMap[COL_ES_EXAM_ID];
+        final studentId = localMap[COL_ES_STUDENT_ID];
+        if (examId != null && studentId != null) {
+          final dup = await db.query(table,
+              where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
+              whereArgs: [examId, studentId], limit: 1);
+          if (dup.isNotEmpty) {
+            debugPrint(
+                'SyncEngine: تجاهل تسليم مكرر (امتحان $examId، طالب $studentId) وارد من جهاز تاني');
             return;
           }
         }
@@ -1005,8 +1119,63 @@ class SyncEngine {
           COL_EXAM_REPORT_MONTH: remote['report_month'],
           COL_EXAM_MAX_GRADE: remote['max_grade'],
           COL_EXAM_PASSING_GRADE: remote['passing_grade'],
+          // spec 024 — حقول الامتحان الإلكتروني
+          COL_EXAM_IS_ONLINE: (remote['is_online'] as bool? ?? false) ? 1 : 0,
+          COL_EXAM_ONLINE_STATUS: remote['online_status'],
+          COL_EXAM_OPENS_AT: remote['opens_at'],
+          COL_EXAM_CLOSES_AT: remote['closes_at'],
+          COL_EXAM_DURATION_MIN: remote['duration_minutes'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_EXAM_QUESTIONS:
+        final examRemoteId = remote['exam_remote_id'] as String?;
+        final localExamId = examRemoteId != null
+            ? await _localIdForRemote(TABLE_EXAMS, COL_EXAM_ID, examRemoteId,
+                executor: executor)
+            : null;
+        if (examRemoteId != null && localExamId == null) return null;
+        return {
+          COL_EQ_EXAM_ID: localExamId,
+          COL_EQ_POSITION: remote['position'],
+          COL_EQ_TYPE: remote['type'],
+          COL_EQ_TEXT: remote['text'],
+          COL_EQ_OPTIONS: remote['options'],
+          COL_EQ_CORRECT_INDEX: remote['correct_index'],
+          COL_EQ_POINTS: remote['points'],
+          COL_EQ_IMAGE_URL: remote['image_url'],
+          COL_EQ_EXPLANATION: remote['explanation'],
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_EXAM_SUBMISSIONS:
+        final examRemoteId = remote['exam_remote_id'] as String?;
+        final localExamId = examRemoteId != null
+            ? await _localIdForRemote(TABLE_EXAMS, COL_EXAM_ID, examRemoteId,
+                executor: executor)
+            : null;
+        if (examRemoteId != null && localExamId == null) return null;
+        final studentRemoteId = remote['student_remote_id'] as String?;
+        final localStudentId = studentRemoteId != null
+            ? await _localIdForRemote(
+                TABLE_STUDENTS, COL_STUDENT_ID, studentRemoteId,
+                executor: executor)
+            : null;
+        if (studentRemoteId != null && localStudentId == null) return null;
+        return {
+          COL_ES_EXAM_ID: localExamId,
+          COL_ES_STUDENT_ID: localStudentId,
+          COL_ES_STARTED_AT: remote['started_at'],
+          COL_ES_SUBMITTED_AT: remote['submitted_at'],
+          COL_ES_ANSWERS_JSON: remote['answers_json'],
+          COL_ES_AUTO_SCORE: remote['auto_score'],
+          COL_ES_FINAL_GRADE: remote['final_grade'],
+          COL_ES_STATUS: remote['status'],
+          COL_ES_AUTO_SUBMITTED:
+              (remote['auto_submitted'] as bool? ?? false) ? 1 : 0,
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+          // pulled_at غير متضمّن — يفضل NULL على الجهاز المستقبِل.
         };
       case TABLE_EXAM_GROUPS:
         final examRemoteId = remote['exam_remote_id'] as String?;

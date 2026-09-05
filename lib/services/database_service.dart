@@ -58,6 +58,8 @@ const String _examQuestionsTableSql = '''
     $COL_EQ_IMAGE_URL     TEXT,
     $COL_EQ_EXPLANATION   TEXT,
     $COL_EQ_CREATED_AT    TEXT DEFAULT CURRENT_TIMESTAMP,
+    $COL_SYNC_UPDATED_AT  TEXT,
+    $COL_SYNC_REMOTE_ID   TEXT,
     FOREIGN KEY($COL_EQ_EXAM_ID) REFERENCES $TABLE_EXAMS($COL_EXAM_ID) ON DELETE CASCADE
   )
 ''';
@@ -75,6 +77,8 @@ const String _examSubmissionsTableSql = '''
     $COL_ES_STATUS         TEXT NOT NULL DEFAULT 'pending',
     $COL_ES_AUTO_SUBMITTED INTEGER NOT NULL DEFAULT 0,
     $COL_ES_PULLED_AT      TEXT,
+    $COL_SYNC_UPDATED_AT   TEXT,
+    $COL_SYNC_REMOTE_ID    TEXT,
     UNIQUE($COL_ES_EXAM_ID, $COL_ES_STUDENT_ID),
     FOREIGN KEY($COL_ES_EXAM_ID)    REFERENCES $TABLE_EXAMS($COL_EXAM_ID)       ON DELETE CASCADE,
     FOREIGN KEY($COL_ES_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
@@ -698,6 +702,22 @@ class DatabaseService {
             'ALTER TABLE $TABLE_EXAM_QUESTIONS ADD COLUMN $COL_EQ_EXPLANATION TEXT');
       } catch (_) {}
     }
+
+    if (oldVersion < 27) {
+      // spec 024 — أعمدة المزامنة على exam_questions/exam_submissions
+      // (كانوا محليين بالكامل). صفوف قديمة: sync_* = NULL → تُدفَع في
+      // أول دورة مزامنة زي أي صف جديد.
+      for (final sql in [
+        'ALTER TABLE $TABLE_EXAM_QUESTIONS   ADD COLUMN $COL_SYNC_UPDATED_AT TEXT',
+        'ALTER TABLE $TABLE_EXAM_QUESTIONS   ADD COLUMN $COL_SYNC_REMOTE_ID  TEXT',
+        'ALTER TABLE $TABLE_EXAM_SUBMISSIONS ADD COLUMN $COL_SYNC_UPDATED_AT TEXT',
+        'ALTER TABLE $TABLE_EXAM_SUBMISSIONS ADD COLUMN $COL_SYNC_REMOTE_ID  TEXT',
+      ]) {
+        try {
+          await db.execute(sql);
+        } catch (_) {}
+      }
+    }
   }
 
   // ─── إشعار الحفظ التلقائي ──────────────────────────────────────
@@ -734,6 +754,18 @@ class DatabaseService {
   Future<void> _queueDelete(String table, int id, String? remoteId) {
     return _queueSync(table, id, 'delete',
         payload: remoteId != null ? {'remote_id': remoteId} : null);
+  }
+
+  /// spec 024 — يطابور upsert لصف واحد بقراءته من DB (payload = الصف كامل).
+  /// آمن للنداء بعد transaction (بيستخدم db handle، مش txn executor).
+  Future<void> _queueRowUpsert(String table, String pkCol, int id) async {
+    if (!teamModeEnabled) return;
+    final db = await database;
+    final rows = await db
+        .query(table, where: '$pkCol = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return;
+    await _queueSync(table, id, 'update',
+        payload: Map<String, dynamic>.from(rows.first));
   }
 
   // ========== GROUPS ==========
@@ -1984,6 +2016,13 @@ class DatabaseService {
     final gradeRows = await db.query(TABLE_EXAM_GRADES,
         columns: [COL_GRADE_ID, COL_SYNC_REMOTE_ID],
         where: '$COL_GRADE_EXAM_ID = ?', whereArgs: [examId]);
+    // spec 024 — أسئلة وتسليمات الامتحان الإلكتروني بقوا متزامنين كمان.
+    final qRows = await db.query(TABLE_EXAM_QUESTIONS,
+        columns: [COL_EQ_ID, COL_SYNC_REMOTE_ID],
+        where: '$COL_EQ_EXAM_ID = ?', whereArgs: [examId]);
+    final subRows = await db.query(TABLE_EXAM_SUBMISSIONS,
+        columns: [COL_ES_ID, COL_SYNC_REMOTE_ID],
+        where: '$COL_ES_EXAM_ID = ?', whereArgs: [examId]);
 
     await db
         .delete(TABLE_EXAMS, where: '$COL_EXAM_ID = ?', whereArgs: [examId]);
@@ -1995,6 +2034,14 @@ class DatabaseService {
     }
     for (final row in egRows) {
       await _queueDelete(TABLE_EXAM_GROUPS, row[COL_EG_ID] as int,
+          row[COL_SYNC_REMOTE_ID] as String?);
+    }
+    for (final row in qRows) {
+      await _queueDelete(TABLE_EXAM_QUESTIONS, row[COL_EQ_ID] as int,
+          row[COL_SYNC_REMOTE_ID] as String?);
+    }
+    for (final row in subRows) {
+      await _queueDelete(TABLE_EXAM_SUBMISSIONS, row[COL_ES_ID] as int,
           row[COL_SYNC_REMOTE_ID] as String?);
     }
     await _queueDelete(TABLE_EXAMS, examId, examRemoteId);
@@ -2107,10 +2154,11 @@ class DatabaseService {
   }
 
   // ========== ONLINE EXAM (spec 016) ==========
-  // كله محلي — خارج مزامنة الفريق (v1). لا _queueSync لأي من الدوال دي.
+  // spec 024 — exam_questions و exam_submissions بقوا متزامنين عبر الفريق،
+  // وحقول الأونلاين على exams (is_online/online_status/المواعيد/المدة)
+  // دخلت payload المزامنة. لسه محلي: pulled_at (لكل جهاز).
 
-  /// أعمدة الحالة على جدول exams (is_online/online_status/opens_at/closes_at/duration).
-  /// بتحدّث الصف مباشرة؛ payload المزامنة ما بيتغيّرش (الأعمدة دي محلية).
+  /// أعمدة حالة الامتحان الإلكتروني على exams — بقت تدخل payload المزامنة.
   Future<void> setExamOnlineFields(
     int examId, {
     required bool isOnline,
@@ -2128,26 +2176,42 @@ class DatabaseService {
         COL_EXAM_OPENS_AT: opensAt?.toIso8601String(),
         COL_EXAM_CLOSES_AT: closesAt?.toIso8601String(),
         COL_EXAM_DURATION_MIN: durationMinutes,
+        COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
       },
       where: '$COL_EXAM_ID = ?',
       whereArgs: [examId],
     );
     _notifyChanged();
+    await _queueRowUpsert(TABLE_EXAMS, COL_EXAM_ID, examId);
   }
 
   Future<void> setExamOnlineStatus(int examId, OnlineExamStatus status) async {
     final db = await database;
-    await db.update(TABLE_EXAMS, {COL_EXAM_ONLINE_STATUS: status.dbValue},
-        where: '$COL_EXAM_ID = ?', whereArgs: [examId]);
+    await db.update(
+        TABLE_EXAMS,
+        {
+          COL_EXAM_ONLINE_STATUS: status.dbValue,
+          COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+        },
+        where: '$COL_EXAM_ID = ?',
+        whereArgs: [examId]);
     _notifyChanged();
+    await _queueRowUpsert(TABLE_EXAMS, COL_EXAM_ID, examId);
   }
 
-  /// تعديل اسم الامتحان فقط (بدون لمس المجموعات ولا payload المزامنة).
+  /// تعديل اسم الامتحان فقط.
   Future<void> setExamName(int examId, String name) async {
     final db = await database;
-    await db.update(TABLE_EXAMS, {COL_EXAM_NAME: name},
-        where: '$COL_EXAM_ID = ?', whereArgs: [examId]);
+    await db.update(
+        TABLE_EXAMS,
+        {
+          COL_EXAM_NAME: name,
+          COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+        },
+        where: '$COL_EXAM_ID = ?',
+        whereArgs: [examId]);
     _notifyChanged();
+    await _queueRowUpsert(TABLE_EXAMS, COL_EXAM_ID, examId);
   }
 
   // ── أسئلة الامتحان ──────────────────────────────────────────────
@@ -2162,25 +2226,40 @@ class DatabaseService {
 
   Future<int> insertQuestion(ExamQuestion q) async {
     final db = await database;
-    final map = q.toMap()..remove(COL_EQ_ID);
-    map[COL_EQ_CREATED_AT] = DateTime.now().toIso8601String();
+    final now = DateTime.now().toIso8601String();
+    final map = q.toMap()
+      ..remove(COL_EQ_ID)
+      ..[COL_EQ_CREATED_AT] = now
+      ..[COL_SYNC_UPDATED_AT] = now;
     final id = await db.insert(TABLE_EXAM_QUESTIONS, map);
     _notifyChanged();
+    await _queueRowUpsert(TABLE_EXAM_QUESTIONS, COL_EQ_ID, id);
     return id;
   }
 
   Future<void> updateQuestion(ExamQuestion q) async {
     final db = await database;
-    await db.update(TABLE_EXAM_QUESTIONS, q.toMap()..remove(COL_EQ_CREATED_AT),
-        where: '$COL_EQ_ID = ?', whereArgs: [q.id]);
+    await db.update(
+        TABLE_EXAM_QUESTIONS,
+        q.toMap()
+          ..remove(COL_EQ_CREATED_AT)
+          ..[COL_SYNC_UPDATED_AT] = DateTime.now().toIso8601String(),
+        where: '$COL_EQ_ID = ?',
+        whereArgs: [q.id]);
     _notifyChanged();
+    if (q.id != null) await _queueRowUpsert(TABLE_EXAM_QUESTIONS, COL_EQ_ID, q.id!);
   }
 
   Future<void> deleteQuestion(int id) async {
     final db = await database;
+    final rows = await db.query(TABLE_EXAM_QUESTIONS,
+        columns: [COL_SYNC_REMOTE_ID],
+        where: '$COL_EQ_ID = ?', whereArgs: [id], limit: 1);
     await db.delete(TABLE_EXAM_QUESTIONS,
         where: '$COL_EQ_ID = ?', whereArgs: [id]);
     _notifyChanged();
+    await _queueDelete(TABLE_EXAM_QUESTIONS, id,
+        rows.isEmpty ? null : rows.first[COL_SYNC_REMOTE_ID] as String?);
   }
 
   /// spec 023 — صفوف تصدير نتائج امتحان ورقي: كل طلاب مجموعات الامتحان
@@ -2235,9 +2314,15 @@ class DatabaseService {
       int examId, List<ExamQuestion> questions) async {
     final db = await database;
     final existing = await db.query(TABLE_EXAM_QUESTIONS,
-        columns: [COL_EQ_ID], where: '$COL_EQ_EXAM_ID = ?', whereArgs: [examId]);
+        columns: [COL_EQ_ID, COL_SYNC_REMOTE_ID],
+        where: '$COL_EQ_EXAM_ID = ?', whereArgs: [examId]);
     final existingIds = existing.map((r) => r[COL_EQ_ID] as int).toSet();
+    final remoteIdById = {
+      for (final r in existing)
+        r[COL_EQ_ID] as int: r[COL_SYNC_REMOTE_ID] as String?
+    };
     final keptIds = <int>{};
+    final now = DateTime.now().toIso8601String();
 
     await db.transaction((txn) async {
       for (var i = 0; i < questions.length; i++) {
@@ -2245,11 +2330,16 @@ class DatabaseService {
         if (q.id != null && existingIds.contains(q.id)) {
           keptIds.add(q.id!);
           await txn.update(
-              TABLE_EXAM_QUESTIONS, q.toMap()..remove(COL_EQ_CREATED_AT),
+              TABLE_EXAM_QUESTIONS,
+              q.toMap()
+                ..remove(COL_EQ_CREATED_AT)
+                ..[COL_SYNC_UPDATED_AT] = now,
               where: '$COL_EQ_ID = ?', whereArgs: [q.id]);
         } else {
-          final map = q.toMap()..remove(COL_EQ_ID);
-          map[COL_EQ_CREATED_AT] = DateTime.now().toIso8601String();
+          final map = q.toMap()
+            ..remove(COL_EQ_ID)
+            ..[COL_EQ_CREATED_AT] = now
+            ..[COL_SYNC_UPDATED_AT] = now;
           await txn.insert(TABLE_EXAM_QUESTIONS, map);
         }
       }
@@ -2260,6 +2350,20 @@ class DatabaseService {
       }
     });
     _notifyChanged();
+
+    // spec 024 — طابور المزامنة بعد الـtransaction (مش جواها — deadlock).
+    if (teamModeEnabled) {
+      for (final id in existingIds.difference(keptIds)) {
+        await _queueDelete(TABLE_EXAM_QUESTIONS, id, remoteIdById[id]);
+      }
+      final rows = await db.query(TABLE_EXAM_QUESTIONS,
+          columns: [COL_EQ_ID],
+          where: '$COL_EQ_EXAM_ID = ?', whereArgs: [examId]);
+      for (final r in rows) {
+        await _queueRowUpsert(
+            TABLE_EXAM_QUESTIONS, COL_EQ_ID, r[COL_EQ_ID] as int);
+      }
+    }
   }
 
   // ── تسليمات الطلاب ─────────────────────────────────────────────
@@ -2274,7 +2378,8 @@ class DatabaseService {
     final now = DateTime.now().toIso8601String();
     final map = s.toMap()
       ..remove(COL_ES_ID)
-      ..[COL_ES_PULLED_AT] = now;
+      ..[COL_ES_PULLED_AT] = now
+      ..[COL_SYNC_UPDATED_AT] = now;
 
     if (existing.isEmpty) {
       await db.insert(TABLE_EXAM_SUBMISSIONS, map);
@@ -2292,6 +2397,19 @@ class DatabaseService {
           whereArgs: [s.examId, s.studentId]);
     }
     _notifyChanged();
+    await _queueSubmissionUpsert(s.examId, s.studentId);
+  }
+
+  /// spec 024 — طابور upsert لتسليم بمعرّف الامتحان+الطالب.
+  Future<void> _queueSubmissionUpsert(int examId, int studentId) async {
+    if (!teamModeEnabled) return;
+    final db = await database;
+    final rows = await db.query(TABLE_EXAM_SUBMISSIONS,
+        where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
+        whereArgs: [examId, studentId], limit: 1);
+    if (rows.isEmpty) return;
+    await _queueSync(TABLE_EXAM_SUBMISSIONS, rows.first[COL_ES_ID] as int,
+        'update', payload: Map<String, dynamic>.from(rows.first));
   }
 
   Future<List<ExamSubmission>> getSubmissionsForExam(int examId) async {
@@ -2322,21 +2440,31 @@ class DatabaseService {
     final db = await database;
     await db.update(
         TABLE_EXAM_SUBMISSIONS,
-        {COL_ES_FINAL_GRADE: finalGrade, COL_ES_STATUS: status.dbValue},
+        {
+          COL_ES_FINAL_GRADE: finalGrade,
+          COL_ES_STATUS: status.dbValue,
+          COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+        },
         where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
         whereArgs: [examId, studentId]);
     _notifyChanged();
+    await _queueSubmissionUpsert(examId, studentId);
   }
 
   /// spec 022 — يعلّم تسليم "مُبطَل" محليًا (السجل يفضل موجود للعرض في
   /// شاشة النتائج، بس مستبعد من الإحصائيات ومن كتلة "بانتظار الاعتماد").
-  /// exam_submissions محلي بالكامل (زي باقي دوال هذا القسم) — صفر _queueSync.
   Future<void> voidSubmissionLocally(int examId, int studentId) async {
     final db = await database;
-    await db.update(TABLE_EXAM_SUBMISSIONS, {COL_ES_STATUS: 'voided'},
+    await db.update(
+        TABLE_EXAM_SUBMISSIONS,
+        {
+          COL_ES_STATUS: 'voided',
+          COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+        },
         where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
         whereArgs: [examId, studentId]);
     _notifyChanged();
+    await _queueSubmissionUpsert(examId, studentId);
   }
 
   /// الطلاب المسموح لهم بامتحان إلكتروني لمجموعات معيّنة — يستبعد
