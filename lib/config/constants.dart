@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 25;
+const int DATABASE_VERSION = 26;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -87,6 +87,7 @@ const String COL_EQ_OPTIONS       = 'options';       // JSON list<String>
 const String COL_EQ_CORRECT_INDEX = 'correct_index';
 const String COL_EQ_POINTS        = 'points';
 const String COL_EQ_IMAGE_URL     = 'image_url';    // spec 019 — صورة السؤال (اختياري)
+const String COL_EQ_EXPLANATION   = 'explanation'; // spec 023 — شرح الإجابة (اختياري، محلي فقط، مش في toCloudMap)
 const String COL_EQ_CREATED_AT    = 'created_at';
 
 // Column Names - Exam Submissions (spec 016)

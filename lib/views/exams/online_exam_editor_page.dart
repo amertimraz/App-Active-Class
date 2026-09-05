@@ -16,6 +16,7 @@ import 'package:active_class/models/exam_question_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/views/exams/online_exam_preview_page.dart';
 
 class OnlineExamEditorPage extends StatefulWidget {
   final Exam? existing;
@@ -260,6 +261,31 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
     );
   }
 
+  // spec 023 — معاينة الامتحان كما يراه الطالب (للقراءة فقط، بلا إجابة/شرح).
+  Future<void> _openPreview() async {
+    final valid = _questions
+        .asMap()
+        .entries
+        .map((e) => e.value.toModel(_examId ?? 0, e.key))
+        .where((q) => q.isValid)
+        .toList();
+    if (valid.isEmpty) {
+      await _blockingMsg('مفيش حاجة تتعرض',
+          'الامتحان محتاج سؤال صالح واحد على الأقل قبل المعاينة.');
+      return;
+    }
+    if (!mounted) return;
+    Get.to(() => OnlineExamPreviewPage(
+          exam: Exam(
+            id: _examId,
+            name: _nameCtrl.text.trim(),
+            date: widget.existing?.date ?? DateTime.now(),
+            durationMinutes: _durationMinutes,
+          ),
+          questions: valid,
+        ));
+  }
+
   List<String> _publishGaps() {
     final gaps = <String>[];
     if (_nameCtrl.text.trim().isEmpty) gaps.add('اسم الامتحان');
@@ -395,6 +421,11 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
             style: const TextStyle(
                 fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
         actions: [
+          IconButton(
+            tooltip: 'معاينة',
+            icon: const Icon(Icons.visibility_outlined),
+            onPressed: _openPreview,
+          ),
           if (_questions.isNotEmpty)
             Center(
               child: Container(
