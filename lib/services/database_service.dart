@@ -2183,6 +2183,39 @@ class DatabaseService {
     _notifyChanged();
   }
 
+  /// spec 023 — صفوف تصدير نتائج امتحان ورقي: كل طلاب مجموعات الامتحان
+  /// (LEFT JOIN على الدرجة عشان اللي ملهمش درجة يظهروا). مرتّب بالمجموعة
+  /// ثم الاسم. groupId != null → مجموعة واحدة بس.
+  Future<List<Map<String, dynamic>>> getExamGradesForExport(int examId,
+      {int? groupId}) async {
+    final db = await database;
+    final groupFilter = groupId != null
+        ? 'AND s.$COL_STUDENT_GROUP_ID = ?'
+        : 'AND s.$COL_STUDENT_GROUP_ID IN '
+            '(SELECT $COL_EG_GROUP_ID FROM $TABLE_EXAM_GROUPS WHERE $COL_EG_EXAM_ID = ?)';
+    final args = groupId != null ? [examId, groupId] : [examId, examId];
+    final rows = await db.rawQuery('''
+      SELECT
+        s.$COL_STUDENT_NAME AS student_name,
+        s.$COL_STUDENT_CODE AS student_code,
+        g.$COL_GROUP_NAME   AS group_name,
+        eg.$COL_GRADE_VALUE     AS grade,
+        eg.$COL_GRADE_IS_ABSENT AS is_absent,
+        e.$COL_EXAM_MAX_GRADE     AS max_grade,
+        e.$COL_EXAM_PASSING_GRADE AS passing_grade
+      FROM $TABLE_STUDENTS s
+      INNER JOIN $TABLE_GROUPS g ON g.$COL_GROUP_ID = s.$COL_STUDENT_GROUP_ID
+      INNER JOIN $TABLE_EXAMS e  ON e.$COL_EXAM_ID = ?
+      LEFT JOIN $TABLE_EXAM_GRADES eg
+        ON eg.$COL_GRADE_STUDENT_ID = s.$COL_STUDENT_ID
+        AND eg.$COL_GRADE_EXAM_ID   = ?
+      WHERE (s.$COL_STUDENT_IS_ARCHIVED IS NULL OR s.$COL_STUDENT_IS_ARCHIVED = 0)
+        $groupFilter
+      ORDER BY g.$COL_GROUP_NAME ASC, s.$COL_STUDENT_NAME ASC
+    ''', [examId, examId, ...args]);
+    return rows;
+  }
+
   Future<void> reorderQuestions(int examId, List<int> orderedIds) async {
     final db = await database;
     await db.transaction((txn) async {

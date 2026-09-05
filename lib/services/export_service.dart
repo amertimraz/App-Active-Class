@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:excel/excel.dart' as xl;
 import 'dart:io';
 
 import 'package:active_class/models/student_model.dart';
@@ -15,6 +16,8 @@ import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/models/exam_model.dart';
+import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 
@@ -1000,5 +1003,193 @@ class ExportService {
     final path = p.join(folder.path, '$name.pdf');
     await File(path).writeAsBytes(bytes);
     return ExportResult.ok(path);
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  spec 023 — تصدير نتائج الامتحان (إلكتروني + ورقي)
+  // ══════════════════════════════════════════════════════════════════
+
+  String _sanitizeFileName(String s) =>
+      s.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
+
+  String _pctStr(double? earned, double max) =>
+      (earned == null || max <= 0) ? '' : '${(earned / max * 100).round()}%';
+
+  Future<ExportResult> _saveXlsx(
+      List<List<String>> rows, String name) async {
+    final wb = xl.Excel.createExcel();
+    final def = wb.getDefaultSheet()!;
+    wb.rename(def, 'النتائج');
+    final sheet = wb['النتائج'];
+    for (final r in rows) {
+      sheet.appendRow(r.map((c) => xl.TextCellValue(c)).toList());
+    }
+    final bytes = wb.encode();
+    if (bytes == null) return ExportResult.fail('تعذّر إنشاء ملف Excel');
+    final dir = await getApplicationDocumentsDirectory();
+    final folder = Directory(p.join(dir.path, 'exports'));
+    if (!folder.existsSync()) folder.createSync(recursive: true);
+    final path = p.join(folder.path, '$name.xlsx');
+    await File(path).writeAsBytes(bytes, flush: true);
+    return ExportResult.ok(path);
+  }
+
+  Future<ExportResult> _resultsToFile({
+    required String title,
+    required String fileName,
+    required List<String> header,
+    required List<List<String>> dataRows,
+    required List<String> footerRow,
+    required ExportFormat format,
+  }) async {
+    if (format == ExportFormat.xlsx) {
+      return _saveXlsx([
+        [title],
+        header,
+        ...dataRows,
+        if (footerRow.isNotEmpty) footerRow,
+      ], fileName);
+    }
+    final font = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/Cairo-Regular.ttf'));
+    final fontBold = pw.Font.ttf(
+        await rootBundle.load('assets/fonts/Cairo-Bold.ttf'));
+    final doc = pw.Document();
+    doc.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      textDirection: pw.TextDirection.rtl,
+      theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+      build: (ctx) => [
+        pw.Text(title,
+            style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 10),
+        pw.TableHelper.fromTextArray(
+          headers: header,
+          data: dataRows,
+          headerStyle: pw.TextStyle(
+              fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
+          headerDecoration: const pw.BoxDecoration(color: _primary),
+          cellStyle: const pw.TextStyle(fontSize: 9),
+          cellAlignment: pw.Alignment.centerRight,
+          border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+        ),
+        if (footerRow.isNotEmpty) ...[
+          pw.SizedBox(height: 8),
+          pw.Text(footerRow.join('   •   '),
+              style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+        ],
+      ],
+    ));
+    return _savePdf(doc, fileName);
+  }
+
+  /// نتائج امتحان ورقي — كل مجموعات الامتحان (أو مجموعة واحدة).
+  Future<ExportResult> exportExamGradesSheet({
+    required Exam exam,
+    required List<Map<String, dynamic>> rows,
+    required ExportFormat format,
+    bool showGroupColumn = false,
+  }) async {
+    final max = exam.maxGrade;
+    final header = <String>[
+      'الطالب',
+      'الكود',
+      if (showGroupColumn) 'المجموعة',
+      'الدرجة',
+      'من',
+      'النسبة',
+      'الحالة',
+    ];
+    final data = <List<String>>[];
+    var sum = 0.0;
+    var entered = 0;
+    for (final r in rows) {
+      final absent = (r['is_absent'] as int? ?? 0) == 1;
+      final grade = (r['grade'] as num?)?.toDouble();
+      final status = absent
+          ? 'غائب'
+          : (grade == null ? 'لم يُدخل' : '');
+      if (!absent && grade != null) {
+        sum += grade;
+        entered++;
+      }
+      data.add([
+        (r['student_name'] as String?) ?? '',
+        (r['student_code'] as String?) ?? '',
+        if (showGroupColumn) (r['group_name'] as String?) ?? '',
+        grade == null ? '' : _fmt(grade),
+        _fmt(max),
+        (absent || grade == null) ? '' : _pctStr(grade, max),
+        status,
+      ]);
+    }
+    final footer = entered > 0
+        ? ['عدد المُدخل: $entered', 'المتوسط: ${_fmt(sum / entered)}']
+        : <String>[];
+    final dateStr = DateFormat('yyyy-MM-dd').format(exam.date);
+    return _resultsToFile(
+      title: 'نتائج امتحان: ${exam.name} — $dateStr',
+      fileName: 'نتائج_${_sanitizeFileName(exam.name)}_$dateStr',
+      header: header,
+      dataRows: data,
+      footerRow: footer,
+      format: format,
+    );
+  }
+
+  /// نتائج امتحان إلكتروني — كل طلاب مجموعات الامتحان.
+  Future<ExportResult> exportOnlineExamResults({
+    required Exam exam,
+    required List<ExamSubmission> submissions,
+    required List<Student> students,
+    required ExportFormat format,
+  }) async {
+    final max = exam.maxGrade;
+    final byStudent = {for (final s in submissions) s.studentId: s};
+    final header = ['الطالب', 'الكود', 'الدرجة', 'من', 'النسبة', 'الحالة'];
+    final data = <List<String>>[];
+    var sum = 0.0;
+    var approved = 0;
+    var highest = 0.0;
+    for (final st in students) {
+      final sub = byStudent[st.id];
+      final status = sub == null
+          ? 'لم يسلّم'
+          : sub.status.label;
+      final earned = sub == null
+          ? null
+          : (sub.status == SubmissionStatus.voided
+              ? null
+              : (sub.finalGrade ?? sub.autoScore));
+      if (sub?.status == SubmissionStatus.approved && earned != null) {
+        sum += earned;
+        approved++;
+        if (earned > highest) highest = earned;
+      }
+      data.add([
+        st.name,
+        st.code,
+        earned == null ? '' : _fmt(earned),
+        _fmt(max),
+        earned == null ? '' : _pctStr(earned, max),
+        status,
+      ]);
+    }
+    final footer = approved > 0
+        ? [
+            'معتمَد: $approved',
+            'المتوسط: ${_fmt(sum / approved)}',
+            'الأعلى: ${_fmt(highest)}',
+          ]
+        : <String>[];
+    final dateStr = DateFormat('yyyy-MM-dd').format(exam.date);
+    return _resultsToFile(
+      title: 'نتائج امتحان إلكتروني: ${exam.name} — $dateStr',
+      fileName: 'نتائج_${_sanitizeFileName(exam.name)}_$dateStr',
+      header: header,
+      dataRows: data,
+      footerRow: footer,
+      format: format,
+    );
   }
 }

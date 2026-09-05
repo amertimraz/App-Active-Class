@@ -18,7 +18,11 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/phone_format.dart';
+import 'package:share_plus/share_plus.dart';
+
 import 'package:active_class/views/exams/certificates_sheet.dart';
+import 'package:active_class/views/exams/exam_analytics_page.dart';
+import 'package:active_class/services/export_service.dart';
 
 class OnlineExamResultsPage extends StatefulWidget {
   final Exam exam;
@@ -235,6 +239,58 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
     return byId.values.toList();
   }
 
+  // ── تصدير النتائج (spec 023 US4) ────────────────────────────────────────
+  Future<void> _exportResults() async {
+    final fmt = await showModalBottomSheet<ExportFormat>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 8),
+          const Text('تصدير النتائج',
+              style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14)),
+          ListTile(
+            leading: const Icon(Icons.grid_on_rounded, color: Color(0xFF10B981)),
+            title: const Text('Excel (.xlsx)',
+                style: TextStyle(fontFamily: 'Cairo')),
+            onTap: () => Navigator.pop(context, ExportFormat.xlsx),
+          ),
+          ListTile(
+            leading:
+                const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFEF4444)),
+            title: const Text('PDF', style: TextStyle(fontFamily: 'Cairo')),
+            onTap: () => Navigator.pop(context, ExportFormat.pdf),
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (fmt == null || !mounted) return;
+    ToastHelper.info('جاري التصدير…');
+    final students = <int, Student>{};
+    for (final gid in widget.exam.groupIds) {
+      for (final s in await DatabaseService().getStudentsByGroup(gid)) {
+        if (s.id != null) students[s.id!] = s;
+      }
+    }
+    final res = await ExportService().exportOnlineExamResults(
+      exam: widget.exam,
+      submissions: _subs,
+      students: students.values.toList()
+        ..sort((a, b) => a.name.compareTo(b.name)),
+      format: fmt,
+    );
+    if (!mounted) return;
+    if (res.success && res.path != null) {
+      await Share.shareXFiles([XFile(res.path!)],
+          subject: 'نتائج ${widget.exam.name}');
+    } else {
+      ToastHelper.error(res.error ?? 'تعذّر التصدير');
+    }
+  }
+
   // ── إرسال النتائج واتساب (spec 018 US3) ──────────────────────────────────
   Future<void> _sendResults() async {
     final grades = await _approvedGrades();
@@ -375,6 +431,17 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
               child: const Text('اعتماد الكل',
                   style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
             ),
+          IconButton(
+            icon: const Icon(Icons.insights_rounded),
+            tooltip: 'تحليل الأسئلة',
+            onPressed: () =>
+                Get.to(() => ExamAnalyticsPage(exam: widget.exam)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.download_rounded),
+            tooltip: 'تصدير النتائج',
+            onPressed: _exportResults,
+          ),
           if (approved > 0) ...[
             IconButton(
               icon: const Icon(Icons.workspace_premium_rounded),

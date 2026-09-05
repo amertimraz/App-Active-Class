@@ -18,6 +18,7 @@ import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/certificate_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/export_service.dart';
 import 'package:active_class/views/exams/certificates_sheet.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/phone_format.dart';
@@ -430,6 +431,75 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
         subject: 'كشف درجات ${widget.exam.name}');
   }
 
+  // ── تصدير جدول النتائج (spec 023 US4) — Excel/PDF، مجموعة أو الكل ──────────
+  Future<void> _exportSheet() async {
+    final multiGroup = widget.exam.groupIds.length > 1;
+    int? onlyGroupId = widget.groupId;
+    if (multiGroup) {
+      final scope = await showModalBottomSheet<String>(
+        context: context,
+        builder: (_) => SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.group_rounded),
+              title: Text('هذه المجموعة (${widget.groupName})',
+                  style: const TextStyle(fontFamily: 'Cairo')),
+              onTap: () => Navigator.pop(context, 'one'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.groups_rounded),
+              title: const Text('كل مجموعات الامتحان',
+                  style: TextStyle(fontFamily: 'Cairo')),
+              onTap: () => Navigator.pop(context, 'all'),
+            ),
+            const SizedBox(height: 8),
+          ]),
+        ),
+      );
+      if (scope == null || !mounted) return;
+      onlyGroupId = scope == 'all' ? null : widget.groupId;
+    }
+    final fmt = await showModalBottomSheet<ExportFormat>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.grid_on_rounded, color: Color(0xFF10B981)),
+            title: const Text('Excel (.xlsx)',
+                style: TextStyle(fontFamily: 'Cairo')),
+            onTap: () => Navigator.pop(context, ExportFormat.xlsx),
+          ),
+          ListTile(
+            leading: const Icon(Icons.picture_as_pdf_rounded,
+                color: Color(0xFFEF4444)),
+            title: const Text('PDF', style: TextStyle(fontFamily: 'Cairo')),
+            onTap: () => Navigator.pop(context, ExportFormat.pdf),
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (fmt == null || !mounted) return;
+    ToastHelper.info('جاري التصدير…');
+    final rows = await DatabaseService()
+        .getExamGradesForExport(widget.exam.id!, groupId: onlyGroupId);
+    final res = await ExportService().exportExamGradesSheet(
+      exam: widget.exam,
+      rows: rows,
+      format: fmt,
+      showGroupColumn: onlyGroupId == null && widget.exam.groupIds.length > 1,
+    );
+    if (!mounted) return;
+    if (res.success && res.path != null) {
+      await Share.shareXFiles([XFile(res.path!)],
+          subject: 'نتائج ${widget.exam.name}');
+    } else {
+      ToastHelper.error(res.error ?? 'تعذّر التصدير');
+    }
+  }
+
   // ── تصدير PDF ─────────────────────────────────────────────────────────────
   Future<void> _exportPdf() async {
     final pdf = pw.Document();
@@ -633,6 +703,11 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
             icon: const Icon(Icons.picture_as_pdf_rounded),
             tooltip: 'تصدير PDF',
             onPressed: _exportPdf,
+          ),
+          IconButton(
+            icon: const Icon(Icons.download_rounded),
+            tooltip: 'تصدير جدول (Excel / PDF)',
+            onPressed: _exportSheet,
           ),
         ],
       ),
