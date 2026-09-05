@@ -36,14 +36,32 @@ class _AtRiskStudentsPageState extends State<AtRiskStudentsPage> {
     if (await canLaunchUrl(uri)) await launchUrl(uri);
   }
 
-  Future<void> _whatsapp(String? phone) async {
+  Future<void> _whatsapp(AtRiskStudent e) async {
+    final phone = e.guardianPhone;
     if (phone == null || phone.trim().isEmpty) return;
-    final dial = Get.isRegistered<SettingsController>()
-        ? Get.find<SettingsController>().countryDial.value
-        : '20';
+    final settings =
+        Get.isRegistered<SettingsController>() ? Get.find<SettingsController>() : null;
+    final dial = settings?.countryDial.value ?? '20';
     final normalized = normalizeWhatsappPhone(phone, dial);
-    final uri = Uri.parse('https://wa.me/$normalized');
+    final uri = Uri.parse(
+        'https://wa.me/$normalized?text=${Uri.encodeComponent(_riskMessage(e, settings))}');
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  /// رسالة واتساب جاهزة لولي الأمر بناءً على أسباب رصد الطالب.
+  String _riskMessage(AtRiskStudent e, SettingsController? settings) {
+    final b = StringBuffer();
+    b.writeln('السلام عليكم ورحمة الله،');
+    final groupPart = e.group != null ? ' (${e.group!.name})' : '';
+    b.writeln('حابين نلفت انتباه حضرتكم بخصوص الطالب/ة ${e.student.name}$groupPart:');
+    for (final s in e.signals) {
+      b.writeln('• ${s.reasonText}');
+    }
+    b.writeln('');
+    b.writeln('نرجو التواصل معنا لمتابعة الموضوع. شكرًا لتعاونكم.');
+    final teacher = settings?.teacherFullName.value.trim() ?? '';
+    if (teacher.isNotEmpty) b.write('\n$teacher');
+    return b.toString().trim();
   }
 
   void _openStudent(AtRiskStudent e) {
@@ -322,7 +340,7 @@ class _AtRiskStudentsPageState extends State<AtRiskStudentsPage> {
                   tooltip: 'واتساب',
                   icon: const Icon(Icons.chat_rounded, size: 19),
                   color: hasPhone ? const Color(0xFF25D366) : cs.onSurface.withValues(alpha: 0.25),
-                  onPressed: hasPhone ? () => _whatsapp(phone) : null,
+                  onPressed: hasPhone ? () => _whatsapp(e) : null,
                 ),
                 IconButton(
                   tooltip: 'فتح صفحة الطالب',
