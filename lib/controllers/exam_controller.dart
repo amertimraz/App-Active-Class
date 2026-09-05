@@ -522,6 +522,22 @@ class ExamController extends GetxController {
     }
   }
 
+  /// spec 023 — حذف نهائي لامتحان إلكتروني: السحابة (best-effort — وثيقة
+  /// الامتحان + submissions/attempts/results) ثم المحلي بالكامل (كاسكيد
+  /// على exam_questions/exam_submissions/exam_grades/exam_groups +
+  /// تبليغ الفريق للصفوف المتزامنة عبر _db.deleteExam).
+  Future<String?> deleteOnlineExam(int examId) async {
+    String? warn;
+    try {
+      await _online.deleteRemote(examId);
+    } catch (_) {
+      warn = '__WARN__ اتحذف من التطبيق — بس تنظيف السحابة ممكن ميكونش اكتمل';
+    }
+    await _db.deleteExam(examId);
+    await loadExams();
+    return warn;
+  }
+
   /// يسحب التسليمات من السحابة، يصحّح الأسئلة الموضوعية محليًا، ويكتبها في
   /// exam_submissions بحالة "بانتظار الاعتماد". يرجّع عدد التسليمات أو رسالة خطأ.
   Future<({int pulled, int notSubmitted, String? error})> pullAndGradeOnlineExam(

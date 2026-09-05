@@ -487,6 +487,7 @@ class _OnlineExamCard extends StatelessWidget {
             await Get.to(() => OnlineExamEditorPage(existing: exam));
             await onChanged();
           }, primary: true),
+          _deleteForeverBtn(context),
         ];
       case OnlineExamStatus.published:
       case OnlineExamStatus.stopped:
@@ -542,6 +543,7 @@ class _OnlineExamCard extends StatelessWidget {
                     () => _ec.removeOnlineExamFromWeb(exam.id!),
                     'اتحذف من الويب'));
           }),
+          _deleteForeverBtn(context),
         ];
       case OnlineExamStatus.removed:
         return [
@@ -549,9 +551,24 @@ class _OnlineExamCard extends StatelessWidget {
             await Get.to(() => OnlineExamResultsPage(exam: exam));
             await onChanged();
           }),
+          _deleteForeverBtn(context),
         ];
     }
   }
+
+  // spec 023 — حذف نهائي: السحابة (وثيقة + submissions/attempts/results)
+  // + المحلي بالكامل (كاسكيد). متاح لكل الحالات، إضافة لـ"حذف من الويب".
+  Widget _deleteForeverBtn(BuildContext context) =>
+      _btn('حذف نهائي', Icons.delete_forever_outlined, () {
+        _confirm(context,
+            title: 'حذف الامتحان نهائيًا',
+            color: const Color(0xFFDC2626),
+            icon: Icons.delete_forever_rounded,
+            body:
+                'مفيش رجوع. هيتمسح الامتحان وكل أسئلته، وكل التسليمات والدرجات المعتمَدة، وصفحات مراجعة الطلاب على الويب.',
+            onYes: () =>
+                _run(() => _ec.deleteOnlineExam(exam.id!), 'اتحذف الامتحان'));
+      });
 
   // رابط الطلاب — نفس الرابط لكل امتحانات المدرس الإلكترونية (مشتق من
   // slug المدرس). الطالب يفتحه ويشوف الامتحانات المتاحة لكوده.

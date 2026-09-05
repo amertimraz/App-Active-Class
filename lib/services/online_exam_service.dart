@@ -270,7 +270,7 @@ class OnlineExamService {
       await _ensureAuth();
       final slug = await _slug();
       final examRef = _examDoc(slug, examId);
-      for (final sub in ['submissions', 'attempts']) {
+      for (final sub in ['submissions', 'attempts', 'results']) {
         final snap = await examRef.collection(sub).get();
         // Firestore batch حد أقصى 500 عملية.
         var batch = _db.batch();
