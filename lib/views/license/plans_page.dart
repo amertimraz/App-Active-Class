@@ -28,7 +28,7 @@ class PlansPage extends StatefulWidget {
 }
 
 class _PlansPageState extends State<PlansPage> {
-  String _selectedPlan = 'pro';
+  String _selectedPlan = '';
   bool _showForm = false;
 
   final _name = TextEditingController();
@@ -73,10 +73,11 @@ class _PlansPageState extends State<PlansPage> {
     );
     if (!mounted) return;
     setState(() => _loading = false);
-    if (err == null)
+    if (err == null) {
       setState(() => _sent = true);
-    else
+    } else {
       setState(() => _error = err);
+    }
   }
 
   @override
@@ -96,7 +97,8 @@ class _PlansPageState extends State<PlansPage> {
         }
 
         final selectedModel =
-            plans.firstWhereOrNull((p) => p.id == _selectedPlan);
+            plans.firstWhereOrNull((p) => p.id == _selectedPlan) ??
+                (plans.isNotEmpty ? plans.first : null);
 
         return Scaffold(
           backgroundColor:
@@ -145,6 +147,15 @@ class _PlansPageState extends State<PlansPage> {
                               selected: _selectedPlan == e.value.id,
                               onTap: () =>
                                   setState(() => _selectedPlan = e.value.id),
+                              onRequest: () {
+                                final p = e.value;
+                                setState(() => _selectedPlan = p.id);
+                                if (p.price.isEmpty) {
+                                  _openPlanWhatsApp(p);
+                                } else {
+                                  setState(() => _showForm = true);
+                                }
+                              },
                             ),
                           )),
                       const SizedBox(height: 8),
@@ -481,10 +492,12 @@ class _PlanCard extends StatelessWidget {
   final PlanConfigModel plan;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onRequest;
   const _PlanCard({
     required this.plan,
     required this.selected,
     required this.onTap,
+    required this.onRequest,
   });
 
   @override
@@ -771,6 +784,57 @@ class _PlanCard extends StatelessWidget {
                                 ],
                               ),
                             )),
+
+                      // ── زر طلب الباقة (صغير، أسفل كل بطاقة) ────────
+                      const SizedBox(height: 6),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: onRequest,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: plan.price.isEmpty
+                                    ? const [
+                                        Color(0xFF25D366),
+                                        Color(0xFF128C7E)
+                                      ]
+                                    : [
+                                        color,
+                                        Color.lerp(color, Colors.purple, 0.35)!
+                                      ],
+                                begin: Alignment.centerRight,
+                                end: Alignment.centerLeft,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                    plan.price.isEmpty
+                                        ? Icons.chat_rounded
+                                        : Icons.arrow_back_rounded,
+                                    size: 15,
+                                    color: Colors.white),
+                                const SizedBox(width: 6),
+                                Text(
+                                    plan.price.isEmpty
+                                        ? 'تواصل واتساب'
+                                        : 'اطلب هذه الباقة',
+                                    style: const TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
