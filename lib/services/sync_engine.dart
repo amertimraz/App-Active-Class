@@ -74,9 +74,13 @@ class SyncEngine {
     TABLE_EXAMS,
     TABLE_EXAM_GROUPS,
     TABLE_EXAM_GRADES,
-    // spec 021 — واقعة "تمّت المتابعة"؛ محتاجة student_remote_id، فلازم
-    // تيجي بعد TABLE_STUDENTS فوق (زي TABLE_HOMEWORK بالظبط).
-    TABLE_STUDENT_FOLLOW_UPS,
+    // ملحوظة: spec 021 أضاف TABLE_STUDENT_FOLLOW_UPS هنا، لكن جدول
+    // student_follow_ups على Supabase (migration_student_follow_ups.sql)
+    // لسه مش مُطبَّق على كل الـ backends — واشتراك Realtime بجدول غير
+    // موجود بيرمي CHANNEL_ERROR للقناة كلها، فيتعطّل بثّ الواجب/الدرجات
+    // لكل الفريق. رصد "تمّت المتابعة" محلي أصلًا (باقي محرّك at-risk
+    // كله محلي) — نرجّعه للمزامنة في إصدار لاحق بعد ما الـ migration
+    // يتأكد إنه مُطبَّق. راجع _drainOutbox (يمسح صفوف الجداول المشالة).
   ];
 
   final DatabaseService _dbService = DatabaseService();
@@ -162,6 +166,14 @@ class SyncEngine {
         final op = row[COL_OUTBOX_OP] as String;
         final payloadStr = row[COL_OUTBOX_PAYLOAD] as String?;
         final outboxId = row[COL_OUTBOX_ID] as int;
+        // جدول اتشال من قائمة المزامنة (مثلاً student_follow_ups) — نمسح
+        // صفّه من الطابور بدل ما يفشل push كل جولة للأبد ويسدّ رأس
+        // الطابور قدّام صفوف الواجب/الدرجات الأحدث منه.
+        if (!_tables.contains(table)) {
+          await db.delete(TABLE_SYNC_OUTBOX,
+              where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
+          continue;
+        }
         try {
           final done = await _pushOne(table, rowId, op, payloadStr);
           if (done) {

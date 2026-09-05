@@ -1448,6 +1448,8 @@ class DatabaseService {
   }
 
   // ========== STUDENT FOLLOW-UPS (spec 021) ==========
+  // محلي فقط حاليًا — خارج مزامنة الفريق (راجع SyncEngine._tables). لا
+  // _queueSync/_queueDelete لأي من الدوال دي.
   Future<int> insertFollowUpAcknowledgement(StudentFollowUp followUp) async {
     final db = await database;
     final map = {
@@ -1456,22 +1458,17 @@ class DatabaseService {
     };
     final id = await db.insert(TABLE_STUDENT_FOLLOW_UPS, map);
     _notifyChanged();
-    await _queueSync(TABLE_STUDENT_FOLLOW_UPS, id, 'insert',
-        payload: {...map, COL_SFU_ID: id});
     return id;
   }
 
   Future<int> deleteFollowUp(int id) async {
     final db = await database;
-    final remoteId =
-        await _remoteIdOf(db, TABLE_STUDENT_FOLLOW_UPS, COL_SFU_ID, id);
     final n = await db.delete(
       TABLE_STUDENT_FOLLOW_UPS,
       where: '$COL_SFU_ID = ?',
       whereArgs: [id],
     );
     _notifyChanged();
-    await _queueDelete(TABLE_STUDENT_FOLLOW_UPS, id, remoteId);
     return n;
   }
 
