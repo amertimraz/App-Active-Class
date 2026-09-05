@@ -105,7 +105,7 @@ Mobile single-project — `lib/` + `supabase/*.sql`. المرجع: [plan.md](pla
 
 - [X] T027 `flutter analyze` — صفر أخطاء/تحذيرات.
 - [X] T028 `flutter test` — كل الاختبارات تنجح (يشمل `exam_question_cloud_map_test.dart`).
-- [ ] T029 نشر `migration_online_exam_sync.sql` على Supabase الإنتاج (SQL Editor) + تحقّق: الجداول موجودة، في الـ`supabase_realtime` publication، RLS مفعّل. شغّله تاني → صفر أخطاء (idempotent).
+- [X] T029 نشر `migration_online_exam_sync.sql` على Supabase الإنتاج (SQL Editor) + تحقّق: الجداول موجودة، في الـ`supabase_realtime` publication، RLS مفعّل. شغّله تاني → صفر أخطاء (idempotent).
 - [ ] T030 نفّذ [quickstart.md](quickstart.md) خطوات 0–18 كاملة **بجهازين حقيقيين** — خصوصًا 9 (سحب على جهاز، ظهور على التاني)، 14 (تعارض اعتماد)، 15 (تعارض voided)، 16 (محاكاة جدول ناقص).
 - [X] T031 [P] حدّث ملاحظات الجلسة: سبيك 024 — `exam_questions`/`exam_submissions` بقوا متزامنين، حقول الأونلاين على `exams` دخلت payload المزامنة، قناتان Realtime (`team-$id` + `team-$id-x`)، `migration_online_exam_sync.sql` محتاج تشغيل يدوي. حدّث [[spec-021-at-risk-students]] (درس CHANNEL_ERROR اتحوّل لحل دائم).
 
