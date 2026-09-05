@@ -167,6 +167,7 @@ class QuestionResult {
   final int? chosenIndex;
   final double points;
   final String? imageUrl;
+  final String? explanation; // spec 023 — شرح الإجابة (يُنشر بعد الاعتماد فقط)
 
   const QuestionResult({
     required this.questionId,
@@ -176,6 +177,7 @@ class QuestionResult {
     required this.chosenIndex,
     required this.points,
     this.imageUrl,
+    this.explanation,
   });
 
   bool get answered => chosenIndex != null;

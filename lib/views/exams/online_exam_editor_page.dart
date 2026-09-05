@@ -34,6 +34,7 @@ class _QDraft {
   int correctIndex;
   double points;
   String? imageUrl; // spec 019
+  final TextEditingController explanation; // spec 023
   bool uploadingImage = false;
 
   _QDraft({
@@ -44,7 +45,9 @@ class _QDraft {
     this.correctIndex = 0,
     this.points = 1,
     this.imageUrl,
+    String explanation = '',
   })  : text = TextEditingController(text: text),
+        explanation = TextEditingController(text: explanation),
         options = (options ??
                 (type == ExamQuestionType.trueFalse
                     ? kTrueFalseOptions
@@ -54,6 +57,7 @@ class _QDraft {
 
   void dispose() {
     text.dispose();
+    explanation.dispose();
     for (final o in options) {
       o.dispose();
     }
@@ -69,6 +73,8 @@ class _QDraft {
         correctIndex: correctIndex,
         points: points,
         imageUrl: imageUrl,
+        explanation:
+            explanation.text.trim().isEmpty ? null : explanation.text.trim(),
       );
 }
 
@@ -117,6 +123,7 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
               correctIndex: q.correctIndex,
               points: q.points,
               imageUrl: q.imageUrl,
+              explanation: q.explanation ?? '',
             )));
       _loading = false;
     });
@@ -877,6 +884,23 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                 ),
               ),
             ]),
+            const SizedBox(height: 6),
+            // spec 023 — شرح الإجابة الصحيحة (اختياري). محلي فقط، بيوصل
+            // الطالب في صفحة مراجعته بعد اعتماد المدرس.
+            TextField(
+              controller: q.explanation,
+              style: const TextStyle(fontFamily: 'Cairo', fontSize: 12.5),
+              minLines: 1,
+              maxLines: 2,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                hintText: 'شرح الإجابة (اختياري)',
+                hintStyle: TextStyle(fontFamily: 'Cairo'),
+                helperText: 'يظهر للطالب في مراجعة إجاباته بعد اعتماد الدرجة',
+                helperStyle: TextStyle(fontFamily: 'Cairo', fontSize: 10),
+                isDense: true,
+              ),
+            ),
             // spec 022 — تعديل سؤال واحد في امتحان منشور بدون إلغاء
             // النشر. الحقول فوق قابلة للتعديل أصلاً؛ الزرار ده بيحفظ
             // السؤال ده بس ويعيد نشر مصفوفة الأسئلة، والامتحان يفضل شغّال.

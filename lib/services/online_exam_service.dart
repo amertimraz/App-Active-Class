@@ -156,6 +156,8 @@ class OnlineExamService {
                   'earned': r.earned,
                   if (r.imageUrl != null && r.imageUrl!.isNotEmpty)
                     'imageUrl': r.imageUrl,
+                  if (r.explanation != null && r.explanation!.isNotEmpty)
+                    'explanation': r.explanation,
                 })
             .toList(),
         'approvedAt': FieldValue.serverTimestamp(),

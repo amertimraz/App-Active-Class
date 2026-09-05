@@ -622,6 +622,7 @@ class ExamController extends GetxController {
               chosenIndex: sub.answers[q.id],
               points: q.points,
               imageUrl: q.imageUrl,
+              explanation: q.explanation,
             ))
         .toList();
   }

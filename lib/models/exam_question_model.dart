@@ -40,6 +40,11 @@ class ExamQuestion {
   /// spec 019 — رابط صورة السؤال في Firebase Storage (اختياري). محلي +
   /// بيترفع للسحابة في toCloudMap (مش مفتاح إجابة).
   final String? imageUrl;
+
+  /// spec 023 — شرح الإجابة الصحيحة (اختياري). **محلي فقط** — زي
+  /// correctIndex بالظبط، ما يترفعش في toCloudMap؛ بيوصل الطالب في
+  /// مستند مراجعته (results/{attemptKey}) بعد اعتماد المدرس فقط.
+  final String? explanation;
   final DateTime? createdAt;
 
   const ExamQuestion({
@@ -52,6 +57,7 @@ class ExamQuestion {
     required this.correctIndex,
     this.points = 1,
     this.imageUrl,
+    this.explanation,
     this.createdAt,
   });
 
@@ -74,6 +80,7 @@ class ExamQuestion {
         COL_EQ_CORRECT_INDEX: correctIndex,
         COL_EQ_POINTS: points,
         COL_EQ_IMAGE_URL: imageUrl,
+        COL_EQ_EXPLANATION: explanation,
         COL_EQ_CREATED_AT: createdAt?.toIso8601String(),
       };
 
@@ -97,6 +104,9 @@ class ExamQuestion {
       imageUrl: (m[COL_EQ_IMAGE_URL] as String?)?.isNotEmpty == true
           ? m[COL_EQ_IMAGE_URL] as String
           : null,
+      explanation: (m[COL_EQ_EXPLANATION] as String?)?.isNotEmpty == true
+          ? m[COL_EQ_EXPLANATION] as String
+          : null,
       createdAt: m[COL_EQ_CREATED_AT] != null
           ? DateTime.tryParse(m[COL_EQ_CREATED_AT] as String)
           : null,
@@ -113,6 +123,7 @@ class ExamQuestion {
     int? correctIndex,
     double? points,
     Object? imageUrl = _unset,
+    Object? explanation = _unset,
   }) =>
       ExamQuestion(
         id: id ?? this.id,
@@ -126,6 +137,9 @@ class ExamQuestion {
         imageUrl: identical(imageUrl, _unset)
             ? this.imageUrl
             : imageUrl as String?,
+        explanation: identical(explanation, _unset)
+            ? this.explanation
+            : explanation as String?,
         createdAt: createdAt,
       );
 

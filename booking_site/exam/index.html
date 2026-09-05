@@ -198,6 +198,10 @@
   .rbadge-bad{background:rgba(239,68,68,.12);color:#B91C1C;}
   .rbadge-none{background:rgba(100,116,139,.12);color:var(--muted);}
   .rpoints{font-size:11.5px;font-weight:800;color:var(--muted);}
+  .rexpl{display:flex;gap:6px;align-items:flex-start;margin-top:8px;padding:8px 10px;
+    background:rgba(99,102,241,.06);border-right:3px solid var(--primary);
+    border-radius:8px;font-size:12.5px;line-height:1.5;color:var(--primary-dark);font-weight:600;}
+  .rexpl-i{flex:none;}
 
   /* ── شاشة تعريف الامتحان ─────────────────── */
   .brief{text-align:center;padding:10px 4px 4px;}
@@ -473,11 +477,15 @@
         : (isCorrect
             ? '<span class="rbadge rbadge-ok">✅ صح</span>'
             : '<span class="rbadge rbadge-bad">❌ غلط</span>');
+      const expl = q.explanation
+        ? `<div class="rexpl"><span class="rexpl-i">💡</span><span>${escapeHtml(q.explanation)}</span></div>`
+        : '';
       return `<div class="q review-q">
           <div class="q-head"><span class="q-num">${i+1}</span><span class="q-text">${escapeHtml(q.text || '')}</span></div>
           ${qImg}
           ${opts}
           <div class="rfoot">${badge}<span class="rpoints">${fmtGrade(q.earned || 0)}/${fmtGrade(q.points || 0)}</span></div>
+          ${expl}
         </div>`;
     }).join('');
   }
