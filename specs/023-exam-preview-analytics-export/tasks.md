@@ -68,7 +68,7 @@ Mobile single-project — `lib/` + ملف ويب ثابت `booking_site/exam/ind
 - [X] T010 [US2] في `lib/controllers/exam_controller.dart` `questionResults(sub)`: عند بناء كل `QuestionResult` أضف `explanation: q.explanation`.
 - [X] T011 [US2] في `lib/services/online_exam_service.dart` `publishReview`: داخل `results.map((r) => {...})`، أضف `if (r.explanation != null && r.explanation!.isNotEmpty) 'explanation': r.explanation,`.
 - [X] T012 [US2] في `booking_site/exam/index.html` `renderReview(questions)`: بعد سلسلة `opts` وقبل `<div class="rfoot">`، أضف `${q.explanation ? `<div class="rexpl"><span class="rexpl-i">💡</span><span>${escapeHtml(q.explanation)}</span></div>` : ''}`. أضف CSS `.rexpl` (خلفية خفيفة، `border-right:3px solid var(--accent)`، padding، `border-radius`، خط 12.5px، `margin-top:8px`) و`.rexpl-i`.
-- [ ] T013 [US2] انشر `booking_site/exam/index.html` إلى VPS: `scp -i ~/.ssh/ovh_key booking_site/exam/index.html root@active-class.online:/var/www/active-class.online/exam/index.html` ثم تحقّق `curl -s https://active-class.online/exam/ | grep -c "rexpl"` (≥ 2).
+- [X] T013 [US2] انشر `booking_site/exam/index.html` إلى VPS: `scp -i ~/.ssh/ovh_key booking_site/exam/index.html root@active-class.online:/var/www/active-class.online/exam/index.html` ثم تحقّق `curl -s https://active-class.online/exam/ | grep -c "rexpl"` (≥ 2).
 
 **Checkpoint**: US2 كامل — الشرح يوصل للطالب بعد الاعتماد فقط، والمستند العام نظيف.
 
@@ -126,7 +126,7 @@ Mobile single-project — `lib/` + ملف ويب ثابت `booking_site/exam/ind
 - [X] T028 `flutter test` — كل الاختبارات تنجح (تشمل `exam_analytics_service_test.dart` و`exam_question_cloud_map_test.dart`).
 - [ ] T029 [P] تحقّق بصري (فاتح/ليلي): شاشة المعاينة، حقل الشرح في المحرّر، صفحة تحليل الأسئلة، أزرار التصدير + زر "حذف نهائي" وحواره.
 - [ ] T030 نفّذ [quickstart.md](quickstart.md) خطوات 1–25 على جهاز حقيقي (خصوصًا 7/9/22 اللي بتفحص Firestore فعليًا، و10/13 نشر VPS).
-- [ ] T031 [P] حدّث ملاحظات الجلسة: سبيك 023 — `ExamQuestion.explanation` (DB v26، مش في toCloudMap)، `deleteRemote` بقت تشمل `results`، `deleteOnlineExam`، `ExamAnalyticsService`، تصدير Excel/PDF للنتائج.
+- [X] T031 [P] حدّث ملاحظات الجلسة: سبيك 023 — `ExamQuestion.explanation` (DB v26، مش في toCloudMap)، `deleteRemote` بقت تشمل `results`، `deleteOnlineExam`، `ExamAnalyticsService`، تصدير Excel/PDF للنتائج.
 
 ---
 
