@@ -410,17 +410,16 @@ class SettingsPage extends StatelessWidget {
                                 },
                               )),
                           _buildDivider(isDark),
-                          Obx(() => _buildSwitchTile(
-                                context,
-                                isDark,
-                                icon: Icons.payments_rounded,
-                                iconColor: const Color(0xFF10B981),
-                                title: 'تأخّر الدفع',
-                                subtitle:
-                                    'بنفس مهلة السماح في قسم الفوترة فوق',
-                                rxValue: settings.atRiskPaymentEnabled,
-                                onChanged: settings.setAtRiskPaymentEnabled,
-                              )),
+                          _buildSwitchTile(
+                            context,
+                            isDark,
+                            icon: Icons.payments_rounded,
+                            iconColor: const Color(0xFF10B981),
+                            title: 'تأخّر الدفع',
+                            subtitle: 'بنفس مهلة السماح في قسم الفوترة فوق',
+                            rxValue: settings.atRiskPaymentEnabled,
+                            onChanged: settings.setAtRiskPaymentEnabled,
+                          ),
                           _buildDivider(isDark),
                           Obx(() => _buildDropdownTile<int>(
                                 context,
