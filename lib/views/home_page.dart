@@ -251,17 +251,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(6),
                       child: Image.asset('assets/icon/logo.png',
-                          width: 22, height: 22),
+                          width: 20, height: 20),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      APP_NAME,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: isDark ? Colors.white : const Color(0xFF111827),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        APP_NAME,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: isDark ? Colors.white : const Color(0xFF111827),
+                        ),
                       ),
                     ),
                   ],
@@ -279,7 +283,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   delegate: StudentSearchDelegate(),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               // spec 021 — نقطة دخول مؤقتة لشاشة "محتاجين متابعة" (بديل
               // كارت لوحة التحكم الكامل الجاي في US3).
               Obx(() {
@@ -295,7 +299,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   ),
                 );
               }),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Obx(() {
                 final tc = Get.find<ThemeController>();
                 return _AppBarIcon(
@@ -306,7 +310,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   onTap: () => tc.setTheme(!tc.isDarkMode.value),
                 );
               }),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               _AppBarIcon(
                 icon: Icons.settings_rounded,
                 isDark: isDark,
@@ -1589,12 +1593,12 @@ class _AppBarIcon extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(9),
           decoration: BoxDecoration(
             color: isDark
                 ? const Color(0xFF131D31).withValues(alpha: 0.94)
                 : Colors.white.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isDark
                   ? Colors.white.withValues(alpha: 0.06)
@@ -1613,7 +1617,7 @@ class _AppBarIcon extends StatelessWidget {
           child: Icon(
             icon,
             color: isDark ? Colors.white : const Color(0xFF111827),
-            size: 22,
+            size: 19,
           ),
         ),
       ),
