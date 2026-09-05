@@ -165,6 +165,55 @@ class OnlineExamService {
     }
   }
 
+  /// spec 022 — بيمسح تسليم طالب من السحابة (إبطال التسليم) — عشان
+  /// الطالب يقدر يسلّم تاني (قاعدة الأمان بترفض create لو المستند
+  /// موجود بالفعل). Best-effort زي publishReview.
+  Future<void> deleteSubmission(int examId, String attemptKey) async {
+    try {
+      await _ensureAuth();
+      final slug = await _slug();
+      await _examDoc(slug, examId)
+          .collection('submissions')
+          .doc(attemptKey)
+          .delete();
+    } catch (e) {
+      debugPrint('OnlineExamService.deleteSubmission($examId) failed — $e');
+    }
+  }
+
+  /// spec 022 — بيمسح مراجعة إجابات طالب منشورة (بعد إلغاء اعتماد أو
+  /// إبطال) — عشان الطالب ميفضلش شايف درجة/مراجعة اتلغت. Best-effort.
+  Future<void> deleteReview(int examId, String attemptKey) async {
+    try {
+      await _ensureAuth();
+      final slug = await _slug();
+      await _examDoc(slug, examId).collection('results').doc(attemptKey).delete();
+    } catch (e) {
+      debugPrint('OnlineExamService.deleteReview($examId) failed — $e');
+    }
+  }
+
+  /// spec 022 — بيحدّث مصفوفة الأسئلة في مستند امتحان منشور بالفعل، من
+  /// غير ما يلمس بقية المستند (status/opensAt/closesAt/allowedCodes) —
+  /// عشان تعديل سؤال ميقفلش الامتحان في وش أي طالب شغّال عليه دلوقتي.
+  /// update() جزئي، مش set() كامل زي publish(). Best-effort.
+  Future<void> republishQuestions(
+      int examId, List<ExamQuestion> questions) async {
+    try {
+      await _ensureAuth();
+      final slug = await _slug();
+      final totalPoints = questions.fold<double>(0, (s, q) => s + q.points);
+      await _examDoc(slug, examId).update({
+        'questions': questions.map((q) => q.toCloudMap()).toList(),
+        'questionCount': questions.length,
+        'totalPoints': totalPoints,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('OnlineExamService.republishQuestions($examId) failed — $e');
+    }
+  }
+
   Future<void> unpublish(int examId) async {
     await _ensureAuth();
     final slug = await _slug();

@@ -73,6 +73,66 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
     await _load();
   }
 
+  // spec 022 — التسليمات المُبطَلة تتعرض في قسم منفصل، ومستبعدة من
+  // إحصائيات الملخّص العلوي.
+  List<ExamSubmission> get _activeSubs =>
+      _subs.where((s) => s.status != SubmissionStatus.voided).toList();
+  List<ExamSubmission> get _voidedSubs =>
+      _subs.where((s) => s.status == SubmissionStatus.voided).toList();
+
+  Future<void> _unapprove(ExamSubmission s) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('إلغاء الاعتماد؟',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+        content: Text(
+            'درجة ${s.studentName ?? "الطالب"} هتتشال من سجله وبوابة الأهالي. '
+            'لو كان شايف نتيجته بالفعل، هتختفي من عنده كمان.',
+            style: const TextStyle(fontFamily: 'Cairo')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('إلغاء الاعتماد', style: TextStyle(fontFamily: 'Cairo'))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _ec.unapproveOnlineGrade(_examId, s.studentId);
+    await _load();
+  }
+
+  Future<void> _void(ExamSubmission s) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('إبطال التسليم؟',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+        content: Text(
+            'هيتمسح تسليم ${s.studentName ?? "الطالب"} الحالي (إجاباته + درجته '
+            'لو كانت معتمَدة) نهائيًا، ويقدر يسلّم الامتحان من الأول لو المهلة '
+            'لسه سارية.',
+            style: const TextStyle(fontFamily: 'Cairo')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('إبطال التسليم', style: TextStyle(fontFamily: 'Cairo'))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _ec.voidSubmission(_examId, s.studentId);
+    await _load();
+  }
+
   Future<void> _showDetails(ExamSubmission s) async {
     final results = await _ec.questionResults(s);
     if (!mounted) return;
@@ -390,7 +450,23 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
                         ]),
                       ),
                     ),
-                  ..._subs.map(_row),
+                  ..._activeSubs.map(_row),
+                  if (_voidedSubs.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    Row(children: [
+                      const Icon(Icons.block_rounded,
+                          size: 15, color: Colors.grey),
+                      const SizedBox(width: 6),
+                      Text('مُبطَلة (${_voidedSubs.length})',
+                          style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.grey.shade600)),
+                    ]),
+                    const SizedBox(height: 8),
+                    ..._voidedSubs.map(_row),
+                  ],
                 ],
               ),
             ),
@@ -398,14 +474,16 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
   }
 
   Widget _summaryHeader() {
-    final total = _subs.length;
+    // مُستبعَدة من الإحصائيات دايمًا (FR-008) — قسمها منفصل تحت.
+    final subs = _activeSubs;
+    final total = subs.length;
     final approved =
-        _subs.where((s) => s.status == SubmissionStatus.approved).length;
+        subs.where((s) => s.status == SubmissionStatus.approved).length;
     final pending =
-        _subs.where((s) => s.status == SubmissionStatus.pending).length;
+        subs.where((s) => s.status == SubmissionStatus.pending).length;
     final notSub =
-        _subs.where((s) => s.status == SubmissionStatus.notSubmitted).length;
-    final graded = _subs.where((s) =>
+        subs.where((s) => s.status == SubmissionStatus.notSubmitted).length;
+    final graded = subs.where((s) =>
         s.status != SubmissionStatus.notSubmitted && s.autoScore != null);
     final avg = graded.isEmpty
         ? 0.0
@@ -482,11 +560,16 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
   Widget _row(ExamSubmission s) {
     final notSubmitted = s.status == SubmissionStatus.notSubmitted;
     final approved = s.status == SubmissionStatus.approved;
+    final voided = s.status == SubmissionStatus.voided;
     final grade = s.finalGrade ?? s.autoScore ?? 0;
     final pct = _maxGrade > 0 ? (grade / _maxGrade) : 0.0;
-    final Color color = approved
-        ? const Color(0xFF10B981)
-        : (notSubmitted ? const Color(0xFF94A3B8) : const Color(0xFFF59E0B));
+    final Color color = voided
+        ? const Color(0xFF94A3B8)
+        : approved
+            ? const Color(0xFF10B981)
+            : (notSubmitted
+                ? const Color(0xFF94A3B8)
+                : const Color(0xFFF59E0B));
     final cs = Theme.of(context).colorScheme;
 
     return Container(
@@ -500,7 +583,7 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap: notSubmitted ? null : () => _showDetails(s),
+          onTap: (notSubmitted || voided) ? null : () => _showDetails(s),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
             child: Row(children: [
@@ -514,8 +597,9 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
                   shape: BoxShape.circle,
                   border: Border.all(color: color.withValues(alpha: 0.4)),
                 ),
-                child: notSubmitted
-                    ? Icon(Icons.remove_rounded, color: color, size: 20)
+                child: (notSubmitted || voided)
+                    ? Icon(voided ? Icons.block_rounded : Icons.remove_rounded,
+                        color: color, size: 20)
                     : Text(FormatHelper.formatGrade(grade),
                         style: TextStyle(
                             fontFamily: 'Cairo',
@@ -549,7 +633,7 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
                                 fontWeight: FontWeight.w800,
                                 color: color)),
                       ),
-                      if (!notSubmitted) ...[
+                      if (!notSubmitted && !voided) ...[
                         const SizedBox(width: 6),
                         Text('من ${FormatHelper.formatGrade(_maxGrade)}',
                             style: TextStyle(
@@ -579,13 +663,13 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
                   ],
                 ),
               ),
-              if (!notSubmitted)
+              if (!notSubmitted && !voided)
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   icon: const Icon(Icons.edit_outlined, size: 17),
                   onPressed: () => _editGrade(s),
                 ),
-              if (!approved)
+              if (!approved && !voided)
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   icon: Icon(
@@ -596,6 +680,34 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
                   color: AppTheme.primaryColor,
                   tooltip: notSubmitted ? 'تعليم غائب' : 'اعتماد',
                   onPressed: () => _approve(s),
+                ),
+              // spec 022 — إجراءات أقل شيوعًا في قائمة ⋮ عشان الصف
+              // ميزدحمش. مش بتظهر لـ"لم يسلّم" (مفيش تسليم يتبطّل) ولا
+              // "مُبطَل" (اتبطّل بالفعل).
+              if (!notSubmitted && !voided)
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert_rounded, size: 18),
+                  padding: EdgeInsets.zero,
+                  onSelected: (v) {
+                    if (v == 'unapprove') _unapprove(s);
+                    if (v == 'void') _void(s);
+                  },
+                  itemBuilder: (_) => [
+                    if (approved)
+                      const PopupMenuItem(
+                        value: 'unapprove',
+                        child: Text('إلغاء الاعتماد',
+                            style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+                      ),
+                    const PopupMenuItem(
+                      value: 'void',
+                      child: Text('إبطال التسليم',
+                          style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
+                              color: Colors.red)),
+                    ),
+                  ],
                 ),
             ]),
           ),

@@ -430,7 +430,9 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Text(
-                        'الامتحان منشور. لازم تلغي النشر قبل التعديل.',
+                        'الامتحان منشور. تقدر تعدّل أي سؤال وتضغط "حفظ هذا '
+                        'السؤال" تحته (الامتحان يفضل شغّال). لإضافة/حذف سؤال '
+                        'أو تغيير الميعاد لازم تلغي النشر الأول.',
                         style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
                   ),
                 _setupCard(fmt),
@@ -844,10 +846,55 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                 ),
               ),
             ]),
+            // spec 022 — تعديل سؤال واحد في امتحان منشور بدون إلغاء
+            // النشر. الحقول فوق قابلة للتعديل أصلاً؛ الزرار ده بيحفظ
+            // السؤال ده بس ويعيد نشر مصفوفة الأسئلة، والامتحان يفضل شغّال.
+            if (_isPublished && q.id != null) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _busy ? null : () => _saveQuestionLive(i),
+                  style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      padding: const EdgeInsets.symmetric(vertical: 10)),
+                  icon: const Icon(Icons.save_rounded, size: 16),
+                  label: const Text('حفظ هذا السؤال',
+                      style: TextStyle(fontFamily: 'Cairo', fontSize: 12.5)),
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  /// spec 022 — يحفظ تعديلات سؤال واحد في امتحان منشور فورًا، ويعيد
+  /// نشر مصفوفة الأسئلة (بدون مفتاح إجابة). لو السؤال له تسليمات
+  /// اتصححت، بيحذّر المدرس يعيد "تحديث النتائج" — من غير أي إعادة
+  /// اعتماد تلقائي.
+  Future<void> _saveQuestionLive(int i) async {
+    final q = _questions[i];
+    final model = q.toModel(_examId!, i);
+    if (!model.isValid) {
+      await _blockingMsg('السؤال ناقص',
+          'تأكد إن نص السؤال والاختيارات كلها مكتوبة، والإجابة الصحيحة محدَّدة.');
+      return;
+    }
+    setState(() => _busy = true);
+    final affected = await _ec.updateQuestionAfterPublish(model);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (affected > 0) {
+      await _blockingMsg(
+          'اتحفظ — بس انتبه',
+          'فيه $affected تسليم اتصحّح بالإجابة القديمة. روح شاشة "النتائج" '
+              'واضغط "تحديث النتائج" عشان الدرجات تتحسب بالإجابة الجديدة. '
+              'الاعتماد نفسه مش هيتغيّر تلقائيًا.');
+    } else {
+      ToastHelper.success('اتحفظ السؤال');
+    }
   }
 }
 

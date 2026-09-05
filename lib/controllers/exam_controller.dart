@@ -681,6 +681,78 @@ class ExamController extends GetxController {
     }
   }
 
+  /// spec 022 — عكس approveOnlineGrade: يشيل درجة الطالب (سجله + بوابة
+  /// الأهالي) ومراجعته المنشورة، ويرجّع التسليم لـ"بانتظار الاعتماد".
+  /// مشترَكة بين "إلغاء الاعتماد" و"إبطال التسليم" تحت.
+  Future<void> _deleteGradeAndReview(int examId, int studentId) async {
+    await _db.deleteGrade(examId, studentId);
+    unawaited(ParentPortalService().pushStudentSummary(studentId));
+    try {
+      final student = await _db.getStudent(studentId);
+      final attemptKey =
+          student != null ? ParentPortalService().attemptKeyFor(student) : null;
+      if (attemptKey != null) {
+        await _online.deleteReview(examId, attemptKey);
+      }
+    } catch (e) {
+      // best-effort — لو فشل حذف المراجعة على السحابة، الدرجة اتشالت
+      // محليًا وفي بوابة الأهالي على أي حال.
+    }
+  }
+
+  /// إلغاء اعتماد درجة بالغلط — يرجّع التسليم لـ"بانتظار الاعتماد"
+  /// ويشيل كل أثر الدرجة (سجل الطالب + بوابة الأهالي + مراجعة الويب).
+  Future<void> unapproveOnlineGrade(int examId, int studentId) async {
+    final sub = await _db.getSubmissionForStudent(examId, studentId);
+    if (sub == null || sub.status != SubmissionStatus.approved) return;
+    await _db.updateSubmissionApproval(
+        examId, studentId, sub.autoScore ?? 0, SubmissionStatus.pending);
+    await _deleteGradeAndReview(examId, studentId);
+  }
+
+  /// إبطال تسليم طالب (غش/مشكلة تقنية) — بيعمل نفس أثر إلغاء الاعتماد
+  /// (لو كان معتمَد) زيادة عليه: يحذف التسليم من السحابة (عشان الطالب
+  /// يقدر يسلّم من الأول) ويعلّم النسخة المحلية "مُبطَل" (FR-014: زر
+  /// واحد يعمل الاتنين مع بعض بغضّ النظر عن حالة التسليم الحالية).
+  Future<void> voidSubmission(int examId, int studentId) async {
+    final sub = await _db.getSubmissionForStudent(examId, studentId);
+    if (sub == null ||
+        sub.status == SubmissionStatus.notSubmitted ||
+        sub.status == SubmissionStatus.voided) {
+      return;
+    }
+    await _deleteGradeAndReview(examId, studentId);
+    await _db.voidSubmissionLocally(examId, studentId);
+    try {
+      final student = await _db.getStudent(studentId);
+      final attemptKey =
+          student != null ? ParentPortalService().attemptKeyFor(student) : null;
+      if (attemptKey != null) {
+        await _online.deleteSubmission(examId, attemptKey);
+      }
+    } catch (e) {
+      // best-effort
+    }
+  }
+
+  /// تعديل سؤال واحد في امتحان منشور/موقوف من غير إلغاء النشر — يحفظ
+  /// محليًا ويعيد نشر مصفوفة الأسئلة كاملة (بدون مفتاح إجابة، زي
+  /// toCloudMap العادي). يرجّع عدد التسليمات اللي جاوبت على السؤال ده
+  /// (بغضّ النظر عن حالتها، ما عدا المُبطَلة) — لعرض تحذير في الواجهة
+  /// لو > 0 (FR-011)، من غير ما يغيّر أي درجة معتمَدة تلقائيًا.
+  Future<int> updateQuestionAfterPublish(ExamQuestion updated) async {
+    await _db.updateQuestion(updated);
+    final subs = await _db.getSubmissionsForExam(updated.examId);
+    final affected = subs
+        .where((s) =>
+            s.status != SubmissionStatus.voided &&
+            s.answers.containsKey(updated.id))
+        .length;
+    final questions = await _db.getQuestionsForExam(updated.examId);
+    unawaited(_online.republishQuestions(updated.examId, questions));
+    return affected;
+  }
+
   // ── رسالة نتيجة الامتحان لولي الأمر (واتساب) ───────────────────────────────
   // راجع specs/008-exam-whatsapp-results. بتتولّد وقت الإرسال بس — مفيش
   // تخزين لها. لو الطالب غايب عن الامتحان بترجع رسالة غياب مستقلة، غير

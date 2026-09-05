@@ -7,7 +7,7 @@ import 'dart:convert';
 
 import 'package:active_class/config/constants.dart';
 
-enum SubmissionStatus { pending, approved, notSubmitted }
+enum SubmissionStatus { pending, approved, notSubmitted, voided }
 
 extension SubmissionStatusX on SubmissionStatus {
   String get dbValue {
@@ -18,6 +18,8 @@ extension SubmissionStatusX on SubmissionStatus {
         return 'approved';
       case SubmissionStatus.notSubmitted:
         return 'not_submitted';
+      case SubmissionStatus.voided:
+        return 'voided';
     }
   }
 
@@ -27,6 +29,8 @@ extension SubmissionStatusX on SubmissionStatus {
         return SubmissionStatus.approved;
       case 'not_submitted':
         return SubmissionStatus.notSubmitted;
+      case 'voided':
+        return SubmissionStatus.voided;
       default:
         return SubmissionStatus.pending;
     }
@@ -40,6 +44,8 @@ extension SubmissionStatusX on SubmissionStatus {
         return 'معتمَد';
       case SubmissionStatus.notSubmitted:
         return 'لم يسلّم';
+      case SubmissionStatus.voided:
+        return 'مُبطَل';
     }
   }
 }

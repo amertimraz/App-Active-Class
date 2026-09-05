@@ -2080,6 +2080,26 @@ class DatabaseService {
     });
   }
 
+  /// spec 022 — بيحذف درجة طالب في امتحان (لو موجودة) — لإلغاء الاعتماد
+  /// أو إبطال التسليم. نفس نمط حذف الدرجات في deleteExam (كويري remote_id
+  /// الأول عشان _queueDelete تقدر تستهدفها بعد الحذف المحلي).
+  Future<void> deleteGrade(int examId, int studentId) async {
+    final db = await database;
+    final rows = await db.query(TABLE_EXAM_GRADES,
+        columns: [COL_GRADE_ID, COL_SYNC_REMOTE_ID],
+        where: '$COL_GRADE_EXAM_ID = ? AND $COL_GRADE_STUDENT_ID = ?',
+        whereArgs: [examId, studentId]);
+    if (rows.isEmpty) return;
+    await db.delete(TABLE_EXAM_GRADES,
+        where: '$COL_GRADE_EXAM_ID = ? AND $COL_GRADE_STUDENT_ID = ?',
+        whereArgs: [examId, studentId]);
+    _notifyChanged();
+    for (final row in rows) {
+      await _queueDelete(TABLE_EXAM_GRADES, row[COL_GRADE_ID] as int,
+          row[COL_SYNC_REMOTE_ID] as String?);
+    }
+  }
+
   // ========== ONLINE EXAM (spec 016) ==========
   // كله محلي — خارج مزامنة الفريق (v1). لا _queueSync لأي من الدوال دي.
 
@@ -2264,6 +2284,17 @@ class DatabaseService {
     await db.update(
         TABLE_EXAM_SUBMISSIONS,
         {COL_ES_FINAL_GRADE: finalGrade, COL_ES_STATUS: status.dbValue},
+        where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
+        whereArgs: [examId, studentId]);
+    _notifyChanged();
+  }
+
+  /// spec 022 — يعلّم تسليم "مُبطَل" محليًا (السجل يفضل موجود للعرض في
+  /// شاشة النتائج، بس مستبعد من الإحصائيات ومن كتلة "بانتظار الاعتماد").
+  /// exam_submissions محلي بالكامل (زي باقي دوال هذا القسم) — صفر _queueSync.
+  Future<void> voidSubmissionLocally(int examId, int studentId) async {
+    final db = await database;
+    await db.update(TABLE_EXAM_SUBMISSIONS, {COL_ES_STATUS: 'voided'},
         where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
         whereArgs: [examId, studentId]);
     _notifyChanged();
