@@ -218,6 +218,8 @@ class SettingsPage extends StatelessWidget {
                         title: 'الفوترة والتحصيل',
                         icon: Icons.payments_rounded,
                         color: const Color(0xFF10B981),
+                        collapsible: true,
+                        initiallyExpanded: false,
                         children: [
                           // ── مهلة السماح قبل اعتبار الطالب "متأخر" ──
                           Obx(() => _buildDropdownTile<int>(
@@ -302,6 +304,8 @@ class SettingsPage extends StatelessWidget {
                         title: 'طلاب محتاجين متابعة',
                         icon: Icons.warning_amber_rounded,
                         color: const Color(0xFFEF4444),
+                        collapsible: true,
+                        initiallyExpanded: false,
                         children: [
                           Obx(() => _buildSwitchTile(
                                 context,
@@ -507,6 +511,8 @@ class SettingsPage extends StatelessWidget {
                         title: 'الواتساب والتقارير',
                         icon: Icons.chat_rounded,
                         color: const Color(0xFF25D366),
+                        collapsible: true,
+                        initiallyExpanded: false,
                         children: [
                           _buildNavTile(
                             context,
