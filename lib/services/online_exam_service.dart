@@ -165,17 +165,19 @@ class OnlineExamService {
     }
   }
 
-  /// spec 022 — بيمسح تسليم طالب من السحابة (إبطال التسليم) — عشان
-  /// الطالب يقدر يسلّم تاني (قاعدة الأمان بترفض create لو المستند
-  /// موجود بالفعل). Best-effort زي publishReview.
+  /// spec 022 — بيمسح تسليم طالب + محاولته من السحابة (إبطال التسليم)
+  /// عشان يقدر يبدأ من الصفر:
+  /// - submissions/{attemptKey}: قاعدة الأمان بترفض create لو موجود.
+  /// - attempts/{attemptKey}: لو سيبناه، صفحة الطالب هتفتح على "استئناف"
+  ///   بوقت البداية القديم (المؤقّت خلص) فما يقدرش يحل فعليًا.
+  /// Best-effort زي publishReview.
   Future<void> deleteSubmission(int examId, String attemptKey) async {
     try {
       await _ensureAuth();
       final slug = await _slug();
-      await _examDoc(slug, examId)
-          .collection('submissions')
-          .doc(attemptKey)
-          .delete();
+      final examRef = _examDoc(slug, examId);
+      await examRef.collection('submissions').doc(attemptKey).delete();
+      await examRef.collection('attempts').doc(attemptKey).delete();
     } catch (e) {
       debugPrint('OnlineExamService.deleteSubmission($examId) failed — $e');
     }

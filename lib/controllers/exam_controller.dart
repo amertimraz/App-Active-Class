@@ -589,7 +589,13 @@ class ExamController extends GetxController {
       for (final st in allowed) {
         if (matchedStudentIds.contains(st.id)) continue;
         final existing = await _db.getSubmissionForStudent(examId, st.id);
-        if (existing?.status == SubmissionStatus.approved) continue;
+        // معتمَد → متسبناش. مُبطَل → نسيبه مُبطَل (الطالب ما أعادش
+        // التسليم؛ لو أعاد كان هيتسحب فوق كـsubmission حقيقي ويرجع
+        // pending). spec 022.
+        if (existing?.status == SubmissionStatus.approved ||
+            existing?.status == SubmissionStatus.voided) {
+          continue;
+        }
         await _db.upsertSubmission(ExamSubmission(
           examId: examId,
           studentId: st.id,
