@@ -11,6 +11,11 @@ class SessionEntry {
   final DateTime time;
   final String? guardianPhone;
 
+  /// id صف الدفعة في جدول payments — عشان نقدر نشيل العنصر ده من
+  /// السجل لو الدفعة اتحذفت بعدين من شاشة المدفوعات (راجع
+  /// PaymentController.deletePayment). null لو مش معروف (احتياطي).
+  final int? paymentId;
+
   SessionEntry({
     required this.studentName,
     required this.amount,
@@ -18,6 +23,7 @@ class SessionEntry {
     this.isPerSession = false,
     required this.time,
     this.guardianPhone,
+    this.paymentId,
   });
 }
 
@@ -67,5 +73,12 @@ class SessionLogController extends GetxController {
   void clear() {
     entries.clear();
     _lastEntryDate = null;
+  }
+
+  /// بيتنادى بعد حذف دفعة (من شاشة المدفوعات مثلاً) عشان "دفعوا اليوم"
+  /// يفضل متطابق مع القاعدة على طول — بدون ده، دفعة محذوفة كانت
+  /// تفضل ظاهرة في السجل لحد ما التطبيق يتقفل ويتفتح تاني.
+  void removeByPaymentId(int paymentId) {
+    entries.removeWhere((e) => e.paymentId == paymentId);
   }
 }

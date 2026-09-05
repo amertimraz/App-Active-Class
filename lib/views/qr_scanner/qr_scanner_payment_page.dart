@@ -122,6 +122,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
           monthCount: monthCount < 1 ? 1 : monthCount,
           time: p.date,
           guardianPhone: s?.guardianPhone,
+          paymentId: p.id,
         );
       }).toList()
         ..sort((a, b) => b.time.compareTo(a.time));
@@ -287,6 +288,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
         isPerSession: isPerSession,
         time: DateTime.now(),
         guardianPhone: student.guardianPhone,
+        paymentId: controller.lastConfirmedPaymentId.value,
       ));
       setState(() {
         _lastScan = null;

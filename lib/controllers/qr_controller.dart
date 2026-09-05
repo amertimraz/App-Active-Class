@@ -25,6 +25,10 @@ class QRController extends GetxController {
   final RxBool isProcessing = false.obs;
   final Rx<Student?> scannedStudent = Rx<Student?>(null);
   final Rx<Payment?> lastPayment = Rx<Payment?>(null);
+  // id صف الدفعة اللي confirmPayment() لسه سجّلها للطالب الممسوح نفسه
+  // (مش لسيبلنج) — عشان قايمة "دفعوا اليوم" (SessionLogController) تقدر
+  // تربط عنصرها بالدفعة الحقيقية وتشيله لو اتحذفت بعدين.
+  final Rxn<int> lastConfirmedPaymentId = Rxn<int>();
   final RxBool isPreparingPayment = false.obs;
   final RxList<DateTime> upcomingMonths = <DateTime>[].obs;
   final RxList<DateTime> selectedMonths = <DateTime>[].obs;
@@ -418,12 +422,15 @@ class QRController extends GetxController {
           ].join(';');
           final note = 'months=${keys.join(',')};$extra';
           for (final m in members) {
-            await _dbService.insertPayment(Payment(
+            final insertedId = await _dbService.insertPayment(Payment(
                 studentId: m.id!,
                 date: now,
                 amount: each,
                 note: note,
                 createdAt: now));
+            // نلقط id دفعة الطالب الممسوح نفسه بس (مش إخوته) — هو اللي
+            // بيتسجّل في سجل "دفعوا اليوم".
+            if (m.id == student.id) lastConfirmedPaymentId.value = insertedId;
             unawaited(ParentPortalService().pushStudentSummary(m.id!));
           }
           _refreshDashboard();
@@ -457,7 +464,7 @@ class QRController extends GetxController {
         note: note,
         createdAt: now,
       );
-      await _dbService.insertPayment(payment);
+      lastConfirmedPaymentId.value = await _dbService.insertPayment(payment);
       unawaited(ParentPortalService().pushStudentSummary(student.id!));
       _refreshDashboard();
       unawaited(NotificationService().scheduleLatePaymentReminder());

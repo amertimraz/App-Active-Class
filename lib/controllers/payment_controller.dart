@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
+import 'package:active_class/controllers/session_log_controller.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
@@ -158,6 +159,11 @@ class PaymentController extends GetxController {
         unawaited(ParentPortalService().pushStudentSummary(studentId));
       }
       unawaited(NotificationService().scheduleLatePaymentReminder());
+      // شيل الدفعة المحذوفة من قايمة "دفعوا اليوم" (شاشة تسجيل الدفع)
+      // لو كانت ظاهرة فيها — من غيره تفضل ظاهرة لحد ما التطبيق يتقفل.
+      if (Get.isRegistered<SessionLogController>()) {
+        Get.find<SessionLogController>().removeByPaymentId(id);
+      }
       ToastHelper.success('تم حذف الدفع بنجاح');
     } catch (e) {
       ToastHelper.error('حدث خطأ في حذف الدفع');
