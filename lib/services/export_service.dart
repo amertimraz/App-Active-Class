@@ -1012,6 +1012,10 @@ class ExportService {
   String _sanitizeFileName(String s) =>
       s.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
 
+  // درجات الامتحان ممكن تكون كسور (7.5/10) — مش زي المبالغ.
+  String _gradeFmt(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+
   String _pctStr(double? earned, double max) =>
       (earned == null || max <= 0) ? '' : '${(earned / max * 100).round()}%';
 
@@ -1117,14 +1121,14 @@ class ExportService {
         (r['student_name'] as String?) ?? '',
         (r['student_code'] as String?) ?? '',
         if (showGroupColumn) (r['group_name'] as String?) ?? '',
-        grade == null ? '' : _fmt(grade),
-        _fmt(max),
+        grade == null ? '' : _gradeFmt(grade),
+        _gradeFmt(max),
         (absent || grade == null) ? '' : _pctStr(grade, max),
         status,
       ]);
     }
     final footer = entered > 0
-        ? ['عدد المُدخل: $entered', 'المتوسط: ${_fmt(sum / entered)}']
+        ? ['عدد المُدخل: $entered', 'المتوسط: ${_gradeFmt(sum / entered)}']
         : <String>[];
     final dateStr = DateFormat('yyyy-MM-dd').format(exam.date);
     return _resultsToFile(
@@ -1169,8 +1173,8 @@ class ExportService {
       data.add([
         st.name,
         st.code,
-        earned == null ? '' : _fmt(earned),
-        _fmt(max),
+        earned == null ? '' : _gradeFmt(earned),
+        _gradeFmt(max),
         earned == null ? '' : _pctStr(earned, max),
         status,
       ]);
@@ -1178,8 +1182,8 @@ class ExportService {
     final footer = approved > 0
         ? [
             'معتمَد: $approved',
-            'المتوسط: ${_fmt(sum / approved)}',
-            'الأعلى: ${_fmt(highest)}',
+            'المتوسط: ${_gradeFmt(sum / approved)}',
+            'الأعلى: ${_gradeFmt(highest)}',
           ]
         : <String>[];
     final dateStr = DateFormat('yyyy-MM-dd').format(exam.date);

@@ -2272,7 +2272,8 @@ class DatabaseService {
         ? 'AND s.$COL_STUDENT_GROUP_ID = ?'
         : 'AND s.$COL_STUDENT_GROUP_ID IN '
             '(SELECT $COL_EG_GROUP_ID FROM $TABLE_EXAM_GROUPS WHERE $COL_EG_EXAM_ID = ?)';
-    final args = groupId != null ? [examId, groupId] : [examId, examId];
+    // placeholders بالترتيب: exams-join، exam_grades-join، ثم groupFilter.
+    final args = <Object?>[examId, examId, groupId ?? examId];
     final rows = await db.rawQuery('''
       SELECT
         s.$COL_STUDENT_NAME AS student_name,
@@ -2291,7 +2292,7 @@ class DatabaseService {
       WHERE (s.$COL_STUDENT_IS_ARCHIVED IS NULL OR s.$COL_STUDENT_IS_ARCHIVED = 0)
         $groupFilter
       ORDER BY g.$COL_GROUP_NAME ASC, s.$COL_STUDENT_NAME ASC
-    ''', [examId, examId, ...args]);
+    ''', args);
     return rows;
   }
 

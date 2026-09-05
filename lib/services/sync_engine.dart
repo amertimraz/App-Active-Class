@@ -557,7 +557,18 @@ class SyncEngine {
   /// لأنها مش بتعيد بث اللي فات وقت إعادة الاتصال. عشان كده بنعمل
   /// "تحميل لحاق" كامل (يشمل الصفوف المحذوفة كمان، عكس initialFullPull،
   /// عشان نعرف بحذف حصل وإحنا offline) كل ما القناة تتصل/تعيد الاتصال.
+  DateTime? _lastCatchUp;
+
   Future<void> catchUpPull() async {
+    // spec 024 — القناتان (الأساسية والممتدة) بتنادوا ده لما يتصلوا،
+    // غالبًا في نفس اللحظة عند بدء التطبيق/إعادة الاتصال. نكتفي بواحدة
+    // كل ~3 ثواني — التانية بتغطّي نفس _tables بالكامل.
+    final now = DateTime.now();
+    if (_lastCatchUp != null &&
+        now.difference(_lastCatchUp!) < const Duration(seconds: 3)) {
+      return;
+    }
+    _lastCatchUp = now;
     if (await _wasRemovedFromTeam()) return;
     if (await _wasLicenseDeactivated()) return;
     if (await _wasDeviceUnbound()) return;
