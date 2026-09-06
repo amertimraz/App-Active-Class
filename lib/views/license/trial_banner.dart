@@ -86,11 +86,11 @@ class TrialBanner extends StatelessWidget {
           ctaLabel = 'ترقية';
           break;
         case LicenseState.trialExpired:
-          msg   = 'انتهت فترة التجربة — فعّل ترخيصك للاستمرار';
+          msg   = 'انتهت التجربة — عندك كود؟ فعّله من هنا';
           color = const Color(0xFFDC2626);
           icon  = Icons.lock_rounded;
-          onTap = openRenewalWhatsApp;
-          ctaLabel = 'واتساب';
+          onTap = () => Get.to(() => const PlansPage());
+          ctaLabel = 'فعّل الكود';
           break;
         case LicenseState.expired:
           msg   = 'انتهت صلاحية ترخيصك — قم بالتجديد';
@@ -236,17 +236,16 @@ class LicenseStatusTile extends StatelessWidget {
         subtitle: Text(label,
             style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: color)),
         trailing: switch (lc.state.value) {
-          LicenseState.trial => TextButton(
+          LicenseState.trial || LicenseState.trialExpired => TextButton(
               onPressed: () => Get.to(() => const PlansPage()),
-              child: const Text('ترقية',
-                  style: TextStyle(fontFamily: 'Cairo', color: Color(0xFF4F46E5))),
+              child: Text(
+                  lc.state.value == LicenseState.trial ? 'ترقية' : 'فعّل الكود',
+                  style: const TextStyle(
+                      fontFamily: 'Cairo', color: Color(0xFF4F46E5))),
             ),
-          LicenseState.trialExpired ||
-          LicenseState.expired ||
-          LicenseState.suspended =>
-            TextButton(
-              onPressed: () =>
-                  openRenewalWhatsApp(isRenewal: lc.state.value != LicenseState.suspended),
+          LicenseState.expired || LicenseState.suspended => TextButton(
+              onPressed: () => openRenewalWhatsApp(
+                  isRenewal: lc.state.value != LicenseState.suspended),
               child: const Text('واتساب',
                   style: TextStyle(fontFamily: 'Cairo', color: Color(0xFF25D366))),
             ),

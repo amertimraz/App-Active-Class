@@ -132,6 +132,27 @@ class _PlansPageState extends State<PlansPage> {
                         return const SizedBox.shrink();
                       }),
 
+                      // ── عندك كود؟ (فوق — أول حاجة يشوفها المدرس اللي
+                      //    فعّل قبل كده وعمل إعادة تثبيت) ──────────────
+                      _ActivationCodeCard(),
+                      const SizedBox(height: 10),
+                      _AssistantLoginCard(),
+                      const SizedBox(height: 18),
+                      Row(children: [
+                        Expanded(child: Divider(color: isDark ? Colors.white12 : Colors.black12)),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 10),
+                          child: Text('أو اشترك بباقة',
+                              style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.grey)),
+                        ),
+                        Expanded(child: Divider(color: isDark ? Colors.white12 : Colors.black12)),
+                      ]),
+                      const SizedBox(height: 14),
+
                       // ── العنوان ─────────────────────────────────
                       _SectionTitle(
                         title: 'اختر خطتك',
@@ -162,14 +183,6 @@ class _PlansPageState extends State<PlansPage> {
 
                       // ── صف الثقة ────────────────────────────────
                       const _TrustRow(),
-                      const SizedBox(height: 20),
-
-                      // ── عندك كود ────────────────────────────────
-                      _ActivationCodeCard(),
-                      const SizedBox(height: 12),
-
-                      // ── مساعد لدى مدرّس ─────────────────────────
-                      _AssistantLoginCard(),
                       const SizedBox(height: 20),
 
                       // ── Pending / Form / Success ────────────────
@@ -1049,10 +1062,13 @@ class _ActivationCodeCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF141B2D) : Colors.white,
+        gradient: LinearGradient(colors: [
+          AppTheme.primaryColor.withValues(alpha: isDark ? 0.22 : 0.1),
+          AppTheme.primaryColor.withValues(alpha: isDark ? 0.08 : 0.03),
+        ]),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: AppTheme.primaryColor.withValues(alpha: 0.2),
+          color: AppTheme.primaryColor.withValues(alpha: 0.4),
         ),
       ),
       child: Row(children: [
@@ -1061,12 +1077,7 @@ class _ActivationCodeCard extends StatelessWidget {
           height: 42,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(13),
-            gradient: LinearGradient(
-              colors: [
-                AppTheme.primaryColor.withValues(alpha: 0.18),
-                AppTheme.primaryColor.withValues(alpha: 0.06),
-              ],
-            ),
+            color: AppTheme.primaryColor.withValues(alpha: 0.15),
           ),
           child: const Icon(Icons.vpn_key_rounded,
               color: AppTheme.primaryColor, size: 20),
@@ -1079,22 +1090,21 @@ class _ActivationCodeCard extends StatelessWidget {
               Text('عندك كود تفعيل؟',
                   style: TextStyle(
                       fontFamily: 'Cairo',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w900,
                       color: isDark ? Colors.white : Colors.black87)),
-              Text('أدخل الكود لتفعيل اشتراكك فوراً',
+              Text('لو فعّلت قبل كده أو معاك كود — أدخله وهيتفعّل فورًا',
                   style: TextStyle(
                       fontFamily: 'Cairo',
                       fontSize: 11,
-                      color: isDark ? Colors.white38 : Colors.black45)),
+                      color: isDark ? Colors.white54 : Colors.black54)),
             ],
           ),
         ),
-        OutlinedButton(
+        FilledButton(
           onPressed: () => Get.to(() => const ActivationPage()),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppTheme.primaryColor,
-            side: const BorderSide(color: AppTheme.primaryColor, width: 1.5),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppTheme.primaryColor,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
