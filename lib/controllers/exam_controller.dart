@@ -326,6 +326,55 @@ class ExamController extends GetxController {
   Future<List<ExamSubmission>> getSubmissions(int examId) =>
       _db.getSubmissionsForExam(examId);
 
+  /// spec 025 — بيانات "نسخة جديدة" من امتحان (منطق نقي قابل للاختبار):
+  /// الاسم + " (نسخة)"، الدرجات والشهر، **بلا** مجموعات/مواعيد/نشر.
+  static Exam duplicatedExamMeta(Exam src) => Exam(
+        name: '${src.name} (نسخة)',
+        date: DateTime.now(),
+        maxGrade: src.maxGrade,
+        passingGrade: src.passingGrade,
+        reportMonth: src.reportMonth,
+        isOnline: src.isOnline,
+        onlineStatus: OnlineExamStatus.draft,
+        durationMinutes: src.durationMinutes,
+        // بلا opensAt/closesAt/groupIds
+      );
+
+  /// spec 025 — ينشئ مسودّة نسخة كاملة من امتحان إلكتروني (نفس الأسئلة
+  /// كنسخ مستقلة). يرجّع id الجديد أو null.
+  Future<int?> duplicateExam(int examId) async {
+    final src = exams.firstWhereOrNull((e) => e.id == examId);
+    if (src == null || !src.isOnline) return null;
+    final meta = duplicatedExamMeta(src);
+    final newId = await _db.insertExam(meta, const [], skipSync: true);
+    await _db.setExamOnlineFields(
+      newId,
+      isOnline: true,
+      status: OnlineExamStatus.draft,
+      durationMinutes: src.durationMinutes,
+    );
+    final qs = await _db.getQuestionsForExam(examId);
+    await _db.replaceExamQuestions(
+      newId,
+      [
+        for (var i = 0; i < qs.length; i++)
+          ExamQuestion(
+            examId: newId,
+            position: i,
+            type: qs[i].type,
+            text: qs[i].text,
+            options: List<String>.from(qs[i].options),
+            correctIndex: qs[i].correctIndex,
+            points: qs[i].points,
+            imageUrl: qs[i].imageUrl,
+            explanation: qs[i].explanation,
+          ),
+      ],
+    );
+    await loadExams();
+    return newId;
+  }
+
   /// ينشئ مسودّة امتحان إلكتروني (صف exams بـ is_online=1, status=draft).
   Future<int> createOnlineExamDraft({required String name}) async {
     final examId = await _db.insertExam(

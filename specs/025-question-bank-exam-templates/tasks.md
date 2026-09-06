@@ -79,9 +79,9 @@ Mobile single-project — `lib/` + `supabase/*.sql`. المرجع: [plan.md](pla
 
 **Independent Test**: [quickstart.md](quickstart.md) خطوات 16–19. مستقل عن US1/US2.
 
-- [ ] T021 [P] [US3] أنشئ `test/exam_duplicate_test.dart`: منطق ما يُنسخ / ما لا يُنسخ. لو `duplicateExam` صعب اختباره بلا DB، اختبر دالة نقية مساعدة `Exam duplicatedExamMeta(Exam src)` (تبني `Exam` النسخة: الاسم+"(نسخة)"، الدرجات، بلا groupIds/opensAt/closesAt، status draft) — واستخدمها في T022.
-- [ ] T022 [US3] في `lib/controllers/exam_controller.dart`: `Future<int?> duplicateExam(int examId)` ([contracts/exam-duplicate.md](contracts/exam-duplicate.md)) — `src` لازم `isOnline`؛ `insertExam(Exam(name+' (نسخة)', maxGrade/passingGrade/reportMonth من src), const [], skipSync: true)`؛ `setExamOnlineFields(newId, isOnline: true, status: draft, durationMinutes: src.durationMinutes)` (بلا مواعيد)؛ `getQuestionsForExam(examId)` → `replaceExamQuestions(newId, qs.map((q) => q.copyWith(id: null, examId: newId)))`؛ `loadExams()`؛ يرجّع `newId`.
-- [ ] T023 [US3] في `lib/views/exams/online_exams_tab.dart` `_actions`: زر `_btn('نسخة جديدة', Icons.copy_all_rounded, () async { final id = await _ec.duplicateExam(exam.id!); if (id != null && context.mounted) { await onChanged(); final e = _ec.exams.firstWhereOrNull((x) => x.id == id); if (e != null) Get.to(() => OnlineExamEditorPage(existing: e)); } })` — في كل الحالات (draft/published/stopped/removed).
+- [X] T021 [P] [US3] أنشئ `test/exam_duplicate_test.dart`: منطق ما يُنسخ / ما لا يُنسخ. لو `duplicateExam` صعب اختباره بلا DB، اختبر دالة نقية مساعدة `Exam duplicatedExamMeta(Exam src)` (تبني `Exam` النسخة: الاسم+"(نسخة)"، الدرجات، بلا groupIds/opensAt/closesAt، status draft) — واستخدمها في T022.
+- [X] T022 [US3] في `lib/controllers/exam_controller.dart`: `Future<int?> duplicateExam(int examId)` ([contracts/exam-duplicate.md](contracts/exam-duplicate.md)) — `src` لازم `isOnline`؛ `insertExam(Exam(name+' (نسخة)', maxGrade/passingGrade/reportMonth من src), const [], skipSync: true)`؛ `setExamOnlineFields(newId, isOnline: true, status: draft, durationMinutes: src.durationMinutes)` (بلا مواعيد)؛ `getQuestionsForExam(examId)` → `replaceExamQuestions(newId, qs.map((q) => q.copyWith(id: null, examId: newId)))`؛ `loadExams()`؛ يرجّع `newId`.
+- [X] T023 [US3] في `lib/views/exams/online_exams_tab.dart` `_actions`: زر `_btn('نسخة جديدة', Icons.copy_all_rounded, () async { final id = await _ec.duplicateExam(exam.id!); if (id != null && context.mounted) { await onChanged(); final e = _ec.exams.firstWhereOrNull((x) => x.id == id); if (e != null) Get.to(() => OnlineExamEditorPage(existing: e)); } })` — في كل الحالات (draft/published/stopped/removed).
 
 **Checkpoint**: كل القصص شغّالة.
 
@@ -89,8 +89,8 @@ Mobile single-project — `lib/` + `supabase/*.sql`. المرجع: [plan.md](pla
 
 ## Phase 6: Polish
 
-- [ ] T024 `flutter analyze` — صفر أخطاء/تحذيرات.
-- [ ] T025 `flutter test` — كل الاختبارات تنجح (يشمل `question_bank_random_test`، `exam_duplicate_test`، `exam_question_cloud_map_test`).
+- [X] T024 `flutter analyze` — صفر أخطاء/تحذيرات.
+- [X] T025 `flutter test` — كل الاختبارات تنجح (يشمل `question_bank_random_test`، `exam_duplicate_test`، `exam_question_cloud_map_test`).
 - [ ] T026 نشر `supabase/migration_question_bank.sql` على Supabase الإنتاج عبر SSH ([quickstart.md](quickstart.md) خطوة 0) + تحقّق (publication، RLS، 3 policies، idempotent).
 - [ ] T027 [P] تحقّق بصري (فاتح/ليلي): شاشة البنك، sheet تحرير السؤال، شاشة الاختيار من البنك، زر "نسخة جديدة".
 - [ ] T028 نفّذ [quickstart.md](quickstart.md) خطوات 1–19 (خصوصًا 7–9 مزامنة بجهازين، 15 فحص Firestore).

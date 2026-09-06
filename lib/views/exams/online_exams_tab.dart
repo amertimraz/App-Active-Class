@@ -487,6 +487,7 @@ class _OnlineExamCard extends StatelessWidget {
             await Get.to(() => OnlineExamEditorPage(existing: exam));
             await onChanged();
           }, primary: true),
+          _duplicateBtn(context),
           _deleteForeverBtn(context),
         ];
       case OnlineExamStatus.published:
@@ -543,6 +544,7 @@ class _OnlineExamCard extends StatelessWidget {
                     () => _ec.removeOnlineExamFromWeb(exam.id!),
                     'اتحذف من الويب'));
           }),
+          _duplicateBtn(context),
           _deleteForeverBtn(context),
         ];
       case OnlineExamStatus.removed:
@@ -551,6 +553,7 @@ class _OnlineExamCard extends StatelessWidget {
             await Get.to(() => OnlineExamResultsPage(exam: exam));
             await onChanged();
           }),
+          _duplicateBtn(context),
           _deleteForeverBtn(context),
         ];
     }
@@ -568,6 +571,24 @@ class _OnlineExamCard extends StatelessWidget {
                 'مفيش رجوع. هيتمسح الامتحان وكل أسئلته، وكل التسليمات والدرجات المعتمَدة، وصفحات مراجعة الطلاب على الويب.',
             onYes: () =>
                 _run(() => _ec.deleteOnlineExam(exam.id!), 'اتحذف الامتحان'));
+      });
+
+  // spec 025 — نسخة جديدة: مسودّة بنفس الأسئلة/المدة/الدرجات، بلا
+  // مجموعات/مواعيد/تسليمات/نشر.
+  Widget _duplicateBtn(BuildContext context) =>
+      _btn('نسخة جديدة', Icons.copy_all_outlined, () async {
+        final id = await _ec.duplicateExam(exam.id!);
+        if (!context.mounted) return;
+        if (id == null) {
+          ToastHelper.error('تعذّر إنشاء نسخة');
+          return;
+        }
+        await onChanged();
+        final e = _ec.exams.firstWhereOrNull((x) => x.id == id);
+        if (e != null && context.mounted) {
+          await Get.to(() => OnlineExamEditorPage(existing: e));
+          await onChanged();
+        }
       });
 
   // رابط الطلاب — نفس الرابط لكل امتحانات المدرس الإلكترونية (مشتق من
