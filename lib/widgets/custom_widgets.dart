@@ -418,17 +418,12 @@ class CustomSearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hintColor = isDark ? Colors.grey[400] : Colors.grey[500];
     return Container(
+      constraints: const BoxConstraints(minHeight: 42),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E293B) : Colors.white,
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
           width: 1,
@@ -437,30 +432,33 @@ class CustomSearchBar extends StatelessWidget {
       child: TextField(
         controller: controller,
         onChanged: onChanged,
+        textAlignVertical: TextAlignVertical.center,
         style: TextStyle(
           fontFamily: 'Cairo',
-          fontSize: 14,
+          fontSize: 13.5,
           color: isDark ? Colors.white : const Color(0xFF0F172A),
         ),
         decoration: InputDecoration(
+          isDense: true,
           hintText: hintText,
           hintStyle: TextStyle(
-            fontFamily: 'Cairo',
-            color: isDark ? Colors.grey[400] : Colors.grey[500],
-          ),
-          prefixIcon: Icon(Icons.search,
-              color: isDark ? Colors.grey[400] : Colors.grey[500]),
-          suffixIcon: controller.text.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear),
-                  onPressed: onClear ?? () => controller.clear(),
-                )
-              : null,
+              fontFamily: 'Cairo', fontSize: 13, color: hintColor),
+          prefixIcon: Icon(Icons.search_rounded, size: 19, color: hintColor),
+          prefixIconConstraints:
+              const BoxConstraints(minWidth: 34, minHeight: 34),
+          suffixIcon: controller.text.isEmpty
+              ? null
+              : InkWell(
+                  onTap: onClear ?? () => controller.clear(),
+                  child: Icon(Icons.close_rounded, size: 17, color: hintColor),
+                ),
+          suffixIconConstraints:
+              const BoxConstraints(minWidth: 32, minHeight: 32),
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
         ),
       ),
     );

@@ -975,46 +975,46 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
             // المجموعة).
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Row(children: [
-                Expanded(
-                  child: CustomSearchBar(
-                    controller: _searchController,
-                    hintText: 'ابحث...',
-                    onChanged: (v) => setState(() => _searchQuery = v),
-                    onClear: () => setState(() {
-                      _searchController.clear();
-                      _searchQuery = '';
-                    }),
+              child: Column(children: [
+                CustomSearchBar(
+                  controller: _searchController,
+                  hintText: 'ابحث عن طالب...',
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                  onClear: () => setState(() {
+                    _searchController.clear();
+                    _searchQuery = '';
+                  }),
+                ),
+                const SizedBox(height: 6),
+                Row(children: [
+                  StudentSortBar(
+                    sortBy: _sortBy,
+                    ascending: _sortAscending,
+                    onChanged: _onSortTap,
                   ),
-                ),
-                const SizedBox(width: 4),
-                StudentSortBar(
-                  sortBy: _sortBy,
-                  ascending: _sortAscending,
-                  onChanged: _onSortTap,
-                ),
-                const SizedBox(width: 4),
-                // spec 020 — اختيار طالب عشوائي للتسميع/السؤال أثناء الحصة
-                Material(
-                  color: groupStudents.isEmpty
-                      ? Colors.grey.withValues(alpha: 0.12)
-                      : AppTheme.primaryColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                  child: InkWell(
+                  const Spacer(),
+                  // spec 020 — اختيار طالب عشوائي للتسميع/السؤال أثناء الحصة
+                  Material(
+                    color: groupStudents.isEmpty
+                        ? Colors.grey.withValues(alpha: 0.12)
+                        : AppTheme.primaryColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(10),
-                    onTap: groupStudents.isEmpty
-                        ? null
-                        : () => _pickRandomStudent(groupStudents, statusMap),
-                    child: Padding(
-                      padding: const EdgeInsets.all(9),
-                      child: Icon(Icons.casino_rounded,
-                          size: 20,
-                          color: groupStudents.isEmpty
-                              ? Colors.grey
-                              : AppTheme.primaryColor),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: groupStudents.isEmpty
+                          ? null
+                          : () => _pickRandomStudent(groupStudents, statusMap),
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Icon(Icons.casino_rounded,
+                            size: 20,
+                            color: groupStudents.isEmpty
+                                ? Colors.grey
+                                : AppTheme.primaryColor),
+                      ),
                     ),
                   ),
-                ),
+                ]),
               ]),
             ),
             const Divider(height: 1, indent: 16, endIndent: 16),
