@@ -31,11 +31,10 @@ class _QuestionBankPageState extends State<QuestionBankPage> {
     super.dispose();
   }
 
-  Future<List<String>> _subjectSuggestions() => DatabaseService().distinctSubjects();
-
   Future<void> _add() async {
-    final q = await showBankQuestionEditor(context,
-        subjectSuggestions: await _subjectSuggestions());
+    final subjects = await DatabaseService().distinctSubjects();
+    if (!mounted) return;
+    final q = await showBankQuestionEditor(context, subjectSuggestions: subjects);
     if (q != null) {
       await c.add(q);
       if (mounted) ToastHelper.success('اتضاف للبنك');
@@ -43,8 +42,10 @@ class _QuestionBankPageState extends State<QuestionBankPage> {
   }
 
   Future<void> _edit(BankQuestion bq) async {
+    final subjects = await DatabaseService().distinctSubjects();
+    if (!mounted) return;
     final q = await showBankQuestionEditor(context,
-        initial: bq, subjectSuggestions: await _subjectSuggestions());
+        initial: bq, subjectSuggestions: subjects);
     if (q != null) {
       await c.save(q);
       if (mounted) ToastHelper.success('اتحفظ');

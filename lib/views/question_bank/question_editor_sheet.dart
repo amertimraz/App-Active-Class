@@ -22,12 +22,9 @@ Future<BankQuestion?> showBankQuestionEditor(
   return showModalBottomSheet<BankQuestion>(
     context: context,
     isScrollControlled: true,
-    builder: (_) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: _QuestionEditorSheet(
-        initial: initial,
-        subjectSuggestions: subjectSuggestions,
-      ),
+    builder: (_) => _QuestionEditorSheet(
+      initial: initial,
+      subjectSuggestions: subjectSuggestions,
     ),
   );
 }
@@ -339,32 +336,29 @@ class _QuestionEditorSheetState extends State<_QuestionEditorSheet> {
                         isDense: true),
                   ),
                   const SizedBox(height: 6),
-                  // المادة (autocomplete)
-                  Autocomplete<String>(
-                    initialValue: TextEditingValue(text: _subject.text),
-                    optionsBuilder: (v) {
-                      final q = v.text.trim();
-                      if (q.isEmpty) return widget.subjectSuggestions;
-                      return widget.subjectSuggestions
-                          .where((s) => s.contains(q));
-                    },
-                    onSelected: (s) => _subject.text = s,
-                    fieldViewBuilder: (ctx, ctrl, focus, onSubmit) {
-                      ctrl.text = _subject.text;
-                      return TextField(
-                        controller: ctrl,
-                        focusNode: focus,
-                        maxLength: 60,
-                        style:
-                            const TextStyle(fontFamily: 'Cairo', fontSize: 13),
-                        decoration: const InputDecoration(
-                            labelText: 'المادة / الموضوع',
-                            labelStyle: TextStyle(fontFamily: 'Cairo'),
-                            isDense: true),
-                        onChanged: (t) => _subject.text = t,
-                      );
-                    },
+                  TextField(
+                    controller: _subject,
+                    maxLength: 60,
+                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                    decoration: const InputDecoration(
+                        labelText: 'المادة / الموضوع',
+                        labelStyle: TextStyle(fontFamily: 'Cairo'),
+                        isDense: true),
                   ),
+                  if (widget.subjectSuggestions.isNotEmpty)
+                    Wrap(
+                      spacing: 6,
+                      children: [
+                        for (final s in widget.subjectSuggestions.take(8))
+                          ActionChip(
+                            label: Text(s,
+                                style: const TextStyle(
+                                    fontFamily: 'Cairo', fontSize: 10.5)),
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => setState(() => _subject.text = s),
+                          ),
+                      ],
+                    ),
                   TextField(
                     controller: _tags,
                     style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
