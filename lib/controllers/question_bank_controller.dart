@@ -20,11 +20,13 @@ class QuestionBankController extends GetxController {
   int get count => _all.length;
 
   /// الأسئلة بعد تطبيق الفلاتر (مادة + وسم + بحث نصّي).
+  // `_all.toList()` بيقرا الـRxList عبر length/[] (مضمون إنه يسجّل القراءة
+  // في Obx) — عكس `_all.where(...)`/`for-in` اللي بيعتمد على iterator.
   List<BankQuestion> get items {
     final s = subjectFilter.value;
     final t = tagFilter.value;
     final q = query.value.trim().toLowerCase();
-    return _all.where((bq) {
+    return _all.toList().where((bq) {
       if (s != null && bq.subject != s) return false;
       if (t != null && !bq.tags.contains(t)) return false;
       if (q.isNotEmpty && !bq.text.toLowerCase().contains(q)) return false;
@@ -34,7 +36,7 @@ class QuestionBankController extends GetxController {
 
   List<String> get subjects {
     final set = <String>{};
-    for (final q in _all) {
+    for (final q in _all.toList()) {
       if (q.subject.trim().isNotEmpty) set.add(q.subject);
     }
     final list = set.toList()..sort();
@@ -43,7 +45,7 @@ class QuestionBankController extends GetxController {
 
   List<String> get tags {
     final set = <String>{};
-    for (final q in _all) {
+    for (final q in _all.toList()) {
       set.addAll(q.tags);
     }
     final list = set.toList()..sort();
@@ -51,11 +53,19 @@ class QuestionBankController extends GetxController {
   }
 
   /// أسئلة البنك ضمن نطاق ("all" / "subject:X" / "tag:Y") — لـ"أضف N عشوائي".
-  List<BankQuestion> pool({String? subject, String? tag}) => _all.where((bq) {
+  List<BankQuestion> pool({String? subject, String? tag}) =>
+      _all.toList().where((bq) {
         if (subject != null && bq.subject != subject) return false;
         if (tag != null && !bq.tags.contains(tag)) return false;
         return true;
       }).toList();
+
+  /// إعادة الفلاتر للوضع الافتراضي (بعد إغلاق شاشة الاختيار).
+  void clearFilters() {
+    subjectFilter.value = null;
+    tagFilter.value = null;
+    query.value = '';
+  }
 
   @override
   void onInit() {

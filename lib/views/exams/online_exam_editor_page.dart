@@ -460,7 +460,8 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
         ],
       ),
     );
-    if (subject == null || !mounted) return;
+    subjectCtrl.dispose();
+    if (subject == null || subject.isEmpty || !mounted) return;
     final bank = Get.isRegistered<QuestionBankController>()
         ? Get.find<QuestionBankController>()
         : Get.put(QuestionBankController());

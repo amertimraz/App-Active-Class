@@ -39,7 +39,9 @@ class _QuestionEditorSheet extends StatefulWidget {
 }
 
 class _QuestionEditorSheetState extends State<_QuestionEditorSheet> {
-  final _ec = Get.find<ExamController>();
+  final _ec = Get.isRegistered<ExamController>()
+      ? Get.find<ExamController>()
+      : Get.put(ExamController());
 
   late ExamQuestionType _type;
   late final TextEditingController _text;

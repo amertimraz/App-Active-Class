@@ -35,6 +35,9 @@ class _QuestionBankPickerPageState extends State<QuestionBankPickerPage> {
   @override
   void dispose() {
     _searchCtrl.dispose();
+    // الفلاتر مشتركة مع QuestionBankController — رجّعها عشان شاشة البنك
+    // متفتحش مفلترة بعد الاختيار.
+    c.clearFilters();
     super.dispose();
   }
 
@@ -48,13 +51,16 @@ class _QuestionBankPickerPageState extends State<QuestionBankPickerPage> {
   }
 
   void _confirmRandom() {
+    if (_randN <= 0) {
+      ToastHelper.info('اكتب عددًا أكبر من صفر');
+      return;
+    }
     final pool = c.pool(subject: _randSubject, tag: _randTag);
     if (pool.isEmpty) {
       ToastHelper.info('لا توجد أسئلة في هذا النطاق');
       return;
     }
-    final picked = pickRandom(pool, _randN);
-    Get.back(result: picked);
+    Get.back(result: pickRandom(pool, _randN));
   }
 
   @override
