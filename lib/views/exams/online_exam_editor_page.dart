@@ -14,9 +14,12 @@ import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/models/bank_question_model.dart';
+import 'package:active_class/controllers/question_bank_controller.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/views/exams/online_exam_preview_page.dart';
+import 'package:active_class/views/question_bank/question_bank_picker_page.dart';
 
 class OnlineExamEditorPage extends StatefulWidget {
   final Exam? existing;
@@ -54,6 +57,17 @@ class _QDraft {
                     : const ['', '']))
             .map((o) => TextEditingController(text: o))
             .toList();
+
+  // spec 025 — إضافة سؤال من البنك كنسخة مستقلة (id = null → صف جديد).
+  factory _QDraft.fromBankQuestion(BankQuestion bq) => _QDraft(
+        type: bq.type,
+        text: bq.text,
+        options: List<String>.from(bq.options),
+        correctIndex: bq.correctIndex,
+        points: bq.points,
+        imageUrl: bq.imageUrl,
+        explanation: bq.explanation ?? '',
+      );
 
   void dispose() {
     text.dispose();
@@ -396,6 +410,66 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
     );
   }
 
+  // spec 025 — أضف أسئلة من البنك كنسخ مستقلة.
+  Future<void> _addFromBank() async {
+    final picked = await Get.to<List<BankQuestion>>(
+        () => const QuestionBankPickerPage());
+    if (picked == null || picked.isEmpty || !mounted) return;
+    setState(() {
+      for (final bq in picked) {
+        _questions.add(_QDraft.fromBankQuestion(bq));
+      }
+    });
+    ToastHelper.success('تمت إضافة ${picked.length} سؤال');
+  }
+
+  // spec 025 — ادفع كل الأسئلة الصالحة للبنك (بمادة واحدة).
+  Future<void> _saveAllToBank() async {
+    final valid = _questions
+        .asMap()
+        .entries
+        .map((e) => e.value.toModel(_examId ?? 0, e.key))
+        .where((q) => q.isValid)
+        .toList();
+    if (valid.isEmpty) {
+      await _blockingMsg('مفيش أسئلة صالحة', 'أكمل سؤالًا صالحًا واحدًا على الأقل.');
+      return;
+    }
+    final subjectCtrl = TextEditingController();
+    final subject = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('المادة',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800, fontSize: 15)),
+        content: TextField(
+          controller: subjectCtrl,
+          autofocus: true,
+          style: const TextStyle(fontFamily: 'Cairo'),
+          decoration: const InputDecoration(
+              hintText: 'مثلاً: رياضيات — الوحدة 3',
+              hintStyle: TextStyle(fontFamily: 'Cairo')),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, subjectCtrl.text.trim()),
+              child: const Text('احفظ', style: TextStyle(fontFamily: 'Cairo'))),
+        ],
+      ),
+    );
+    if (subject == null || !mounted) return;
+    final bank = Get.isRegistered<QuestionBankController>()
+        ? Get.find<QuestionBankController>()
+        : Get.put(QuestionBankController());
+    for (final q in valid) {
+      await bank.add(BankQuestion.fromExamQuestion(q, subject: subject));
+    }
+    if (mounted) ToastHelper.success('اتحفظ ${valid.length} سؤال في البنك');
+  }
+
   Future<void> _pickDateTime(bool opens) async {
     final now = DateTime.now();
     final init = (opens ? _opensAt : _closesAt) ?? now.add(const Duration(hours: 1));
@@ -429,10 +503,27 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                 fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
         actions: [
           IconButton(
+            tooltip: 'أضف من بنك الأسئلة',
+            icon: const Icon(Icons.library_add_outlined),
+            onPressed: _addFromBank,
+          ),
+          IconButton(
             tooltip: 'معاينة',
             icon: const Icon(Icons.visibility_outlined),
             onPressed: _openPreview,
           ),
+          if (_questions.any((q) => q.text.text.trim().isNotEmpty))
+            PopupMenuButton<String>(
+              onSelected: (v) {
+                if (v == 'save_all_bank') _saveAllToBank();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                    value: 'save_all_bank',
+                    child: Text('احفظ كل الأسئلة في البنك',
+                        style: TextStyle(fontFamily: 'Cairo', fontSize: 13))),
+              ],
+            ),
           if (_questions.isNotEmpty)
             Center(
               child: Container(
