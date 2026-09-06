@@ -1047,17 +1047,21 @@ class _PaymentPanel extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            // ── تنبيه معلوماتي بحالة المديونية — نفس اللي في شاشة
-            // "تسجيل دفع" العادية، عشان المعلومة تبقى واحدة في كل شاشات
-            // الدفع. مش بيظهر لمجموعات بالحصة (مفيش مفهوم "مديونية شهر"
-            // ليها) ولا وإحنا لسه بنحمّل بيانات الطالب.
-            if (!controller.isPerSessionGroup && !student.isFullyExempt)
+            // ── تنبيه معلوماتي بحالة المديونية المتراكمة — نفس الرقم
+            // المعروض في كارت تفاصيل الطالب (PricingHelper.accumulatedDebt)
+            // عشان مايبقاش فيه تعارض بين الشاشتين. بيظهر للمجموعات بالحصة
+            // والشهرية (راجع specs/026). مش بيظهر للطالب المعفى بالكامل
+            // ولا أثناء تحميل بيانات الطالب.
+            if (!student.isFullyExempt)
               Obx(() {
                 if (controller.isPreparingPayment.value) {
                   return const SizedBox.shrink();
                 }
                 final debt = controller.scannedStudentDebt;
                 final paidUp = debt <= 0.01;
+                final sessions = controller.isPerSessionGroup
+                    ? controller.scannedStudentDebtSessions
+                    : 0;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Container(
@@ -1080,16 +1084,29 @@ class _PaymentPanel extends StatelessWidget {
                           color: paidUp ? Colors.green : Colors.orange),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          paidUp
-                              ? 'الطالب مفيهوش أي مديونية حاليًا'
-                              : 'متبقي عليه: ${FormatHelper.formatCurrency(debt)}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: paidUp
-                                  ? Colors.green.shade800
-                                  : Colors.orange.shade800),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              paidUp
+                                  ? 'الطالب مفيهوش أي مديونية حاليًا'
+                                  : 'متبقي عليه: ${FormatHelper.formatCurrency(debt)}',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: paidUp
+                                      ? Colors.green.shade800
+                                      : Colors.orange.shade800),
+                            ),
+                            if (!paidUp && sessions >= 1)
+                              Text(
+                                '= $sessions حصة',
+                                style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: Colors.orange.shade700),
+                              ),
+                          ],
                         ),
                       ),
                     ]),
@@ -1229,6 +1246,12 @@ class _PaymentPanel extends StatelessWidget {
                                     textAlign: TextAlign.center,
                                   ),
                                 ),
+                              // دفع مبلغ حرّ من المديونية المتراكمة —
+                              // للمجموعات بالحصة فقط (راجع specs/026).
+                              if (!fullyPaid &&
+                                  controller.scannedStudentDebt > 0.01 &&
+                                  student.effectivePrice > 0)
+                                _DebtAmountField(controller: controller),
                             ],
                           );
                         })
@@ -1770,6 +1793,102 @@ class _StepperBtn extends StatelessWidget {
         ),
         child: Icon(icon,
             size: 16, color: enabled ? Colors.teal : Colors.grey.shade400),
+      ),
+    );
+  }
+}
+
+// حقل "ادفع مبلغًا من المديونية" — للمجموعات بالحصة. بيعرض معاينة لحظية
+// (كام حصة يغطّي + المتبقّي)، وعند "تطبيق" بيضبط override في QRController
+// والمدرس بيكمل بزر "تأكيد الدفع" العادي. راجع specs/026.
+class _DebtAmountField extends StatefulWidget {
+  const _DebtAmountField({required this.controller});
+  final QRController controller;
+
+  @override
+  State<_DebtAmountField> createState() => _DebtAmountFieldState();
+}
+
+class _DebtAmountFieldState extends State<_DebtAmountField> {
+  final TextEditingController _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  double? get _parsed {
+    final v = double.tryParse(_ctrl.text.trim().replaceAll('٫', '.'));
+    if (v == null || v <= 0) return null;
+    return v;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.٫]')),
+                  ],
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    labelText: 'ادفع مبلغًا من المديونية',
+                    labelStyle: const TextStyle(fontSize: 12),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: _parsed == null
+                    ? null
+                    : () {
+                        final ok = c.applyDebtAmountPayment(_parsed!);
+                        if (ok) {
+                          FocusScope.of(context).unfocus();
+                          _ctrl.clear();
+                          setState(() {});
+                        }
+                      },
+                child: const Text('تطبيق'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Obx(() {
+            final amount = _parsed;
+            final debt = c.scannedStudentDebt;
+            if (amount == null) return const SizedBox(height: 2);
+            if (amount > debt + 0.01) {
+              return Text(
+                'المبلغ أكبر من المديونية المتراكمة (${FormatHelper.formatCurrency(debt)})',
+                style: TextStyle(fontSize: 11, color: Colors.red.shade600),
+              );
+            }
+            return Text(
+              'يغطّي ${c.sessionsCoveredBy(amount)} حصة  •  المتبقّي بعد الدفع: '
+              '${FormatHelper.formatCurrency(c.debtRemainingAfter(amount))}',
+              style: TextStyle(
+                  fontSize: 11, color: Colors.teal.shade700),
+            );
+          }),
+        ],
       ),
     );
   }

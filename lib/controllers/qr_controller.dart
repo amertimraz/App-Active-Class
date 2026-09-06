@@ -170,17 +170,35 @@ class QRController extends GetxController {
       // (0 حصة مستحقة ظاهريًا) رغم إن الطالب فعلًا عليه حصة لسه متدفعتش.
       final isPerSession = _scannedGroup.value?.isPerSession ?? false;
       final nowMonth = DateTime(DateTime.now().year, DateTime.now().month);
-      final start = isPerSession
-          ? nowMonth
-          : _oldestUnpaidMonth(student, _scannedGroup.value, payments);
-      final months = _buildUpcomingMonths(start);
+      // بالحصة: نبدأ من شهر انضمام الطالب مش الشهر الحالي — عشان عدّ
+      // الحصص غير المدفوعة وتواريخها (unpaidSessionsCount / unpaidSessionDates
+      // ودفع كل المستحق) يشمل المتأخر القديم كله ويطابق المديونية
+      // المتراكمة (PricingHelper.accumulatedDebt). كل الشهور من الانضمام
+      // للشهر الحالي بتتحدد تلقائيًا — مفيش "اختيار شهور" في الواجهة
+      // للمجموعات دي فمفيش أثر بصري. راجع specs/026.
+      final DateTime start;
+      if (isPerSession) {
+        final joined = student.attendanceStart ?? student.createdAt;
+        start = joined != null
+            ? DateTime(joined.year, joined.month)
+            : nowMonth;
+      } else {
+        start = _oldestUnpaidMonth(student, _scannedGroup.value, payments);
+      }
+      final months = _buildUpcomingMonths(start, perSession: isPerSession);
       upcomingMonths.assignAll(months);
       // اختار أقدم شهر تلقائيًا فقط لو هو شهر **فات** (متأخر فعلًا). الشهر
       // الحالي أو أي شهر جاي بيفضل غير مختار عشان المدرس هو اللي يقرر
       // يحصّله دلوقتي ولا لأ — من غير ما نخصم عليه بالغلط.
-      final autoSelect = isPerSession || start.isBefore(nowMonth);
-      selectedMonths
-          .assignAll(autoSelect && months.isNotEmpty ? [months.first] : []);
+      if (isPerSession) {
+        // كل الشهور من الانضمام لحد الشهر الحالي (شامل).
+        selectedMonths
+            .assignAll(months.where((m) => !m.isAfter(nowMonth)).toList());
+      } else {
+        final autoSelect = start.isBefore(nowMonth);
+        selectedMonths
+            .assignAll(autoSelect && months.isNotEmpty ? [months.first] : []);
+      }
       _sessionsCoveredByQuickPay = 0;
       resetSessionsToPaySelection();
       _recalculateTotal();
@@ -250,9 +268,23 @@ class QRController extends GetxController {
     return current;
   }
 
-  List<DateTime> _buildUpcomingMonths(DateTime start) {
+  List<DateTime> _buildUpcomingMonths(DateTime start, {bool perSession = false}) {
     final now = DateTime.now();
     final current = DateTime(now.year, now.month);
+    // بالحصة: من [start] لحد الشهر الحالي بالظبط — بلا شهور مستقبلية (مفيش
+    // "اختيار شهور" في الواجهة للمجموعات دي) وبلا سقف 12 (طالب متأخر أكتر
+    // من سنة لازم يشوف كل المتأخر). سقف حارس 60 لتجنّب حلقة غير منتهية
+    // لو التواريخ فسدت.
+    if (perSession) {
+      final months = <DateTime>[];
+      var c = DateTime(start.year, start.month);
+      if (c.isAfter(current)) return [current];
+      while (!c.isAfter(current) && months.length < 60) {
+        months.add(c);
+        c = DateTime(c.year, c.month + 1);
+      }
+      return months;
+    }
     // من [start] لحد الشهر الحالي + شهرين قدّام، بحد أدنى 4 شهور وأقصى 12
     // (عشان طالب متأخر شهور كتير يشوف كل المتأخر مش 4 بس).
     var end = DateTime(current.year, current.month + 2);
@@ -556,6 +588,53 @@ class QRController extends GetxController {
       payments: _scannedPayments,
       siblingGroupMembers: _allStudents,
     );
+  }
+
+  // سعر الحصة الفعلي للطالب الممسوح (بعد الإعفاء) — مقام تحويل المديونية
+  // لعدد حصص. صفر لو مفيش طالب أو الطالب معفى بالكامل.
+  double get _effPrice => scannedStudent.value?.effectivePrice ?? 0;
+
+  // المديونية المتراكمة محوّلة لعدد حصص كاملة (floor) — للعرض في شاشة
+  // الدفع بالماسح للمجموعات بالحصة. صفر لو السعر غير صالح. راجع specs/026.
+  int get scannedStudentDebtSessions =>
+      _effPrice > 0 ? (scannedStudentDebt / _effPrice).floor() : 0;
+
+  // معاينة لحظية: كام حصة كاملة يغطّيها [amount] من المديونية.
+  int sessionsCoveredBy(double amount) =>
+      _effPrice > 0 ? (amount / _effPrice).floor() : 0;
+
+  // معاينة لحظية: المتبقّي من المديونية بعد دفع [amount] (لا يقل عن صفر).
+  double debtRemainingAfter(double amount) =>
+      (scannedStudentDebt - amount).clamp(0.0, double.infinity).toDouble();
+
+  /// يضبط دفعة بمبلغ حرّ على حساب المديونية المتراكمة (للمجموعات بالحصة
+  /// فقط). بيرجع true لو المبلغ اتقبل واتضبط الـoverride — الواجهة بعدها
+  /// بتعرض شريط "المبلغ المعدّل" والمدرس بيكمل بزر "تأكيد الدفع".
+  /// منع الزيادة عن المديونية سلوك النسخة الأولى (مفيش رصيد مقدّم من هنا).
+  bool applyDebtAmountPayment(double amount) {
+    if (!isPerSessionGroup) return false;
+    final s = scannedStudent.value;
+    if (s == null) return false;
+    if (amount <= 0) {
+      ToastHelper.error('أدخل مبلغًا صحيحًا');
+      return false;
+    }
+    final debt = scannedStudentDebt;
+    if (debt <= 0.01) {
+      ToastHelper.error('الطالب مفيهوش أي مديونية حاليًا');
+      return false;
+    }
+    if (amount > debt + 0.01) {
+      ToastHelper.error(
+          'المبلغ أكبر من المديونية المتراكمة (${FormatHelper.formatCurrency(debt)})');
+      return false;
+    }
+    final sessions = sessionsCoveredBy(amount);
+    setOverride(amount: amount, note: 'دفعة من المديونية');
+    // لازم بعد setOverride مباشرة (بيصفّرها) — عشان confirmPayment يسجّل
+    // sessions=N الصح في note الدفعة بدل ما يقدّرها من round(المبلغ/السعر).
+    _sessionsCoveredByQuickPay = sessions;
+    return true;
   }
 
   bool get scannedStudentOverdue {
