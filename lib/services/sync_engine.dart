@@ -24,6 +24,7 @@ import 'package:active_class/controllers/exam_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/homework_controller.dart';
 import 'package:active_class/controllers/payment_controller.dart';
+import 'package:active_class/controllers/question_bank_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/services/database_service.dart';
 
@@ -74,6 +75,7 @@ class SyncEngine {
     TABLE_HOMEWORK,
     TABLE_EXAMS,
     TABLE_EXAM_QUESTIONS, // spec 024
+    TABLE_BANK_QUESTIONS, // spec 025 — مستقل (بلا أب)
     TABLE_EXAM_GROUPS,
     TABLE_EXAM_GRADES,
     TABLE_EXAM_SUBMISSIONS, // spec 024 — آخر القائمة (محتاج exams + students)
@@ -100,6 +102,7 @@ class SyncEngine {
   static const _extendedTables = [
     TABLE_EXAM_QUESTIONS,
     TABLE_EXAM_SUBMISSIONS,
+    TABLE_BANK_QUESTIONS, // spec 025
   ];
 
   final DatabaseService _dbService = DatabaseService();
@@ -118,6 +121,7 @@ class SyncEngine {
         TABLE_HOMEWORK => COL_HOMEWORK_ID,
         TABLE_EXAMS => COL_EXAM_ID,
         TABLE_EXAM_QUESTIONS => COL_EQ_ID,
+        TABLE_BANK_QUESTIONS => COL_BQ_ID,
         TABLE_EXAM_GROUPS => COL_EG_ID,
         TABLE_EXAM_GRADES => COL_GRADE_ID,
         TABLE_EXAM_SUBMISSIONS => COL_ES_ID,
@@ -402,6 +406,19 @@ class SyncEngine {
           'points': payload[COL_EQ_POINTS],
           'image_url': payload[COL_EQ_IMAGE_URL],
           'explanation': payload[COL_EQ_EXPLANATION],
+        };
+      case TABLE_BANK_QUESTIONS: // spec 025 — مستقل، بلا أب
+        return {
+          ...base,
+          'type': payload[COL_BQ_TYPE],
+          'text': payload[COL_BQ_TEXT],
+          'options': payload[COL_BQ_OPTIONS],
+          'correct_index': payload[COL_BQ_CORRECT_INDEX],
+          'points': payload[COL_BQ_POINTS],
+          'image_url': payload[COL_BQ_IMAGE_URL],
+          'explanation': payload[COL_BQ_EXPLANATION],
+          'subject': payload[COL_BQ_SUBJECT],
+          'tags': payload[COL_BQ_TAGS],
         };
       case TABLE_EXAM_SUBMISSIONS:
         final examLocalId = payload[COL_ES_EXAM_ID] as int?;
@@ -751,6 +768,11 @@ class SyncEngine {
       case TABLE_EXAM_SUBMISSIONS:
         if (Get.isRegistered<ExamController>()) {
           Get.find<ExamController>().loadExams();
+        }
+        break;
+      case TABLE_BANK_QUESTIONS: // spec 025
+        if (Get.isRegistered<QuestionBankController>()) {
+          Get.find<QuestionBankController>().refresh();
         }
         break;
       case TABLE_STUDENT_FOLLOW_UPS:
@@ -1156,6 +1178,20 @@ class SyncEngine {
           COL_EQ_POINTS: remote['points'],
           COL_EQ_IMAGE_URL: remote['image_url'],
           COL_EQ_EXPLANATION: remote['explanation'],
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_BANK_QUESTIONS: // spec 025
+        return {
+          COL_BQ_TYPE: remote['type'],
+          COL_BQ_TEXT: remote['text'],
+          COL_BQ_OPTIONS: remote['options'],
+          COL_BQ_CORRECT_INDEX: remote['correct_index'],
+          COL_BQ_POINTS: remote['points'],
+          COL_BQ_IMAGE_URL: remote['image_url'],
+          COL_BQ_EXPLANATION: remote['explanation'],
+          COL_BQ_SUBJECT: remote['subject'] ?? '',
+          COL_BQ_TAGS: remote['tags'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };

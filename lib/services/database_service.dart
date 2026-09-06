@@ -14,6 +14,7 @@ import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
+import 'package:active_class/models/bank_question_model.dart';
 import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
@@ -107,6 +108,30 @@ const String _studentFollowUpsTableSql = '''
 const String _studentFollowUpsIndexSql =
     'CREATE INDEX IF NOT EXISTS idx_${TABLE_STUDENT_FOLLOW_UPS}_student '
     'ON $TABLE_STUDENT_FOLLOW_UPS($COL_SFU_STUDENT_ID)';
+
+// spec 025 — بنك الأسئلة. جدول مستقل (بلا FK)، متزامن عبر الفريق
+// (القناة الممتدة) بأعمدة COL_SYNC_* من الإنشاء.
+const String _bankQuestionsTableSql = '''
+  CREATE TABLE IF NOT EXISTS $TABLE_BANK_QUESTIONS (
+    $COL_BQ_ID            INTEGER PRIMARY KEY AUTOINCREMENT,
+    $COL_BQ_TYPE          TEXT NOT NULL,
+    $COL_BQ_TEXT          TEXT NOT NULL,
+    $COL_BQ_OPTIONS       TEXT,
+    $COL_BQ_CORRECT_INDEX INTEGER NOT NULL DEFAULT 0,
+    $COL_BQ_POINTS        REAL NOT NULL DEFAULT 1,
+    $COL_BQ_IMAGE_URL     TEXT,
+    $COL_BQ_EXPLANATION   TEXT,
+    $COL_BQ_SUBJECT       TEXT NOT NULL DEFAULT '',
+    $COL_BQ_TAGS          TEXT,
+    $COL_BQ_CREATED_AT    TEXT DEFAULT CURRENT_TIMESTAMP,
+    $COL_SYNC_UPDATED_AT  TEXT,
+    $COL_SYNC_REMOTE_ID   TEXT
+  )
+''';
+
+const String _bankQuestionsIndexSql =
+    'CREATE INDEX IF NOT EXISTS idx_${TABLE_BANK_QUESTIONS}_subject '
+    'ON $TABLE_BANK_QUESTIONS($COL_BQ_SUBJECT)';
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -304,6 +329,10 @@ class DatabaseService {
     // Student Follow-ups (spec 021) — واقعة "تمّت المتابعة"، متزامَنة عبر الفريق.
     await db.execute(_studentFollowUpsTableSql);
     await db.execute(_studentFollowUpsIndexSql);
+
+    // Bank Questions (spec 025) — بنك أسئلة قابل لإعادة الاستخدام، متزامن عبر الفريق.
+    await db.execute(_bankQuestionsTableSql);
+    await db.execute(_bankQuestionsIndexSql);
 
     // App settings (key/value) — اسم المعلم، العملة، تفضيلات الواجهة...
     await db.execute('''
@@ -717,6 +746,17 @@ class DatabaseService {
           await db.execute(sql);
         } catch (_) {}
       }
+    }
+
+    if (oldVersion < 28) {
+      // spec 025 — جدول بنك الأسئلة (جديد بالكامل، بأعمدة المزامنة من
+      // الإنشاء) — صفر تأثير على أي جدول موجود.
+      try {
+        await db.execute(_bankQuestionsTableSql);
+      } catch (_) {}
+      try {
+        await db.execute(_bankQuestionsIndexSql);
+      } catch (_) {}
     }
   }
 
@@ -2365,6 +2405,62 @@ class DatabaseService {
             TABLE_EXAM_QUESTIONS, COL_EQ_ID, r[COL_EQ_ID] as int);
       }
     }
+  }
+
+  // ── بنك الأسئلة (spec 025) ────────────────────────────────────
+  Future<List<BankQuestion>> getBankQuestions() async {
+    final db = await database;
+    final rows = await db.query(TABLE_BANK_QUESTIONS,
+        orderBy: '$COL_BQ_CREATED_AT DESC, $COL_BQ_ID DESC');
+    return rows.map(BankQuestion.fromMap).toList();
+  }
+
+  Future<int> insertBankQuestion(BankQuestion q) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final map = q.toMap()
+      ..remove(COL_BQ_ID)
+      ..[COL_BQ_CREATED_AT] = now
+      ..[COL_SYNC_UPDATED_AT] = now;
+    final id = await db.insert(TABLE_BANK_QUESTIONS, map);
+    _notifyChanged();
+    await _queueRowUpsert(TABLE_BANK_QUESTIONS, COL_BQ_ID, id);
+    return id;
+  }
+
+  Future<void> updateBankQuestion(BankQuestion q) async {
+    final db = await database;
+    await db.update(
+        TABLE_BANK_QUESTIONS,
+        q.toMap()
+          ..remove(COL_BQ_CREATED_AT)
+          ..[COL_SYNC_UPDATED_AT] = DateTime.now().toIso8601String(),
+        where: '$COL_BQ_ID = ?',
+        whereArgs: [q.id]);
+    _notifyChanged();
+    if (q.id != null) {
+      await _queueRowUpsert(TABLE_BANK_QUESTIONS, COL_BQ_ID, q.id!);
+    }
+  }
+
+  Future<void> deleteBankQuestion(int id) async {
+    final db = await database;
+    final rows = await db.query(TABLE_BANK_QUESTIONS,
+        columns: [COL_SYNC_REMOTE_ID],
+        where: '$COL_BQ_ID = ?', whereArgs: [id], limit: 1);
+    await db
+        .delete(TABLE_BANK_QUESTIONS, where: '$COL_BQ_ID = ?', whereArgs: [id]);
+    _notifyChanged();
+    await _queueDelete(TABLE_BANK_QUESTIONS, id,
+        rows.isEmpty ? null : rows.first[COL_SYNC_REMOTE_ID] as String?);
+  }
+
+  Future<List<String>> distinctSubjects() async {
+    final db = await database;
+    final rows = await db.rawQuery(
+        "SELECT DISTINCT $COL_BQ_SUBJECT AS s FROM $TABLE_BANK_QUESTIONS "
+        "WHERE $COL_BQ_SUBJECT != '' ORDER BY $COL_BQ_SUBJECT ASC");
+    return rows.map((r) => r['s'] as String).toList();
   }
 
   // ── تسليمات الطلاب ─────────────────────────────────────────────

@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 27;
+const int DATABASE_VERSION = 28;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -252,6 +252,7 @@ const String ROUTE_TEAM_MEMBERS        = '/team_members';
 // Get.to مباشر) عشان NotificationService يقدر يفتحها بالاسم عند الضغط
 // على الإشعار الأسبوعي من غير مرجع لـwidget builder.
 const String ROUTE_AT_RISK_STUDENTS    = '/at_risk_students';
+const String ROUTE_QUESTION_BANK       = '/question_bank';
 
 // Standalone login system (self-hosted Supabase) — app_settings keys
 const String SETTING_HAS_LOGGED_IN_BEFORE = 'auth_has_logged_in_before';
@@ -305,6 +306,24 @@ const String COL_SFU_STUDENT_ID      = 'student_id';
 const String COL_SFU_REASON_TYPES    = 'reason_types';    // JSON list<String>
 const String COL_SFU_ACKNOWLEDGED_AT = 'acknowledged_at'; // ISO-8601
 const String COL_SFU_NOTE            = 'note';             // اختياري
+
+// ─────────────────────────────────────────────────────────────────
+//  spec 025 — بنك الأسئلة: أسئلة قابلة لإعادة الاستخدام، مستقلة عن أي
+//  امتحان. متزامن عبر الفريق (القناة الممتدة). نفس محتوى exam_questions
+//  + subject + tags.
+// ─────────────────────────────────────────────────────────────────
+const String TABLE_BANK_QUESTIONS = 'bank_questions';
+const String COL_BQ_ID            = 'id';
+const String COL_BQ_TYPE          = 'type';           // true_false | mcq
+const String COL_BQ_TEXT          = 'text';
+const String COL_BQ_OPTIONS       = 'options';        // JSON list<String>
+const String COL_BQ_CORRECT_INDEX = 'correct_index';
+const String COL_BQ_POINTS        = 'points';
+const String COL_BQ_IMAGE_URL     = 'image_url';
+const String COL_BQ_EXPLANATION   = 'explanation';
+const String COL_BQ_SUBJECT       = 'subject';        // مادة/موضوع (حر)
+const String COL_BQ_TAGS          = 'tags';           // JSON list<String>
+const String COL_BQ_CREATED_AT    = 'created_at';
 
 // app_settings keys — تفعيل/عتبة كل إشارة رصد + مدة التهدئة. غياب أي
 // مفتاح منهم = القيمة الافتراضية المكتوبة جنبه (يشتغل من غير أي ضبط).
