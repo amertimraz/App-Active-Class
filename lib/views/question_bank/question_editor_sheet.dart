@@ -197,7 +197,10 @@ class _QuestionEditorSheetState extends State<_QuestionEditorSheet> {
             Expanded(
               child: ListView(
                 controller: scrollCtrl,
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                // padding سفلي = ارتفاع الكيبورد عشان آخر الحقول تفضل
+                // ظاهرة وقابلة للتمرير فوقه.
+                padding: EdgeInsets.fromLTRB(
+                    16, 0, 16, 24 + MediaQuery.of(context).viewInsets.bottom),
                 children: [
                   // النوع
                   SegmentedButton<ExamQuestionType>(

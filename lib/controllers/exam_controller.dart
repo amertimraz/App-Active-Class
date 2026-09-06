@@ -333,7 +333,8 @@ class ExamController extends GetxController {
         date: DateTime.now(),
         maxGrade: src.maxGrade,
         passingGrade: src.passingGrade,
-        reportMonth: src.reportMonth,
+        // reportMonth: null عمدًا — النسخة امتحان جديد، يتحسب لشهر تاريخه
+        // مش شهر الأصل (اللي ممكن يكون ترم فات).
         isOnline: src.isOnline,
         onlineStatus: OnlineExamStatus.draft,
         durationMinutes: src.durationMinutes,

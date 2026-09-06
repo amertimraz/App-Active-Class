@@ -19,21 +19,21 @@ void main() {
     groupIds: const [1, 2],
   );
 
-  test('يُنسخ: الاسم+(نسخة)، الدرجات، الشهر، المدة', () {
+  test('يُنسخ: الاسم+(نسخة)، الدرجات، المدة', () {
     final d = ExamController.duplicatedExamMeta(src);
     expect(d.name, 'امتحان الوحدة 3 (نسخة)');
     expect(d.maxGrade, 20);
     expect(d.passingGrade, 10);
-    expect(d.reportMonth, '2026-5');
     expect(d.durationMinutes, 45);
     expect(d.isOnline, isTrue);
   });
 
-  test('لا يُنسخ: المجموعات، المواعيد، حالة النشر', () {
+  test('لا يُنسخ: المجموعات، المواعيد، الشهر، حالة النشر', () {
     final d = ExamController.duplicatedExamMeta(src);
     expect(d.groupIds, isEmpty);
     expect(d.opensAt, isNull);
     expect(d.closesAt, isNull);
+    expect(d.reportMonth, isNull); // نسخة = امتحان جديد لشهر تاريخه
     expect(d.onlineStatus, OnlineExamStatus.draft);
     expect(d.id, isNull);
   });
