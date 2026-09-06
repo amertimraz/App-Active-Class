@@ -91,10 +91,10 @@ Mobile single-project — `lib/` + `supabase/*.sql`. المرجع: [plan.md](pla
 
 - [X] T024 `flutter analyze` — صفر أخطاء/تحذيرات.
 - [X] T025 `flutter test` — كل الاختبارات تنجح (يشمل `question_bank_random_test`، `exam_duplicate_test`، `exam_question_cloud_map_test`).
-- [ ] T026 نشر `supabase/migration_question_bank.sql` على Supabase الإنتاج عبر SSH ([quickstart.md](quickstart.md) خطوة 0) + تحقّق (publication، RLS، 3 policies، idempotent).
+- [X] T026 نشر `supabase/migration_question_bank.sql` على Supabase الإنتاج عبر SSH ([quickstart.md](quickstart.md) خطوة 0) + تحقّق (publication، RLS، 3 policies، idempotent).
 - [ ] T027 [P] تحقّق بصري (فاتح/ليلي): شاشة البنك، sheet تحرير السؤال، شاشة الاختيار من البنك، زر "نسخة جديدة".
 - [ ] T028 نفّذ [quickstart.md](quickstart.md) خطوات 1–19 (خصوصًا 7–9 مزامنة بجهازين، 15 فحص Firestore).
-- [ ] T029 [P] حدّث ملاحظات الجلسة: سبيك 025 — `bank_questions` (DB v28، القناة الممتدة، migration عبر SSH)، `BankQuestion`، `QuestionEditor` widget مشترك، `duplicateExam`، `pickRandom`.
+- [X] T029 [P] حدّث ملاحظات الجلسة: سبيك 025 — `bank_questions` (DB v28، القناة الممتدة، migration عبر SSH)، `BankQuestion`، `QuestionEditor` widget مشترك، `duplicateExam`، `pickRandom`.
 
 ---
 
