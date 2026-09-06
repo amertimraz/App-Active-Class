@@ -1248,6 +1248,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       Get.toNamed(ROUTE_BOOKINGS);
                     },
                   ),
+                  _DrawerItem(
+                    icon: Icons.quiz_rounded,
+                    title: 'بنك الأسئلة',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_QUESTION_BANK);
+                    },
+                  ),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Divider(),
