@@ -10,6 +10,7 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/student_follow_up_model.dart';
+import 'package:active_class/models/deletable_record_type.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
@@ -1703,6 +1704,168 @@ class DatabaseService {
       await txn.delete(TABLE_GROUPS);
     });
     // لا نُشعر الحفظ التلقائي هنا — البيانات محذوفة
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  حذف السجلات بمدى تواريخ + نوع (spec 028)
+  //  الطلاب/المجموعات (الروستر) لا تُمَس أبدًا.
+  // ═══════════════════════════════════════════════════════════════════
+
+  /// شرط WHERE لمدى تاريخ نوع معيّن (باستثناء examGrades — ليها منطقها).
+  String _rangeWhere(DeletableRecordType type) =>
+      '${type.dateColumn} >= ? AND ${type.dateColumn} < ?';
+
+  /// معاينة: عدد الصفوف اللي هتتحذف لكل نوع مختار ضمن المدى.
+  Future<Map<DeletableRecordType, int>> countDeletableRecordsInRange({
+    required DateTime from,
+    required DateTime to,
+    required Set<DeletableRecordType> types,
+  }) async {
+    final db = await database;
+    final b = rangeIsoBounds(from, to);
+    final out = <DeletableRecordType, int>{};
+    for (final t in types) {
+      int n;
+      if (t == DeletableRecordType.examGrades) {
+        final r = await db.rawQuery(
+          'SELECT COUNT(*) c FROM $TABLE_EXAM_GRADES '
+          'WHERE $COL_GRADE_EXAM_ID IN '
+          '(SELECT $COL_EXAM_ID FROM $TABLE_EXAMS '
+          ' WHERE $COL_EXAM_DATE >= ? AND $COL_EXAM_DATE < ?)',
+          [b.fromIso, b.toIso],
+        );
+        n = (r.first['c'] as int?) ?? 0;
+      } else {
+        final r = await db.rawQuery(
+          'SELECT COUNT(*) c FROM ${t.mainTable} WHERE ${_rangeWhere(t)}',
+          [b.fromIso, b.toIso],
+        );
+        n = (r.first['c'] as int?) ?? 0;
+      }
+      out[t] = n;
+    }
+    return out;
+  }
+
+  /// حذف صفوف الأنواع المختارة ضمن المدى — transaction واحدة، ثم
+  /// _queueDelete لكل صف مُزامَن (في وضع الفريق فقط). يرجع الأعداد الفعلية.
+  Future<Map<DeletableRecordType, int>> deleteRecordsInRange({
+    required DateTime from,
+    required DateTime to,
+    required Set<DeletableRecordType> types,
+  }) async {
+    final db = await database;
+    final b = rangeIsoBounds(from, to);
+
+    // معرّفات امتحانات المدى — لازمة لدرجات الامتحانات وتوابعها.
+    List<int> examIdsInRange = const [];
+    if (types.contains(DeletableRecordType.exams) ||
+        types.contains(DeletableRecordType.examGrades)) {
+      final rows = await db.query(TABLE_EXAMS,
+          columns: [COL_EXAM_ID],
+          where: '$COL_EXAM_DATE >= ? AND $COL_EXAM_DATE < ?',
+          whereArgs: [b.fromIso, b.toIso]);
+      examIdsInRange = rows.map((r) => r[COL_EXAM_ID] as int).toList();
+    }
+    final examInClause = examIdsInRange.join(',');
+
+    // (1) اجمع (جدول، pk، id، remote_id) لكل صف مُزامَن هيتحذف — قبل الحذف.
+    // dedup بـ"table#id" عشان لو النوع "امتحانات" و"درجات امتحانات" اختيروا
+    // معًا ما نطابورش حذف نفس صف الدرجة مرتين.
+    final pending = <({String table, int id, String? remoteId})>[];
+    final seen = <String>{};
+
+    Future<void> collect(String table, String pkCol, String where,
+        List<Object?> args) async {
+      final rows = await db.query(table,
+          columns: [pkCol, COL_SYNC_REMOTE_ID], where: where, whereArgs: args);
+      for (final r in rows) {
+        final id = r[pkCol] as int;
+        if (!seen.add('$table#$id')) continue;
+        pending.add((
+          table: table,
+          id: id,
+          remoteId: r[COL_SYNC_REMOTE_ID] as String?,
+        ));
+      }
+    }
+
+    for (final t in types) {
+      switch (t) {
+        case DeletableRecordType.attendance:
+        case DeletableRecordType.payments:
+        case DeletableRecordType.homework:
+          await collect(t.mainTable, t.pkColumn, _rangeWhere(t),
+              [b.fromIso, b.toIso]);
+          break;
+        case DeletableRecordType.reportLogs:
+          break; // غير مُزامَن — لا queue
+        case DeletableRecordType.examGrades:
+          if (examIdsInRange.isNotEmpty) {
+            await collect(TABLE_EXAM_GRADES, COL_GRADE_ID,
+                '$COL_GRADE_EXAM_ID IN ($examInClause)', const []);
+          }
+          break;
+        case DeletableRecordType.exams:
+          if (examIdsInRange.isNotEmpty) {
+            await collect(TABLE_EXAM_GRADES, COL_GRADE_ID,
+                '$COL_GRADE_EXAM_ID IN ($examInClause)', const []);
+            await collect(TABLE_EXAM_GROUPS, COL_EG_ID,
+                '$COL_EG_EXAM_ID IN ($examInClause)', const []);
+            await collect(TABLE_EXAM_QUESTIONS, COL_EQ_ID,
+                '$COL_EQ_EXAM_ID IN ($examInClause)', const []);
+            await collect(TABLE_EXAM_SUBMISSIONS, COL_ES_ID,
+                '$COL_ES_EXAM_ID IN ($examInClause)', const []);
+            await collect(TABLE_EXAMS, COL_EXAM_ID,
+                '$COL_EXAM_ID IN ($examInClause)', const []);
+          }
+          break;
+      }
+    }
+
+    // (2) الحذف الذرّي.
+    final deleted = <DeletableRecordType, int>{};
+    await db.transaction((txn) async {
+      for (final t in types) {
+        switch (t) {
+          case DeletableRecordType.attendance:
+          case DeletableRecordType.payments:
+          case DeletableRecordType.homework:
+            deleted[t] = await txn.delete(t.mainTable,
+                where: _rangeWhere(t), whereArgs: [b.fromIso, b.toIso]);
+            break;
+          case DeletableRecordType.reportLogs:
+            deleted[t] = await txn.delete(TABLE_REPORT_LOGS,
+                where: '$COL_REPORT_SENT_AT >= ? AND $COL_REPORT_SENT_AT < ?',
+                whereArgs: [b.fromIso, b.toIso]);
+            break;
+          case DeletableRecordType.examGrades:
+            deleted[t] = examIdsInRange.isEmpty
+                ? 0
+                : await txn.delete(TABLE_EXAM_GRADES,
+                    where: '$COL_GRADE_EXAM_ID IN ($examInClause)');
+            break;
+          case DeletableRecordType.exams:
+            if (examIdsInRange.isEmpty) {
+              deleted[t] = 0;
+            } else {
+              // FK ON DELETE CASCADE بيمسح التوابع (زي deleteExam).
+              deleted[t] = await txn.delete(TABLE_EXAMS,
+                  where: '$COL_EXAM_ID IN ($examInClause)');
+            }
+            break;
+        }
+      }
+    });
+
+    _notifyChanged();
+
+    // (3) بلّغ المزامنة بالحذف (وضع الفريق فقط — _queueSync بيرجع فورًا غيره).
+    for (final p in pending) {
+      await _queueDelete(p.table, p.id, p.remoteId);
+    }
+
+    return deleted;
   }
 
   /// خاص بوضع الفريق — على جهاز المساعد بس. بتمسح كل البيانات اللي

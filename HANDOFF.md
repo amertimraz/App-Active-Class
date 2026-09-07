@@ -63,9 +63,20 @@
 
 **⚠️ لسه محتاج:** commit + تحقّق جهازي.
 
-### spec 028 — حذف السجلات بمدى تواريخ (سبيك فقط — مش متنفّذ)
+### spec 028 — حذف السجلات بمدى تواريخ (متنفّذ بالكامل، لسه ماتعملّوش commit)
 
-`specs/028-delete-records-by-date-range/` — spec.md + checklist جاهزين. **لسه محتاج `/speckit-plan`**. الخلاصة: شاشة إعدادات لحذف حضور/دفعات/درجات/امتحانات/واجبات/سجلّات-تقارير ضمن مدى تواريخ، نسخة احتياطية إجبارية + معاينة + تأكيد، مزامنة الحذف في الاتجاهين (مدرس↔مساعد)، الروستر مستثنى، صفر تغيير DB.
+- `lib/models/deletable_record_type.dart` (جديد): `enum DeletableRecordType` (attendance/payments/examGrades/exams/homework/reportLogs) + `label`/`mainTable`/`dateColumn`/`pkColumn`/`isTeamSynced`؛ `rangeIsoBounds(from,to)` → `[fromIso, toIso)` (يوم البداية 00:00 حتى نهاية يوم النهاية)؛ ثوابت `kBulkDeleteThreshold=100` / `kDeleteConfirmWord='حذف'`.
+- `database_service.dart`: `countDeletableRecordsInRange(...)` (معاينة) + `deleteRecordsInRange(...)` — يجمّع `(table,id,remote_id)` للصفوف المُزامَنة قبل الحذف، `db.transaction` يحذف كل الأنواع، ثم `_queueDelete` لكل صف مُزامَن (وضع الفريق فقط). `report_logs` → حذف محلي بلا queue. الامتحانات: `DELETE exams WHERE id IN (...)` + FK CASCADE للتوابع (زي `deleteExam`). درجات منفصلة: `exam_id IN (امتحانات المدى)`. **درجات الامتحانات تُفلتَر بتاريخ الامتحان الأب** (`exam_grades` مالوش تاريخ ذاتي).
+- `delete_records_controller.dart` (جديد): `GetxController` — المدى/الأنواع/المعاينة، `runPreview()`، `runDelete()` → نسخة احتياطية إجبارية (`BackupService().createBackup()`، فشل → `DeleteBackupFailed` بلا حذف) ثم `deleteRecordsInRange` ثم تحديث `Attendance/Payment/Exam/Dashboard` كونترولرز. `DeleteOutcome` = `DeleteSuccess`/`DeleteBackupFailed`/`DeleteError`.
+- `delete_records_page.dart` (جديد): رأس تحذيري + تاريخَي من/إلى (`showDatePicker`) + `CheckboxListTile` لكل نوع + معاينة + حوار تأكيد (كتابة "حذف" لو الإجمالي > 100) + `ProgressDialog`. تحذير مزامنة الفريق لو `teamModeEnabled && previewTotal > 500`.
+- `settings_page.dart`: سطر "حذف سجلّات بمدى تواريخ" في قسم النسخ الاحتياطي، **بلا** `requireTeamOwnerIfTeamMode` (المساعد يقدر يحذف — الحذف يتزامن اتجاهين).
+- `test/delete_records_range_test.dart` (جديد، 9 اختبارات — `rangeIsoBounds` + خصائص الـenum + عتبة التأكيد؛ تنفيذ الحذف على القاعدة يُتحقَّق يدويًا لعدم وجود بنية اختبار DB in-memory).
+
+**التحقّق:** `flutter test` (83) يعدّي، `flutter analyze` = 34 (baseline، صفر جديد).
+
+**سبيك كامل:** `specs/028-delete-records-by-date-range/` — T001–T012 + T014 ✅، **T013 (تحقّق جهازي — quickstart 1–9) لسه**.
+
+**⚠️ لسه محتاج:** commit + تحقّق جهازي (خصوصًا فشل النسخة الاحتياطية → إلغاء، وجهازين للمزامنة).
 
 ### hotfix — سجل جلسة الدفع كان بيعرض عرض الإخوة عنصر واحد بالمبلغ الكامل (Commit `47cf022`، مدفوع)
 
@@ -129,7 +140,7 @@
 1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.50-play.aab`.
 2. **spec 027 T019 — تحقّق جهازي بجهاز HID حقيقي** (لسه ماتعملش): quickstart سيناريوهات 1–11 — يشمل توقيت الجهاز الفعلي، سلوك إقران البلوتوث، كتابة يدوية لا تسجّل، وضع القارئ الخالص، "جرّب القارئ"، شارة النشاط، عدم الانحدار عند التعطيل. المنطق مغطّى باختبارات وحدة.
 3. **spec 029 — commit + تحقّق جهازي** (quickstart 1–10): شهري متأخر، per-session حصة اليوم فقط (لا تنبيه) vs حصص قديمة (تنبيه)، معفى، تحديث فوري بعد دفعة، تعطيل المفتاح.
-4. **spec 028 — `/speckit-plan`** ثم tasks ثم implement.
+4. **spec 028 — commit + تحقّق جهازي** (quickstart 1–9): فشل النسخة الاحتياطية → إلغاء، جهازين للمزامنة، عدم انحدار الروستر.
 3. **T016 — تحقّق spec 026 جهازيًا** (لسه ماتعملش):
    - عدم انحدار المجموعات **الشهرية** في شاشة الدفع بالماسح (month chips، اختيار شهور، تحصيل، لا حقل مبلغ حرّ، لا سطر «= N حصة») — quickstart سيناريو 5.
    - اختبار جهازين (مدرس + مساعد): الدفعة الجزئية تظهر عند المساعد بمبلغها (مؤكَّد بالكود — بيمرّ بـ`insertPayment` بلا تفرّع، بس مش متأكَّد جهازيًا).

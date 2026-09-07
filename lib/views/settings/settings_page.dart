@@ -38,6 +38,7 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/views/license/trial_banner.dart';
 import 'package:active_class/widgets/update_dialog.dart';
 import 'package:active_class/widgets/hardware_reader_widgets.dart';
+import 'package:active_class/views/settings/delete_records_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -793,6 +794,19 @@ class SettingsPage extends StatelessWidget {
                             title: 'إدارة النسخ الاحتياطية',
                             subtitle: 'عرض وحذف النسخ القديمة',
                             onTap: () => _handleManageBackups(context),
+                          ),
+                          _buildDivider(isDark),
+                          // spec 028 — حذف انتقائي بمدى تواريخ
+                          _buildNavTile(
+                            context,
+                            isDark,
+                            icon: Icons.auto_delete_outlined,
+                            iconColor: const Color(0xFFF59E0B),
+                            title: 'حذف سجلّات بمدى تواريخ',
+                            subtitle:
+                                'احذف حضور/دفعات/امتحانات فترة معيّنة — مع نسخة احتياطية إجبارية',
+                            onTap: () =>
+                                Get.to(() => const DeleteRecordsPage()),
                           ),
                           _buildDivider(isDark),
                           _buildNavTile(
