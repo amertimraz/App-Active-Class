@@ -87,7 +87,8 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
       }
     });
     WidgetsBinding.instance.addObserver(this);
-    // في وضع القارئ الخالص لا نُنشئ متحكّم كاميرا ولا نستخدمه إطلاقًا.
+    // في وضع القارئ الخالص المتحكّم بيتعمل بس مبيتشغّلش أبدًا (الودجت
+    // نفسه مبيتبنيش — بطاقة "القارئ جاهز" مكانه).
     scannerController = MobileScannerController(autoStart: false);
     qrCtrl = Get.isRegistered<QRController>()
         ? Get.find<QRController>()

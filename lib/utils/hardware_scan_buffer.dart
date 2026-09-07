@@ -3,9 +3,13 @@
 // محرّك يجمّع ضغطات المفاتيح القادمة من جهاز قارئ باركود خارجي يعمل
 // بوضع لوحة مفاتيح (HID) ويميّزها عن الكتابة اليدوية للمدرّس.
 //
-// الفكرة: جهاز HID "يكتب" الكود بسرعة عالية جدًا (فواصل ميلي-ثوانٍ
-// قليلة بين الحرف والتالي) وينهيه بـ Enter أو Tab. أي تتابع أبطأ من
-// ذلك = إدخال بشري ويُتجاهَل. لا مكتبات، لا أذونات — فقط KeyEvent.
+// الفكرة: جهاز HID "يكتب" الكود بسرعة عالية جدًا وينهيه بـ Enter أو
+// Tab. عند علامة النهاية نحسب متوسط الزمن لكل حرف على التتابع كله؛
+// لو ≤ maxAvgGap فهو جهاز، غير كده كتابة بشرية → يُهمَل.
+//
+// نستخدم "المتوسط على التتابع كله" بدل "الفاصل بين كل حرفين" لأن
+// jank لحظي في الـUI (كاميرا شغالة + rebuild) ممكن يزوّد فاصلًا
+// واحدًا فيكسر الكشف لو اعتمدنا على فحص كل حرف على حدة.
 //
 // spec 027 — راجع specs/027-hardware-barcode-scanner/contracts/hardware-scan-buffer.md
 import 'dart:async';
@@ -16,24 +20,30 @@ import 'package:flutter/services.dart';
 class HardwareScanBuffer {
   HardwareScanBuffer({
     required this.onScan,
-    this.maxInterKeyGap = const Duration(milliseconds: 50),
-    this.idleReset = const Duration(milliseconds: 150),
+    this.maxAvgGap = const Duration(milliseconds: 50),
+    this.idleReset = const Duration(milliseconds: 300),
+    this.newSequenceGap = const Duration(milliseconds: 250),
     this.minLength = 2,
   });
 
-  /// يُستدعى عند اكتمال مسح صالح (تتابع سريع + علامة نهاية + طول كافٍ).
+  /// يُستدعى عند اكتمال مسح صالح (تتابع + علامة نهاية + سرعة جهاز).
   final void Function(String code) onScan;
 
-  /// أقصى فاصل زمني مقبول بين حرفين ليُعدّ الإدخال قادمًا من جهاز.
-  final Duration maxInterKeyGap;
+  /// أقصى متوسط زمن لكل حرف (من أول حرف لعلامة النهاية) ليُعدّ جهازًا.
+  final Duration maxAvgGap;
 
   /// خمول بلا علامة نهاية أطول من ذلك → تصفية ما تجمّع.
   final Duration idleReset;
+
+  /// فاصل بين ضغطتين أكبر من ذلك = تتابع جديد تمامًا (نصفّي القديم أولًا).
+  final Duration newSequenceGap;
 
   /// أقل طول نص مقبول بعد trim.
   final int minLength;
 
   final StringBuffer _chars = StringBuffer();
+  int _count = 0;
+  DateTime? _seqStart;
   DateTime? _lastKeyAt;
   Timer? _idleTimer;
 
@@ -44,9 +54,8 @@ class HardwareScanBuffer {
 
   DateTime get _now => _nowOverride?.call() ?? DateTime.now();
 
-  /// تُستدعى لكل KeyEvent من Focus.onKeyEvent.
-  /// ترجع true لو استهلكت الحدث (مسح جهاز محتمل) بحيث تقدر الشاشة
-  /// ترجع KeyEventResult.handled وتمنع تسرّبه لودجت أخرى.
+  /// تُستدعى لكل KeyEvent من مستمع الكيبورد في الشاشة.
+  /// ترجع true لو استهلكت الحدث (مسح جهاز محتمل).
   bool feedKey(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
 
@@ -54,7 +63,7 @@ class HardwareScanBuffer {
     if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter ||
         key == LogicalKeyboardKey.tab) {
-      if (_chars.isEmpty) return false;
+      if (_count == 0) return false;
       _flush();
       return true;
     }
@@ -64,11 +73,12 @@ class HardwareScanBuffer {
 
     final now = _now;
     if (_lastKeyAt != null &&
-        now.difference(_lastKeyAt!).abs() > maxInterKeyGap) {
-      // فجوة كبيرة = بداية تتابع جديد؛ ما قبله كان بشريًا/قديمًا.
-      _resetBuffer();
+        now.difference(_lastKeyAt!).abs() > newSequenceGap) {
+      _resetBuffer(); // تتابع جديد؛ ما قبله قديم/بشري
     }
+    _seqStart ??= now;
     _chars.write(ch);
+    _count++;
     _lastKeyAt = now;
     _armIdleTimer();
     return true;
@@ -85,12 +95,21 @@ class HardwareScanBuffer {
   // ── داخلي ───────────────────────────────────────────────────────
   void _flush() {
     final code = _chars.toString().trim();
+    final count = _count;
+    final start = _seqStart;
+    final end = _lastKeyAt ?? _now;
     _resetBuffer();
-    if (code.length >= minLength) onScan(code);
+
+    if (code.length < minLength || count == 0 || start == null) return;
+    // متوسط الزمن لكل حرف على التتابع كله.
+    final avgMs = end.difference(start).inMicroseconds / count / 1000.0;
+    if (avgMs <= maxAvgGap.inMilliseconds) onScan(code);
   }
 
   void _resetBuffer() {
     _chars.clear();
+    _count = 0;
+    _seqStart = null;
     _lastKeyAt = null;
     _idleTimer?.cancel();
     _idleTimer = null;

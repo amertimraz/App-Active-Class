@@ -100,11 +100,21 @@ void main() {
     expect(scanned, isEmpty);
   });
 
-  test('فجوة كبيرة وسط التتابع تعيد البدء', () {
+  test('فجوة كبيرة (> newSequenceGap) وسط التتابع تعيد البدء', () {
     buf.feedKey(_char('X'));
-    clock = clock.add(const Duration(milliseconds: 200)); // فجوة بشرية
+    clock = clock.add(const Duration(milliseconds: 400)); // فجوة بشرية واضحة
     feed('G1-07');
     buf.feedKey(_key(LogicalKeyboardKey.enter));
     expect(scanned, ['G1-07']); // 'X' اتشال
+  });
+
+  test('تتابع سريع مع jank لحظي (فاصل واحد 120ms) لسه بيعدّي', () {
+    // متوسط الزمن هو الحَكَم مش الفاصل الأقصى — jank في فاصل واحد
+    // مايكسرش الكشف طالما المتوسط سريع.
+    buf.feedKey(_char('A'));
+    clock = clock.add(const Duration(milliseconds: 120)); // jank
+    feed('BC12', gapMs: 5);
+    buf.feedKey(_key(LogicalKeyboardKey.enter));
+    expect(scanned, ['ABC12']);
   });
 }
