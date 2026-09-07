@@ -1,13 +1,15 @@
 # Active Class — Handoff (محادثة جديدة)
 
-> آخر تحديث: 2026-09-07. المشروع: `C:\repo\active_class` — تطبيق Flutter عربي/RTL للمدرّسين الخصوصيين.
+> آخر تحديث: 2026-09-07 (مساءً). المشروع: `C:\repo\active_class` — تطبيق Flutter عربي/RTL للمدرّسين الخصوصيين.
 > كلّمني عربي (مصري). Flutter 3.38.1 / Dart 3.5.4، GetX، sqflite، Firebase (بوابة أولياء الأمور + امتحانات أونلاين)، Supabase self-hosted على VPS (مزامنة وضع الفريق).
 
 ---
 
 ## ✅ اللي اتعمل في الجلسة الحالية
 
-### spec 027 — دعم جهاز قارئ باركود خارجي (HID) في شاشتَي الحضور والدفع (متنفّذ بالكامل، لسه ماتعملّوش commit)
+### spec 027 — دعم جهاز قارئ باركود خارجي (HID) في شاشتَي الحضور والدفع (متنفّذ + مدفوع على `main`)
+
+**Commits:** `827a44d` (التنفيذ) + `6e5dc3f` (تحسين خوارزمية الكشف = متوسط الزمن). كلها مدفوعة.
 
 **الفكرة:** جهاز قارئ باركود 2D (USB-OTG أو بلوتوث) بوضع HID = كيبورد: بيـ«كتب» الكود بسرعة + Enter. صفر مكتبات/أذونات/DB/مزامنة.
 
@@ -15,20 +17,25 @@
 - **`lib/config/constants.dart`**: `SETTING_HARDWARE_SCANNER_ENABLED = 'hardware_scanner_enabled'`.
 - **`lib/controllers/settings_controller.dart`**: `RxBool hardwareScannerEnabled` (افتراضي false، محلي، غير مُزامن)، يُحمَّل في `_loadHideQrSettings`، + `setHardwareScannerEnabled`.
 - **`lib/utils/hardware_scan_buffer.dart`** (جديد): `HardwareScanBuffer` — يجمّع `KeyDownEvent`، يُصدر `onScan(code)` عند Enter/Tab/numpadEnter لو: طول ≥2 بعد trim **و متوسط الزمن/حرف على التتابع كله ≤50ms** (متوسط مش فاصل بين كل حرفين — عشان jank لحظي في الـUI ميكسرش الكشف). فجوة >250ms → تتابع جديد؛ خمول >300ms → تصفير. `nowOverride` للاختبار.
-- **`test/hardware_scan_buffer_test.dart`** (جديد، 10 اختبارات كلها تعدّي).
+- **`test/hardware_scan_buffer_test.dart`** (جديد، 11 اختبار كلها تعدّي — يشمل حالة jank لحظي).
 - **`lib/widgets/hardware_reader_widgets.dart`** (جديد): `HardwareActiveBadge` (شارة "القارئ نشط • آخر مسح ..." بعد أول مسح ناجح)، `ReaderReadyPanel` (بديل الكاميرا في الوضع الخالص)، `HardwareScannerTestTile` ("جرّب القارئ" في الإعدادات — يمسك مسح واحد، يعرض النص + "✅ HID"، صفر أثر بيانات)، + `relativeScanText`.
 - **`qr_scanner_attendance_page.dart` + `qr_scanner_payment_page.dart`**: `HardwareKeyboard.instance.addHandler(_hwKeyHandler)` في initState (مش `Focus` — عشان الفوكس ممكن ميبقاش على الشاشة)، بيتشال في dispose. حواجز الـhandler: تاب index==0 + `ModalRoute.isCurrent` + mounted. يغذّي `_scanBuffer` → `_handleQR(code, fromHardware:true)` / `_handle(...)` (حارس التكرار + الصوت + الاهتزاز مُعاد استخدامها). `_pureScannerMode = hardwareEnabled && hideQr` → الكاميرا متتشغّلش خالص + `ReaderReadyPanel`. `_qrTabVisible = !hideQr || pureMode`. الشارة تشتغل بس مع `fromHardware` (مش إدخال يدوي). buffer.reset() عند تبديل التاب.
 - **`settings_page.dart`**: سطر Switch "قارئ باركود خارجي" بعد "إخفاء ماسح QR في الحضور" + `HardwareScannerTestTile` تحته لما مفعّل.
 
-**التحقّق:** كل `flutter test` (63 = 53 قديمة + 10 جديدة) يعدّي، `flutter analyze` = 34 issue (نفس الـbaseline بالظبط، صفر جديد).
+**التحقّق:** كل `flutter test` (64) يعدّي، `flutter analyze` = 34 issue (نفس الـbaseline بالظبط، صفر جديد).
 
 **قرار مهم موثّق في السبيك:** مفيش «زر ربط» ولا عرض اسم الجهاز — مستحيل مع HID (الجهاز كيبورد بالنسبة للـOS). الجاهزية تُستنتج من نجاح مسح فعلي (الشارة + "جرّب القارئ").
 
 **خارج النطاق (follow-ups):** طباعة باركود 1D على الكروت، وضع «الموبايل مقفول/الخلفية» (محتاج Bluetooth SPP).
 
-**سبيك كامل:** `specs/027-hardware-barcode-scanner/` — T001–T018 ✅، **T019 (تحقّق جهازي) + T020 (تحديث HANDOFF/memory — دلوقتي) لسه**.
+**سبيك كامل:** `specs/027-hardware-barcode-scanner/` — T001–T018 + T020 ✅، **T019 (تحقّق جهازي بجهاز HID حقيقي — quickstart سيناريوهات 1–11) لسه ماتعملش**.
 
-**⚠️ لسه محتاج:** commit على `main` (بإذن)، وتحقّق جهازي بجهاز HID حقيقي (quickstart سيناريوهات 1–11).
+### hotfix — سجل جلسة الدفع كان بيعرض عرض الإخوة عنصر واحد بالمبلغ الكامل (Commit `47cf022`، مدفوع)
+
+كان سجل "دفعوا اليوم" الحيّ يضيف عنصرًا واحدًا باسم الطالب الممسوح وبالمبلغ الإجمالي (150) بدل عنصر لكل أخ بنصيبه (75+75). القاعدة كانت مضبوطة والـhydrate بعد إعادة التشغيل صح — الخطأ في `_session.add` الحيّ فقط.
+- `QRController.lastSiblingSplit`: قائمة صف لكل أخ (paymentId/الاسم/المبلغ/هاتف)، تُملأ داخل حلقة الإخوة، تُصفَّر أول كل `confirmPayment`.
+- `qr_scanner_payment_page._confirmPayment`: لو `lastSiblingSplit` مش فاضية → عنصر سجل لكل أخ بنصيبه؛ غير كده السلوك القديم.
+- الإجمالي مكانش غلط (150 = الفعلي)؛ العدد بقى +2 بدل +1 = أدق ومتطابق مع ما بعد إعادة التشغيل.
 
 ---
 
@@ -83,7 +90,8 @@
 ## ⏳ متبقّي / مفتوح
 
 1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.49-play.aab`.
-2. **T016 — تحقّق spec 026 جهازيًا** (لسه ماتعملش):
+2. **spec 027 T019 — تحقّق جهازي بجهاز HID حقيقي** (لسه ماتعملش): quickstart سيناريوهات 1–11 — يشمل توقيت الجهاز الفعلي، سلوك إقران البلوتوث، كتابة يدوية لا تسجّل، وضع القارئ الخالص، "جرّب القارئ"، شارة النشاط، عدم الانحدار عند التعطيل. المنطق مغطّى باختبارات وحدة.
+3. **T016 — تحقّق spec 026 جهازيًا** (لسه ماتعملش):
    - عدم انحدار المجموعات **الشهرية** في شاشة الدفع بالماسح (month chips، اختيار شهور، تحصيل، لا حقل مبلغ حرّ، لا سطر «= N حصة») — quickstart سيناريو 5.
    - اختبار جهازين (مدرس + مساعد): الدفعة الجزئية تظهر عند المساعد بمبلغها (مؤكَّد بالكود — بيمرّ بـ`insertPayment` بلا تفرّع، بس مش متأكَّد جهازيًا).
    - quickstart سيناريوهات 1–4 كلها على جهاز حقيقي.
