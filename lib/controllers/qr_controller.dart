@@ -29,6 +29,16 @@ class QRController extends GetxController {
   // (مش لسيبلنج) — عشان قايمة "دفعوا اليوم" (SessionLogController) تقدر
   // تربط عنصرها بالدفعة الحقيقية وتشيله لو اتحذفت بعدين.
   final Rxn<int> lastConfirmedPaymentId = Rxn<int>();
+  // تفاصيل آخر دفعة "عرض إخوة" — صف لكل أخ بنصيبه الفعلي (total ÷ العدد)
+  // عشان سجل جلسة الدفع يضيف عنصرًا لكل أخ باسمه ومبلغه الصحيح، بدل
+  // عنصر واحد بالمبلغ الإجمالي على الطالب الممسوح. فاضية لو الدفعة عادية.
+  final List<
+      ({
+        int? paymentId,
+        String studentName,
+        double amount,
+        String? guardianPhone,
+      })> lastSiblingSplit = [];
   final RxBool isPreparingPayment = false.obs;
   final RxList<DateTime> upcomingMonths = <DateTime>[].obs;
   final RxList<DateTime> selectedMonths = <DateTime>[].obs;
@@ -415,6 +425,7 @@ class QRController extends GetxController {
                     .clamp(1, 999)
                 : unpaidSessionsCount);
     isProcessing.value = true;
+    lastSiblingSplit.clear();
     try {
       final now = DateTime.now();
       final labels = selectedMonths.map(formatMonth).toList();
@@ -463,6 +474,13 @@ class QRController extends GetxController {
             // نلقط id دفعة الطالب الممسوح نفسه بس (مش إخوته) — هو اللي
             // بيتسجّل في سجل "دفعوا اليوم".
             if (m.id == student.id) lastConfirmedPaymentId.value = insertedId;
+            // كل أخ بنصيبه الفعلي — عشان السجل يعرض التوزيعة الصح.
+            lastSiblingSplit.add((
+              paymentId: insertedId,
+              studentName: m.name,
+              amount: each,
+              guardianPhone: m.guardianPhone,
+            ));
             unawaited(ParentPortalService().pushStudentSummary(m.id!));
           }
           _refreshDashboard();

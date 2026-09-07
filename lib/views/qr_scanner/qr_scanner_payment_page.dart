@@ -319,15 +319,33 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
       HapticFeedback.heavyImpact();
 
       // Add to session log (يبقى طوال اليوم)
-      _session.add(SessionEntry(
-        studentName: student.name,
-        amount: amount,
-        monthCount: monthCount,
-        isPerSession: isPerSession,
-        time: DateTime.now(),
-        guardianPhone: student.guardianPhone,
-        paymentId: controller.lastConfirmedPaymentId.value,
-      ));
+      final now = DateTime.now();
+      final split = controller.lastSiblingSplit;
+      if (split.isNotEmpty) {
+        // عرض إخوة: عنصر لكل أخ بنصيبه الفعلي. نضيف بترتيب معكوس عشان
+        // الطالب الممسوح (أول عنصر في القائمة) يفضل فوق في السجل.
+        for (final e in split.reversed) {
+          _session.add(SessionEntry(
+            studentName: e.studentName,
+            amount: e.amount,
+            monthCount: monthCount,
+            isPerSession: false,
+            time: now,
+            guardianPhone: e.guardianPhone,
+            paymentId: e.paymentId,
+          ));
+        }
+      } else {
+        _session.add(SessionEntry(
+          studentName: student.name,
+          amount: amount,
+          monthCount: monthCount,
+          isPerSession: isPerSession,
+          time: now,
+          guardianPhone: student.guardianPhone,
+          paymentId: controller.lastConfirmedPaymentId.value,
+        ));
+      }
       setState(() {
         _lastScan = null;
         _lastScanAt = null;
