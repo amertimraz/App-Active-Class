@@ -16,7 +16,9 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/hardware_scan_buffer.dart';
 import 'package:active_class/widgets/clock_text.dart';
+import 'package:active_class/widgets/hardware_reader_widgets.dart';
 
 // ══════════════════════════════════════════════════════════════════
 //  QRScannerAttendancePage
@@ -48,20 +50,36 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
   DateTime? _lastScanAt;
   bool _hideQr = false;
 
+  // ── جهاز قارئ باركود خارجي (HID) — spec 027 ──────────────────────
+  bool _hardwareEnabled = false;
+  bool _pureScannerMode = false; // hardware + hideQr → لا كاميرا إطلاقًا
+  bool _qrTabVisible = true; // تاب "مسح QR" يظهر (كاميرا أو بطاقة القارئ)
+  HardwareScanBuffer? _scanBuffer;
+  DateTime? _lastHardwareScanAt; // آخر مسح جهاز ناجح — لشارة "القارئ نشط"
+
   @override
   void initState() {
     super.initState();
     _hideQr = Get.isRegistered<SettingsController>() &&
         Get.find<SettingsController>().hideQrInAttendance.value;
+    _hardwareEnabled = Get.isRegistered<SettingsController>() &&
+        Get.find<SettingsController>().hardwareScannerEnabled.value;
+    _pureScannerMode = _hardwareEnabled && _hideQr;
+    _qrTabVisible = !_hideQr || _pureScannerMode;
+    if (_hardwareEnabled) {
+      _scanBuffer = HardwareScanBuffer(onScan: (code) => _handleQR(code, fromHardware: true));
+      HardwareKeyboard.instance.addHandler(_hwKeyHandler);
+    }
     _tabController = TabController(
       length: 2,
       vsync: this,
-      initialIndex: _hideQr ? 1 : 0,
+      initialIndex: _qrTabVisible ? 0 : 1,
     );
     // نفس منطق شاشة الدفع: نوقف الكاميرا لما نبعد عن تاب "مسح QR"
     // عشان متفضلش شغالة في الخلفية وتتعارض مع البحث اليدوي.
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) return;
+      _scanBuffer?.reset(); // متبقّاش أحرف تتابع نص من تبويب سابق
       if (_tabController.index == 0 && !_hideQr) {
         _safeStartScanner();
       } else {
@@ -69,6 +87,7 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
       }
     });
     WidgetsBinding.instance.addObserver(this);
+    // في وضع القارئ الخالص لا نُنشئ متحكّم كاميرا ولا نستخدمه إطلاقًا.
     scannerController = MobileScannerController(autoStart: false);
     qrCtrl = Get.isRegistered<QRController>()
         ? Get.find<QRController>()
@@ -87,6 +106,8 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
   void dispose() {
     _tabController.dispose();
     WidgetsBinding.instance.removeObserver(this);
+    if (_hardwareEnabled) HardwareKeyboard.instance.removeHandler(_hwKeyHandler);
+    _scanBuffer?.dispose();
     scannerController.dispose();
     _searchCtrl.dispose();
     super.dispose();
@@ -94,12 +115,14 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
 
   // ── تشغيل/إيقاف الكاميرا بأمان (نفس إصلاح شاشة الدفع) ───────────
   Future<void> _safeStartScanner() async {
+    if (_pureScannerMode) return;
     try {
       await scannerController.start();
     } catch (_) {}
   }
 
   Future<void> _safeStopScanner() async {
+    if (_pureScannerMode) return;
     try {
       await scannerController.stop();
     } catch (_) {}
@@ -107,8 +130,14 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) _safeStopScanner();
-    if (state == AppLifecycleState.resumed && !_hideQr) _safeStartScanner();
+    if (state == AppLifecycleState.paused) {
+      _safeStopScanner();
+      _scanBuffer?.reset();
+    }
+    if (state == AppLifecycleState.resumed) {
+      _scanBuffer?.reset();
+      if (!_hideQr) _safeStartScanner();
+    }
   }
 
   // ── Search ───────────────────────────────────────────────────────
@@ -125,7 +154,7 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
   }
 
   // ── Handle QR scan ───────────────────────────────────────────────
-  Future<void> _handleQR(String qr) async {
+  Future<void> _handleQR(String qr, {bool fromHardware = false}) async {
     if (qrCtrl.isProcessing.value) return;
     final now = DateTime.now();
     if (_lastScan == qr &&
@@ -144,6 +173,9 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
     } else {
       HapticFeedback.selectionClick();
       SoundHelper.scanSuccess();
+      if (fromHardware && mounted) {
+        setState(() => _lastHardwareScanAt = DateTime.now());
+      }
     }
   }
 
@@ -282,7 +314,7 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
             },
           ),
         ],
-        bottom: _hideQr
+        bottom: !_qrTabVisible
             ? null
             : TabBar(
                 controller: _tabController,
@@ -297,7 +329,7 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
       ),
       body: TabBarView(
         controller: _tabController,
-        physics: _hideQr ? const NeverScrollableScrollPhysics() : null,
+        physics: !_qrTabVisible ? const NeverScrollableScrollPhysics() : null,
         children: [
           // ── QR Tab ─────────────────────────────────────────────
           Column(children: [
@@ -314,7 +346,17 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
               if (count == 0) return const SizedBox.shrink();
               return _AttendanceStatsBar(count: count, onTap: _showSessionSheet);
             }),
-            // الكاميرا
+            // شارة "القارئ الخارجي نشط" — spec 027
+            if (_hardwareEnabled && _lastHardwareScanAt != null)
+              HardwareActiveBadge(lastScanAt: _lastHardwareScanAt!),
+            // الكاميرا — أو بطاقة "القارئ جاهز" في وضع القارئ الخالص
+            if (_pureScannerMode)
+              Expanded(
+                flex: 5,
+                child: ReaderReadyPanel(
+                    lastScanAt: _lastHardwareScanAt),
+              )
+            else
             Expanded(
               flex: 5,
               child: Stack(fit: StackFit.expand, children: [
@@ -411,6 +453,17 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
         ],
       ),
     );
+  }
+
+  // مستمع كيبورد عام — مش بيعتمد على مين ماسك الفوكس (أضمن من Focus
+  // widget لشاشة "كشك" زي دي). بيتجاهل الإدخال لو:
+  //  - إحنا مش في تبويب "مسح QR"
+  //  - في حوار/شاشة فوق دي (حوار "إدخال كود يدويًا" مثلاً)
+  bool _hwKeyHandler(KeyEvent event) {
+    if (!mounted || _scanBuffer == null) return false;
+    if (_tabController.index != 0) return false;
+    if (ModalRoute.of(context)?.isCurrent != true) return false;
+    return _scanBuffer!.feedKey(event);
   }
 
   // ── Session bottom sheet ─────────────────────────────────────────

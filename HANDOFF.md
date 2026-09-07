@@ -1,178 +1,126 @@
-# Handoff — جلسة العمل الحالية (30 أغسطس 2026)
+# Active Class — Handoff (محادثة جديدة)
 
-آخر حاجة كنت واقف عندها: **بأتأكد لايف على الجهاز إن إصلاح زرار "دفع حصة متأخرة" شغّال**، لسه ما اتأكدتش بالكامل. باقي كل حاجة تانية اتعملها وعُمل لها commit + push على main.
-
----
-
-## 1) إصلاح زرار "دفع حصة متأخرة" — ✅ خلص (اتأكد لايف 31 أغسطس 2026: المدرس جرّب على الجهاز والزرار اشتغل صح وحسب الحصة المتأخرة)
-
-**الباج المُبلَّغ عنه**: مدرس بيضغط "دفع حصة متأخرة" لطالب في مجموعة "بالحصة" ومفيش أي أكشن بيحصل.
-
-**السبب** (اتأكد من الكود): في `lib/controllers/qr_controller.dart`، دالة `_preparePayment` كانت بتحسب "الشهر الافتراضي" عن طريق `_determineStartMonth` اللي بتقفز للشهر الجاي بمجرد ما تلاقي أي دفعة اتسجلت في الشهر الحالي — ده صح لمجموعات الاشتراك الشهري، لكن غلط لمجموعات "بالحصة": الطالب ممكن يدفع لـ5 حصص في أغسطس وبعدين يحضر حصة سادسة **لسه في نفس أغسطس**، فكانت الشاشة بتدوّر على حصص مستحقة في سبتمبر (شهر فاضي) وتلاقي "0 حصة"، فيفشل الزرار بصمت.
-
-**الإصلاح** (مطبّق في `_preparePayment`): مجموعات "بالحصة" دلوقتي بتستخدم الشهر الحالي دايمًا كنافذة افتراضية، بغض النظر عن أي دفعات سابقة في نفس الشهر.
-
-**Commit**: `a2ece2e` — "fix per-session Pay-overdue button doing nothing" (على main بالفعل).
-
-### اللي باقي أعمله (أول حاجة في الجلسة الجاية):
-- الجهاز متوصل (serial `9aecbc89`، فلافور `direct`)، والـAPK الجديد (فيه الإصلاح) اتبنى واتنصّب بالفعل.
-- كنت بدوّر على طالب "بالحصة" له دفعة سابقة في نفس الشهر الحالي عشان أتأكد إن "دفع حصة متأخرة" بقى بيشتغل صح (يحسب الحصة الجديدة المستحقة، مش يفضل واقف على 0).
-- **مشكلة تقنية واجهتني**: `adb shell input text` مش بيقبل نص عربي (بيرمي `NullPointerException`) — لازم أدوّر بالكود بدل الاسم (مثلاً كود الطالب زي `G9A01`)، أو أستخدم لوحة مفاتيح تانية.
-- الطالب الأصلي من تقرير الباج: **زياد أحمد مرسي**، مجموعة "الثالث الإعدادي التل"، 20 جنيه/الحصة، دفع 100 جنيه (5 حصص) بتاريخ 24-08-2026، وعنده 6 حصص حضور إجمالي — يعني المفروض عليه حصة سادسة متأخرة (20 جنيه).
-- لو مش لاقيه بالبحث، أقدر أدخل من "الطلاب" أو من تفاصيل المجموعة وأدوس على أيقونة الدفع بتاعته مباشرة بدل البحث.
-- بعد ما أتأكد، لو في مشكلة تانية ظهرت، تبقى مهمة جديدة؛ لو اشتغل صح، الموضوع خلص والمدرس يقدر يستخدم التطبيق عادي بعد ما يحدّث النسخة.
+> آخر تحديث: 2026-09-07. المشروع: `C:\repo\active_class` — تطبيق Flutter عربي/RTL للمدرّسين الخصوصيين.
+> كلّمني عربي (مصري). Flutter 3.38.1 / Dart 3.5.4، GetX، sqflite، Firebase (بوابة أولياء الأمور + امتحانات أونلاين)، Supabase self-hosted على VPS (مزامنة وضع الفريق).
 
 ---
 
-## 1ب) شاشة إدخال درجات الامتحان — مربع رمادي + أرقام متداخلة فوق — ✅ في الكود، ⏳ لسه بيتأكد لايف، ⏳ لسه ماعُملش commit
+## ✅ اللي اتعمل في الجلسة الحالية
 
-**البلاغ**: بعض المدرسين وهُم بيسجلوا درجات الامتحان بيظهر معاهم:
-1. أرقام رمادية متداخلة فوق شريط الإحصائيات (8/2/4/2).
-2. مربع رمادي كبير ثابت في نص الشاشة مكان قائمة الطلاب (بيفضل رمادي حتى بعد قفل الكيبورد).
+### spec 027 — دعم جهاز قارئ باركود خارجي (HID) في شاشتَي الحضور والدفع (متنفّذ بالكامل، لسه ماتعملّوش commit)
 
-**السبب**:
-1. `_DistributionChart` في `exam_grades_page.dart` كان مضبوط عليه `showingTooltipIndicators: [0]` (tooltips ثابتة فوق كل عمود) — بترسم فوق حدود الرسم الصغير وتركب على شرائح الإحصائيات.
-2. **المربع الرمادي = `ErrorWidget` في بناء release** (رمادي بدل الأحمر). `_GradeRow._initials` كان بيعمل `name.trim().split(' ')` وبعدين `parts[0][0]` / `parts[1][0]` — أي طالب اسمه فيه **مسافتين ورا بعض** (مثلاً "محمد  علي") بيدّي جزء فاضي `''` فـ`[0]` بترمي `RangeError`، فالصف كله بيقع وقائمة الطلاب كلها بتتحوّل لمربع رمادي.
+**الفكرة:** جهاز قارئ باركود 2D (USB-OTG أو بلوتوث) بوضع HID = كيبورد: بيـ«كتب» الكود بسرعة + Enter. صفر مكتبات/أذونات/DB/مزامنة.
 
-**الإصلاح** (3 ملفات):
-- `exam_grades_page.dart`: شِلت الـtooltips الثابتة، العدد بقى نص تحت اسم التصنيف، لفّيت الرسم بـ`ClipRect`، عطّلت لمس الرسم، وحصّنت `getTitlesWidget` ضد index بره المدى.
-- `_initials` في `exam_grades_page.dart` + `student_exam_history_page.dart` + `leaderboard_page.dart` (نفس النمط الهش بالظبط في التلاتة): بقت تستخدم `split(RegExp(r'\s+'))` + فلترة الفاضي + `if (parts.isEmpty) return '؟'`.
+**اللي اتعمل:**
+- **`lib/config/constants.dart`**: `SETTING_HARDWARE_SCANNER_ENABLED = 'hardware_scanner_enabled'`.
+- **`lib/controllers/settings_controller.dart`**: `RxBool hardwareScannerEnabled` (افتراضي false، محلي، غير مُزامن)، يُحمَّل في `_loadHideQrSettings`، + `setHardwareScannerEnabled`.
+- **`lib/utils/hardware_scan_buffer.dart`** (جديد): `HardwareScanBuffer` — يجمّع `KeyDownEvent`، يُصدر `onScan(code)` فقط لو الفاصل ≤50ms + ينتهي Enter/Tab/numpadEnter + طول ≥2 بعد trim؛ خمول >150ms → تصفير. `nowOverride` للاختبار.
+- **`test/hardware_scan_buffer_test.dart`** (جديد، 10 اختبارات كلها تعدّي).
+- **`lib/widgets/hardware_reader_widgets.dart`** (جديد): `HardwareActiveBadge` (شارة "القارئ نشط • آخر مسح ..." بعد أول مسح ناجح)، `ReaderReadyPanel` (بديل الكاميرا في الوضع الخالص)، `HardwareScannerTestTile` ("جرّب القارئ" في الإعدادات — يمسك مسح واحد، يعرض النص + "✅ HID"، صفر أثر بيانات)، + `relativeScanText`.
+- **`qr_scanner_attendance_page.dart` + `qr_scanner_payment_page.dart`**: `HardwareKeyboard.instance.addHandler(_hwKeyHandler)` في initState (مش `Focus` — عشان الفوكس ممكن ميبقاش على الشاشة)، بيتشال في dispose. حواجز الـhandler: تاب index==0 + `ModalRoute.isCurrent` + mounted. يغذّي `_scanBuffer` → `_handleQR(code, fromHardware:true)` / `_handle(...)` (حارس التكرار + الصوت + الاهتزاز مُعاد استخدامها). `_pureScannerMode = hardwareEnabled && hideQr` → الكاميرا متتشغّلش خالص + `ReaderReadyPanel`. `_qrTabVisible = !hideQr || pureMode`. الشارة تشتغل بس مع `fromHardware` (مش إدخال يدوي). buffer.reset() عند تبديل التاب.
+- **`settings_page.dart`**: سطر Switch "قارئ باركود خارجي" بعد "إخفاء ماسح QR في الحضور" + `HardwareScannerTestTile` تحته لما مفعّل.
 
-`flutter analyze` نضيف، والـAPK اتبنى (`app-direct-debug.apk`) بس الجهاز مش متوصل دلوقتي فلسه ماتنصّبش/ماتأكدش لايف.
+**التحقّق:** كل `flutter test` (63 = 53 قديمة + 10 جديدة) يعدّي، `flutter analyze` = 34 issue (نفس الـbaseline بالظبط، صفر جديد).
 
----
+**قرار مهم موثّق في السبيك:** مفيش «زر ربط» ولا عرض اسم الجهاز — مستحيل مع HID (الجهاز كيبورد بالنسبة للـOS). الجاهزية تُستنتج من نجاح مسح فعلي (الشارة + "جرّب القارئ").
 
-## 1ج) زر تعديل "المديونية المتراكمة" في تفاصيل الطالب — 🚧 الزر متخفي مؤقتًا، محتاج إعادة تصميم
+**خارج النطاق (follow-ups):** طباعة باركود 1D على الكروت، وضع «الموبايل مقفول/الخلفية» (محتاج Bluetooth SPP).
 
-**البلاغ**: زر القلم جنب "مديونية متراكمة 80.00 جنيه" (تبويب المدفوعات) كان بيفتح شيت "تعديل طالب" كامل. المدرس عايزه يعدّل رقم المديونية نفسه على طول.
+**سبيك كامل:** `specs/027-hardware-barcode-scanner/` — T001–T018 ✅، **T019 (تحقّق جهازي) + T020 (تحديث HANDOFF/memory — دلوقتي) لسه**.
 
-**الوضع**: المديونية مش حقل مخزَّن — محسوبة (`PricingHelper.accumulatedDebt` = مجموع المستحق شهريًا − مجموع الدفعات).
-
-**اللي اتعمل دلوقتي**: اتجرّب حل إن الزر يفتح نافذة تكتب فيها المبلغ الصح ويتسجّل "سطر تسوية" كدفعة بالفرق — **بس المدرس طلب نأجّله ونظبطه الأول**، فاترجع بالكامل واتخفى الزر مؤقتًا من كارت المديونية (شيلت الـ`IconButton` + باراميتر `onEdit` من `_PaymentsTab` في `student_details_page.dart`). الكارت دلوقتي بيعرض الرقم من غير أي زر.
-
-**الخطوة الجاية**: نتفق على التصميم النهائي (تسوية كدفعة؟ حقل رصيد افتتاحي مخزَّن؟ سلوك تاني؟) وبعدين نبني.
+**⚠️ لسه محتاج:** commit على `main` (بإذن)، وتحقّق جهازي بجهاز HID حقيقي (quickstart سيناريوهات 1–11).
 
 ---
 
-## 1د) زر "أرشفة الطالب" → بقى "حذف" بنافذة تلات اختيارات — ✅ في الكود، ⏳ لسه ماعُملش commit
+## ✅ اللي اتعمل في جلسات سابقة
 
-**المطلوب**: بدل ما زر الأرشفة يأرشف على طول، يبقى زر "حذف" يفتح نافذة فيها: **أرشفة** (الافتراضي الآمن) / **حذف نهائي** (بتأكيد تاني، بيمسح كل حضور/دفعات/درجات الطالب — cascade) / **إلغاء**.
+### 1) spec 026 — تحصيل المديونية المتراكمة من شاشة الدفع بالماسح (متنفّذ بالكامل)
 
-**اللي اتعمل**:
-- ملف جديد `lib/widgets/remove_student_dialog.dart` فيه `showRemoveStudentDialog()` — نافذة موحّدة بتاخد callbacks لـ`onArchive` / `onDeletePermanently` (كل واحد بيرجّع `Future<bool>`) و`onRemoved` اختياري (عشان شاشة التفاصيل ترجع لبرا). الحذف النهائي بتأكيد تاني صريح. الصلاحية متحكوم فيها بـ`requireDeletePermission` + `TeamModeService().canDeleteStudentsNow` جوه الـhelper.
-- اتربط في 3 شاشات: `student_details_page.dart` (`_confirmRemove` — أيقونة سلة بدل أرشفة في الـAppBar، وبترجع لبرا بعد النجاح)، `students_page.dart` (`_confirmArchive` — عنصر القائمة/الشبكة بقى "حذف" أحمر)، `group_details_page.dart` (`_confirmArchiveStudent` — نفس الشيء، ومحافظ على `syncAllScheduledNotifications` بعد الأرشفة/الحذف).
-- الحذف النهائي للطلاب المؤرشفين في `archived_students_page.dart` سايبه زي ماهو (مكانه صح).
-- شيلت imports بقت مش مستخدمة من `students_page.dart` (`helpers.dart`, `app_toast.dart`).
+**المشكلة:** شاشة `qr_scanner_payment_page.dart` للمجموعات **بالحصة** كانت بتحسب الحصص المستحقة ضمن **الشهر الحالي فقط** (`QRController._preparePayment` كان `start = nowMonth`)، فتتعارض مع `PricingHelper.accumulatedDebt` (المديونية المتراكمة الحقيقية) المعروضة في كارت تفاصيل الطالب. المدرس مش قادر يحصّل المتأخر القديم من الماسح.
 
-`flutter analyze lib` كامل = نضيف (0 errors/warnings). لسه ماتأكدش لايف (الجهاز مش متوصل).
+**الحل (ملفّان مصدر + ملف اختبار، صفر تغيير DB/مزامنة):**
 
----
+- **`lib/controllers/qr_controller.dart`**
+  - `_preparePayment`: للمسار per-session `start = DateTime(joined.year, joined.month)` حيث `joined = student.attendanceStart ?? student.createdAt` (fallback `nowMonth`)؛ `selectedMonths` = كل الشهور من الانضمام حتى الشهر الحالي (شامل). المسار الشهري بلا تغيير.
+  - `_buildUpcomingMonths(DateTime start, {bool perSession = false})`: توقيع جديد. per-session = من start للشهر الحالي فقط، سقف حارس 60 بدل 12.
+  - getters جديدة: `_effPrice` (= `scannedStudent.value?.effectivePrice ?? 0`)، `scannedStudentDebtSessions` (= `_effPrice > 0 ? (scannedStudentDebt / _effPrice).floor() : 0`)، `sessionsCoveredBy(double amount)`، `debtRemainingAfter(double amount)` (clamp ≥ 0).
+  - `bool applyDebtAmountPayment(double amount)`: يتحقق (`isPerSessionGroup`, student != null, `amount > 0`, `debt > 0.01`, `amount <= debt + 0.01`) + توست خطأ؛ عند القبول `setOverride(amount, note: 'دفعة من المديونية')` ثم `_sessionsCoveredByQuickPay = sessionsCoveredBy(amount)` (أعدت استخدام الحقل القائم بدل `_explicitSessionsForPayment` الجديد اللي في tasks.md — نفس دورة الحياة: يُصفَّر في `setOverride`، يُعاد ضبطه بعده، يُقرأ في `confirmPayment`).
+  - كل getters العدّ القائمة (`unpaidSessionsCount` / `unpaidSessionDates` / `_paidSessionsInSelectedMonths` / `fullyPaidUp` / `effectiveSessionsSelected`) تتصحّح تلقائيًا عبر توسيع `selectedMonths` — بلا تعديل في كودها.
 
-## 1هـ) نظام الساعة 24/12 مش بيتطبق في كل التطبيق — spec 009 — ✅ في الكود، ⏳ لسه ماتأكدش لايف، ⏳ لسه ماعُملش commit
+- **`lib/views/qr_scanner/qr_scanner_payment_page.dart`**
+  - سطر المديونية (كان `if (!controller.isPerSessionGroup && !student.isFullyExempt)` عند ~1054) → `if (!student.isFullyExempt)` — يظهر للـper-session كمان + سطر ثانٍ «= N حصة» (per-session فقط، `scannedStudentDebtSessions >= 1`).
+  - ويدجت جديد `_DebtAmountField` (StatefulWidget، آخر الملف قبل `_MonthChip`): `TextField` رقمي «ادفع مبلغًا من المديونية» + `Obx` معاينة («يغطّي N حصة • المتبقّي بعد الدفع: …» / تحذير أحمر لو `> debt` / لا شيء لو فارغ/0/غير رقمي) + زر «تطبيق» → `controller.applyDebtAmountPayment(parsed)`. يظهر per-session فقط عندما `!fullyPaid && scannedStudentDebt > 0.01 && student.effectivePrice > 0`.
 
-**البلاغ**: تبديل مفتاح "نظام الساعة 24" من الإعدادات مش بيتطبق فورًا ولا باستمرار على باقي الشاشات (مواعيد الحصص، الإشعارات، تواريخ الدفعات...).
+- **`test/qr_payment_debt_test.dart`** (جديد، 14 اختبار، كلها تعدّي): `PricingHelper.accumulatedDebt` per-session عبر شهرين = 140 (مثال المستخدم الحرفي: 6 حصص أغسطس + 1 سبتمبر × 20)، دفعة 60 → 80؛ منطق تحويل floor؛ قواعد قبول المبلغ الحر.
 
-**السبب**: `FormatHelper.formatTime/formatDateTime/formatPaymentDate` دوال static بتقرا `RxBool use24hFormat` خارج أي نطاق تفاعلي، فالشاشات المبنية مبتعيدش البناء. حِيَل يدوية مبعثرة في ~6 شاشات وبعضها لأ. `notification_service` كان بيطبع 24 ساعة دايمًا.
+- **حالات محسومة (research.md):** floor مش round؛ منع الزيادة عن المديونية = سلوك v1 (مفيش رصيد مقدّم من الشاشة دي)؛ المبلغ الحر للمجموعات **الشهرية** خارج v1 (تفضل باختيار شهور كاملة، بس يظهر رقم المديونية)؛ سعر حصة = 0 → عرض بالجنيه بلا «= N حصة» + حقل المبلغ معطّل.
 
-**اتعمل عبر SpecKit كامل** — `specs/009-clock-format-setting/` (spec → plan → tasks → implement):
-- **جديد** `lib/widgets/clock_text.dart`: `ClockText` / `ClockDateTimeText` / `ClockPaymentDateText` / `ClockBuilder` — تلفّ قراءة الإعداد في `Obx` مرة واحدة (الطريقة الموحّدة).
-- **جديد** `FormatHelper.formatClock(TimeOfDay)` في `helpers.dart` — لمواعيد الحصص + الإشعارات (بتتعامل صح مع 00:00→`12:00 ص` و12:00→`12:00 م`). اختبار وحدة: `test/format_clock_test.dart` (7 حالات، بتعدّي).
-- `settings_controller.setUse24hFormat` بقى يعيد جدولة الإشعارات (`syncAllScheduledNotifications`).
-- `main.dart`: `MediaQuery.alwaysUse24HourFormat` على الجذر (جوه الـObx الخارجي) لمنتقيات الوقت — وشيل الـ`MediaQuery.copyWith` المكرّرة من `groups_page`/`group_details`.
-- استبدال نقاط العرض: `student_details_page`, `attendance_page`, `schedule_page`, `groups_page` (كان بيعرض جدول raw 24h دايمًا + `displaySchedule` كان dead code — اتشال)، `group_details_page` (جدول + "آخر إرسال")، `qr_scanner_attendance_page`, `bookings_page`, `payments_page`, `payments_report_page`, `notification_service`.
-- **خارج النطاق** (تفضل `HH:mm`): تقارير واتساب/المشاركة النصية، ملفات PDF/النسخ الاحتياطي، سجلّ الدفع المخزَّن (`qr_controller:247`).
+- **حالة معروفة مقبولة:** لو المدرس دخّل مبلغ **أقل من سعر حصة** (مثلاً 10 ج وسعر 20)، المبلغ يتسجّل صح لكن عدّاد `sessions` في الملاحظة يتقرّب لـ1 بدل 0 (فرق تجميلي في العدّ، الفلوس مضبوطة).
 
-`flutter analyze lib test` = **0 errors/warnings**. `rg "use24hFormat\.value;" lib/views` = نضيف (SC-003). **الجهاز مش متوصل فلسه ماتأكدش لايف** — المهام المتبقية في `tasks.md`: T008/T018/T019/T022/T023 (كلها تحقّق يدوي على الجهاز عبر `quickstart.md`).
+**Commit:** `dd5282e` على `main` (مدفوع). كل `flutter test` (53) + `flutter analyze` نظيف (صفر مشاكل جديدة — الـ34 info كلها baseline قديمة، منها 2 في `qr_scanner_payment_page.dart:179` و`:1487` مش من التعديل).
 
----
+**سبيك كامل:** `specs/026-qr-payment-accumulated-debt/` (spec.md, plan.md, research.md, data-model.md, contracts/×3, quickstart.md, tasks.md — T001–T015 + T017–T020 ✅، **T016 لسه [ ]**).
 
-## 2) حاجات اتعملت واتأكد منها لايف + commit + push (كلها على main)
+### 2) ريليس v1.2.49 (منشور بالكامل)
 
-بالترتيب الزمني في الجلسة دي:
+- **`pubspec.yaml`**: `1.2.48+4066` → **`1.2.49+4067`**. `android/local.properties` كذلك (`flutter.versionCode=4067` — gitignored).
+- **Commit:** `42f830a` على `main` (مدفوع). **Tag `v1.2.49`** مدفوع.
+- **GitHub Release** (latest, مش draft/pre): https://github.com/amertimraz/App-Active-Class/releases/tag/v1.2.49
+  - أصول: `ActiveClass-v1.2.49-arm64-v8a.apk` (sha256 `9ce7f9eb2e9c4861e6b560daca0ffc0bc6931074c8abd66c9915d18e6f5e2158`)، `-armeabi-v7a.apk`، `-x86_64.apk`، `-play.aab`. كلها versionCode **4067**، توقيع release صحيح (`5f74fe10af2da396cbf0a98895af02bb5ffbdc01cdf68a55bea25a841f02ec7b`).
+  - محلّيًا في `release_assets/ActiveClass-v1.2.49-*`.
+- **VPS نشر:** `/var/www/active-class.online/downloads/ActiveClass-arm64-v8a.apk` (backup `.bak-1.2.48`). التحقق: `curl -sI https://active-class.online/downloads/ActiveClass-arm64-v8a.apk` → 200، 48228892 بايت، sha256 مطابق. المستخدم بيثبّت **فوق** التطبيق (مايلغيش).
+- **التحديث الذاتي داخل التطبيق** (`update_service.dart`): `/repos/amertimraz/App-Active-Class/releases/latest` → v1.2.49، يختار الأصل اللي فيه `arm64` في الاسم. شغّال.
+- **release notes:** `scratchpad/release_notes_v1.2.49.md`.
 
-1. **دعم ربط 3 إخوة** (spec `007-three-sibling-support`) — ميزة كاملة اتبنت بمنهج SpecKit (spec→plan→tasks→implement)، شاملة migration لقاعدة البيانات (v17→18) اتاختبرت لايف على نسخة احتياطية حقيقية من بيانات المدرس (6 أزواج إخوة حقيقية اتحوّلت صح من غير فقدان بيانات).
-2. **أيقونات فرز/فلترة الطلاب** في شاشة تسجيل الحضور وشاشة الأرشيف (كانت موجودة بس في تفاصيل المجموعة/شاشة الطلاب).
-3. **إشعارات واتساب لنتيجة الامتحان** (spec `008-exam-whatsapp-results`) — زرار إرسال فردي وزرار "إرسال للكل"، بنفس نمط تقرير الحضور الموجود.
-4. **باج حقيقي**: `ExamGrade.copyWith()` كان مش قادر يمسح درجة طالب رجعت لـnull (بسبب `grade ?? this.grade`) — اتصلح بنفس نمط sentinel المستخدم أصلاً لحقل `notes`.
-5. **بوابة أولياء الأمور — 3 مشاكل حقيقية**:
-   - الصفحة العامة (`booking_site/track/index.html`) في المستودع كانت **متأخرة** عن النسخة المنشورة فعليًا على VPS (فحص انتهاء المدة كان شغّال لايف بس مش موجود في المستودع) — تمت المزامنة.
-   - الـwatchers المسؤولة عن إعادة نشر البيانات لما المدة/التفعيل يتغيّروا كانت بتتسجّل كسول (بس أول ما publishProfile/pushStudentSummary يتنادوا فعليًا) — بقت بتتسجّل من إقلاع التطبيق (`ParentPortalService.init()` في `main.dart`).
-   - الحضور/الدفعات المسجّلة عن طريق **مسح QR** (`qr_controller.dart`) كانت مش بتستدعي `pushStudentSummary` خالص في 3 أماكن — بقت بتستدعيها.
-   - **مشكلة حقيقية على حساب المدرس الفعلي**: مستند البوابة في Firestore كان فيه `ownerUid`/`deviceId` قديمين (من 20 أغسطس) مختلفين عن هوية الجهاز الحالي، فكل كتابة كانت بترفض بصمت (`permission-denied`) من غير أي خطأ ظاهر — اتصلحت بتحديث مباشر على الـFirestore doc (مش تعديل كود) لربط الملكية بالهوية الحالية. مفيش داعي لتكرار الإصلاح ده تاني إلا لو حصل نفس السيناريو (تغيير جهاز/مسح بيانات).
-
-كل الـcommits دي على `main` بالفعل ومفيش حاجة معلّقة منها.
+**⚠️ درس البناء (محدَّث في `memory/release-build-versioncode.md`):**
+- المشروع فيه `productFlavors { play; direct }` على بُعد `distribution` (فرق صلاحية `REQUEST_INSTALL_PACKAGES`). `flutter build appbundle --release` من غير `--flavor` يطلع رسالة "failed to produce an .aab file" رغم إن الـaab اتبنى فعلاً في `build/app/outputs/bundle/{play,direct}Release/`.
+- **`--split-per-abi` بيقع OOM** على جهاز البناء (16GB، ~4GB فاضي). الحل: `--target-platform android-arm64` (وبعده `android-arm`، `android-x64`) — كل مرة بيكتب فوق `build/app/outputs/flutter-apk/app-direct-release.apk` فانسخه فورًا.
+- v1.2.49 وقع 3 مرات OOM قبل ما DaVinci Resolve (~1.9GB) يتقفل.
+- **قاعدة versionCode:** بناء عادي (بلا split) = versionCode = build# (4067). لازم يبقى > آخر ABI code قديم (كان 4066). التالي: `+4068` أو أعلى.
 
 ---
 
-## 1و) مديونية وهمية على إخوة مجموعة من 3 — ✅ في الكود، ⏳ لسه ماتأكدش لايف، ⏳ لسه ماعُملش commit
+## ⏳ متبقّي / مفتوح
 
-**البلاغ**: طالب في مجموعة إخوة من 3 (siblingsTotal=140، نصيب كل=46.67) دفع نصيبه بالكامل، ورغم كده بتظهر عليه "مديونية متراكمة 23.33" وشاشة الدفع بتحسب المستحق 140 والمتبقي 23.33. `23.33 = (140/2) − 46.67` → الحساب بيقسم على 2 بدل 3.
-
-**السببان**:
-1. `StudentController.linkSiblingGroup` (سطر 249): بعد `_dbService.linkSiblingGroup` كان بيخزّن `members[i]` في القائمة في الذاكرة **من غير** `siblingGroupId` المحسوب (أصغر id)، فالعضو المربوط حديثًا يفضل `siblingGroupId=null` محليًا → `PricingHelper.siblingGroupSize` يرجّع 2 → `siblingsTotal/2`.
-2. `qr_controller` (`scannedStudentDebt`, `scannedStudentOverdue`, `_computeBaseAmount`): كانوا بينادوا `PricingHelper` **من غير** `siblingGroupMembers` خالص → افتراض ثابت `count=2`. (كل الشاشات التانية بتبعت القائمة صح — دي كانت الوحيدة الناقصة.)
-
-**الإصلاح**:
-- `DatabaseService.linkSiblingGroup` بقى يرجّع `int` (الـgroupId المكتوب في القاعدة).
-- `StudentController.linkSiblingGroup` بيطبّق `s.copyWith(siblingGroupId: groupId)` على النسخة في الذاكرة.
-- `qr_controller`: getter جديد `_allStudents` بيتبعت لـ`PricingHelper` في الـ3 أماكن.
-
-**مفيش migration** — القاعدة أصلاً صح (الدفع بالـQR كان بيسجّل `siblings=3` صح). بعد الإصلاح + إعادة بناء، الرقم الوهمي بيختفي حسابيًا. **حل مؤقت للمدرس دلوقتي**: قفل وفتح التطبيق بيصلّح شاشة تفاصيل الطالب (بيعيد تحميل من القاعدة الصح) — بس شاشة الدفع بالـQR محتاجة النسخة الجديدة.
-
-3. **`qr_controller` كان بيجيب أعضاء مجموعة الإخوة من غير `excludeId`** (سطر ~332) — فالطالب الممسوح بيتكرر في `members = [student, ...others]` → يتسجّل عليه **دفعتين** ويضيع نصيب أخ تاني. ده سبب إن مازن عنده دفعتين ومحمود دفعة واحدة (المدرس مسح مازن). اتصلح بـ`excludeId: student.id` + إصلاح مكانين عرض تانيين في `qr_scanner_payment_page.dart` (نفس الغلط في نص حوار التأكيد وسطر "عرض الإخوة مع").
-
-**ملفات**: `database_service.dart`، `student_controller.dart`، `qr_controller.dart`، `qr_scanner_payment_page.dart`. `flutter analyze lib` نضيف.
-
-**التوضيح النهائي** (بعد صور تانية من المدرس): هما **أخين بس** (محمود 641 + مازن 426)، إجمالي 140، نصيب كل 70. باج #3 (نقص `excludeId`) هو **السبب الجذري لكل حاجة**: مسح مازن → `others` رجّع الاتنين شامل مازن → `members=[مازن,مازن,محمود]` → `memberCount=3` → قسمة 140/3=46.67 بدل 140/2=70، ومازن اتسجّل عليه دفعتين. والمديونية 23.33 على محمود = مستحقه الصح (70) ناقص الدفعة الغلط (46.67). باجات #1 و#2 (siblingGroupMembers) إصلاحات صحيحة لمجموعات الـ3 الحقيقية بس مش كانت سبب الحالة دي.
-
-4. **باج عام (مش إخوة): `confirmPayment` مفيهوش حارس دخول متكرر** — `isProcessing` كان بيترفع بعد التحقّقات، فضغطة مزدوجة سريعة على "تأكيد الدفع" بتسجّل دفعتين لأي طالب عادي (شوف "سيد أحمد السيد 425" مكرر في مدفوعات اليوم). اتصلح: `if (isProcessing.value) return false;` كأول سطر.
-
-5. **`deleteStudent` و`archiveStudent` ماكانوش بيفكّوا العضو الوحيد الباقي من زوج إخوة** — عضو لوحده بـ`siblingGroupId` بيتحسب عليه `siblingsTotal ÷ 1` = الإجمالي كامل (مديونية غلط ضخمة). زر الحذف الجديد (`ea8ad92`) خلّى ده سهل الوصول. اتصلح: helper `_unlinkOrphanedSiblingSurvivor(groupId)` بيتنادى من الاتنين — لو المجموعة نزلت لعضو نشط واحد بيفكّه.
-
-**ملفات**: `database_service.dart`, `student_controller.dart`, `qr_controller.dart`, `qr_scanner_payment_page.dart`. `flutter analyze lib` نضيف (0 errors/warnings).
-
-**تنظيف بيانات المدرس الحالية**: احذف دفعات أغسطس للأخين (مازن ×2، محمود ×1)، وأعد المسح والدفع مرة واحدة بالنسخة الجديدة → كل واحد 70، المديونية صفر. وامسح الدفعة المكررة لـ"سيد أحمد السيد".
+1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.49-play.aab`.
+2. **T016 — تحقّق spec 026 جهازيًا** (لسه ماتعملش):
+   - عدم انحدار المجموعات **الشهرية** في شاشة الدفع بالماسح (month chips، اختيار شهور، تحصيل، لا حقل مبلغ حرّ، لا سطر «= N حصة») — quickstart سيناريو 5.
+   - اختبار جهازين (مدرس + مساعد): الدفعة الجزئية تظهر عند المساعد بمبلغها (مؤكَّد بالكود — بيمرّ بـ`insertPayment` بلا تفرّع، بس مش متأكَّد جهازيًا).
+   - quickstart سيناريوهات 1–4 كلها على جهاز حقيقي.
+3. **مؤجَّلات قديمة من جلسات سابقة (مش عاجلة):**
+   - `supabase/migration_student_follow_ups.sql` لسه ماتطبّقش (بس لو هنعيد تفعيل مزامنة `student_follow_ups` — حاليًا متشالة من `_tables`).
+   - تحقّق جهازين لـspecs 024 + 025.
 
 ---
 
-## 1ز) تبويب الدفع اليدوي + عدّاد "دفعوا اليوم" — ✅ في الكود، ⏳ لسه ماتأكدش لايف، ⏳ لسه ماعُملش commit
+## 🔑 حقائق ثابتة للجلسة الجديدة
 
-**بلاغ 6**: طالب معفى، لما تختاره من **البحث اليدوي** في تسجيل الدفع بيظهر بشاشة الدفع العادية (90 جنيه/شهر + زر "تأكيد الدفع") بدل بطاقة "معفى". السبب: `_ManualTab` كان بيرندر `_PaymentPanel` دايمًا باستخدام `manualStudent` (نسخة قديمة من نتائج البحث في الذاكرة) — مبيفحصش `isExempt` ومبيعرضش `_ExemptPanel` زي تبويب المسح. الإصلاح: يستخدم `controller.scannedStudent.value` (اتجاب من القاعدة عبر `handleScan`) + يعرض `_ExemptPanel` لو `isExempt`.
-
-**بلاغ 7**: عدّاد "X طلاب دفعوا اليوم" بيرجع 0 بعد قفل وفتح التطبيق (كان session-only في الذاكرة، مش من القاعدة). الإصلاح: `SessionLogController.hydrateOnce(...)` + `_hydrateSessionFromToday()` في `initState` بتاع شاشة الدفع — بتملأ السجل مرة واحدة كل تشغيل من دفعات النهاردة الفعلية في القاعدة.
-
-**ملفات**: `qr_scanner_payment_page.dart`، `session_log_controller.dart`. `flutter analyze lib` نضيف.
-
----
-
-## 1ح) تبويب الواجب — spec 010 — ✅ في الكود، ⏳ لسه ماتأكدش لايف، ⏳ لسه ماعُملش commit
-
-**المطلوب**: نقل الواجب من شارة داخل صف الحضور إلى **تبويب "واجب" جوّه موديل المجموعة** (جنب "حضور")، مع **3 حالات صريحة** (🟢 تم الحل / 🟡 ناقص / 🔴 لم يُحل) كأزرار مجزّأة، وإخفاء الواجب للطالب الغائب (وحذف سجله)، وحالة الواجب في **كل** تقارير الواتساب + بوابة أولياء الأمور.
-
-**اتعمل عبر SpecKit كامل** — `specs/010-homework-tab/`:
-- **بدون هجرة قاعدة بيانات** — ثابت جديد `HOMEWORK_PARTIAL='ناقص'` + `normalizeHomeworkStatus()` + `homeworkStatusLabel()` في `homework_model.dart` (مصدر حقيقة واحد، بيطبّع القديم `عمل`/`لم يعمل`).
-- `HomeworkController`: `setHomeworkStatus` / `clearHomework` / `homeworkSummary`؛ اتشال `toggleHomework`.
-- `attendance_page.dart` `_AttendanceSheet`: `DefaultTabController(2)` + `TabBar([حضور, واجب])`؛ تبويب واجب فيه `_HomeworkTabBody` + `_HomeworkStatusSegmented` (3 أزرار) + ملخّص + "الكل عمل"؛ الغائب → "غائب — لا واجب"؛ تسجيل غياب → `clearHomework`؛ اتشال `_HomeworkBadge` و"واجب الكل" من تبويب الحضور.
-- التقارير: `attendance_controller.buildGuardianReportMessage` + `student_details_page._shareMonthlyReport` + `settings_page` (شهري) + `parent_portal_service` (+ `homeworkPartial`, `statusLabel` في `homeworkHistory`) + `report_controller` + `export_service` (تقرير PDF) — كلهم عبر `homeworkStatusLabel`/`normalizeHomeworkStatus`.
-- **الصفحة العامة** `booking_site/track/index.html`: اتحدّثت لـ3 حالات + `homeworkPartial` + `.hw-part` CSS — **⚠️ لسه محتاجة نشر على الـVPS** (زي spec 003).
-
-`flutter analyze lib` = **0 errors/warnings**، الاختبارات بتعدّي، الـAPK debug اتبنى. **لسه ماتأكدش لايف على الجهاز** (T027) ولا اتنشرت الصفحة العامة (T024 جزء النشر).
+- **git push فقط بإذن صريح.** الـspecs بتتعمل commit على `main` مباشرة (عرف المشروع).
+- **التوقيع:** نفس keystore كل مرة (`android/key.properties` + `RELEASE_SIGNING_INFO.md` — الاتنين gitignored، فيهم باسورد `gG1lrhvSog96kQbwCYtyoRxN`، **متتعملش commit ولا expose**). SHA-256 = `5f74fe10af2da396cbf0a98895af02bb5ffbdc01cdf68a55bea25a841f02ec7b`. مزج debug/release أو إلغاء-وإعادة تثبيت = مسح بيانات محلية (slug بوابة الأهل + الرخصة).
+- **SSH VPS:** `ssh -i ~/.ssh/ovh_key root@active-class.online` — شغّال من الساندبوكس. حاوية Supabase: `active-class-auth-db-1`، compose في `/opt/active-class-auth/docker`. تطبيق migration: `ssh ... 'docker exec -i active-class-auth-db-1 psql -U postgres -d postgres -v ON_ERROR_STOP=1' < supabase/migration_X.sql`.
+- **DB version = 28** (v26 explanation → v27 exam sync cols → v28 bank_questions). spec 026 **مازادش النسخة**.
+- **مزامنة الفريق (`SyncEngine`):** قناتان Realtime — `_channel` (`_coreTables`) + `_channelX` (`_extendedTables` = `[TABLE_EXAM_QUESTIONS, TABLE_EXAM_SUBMISSIONS, TABLE_BANK_QUESTIONS]`). CHANNEL_ERROR في واحدة معزول عن التانية (إصلاح دائم لحادثة `student_follow_ups`).
+- **`PricingHelper`:** `accumulatedDebt` = مجموع `monthlyDue` من شهر الانضمام لدلوقتي ناقص **كل** الدفعات (رصيد واحد FIFO). per-session: `monthlyDue = student.price * sessionsAttended(month)`. `billingArrears` / `prorateFirstMonth` static flags (per-session بيتجاهلهم). الإخوة: `siblingsTotal / count` عبر `siblingGroupMembers`.
+- **`toCloudMap()` لـ`ExamQuestion`** لازم يفضل نضيف من `correctIndex`/`points`/`explanation` (اختبار `exam_question_cloud_map_test.dart` بيفرض ده — FR-034 spec 016). مفاتيح التصحيح بس في `results/{attemptKey}` بعد اعتماد المدرس.
+- **الرخصة auto-rebind:** "سيبه زي ماهو" — متغيّرش. الإلغاء عبر `status: suspended`.
+- **السر المضمّن في `booking_service.dart`** (`88657c22...`) مقصود وغير حساس (فيه تعليق).
+- **جهاز المستخدم (MIUI):** كل جلسة بيعيد تفعيل "Install via USB" في خيارات المطوّر. `adb` أحيانًا offline → `& "F:/AndroidSDK/Sdk/platform-tools/adb.exe" kill-server; start-server`.
+- **بناء R8 release بيقع OOM** ("daemon disappeared") — قوّل المستخدم يقفل Resolve/تطبيقات تقيلة. `--no-tree-shake-icons` بيخفّف شوية. `org.gradle.jvmargs=-Xmx2048m` (زيادتها لـ4096 زوّدت الـcrashes).
 
 ---
 
-## 2ب) مؤجَّل: ترقية Firebase لإزالة SafetyNet (اقتراح Play Console)
+## 📂 ملفات السبيك 026 (لو محتاج تفاصيل)
 
-Play Console بيقترح على الإصدار 38 إزالة `play-services-safetynet` (SDK مُهمَل). المصدر المؤكَّد: **`firebase_app_check` نسخة `0.3.2+10`** لسه بتعلن `firebase-appcheck-safetynet:16.1.2` في إعداد Android بتاعها (رغم إن `main.dart` بيفعّل `AndroidProvider.playIntegrity` صح). الحل = ترقية `firebase_app_check` → `0.4.7`، وده يفرض ترقية كل مكتبات Firebase major مع بعض:
-`firebase_core 3.15.2→4.14.0`, `firebase_auth 5.7.0→6.6.1`, `cloud_firestore 5.6.12→6.x`, `firebase_storage 12.4.10→13.5.0`, `firebase_app_check 0.3.2+10→0.4.7`.
-سطح المخاطرة: Firestore (بوابة أولياء الأمور) + Auth (وضع الفريق) — محتاج تجربة لايف على الجهاز. **مش عاجل** — SafetyNet لسه شغّالة، وPlay مش بترفض النشر عليها. اقتراحات Play التانية (edge-to-edge: `targetSdk=36` بيتعامل معاها Flutter؛ R8: متعمل بالفعل في `build.gradle`) مفيهاش شغل.
-
----
-
-## 3) ملاحظات تقنية مهمة للجلسة الجاية
-
-- **adb**: `"/f/AndroidSDK/sdk/platform-tools/adb.exe"`، الجهاز serial `9aecbc89`، الفلافور `direct`. الأمر: `flutter build apk --debug --flavor direct` ثم `adb install -r build/app/outputs/flutter-apk/app-direct-debug.apk`.
-- **مشكلة تكررت كتير الجلسة دي**: انقطاع اتصال الجهاز بشكل متقطع — لازم `adb kill-server && adb start-server && adb devices` كل ما يحصل.
-- **مشكلة OOM في Gradle daemon** حصلت كذا مرة (الجهاز اللي بيشتغل عليه التطبيق - مش الموبايل - قليل الرام وقت الضغط) — الحل: `Get-Process java | Stop-Process -Force` ثم إعادة المحاولة.
-- **إحداثيات الشاشة**: السكرين شوت بيرجع بالحجم الحقيقي للجهاز (1080×2400)، مفيش داعي لعمل scaling يدوي لو بتاخد الإحداثيات من نفس ملف السكرين شوت المتولّد فعليًا.
-- **`adb shell input text` مبيدعمش عربي** — استخدم كود الطالب/أرقام بدل الاسم العربي عند البحث.
-- تجنّب أي تفاعل مع إشعارات واتساب حقيقية بتظهر فوق الشاشة أثناء الاختبار (حصل كذا مرة الجلسة دي — دايمًا اتجاهلتها ومكملتش عليها).
+```
+specs/026-qr-payment-accumulated-debt/
+├── spec.md          # 3 user stories، 17 FR، 6 SC
+├── plan.md          # الملخص التقني + Constitution Check (PASS)
+├── research.md      # 8 قرارات محسومة
+├── data-model.md    # كيانات محسوبة، لا سكيمة
+├── contracts/
+│   ├── qr-controller-per-session-scope.md   # سلوك _preparePayment + جدول before/after
+│   ├── debt-display.md                       # عقد عرض سطر المديونية
+│   └── debt-amount-payment.md                # applyDebtAmountPayment + معاينة + note
+├── quickstart.md    # 6 سيناريوهات تحقّق
+└── tasks.md         # T001–T020
+```

@@ -206,6 +206,10 @@ const String SETTING_LATE_GRACE_MINUTES = 'late_grace_minutes';
 // app_settings key — تفعيل/تعطيل حساب "متأخر" تلقائيًا عند مسح الـQR.
 // افتراضيًا مفعّل؛ لو معطّل الـQR يسجّل "حاضر" دايمًا. (spec 011)
 const String SETTING_QR_AUTO_LATE_ENABLED = 'qr_auto_late_enabled';
+// app_settings key — تفعيل دعم جهاز قارئ باركود خارجي (HID) في شاشتَي
+// الحضور والدفع. افتراضيًا معطّل — المدرّس يفعّله من الإعدادات. محلي
+// لكل جهاز، غير مُزامن. (spec 027)
+const String SETTING_HARDWARE_SCANNER_ENABLED = 'hardware_scanner_enabled';
 
 // app_settings keys — نظام تحصيل الاشتراك الشهري (spec 012).
 // billing_arrears: false=مقدّم (الافتراضي، الشهر مستحق من أول يومه)،

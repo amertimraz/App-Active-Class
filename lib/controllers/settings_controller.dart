@@ -89,6 +89,9 @@ class SettingsController extends GetxController {
   final RxBool hideQrInPayment = false.obs;
   final RxBool hideQrInAttendance = false.obs;
 
+  // دعم جهاز قارئ باركود خارجي (HID) في شاشتَي الحضور/الدفع (spec 027)
+  final RxBool hardwareScannerEnabled = false.obs;
+
   // إرسال تقرير واتساب تلقائي لأولياء الأمور بعد اكتمال تسجيل حضور
   // المجموعة — افتراضيًا معطّل، المدرس يفعّله بنفسه من الإعدادات.
   final RxBool reportOnCompletionEnabled = false.obs;
@@ -204,6 +207,15 @@ class SettingsController extends GetxController {
     try {
       hideQrInPayment.value = await _migrateBool(_keyHideQrPayment) ?? false;
       hideQrInAttendance.value = await _migrateBool(_keyHideQrAttendance) ?? false;
+      hardwareScannerEnabled.value =
+          await _migrateBool(SETTING_HARDWARE_SCANNER_ENABLED) ?? false;
+    } catch (_) {}
+  }
+
+  Future<void> setHardwareScannerEnabled(bool v) async {
+    hardwareScannerEnabled.value = v;
+    try {
+      await _dbSet(SETTING_HARDWARE_SCANNER_ENABLED, v ? '1' : '0');
     } catch (_) {}
   }
 

@@ -37,6 +37,7 @@ import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/views/license/trial_banner.dart';
 import 'package:active_class/widgets/update_dialog.dart';
+import 'package:active_class/widgets/hardware_reader_widgets.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -637,6 +638,24 @@ class SettingsPage extends StatelessWidget {
                                 onChanged: (v) async =>
                                     await settings.setHideQrInAttendance(v),
                               )),
+                          _buildDivider(isDark),
+                          // ── قارئ باركود خارجي (HID) — spec 027 ──
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.barcode_reader,
+                                iconColor: const Color(0xFF0EA5E9),
+                                title: 'قارئ باركود خارجي',
+                                subtitle: settings.hardwareScannerEnabled.value
+                                    ? 'امسح كروت الطلاب بجهاز قارئ باركود موصول بالموبايل (سلكي/بلوتوث)'
+                                    : 'الجهاز لازم يقرا QR ويشتغل كلوحة مفاتيح — والتطبيق مفتوح على شاشة الحضور/الدفع وقت المسح',
+                                rxValue: settings.hardwareScannerEnabled,
+                                onChanged: (v) async => await settings
+                                    .setHardwareScannerEnabled(v),
+                              )),
+                          Obx(() => settings.hardwareScannerEnabled.value
+                              ? const HardwareScannerTestTile()
+                              : const SizedBox.shrink()),
                           _buildDivider(isDark),
                           // ── تسجيل "متأخر" تلقائيًا عبر QR (spec 011) ──
                           Obx(() => _buildSwitchTile(

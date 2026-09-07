@@ -16,6 +16,8 @@ import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/hardware_scan_buffer.dart';
+import 'package:active_class/widgets/hardware_reader_widgets.dart';
 import 'qr_gallery_page.dart';
 
 // ══════════════════════════════════════════════════════════════════
@@ -45,15 +47,30 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
   late final SessionLogController _session;
   bool _hideQr = false;
 
+  // ── جهاز قارئ باركود خارجي (HID) — spec 027 ──────────────────────
+  bool _hardwareEnabled = false;
+  bool _pureScannerMode = false;
+  bool _qrTabVisible = true;
+  HardwareScanBuffer? _scanBuffer;
+  DateTime? _lastHardwareScanAt;
+
   @override
   void initState() {
     super.initState();
     _hideQr = Get.isRegistered<SettingsController>() &&
         Get.find<SettingsController>().hideQrInPayment.value;
+    _hardwareEnabled = Get.isRegistered<SettingsController>() &&
+        Get.find<SettingsController>().hardwareScannerEnabled.value;
+    _pureScannerMode = _hardwareEnabled && _hideQr;
+    _qrTabVisible = !_hideQr || _pureScannerMode;
+    if (_hardwareEnabled) {
+      _scanBuffer = HardwareScanBuffer(onScan: (code) => _handle(code, fromHardware: true));
+      HardwareKeyboard.instance.addHandler(_hwKeyHandler);
+    }
     _tabController = TabController(
       length: 2,
       vsync: this,
-      initialIndex: _hideQr ? 1 : 0,
+      initialIndex: _qrTabVisible ? 0 : 1,
     );
     // الكاميرا لازم توقف لما نبعد عن تاب "مسح QR"، وإلا بتفضل شغالة
     // في الخلفية وممكن تمسك كود عشوائي أثناء البحث اليدوي وتعمل
@@ -61,6 +78,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
     // بتاع QRController، فبيانات الطالب (الشهور) متظهرش صح.
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) return;
+      _scanBuffer?.reset();
       if (_tabController.index == 0 && !_hideQr) {
         _safeStartScanner();
       } else {
@@ -85,6 +103,8 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
   void dispose() {
     _tabController.dispose();
     WidgetsBinding.instance.removeObserver(this);
+    if (_hardwareEnabled) HardwareKeyboard.instance.removeHandler(_hwKeyHandler);
+    _scanBuffer?.dispose();
     scannerController.dispose();
     _searchCtrl.dispose();
     super.dispose();
@@ -137,12 +157,14 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
   // "still initializing" غير ملتقط، وده كان بيكسر الشاشة كلها. بنلف
   // النداءات دي عشان أي تعارض زمني يتجاهل بهدوء بدل ما يكسر الواجهة.
   Future<void> _safeStartScanner() async {
+    if (_pureScannerMode) return;
     try {
       await scannerController.start();
     } catch (_) {}
   }
 
   Future<void> _safeStopScanner() async {
+    if (_pureScannerMode) return;
     try {
       await scannerController.stop();
     } catch (_) {}
@@ -150,8 +172,21 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) _safeStopScanner();
-    if (state == AppLifecycleState.resumed && !_hideQr) _safeStartScanner();
+    if (state == AppLifecycleState.paused) {
+      _safeStopScanner();
+      _scanBuffer?.reset();
+    }
+    if (state == AppLifecycleState.resumed) {
+      _scanBuffer?.reset();
+      if (!_hideQr) _safeStartScanner();
+    }
+  }
+
+  bool _hwKeyHandler(KeyEvent event) {
+    if (!mounted || _scanBuffer == null) return false;
+    if (_tabController.index != 0) return false;
+    if (ModalRoute.of(context)?.isCurrent != true) return false;
+    return _scanBuffer!.feedKey(event);
   }
 
   // ── Search ───────────────────────────────────────────────────
@@ -171,7 +206,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
   }
 
   // ── Handle QR scan ───────────────────────────────────────────
-  Future<void> _handle(String qr) async {
+  Future<void> _handle(String qr, {bool fromHardware = false}) async {
     if (controller.isProcessing.value) return;
     final now = DateTime.now();
     if (_lastScan == qr &&
@@ -190,6 +225,9 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
     } else {
       HapticFeedback.selectionClick();
       SoundHelper.scanSuccess();
+      if (fromHardware && mounted) {
+        setState(() => _lastHardwareScanAt = DateTime.now());
+      }
     }
   }
 
@@ -483,7 +521,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
             onPressed: () => Get.to(() => const QrGalleryPage()),
           ),
         ],
-        bottom: _hideQr
+        bottom: !_qrTabVisible
             ? null
             : TabBar(
                 controller: _tabController,
@@ -502,7 +540,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
       ),
       body: TabBarView(
         controller: _tabController,
-        physics: _hideQr ? const NeverScrollableScrollPhysics() : null,
+        physics: !_qrTabVisible ? const NeverScrollableScrollPhysics() : null,
         children: [
           // ── QR Tab ─────────────────────────────────────────
           Column(
@@ -515,7 +553,16 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
                       onTap: _showSessionLog,
                     )
                   : const SizedBox.shrink()),
-              // Camera
+              // شارة "القارئ الخارجي نشط" — spec 027
+              if (_hardwareEnabled && _lastHardwareScanAt != null)
+                HardwareActiveBadge(lastScanAt: _lastHardwareScanAt!),
+              // Camera — أو بطاقة "القارئ جاهز" في وضع القارئ الخالص
+              if (_pureScannerMode)
+                Expanded(
+                  flex: 5,
+                  child: ReaderReadyPanel(lastScanAt: _lastHardwareScanAt),
+                )
+              else
               Expanded(
                 flex: 5,
                 child: Stack(
