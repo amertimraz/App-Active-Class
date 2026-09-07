@@ -238,4 +238,70 @@ class PricingHelper {
     final remaining = totalDue - totalPaid;
     return remaining > 0 ? remaining : 0;
   }
+
+  // ── تنبيه "متأخر في الدفع" في شاشة الحضور (spec 029) ─────────────
+
+  /// عدد حصص الطالب المحتسبة حضورًا (حاضر أو "متأخر" — spec 011) في
+  /// يوم بعينه. مستخدَمة لاستثناء "حصص اليوم" من حساب تنبيه المتأخر
+  /// لطلاب المجموعات بالحصة.
+  static int sessionsAttendedOn({
+    required Student student,
+    required DateTime day,
+    required List<Attendance> allAttendance,
+  }) {
+    return allAttendance
+        .where((a) =>
+            a.studentId == student.id &&
+            attendanceCountsAsPresent(a.status) &&
+            a.date.year == day.year &&
+            a.date.month == day.month &&
+            a.date.day == day.day)
+        .length;
+  }
+
+  /// هل يُعرَض تنبيه "متأخر في الدفع" لهذا الطالب في شاشة الحضور؟
+  /// - معفى بالكامل → false.
+  /// - مجموعة شهرية / بلا مجموعة → [isOverdue] (يحترم مهلة السماح).
+  /// - مجموعة بالحصة → مديونية باقية بعد استثناء قيمة حصص النهاردة →
+  ///   يعني عليه رصيد لحصص أقدم من اليوم (حصة اليوم طبيعي هيدفعها).
+  static bool showsAttendanceOverdueWarning({
+    required Student student,
+    required Group? group,
+    required List<Attendance> allAttendance,
+    required List<Payment> payments,
+    required int graceDays,
+    List<Student>? siblingGroupMembers,
+  }) {
+    if (student.isFullyExempt) return false;
+
+    final perSession = group != null && group.isPerSession;
+    if (!perSession) {
+      return isOverdue(
+        student: student,
+        group: group,
+        allAttendance: allAttendance,
+        payments: payments,
+        graceDays: graceDays,
+        siblingGroupMembers: siblingGroupMembers,
+      );
+    }
+
+    final debt = accumulatedDebt(
+      student: student,
+      group: group,
+      allAttendance: allAttendance,
+      payments: payments,
+      siblingGroupMembers: siblingGroupMembers,
+    );
+    if (debt <= 0.01) return false;
+
+    final todayValue = sessionsAttendedOn(
+          student: student,
+          day: DateTime.now(),
+          allAttendance: allAttendance,
+        ) *
+        student.effectivePrice;
+
+    return (debt - todayValue) > 0.01;
+  }
 }

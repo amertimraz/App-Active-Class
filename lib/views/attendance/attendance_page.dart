@@ -16,6 +16,7 @@ import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/utils/student_sort_helper.dart';
 import 'package:active_class/widgets/student_sort_bar.dart';
+import 'package:active_class/widgets/overdue_warning_badge.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/export_service.dart';
@@ -1578,16 +1579,24 @@ class _StudentAttendanceChip extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                student.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12.5,
-                  color: marked ? color : Colors.grey.shade700,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    student.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                      color: marked ? color : Colors.grey.shade700,
+                    ),
+                  ),
+                  // تنبيه متأخر في الدفع (spec 029)
+                  OverdueWarningFor(student: student, compact: true),
+                ],
               ),
             ),
           ]),

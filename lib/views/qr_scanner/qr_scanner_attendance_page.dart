@@ -12,6 +12,8 @@ import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
+import 'package:active_class/controllers/payment_controller.dart';
+import 'package:active_class/widgets/overdue_warning_badge.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/attendance_model.dart';
@@ -41,6 +43,10 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
           : Get.put(AttendanceController());
   final GroupController groupCtrl   = Get.put(GroupController());
   final StudentController stuCtrl   = Get.put(StudentController());
+  // spec 029 — تنبيه المتأخر في الدفع
+  final PaymentController payCtrl = Get.isRegistered<PaymentController>()
+      ? Get.find<PaymentController>()
+      : Get.put(PaymentController());
   late TabController _tabController;
 
   final TextEditingController _searchCtrl = TextEditingController();
@@ -98,6 +104,7 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
       await stuCtrl.loadAllStudents();
       await groupCtrl.loadGroups();
       await attCtrl.loadAttendance();
+      await payCtrl.loadPayments(); // spec 029 — لحساب تنبيه المتأخر
       attCtrl.buildStudentMaps(stuCtrl.students);
       if (!_hideQr) _safeStartScanner();
     });
@@ -683,6 +690,9 @@ class _AttendancePanel extends StatelessWidget {
                 ]),
               ),
 
+              // ── تنبيه متأخر في الدفع (spec 029) ─────────────────
+              OverdueWarningFor(student: student),
+
               const SizedBox(height: 12),
 
               // ── حالة اليوم ──────────────────────────────────────
@@ -1186,6 +1196,11 @@ class _StudentSearchCard extends StatelessWidget {
                 ),
               ],
             ]),
+            // تنبيه متأخر في الدفع (spec 029)
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: OverdueWarningFor(student: student, compact: true),
+            ),
           ]),
         ),
         ElevatedButton(

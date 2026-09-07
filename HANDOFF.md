@@ -40,6 +40,33 @@
 - **release notes:** `scratchpad/release_notes_v1.2.50.md`.
 - **درس البناء تأكّد تاني:** `--split-per-abi` = OOM. الحل: `flutter build apk --release --flavor direct --target-platform android-arm64` (وبعده `android-arm`، `android-x64`) — بيكتب فوق `build/app/outputs/flutter-apk/app-direct-release.apk` (universal فعليًا مش ABI واحد) فانسخه فورًا. الـAAB: `flutter build appbundle --release --flavor play`. كل بناء ~4.5–6 دقايق، مفيش OOM المرة دي.
 
+### spec 029 — تنبيه "متأخر في الدفع" في شاشة الحضور (متنفّذ بالكامل، لسه ماتعملّوش commit)
+
+**القاعدة:** بادج تحذير بصري جنب اسم الطالب وقت تسجيل حضوره:
+- شهري / بلا مجموعة → `PricingHelper.isOverdue(...)` (بمهلة السماح `paymentGraceDays`)
+- بالحصة → `accumulatedDebt − (حصص النهاردة × effectivePrice) > 0.01` (يعني عليه رصيد لحصص أقدم من اليوم؛ حصة اليوم طبيعي)
+- معفى بالكامل → لا
+
+**اللي اتعمل:**
+- `constants.dart`: `SETTING_ATTENDANCE_OVERDUE_WARNING = 'attendance_overdue_warning'`.
+- `settings_controller.dart`: `RxBool attendanceOverdueWarning` (افتراضي **true**، محلي)، يُحمَّل في `_loadLateAttendanceSettings`، + setter.
+- `pricing_helper.dart`: `showsAttendanceOverdueWarning({student, group, allAttendance, payments, graceDays, siblingGroupMembers})` + `sessionsAttendedOn({student, day, allAttendance})` (يحسب "متأخر" كحضور).
+- `test/attendance_overdue_warning_test.dart` (جديد، 10 اختبارات).
+- `lib/widgets/overdue_warning_badge.dart` (جديد): `OverdueWarningBadge({debtAmount, compact})` (غبي) + `OverdueWarningFor({student, compact})` (يحلّ كل الكونترولرز عبر Get، `Obx` يتحدّث بعد دفعة).
+- `qr_scanner_attendance_page.dart`: `payCtrl.loadPayments()` في postFrame؛ `OverdueWarningFor` في `_AttendancePanel` (كامل) و `_StudentSearchCard` (compact).
+- `attendance_page.dart`: `OverdueWarningFor(compact)` تحت اسم الطالب في `_StudentAttendanceChip` (`PaymentController` موجود هناك أصلاً).
+- `settings_page.dart`: سطر Switch "تنبيه المتأخر في شاشة الحضور" قبل "تسجيل متأخر تلقائيًا عبر QR".
+
+**التحقّق:** `flutter test` (74) يعدّي، `flutter analyze` = 34 (baseline، صفر جديد).
+
+**سبيك كامل:** `specs/029-attendance-overdue-warning/` — T001–T014 + T016 ✅، **T015 (تحقّق جهازي — quickstart 1–10) لسه**.
+
+**⚠️ لسه محتاج:** commit + تحقّق جهازي.
+
+### spec 028 — حذف السجلات بمدى تواريخ (سبيك فقط — مش متنفّذ)
+
+`specs/028-delete-records-by-date-range/` — spec.md + checklist جاهزين. **لسه محتاج `/speckit-plan`**. الخلاصة: شاشة إعدادات لحذف حضور/دفعات/درجات/امتحانات/واجبات/سجلّات-تقارير ضمن مدى تواريخ، نسخة احتياطية إجبارية + معاينة + تأكيد، مزامنة الحذف في الاتجاهين (مدرس↔مساعد)، الروستر مستثنى، صفر تغيير DB.
+
 ### hotfix — سجل جلسة الدفع كان بيعرض عرض الإخوة عنصر واحد بالمبلغ الكامل (Commit `47cf022`، مدفوع)
 
 كان سجل "دفعوا اليوم" الحيّ يضيف عنصرًا واحدًا باسم الطالب الممسوح وبالمبلغ الإجمالي (150) بدل عنصر لكل أخ بنصيبه (75+75). القاعدة كانت مضبوطة والـhydrate بعد إعادة التشغيل صح — الخطأ في `_session.add` الحيّ فقط.
@@ -101,6 +128,8 @@
 
 1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.50-play.aab`.
 2. **spec 027 T019 — تحقّق جهازي بجهاز HID حقيقي** (لسه ماتعملش): quickstart سيناريوهات 1–11 — يشمل توقيت الجهاز الفعلي، سلوك إقران البلوتوث، كتابة يدوية لا تسجّل، وضع القارئ الخالص، "جرّب القارئ"، شارة النشاط، عدم الانحدار عند التعطيل. المنطق مغطّى باختبارات وحدة.
+3. **spec 029 — commit + تحقّق جهازي** (quickstart 1–10): شهري متأخر، per-session حصة اليوم فقط (لا تنبيه) vs حصص قديمة (تنبيه)، معفى، تحديث فوري بعد دفعة، تعطيل المفتاح.
+4. **spec 028 — `/speckit-plan`** ثم tasks ثم implement.
 3. **T016 — تحقّق spec 026 جهازيًا** (لسه ماتعملش):
    - عدم انحدار المجموعات **الشهرية** في شاشة الدفع بالماسح (month chips، اختيار شهور، تحصيل، لا حقل مبلغ حرّ، لا سطر «= N حصة») — quickstart سيناريو 5.
    - اختبار جهازين (مدرس + مساعد): الدفعة الجزئية تظهر عند المساعد بمبلغها (مؤكَّد بالكود — بيمرّ بـ`insertPayment` بلا تفرّع، بس مش متأكَّد جهازيًا).

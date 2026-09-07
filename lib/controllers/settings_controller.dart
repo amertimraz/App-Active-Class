@@ -277,12 +277,24 @@ class SettingsController extends GetxController {
   // تفعيل حساب "متأخر" تلقائيًا عند مسح الـQR (لو معطّل → "حاضر" دايمًا).
   final RxBool qrAutoLateEnabled = true.obs;
 
+  // إظهار تنبيه "متأخر في الدفع" في شاشات الحضور (spec 029) — افتراضي مفعّل.
+  final RxBool attendanceOverdueWarning = true.obs;
+
   Future<void> _loadLateAttendanceSettings() async {
     try {
       lateGraceMinutes.value =
           await _migrateInt(SETTING_LATE_GRACE_MINUTES) ?? 15;
       qrAutoLateEnabled.value =
           await _migrateBool(SETTING_QR_AUTO_LATE_ENABLED) ?? true;
+      attendanceOverdueWarning.value =
+          await _migrateBool(SETTING_ATTENDANCE_OVERDUE_WARNING) ?? true;
+    } catch (_) {}
+  }
+
+  Future<void> setAttendanceOverdueWarning(bool v) async {
+    attendanceOverdueWarning.value = v;
+    try {
+      await _dbSet(SETTING_ATTENDANCE_OVERDUE_WARNING, v ? '1' : '0');
     } catch (_) {}
   }
 

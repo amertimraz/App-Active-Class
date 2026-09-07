@@ -657,6 +657,21 @@ class SettingsPage extends StatelessWidget {
                               ? const HardwareScannerTestTile()
                               : const SizedBox.shrink()),
                           _buildDivider(isDark),
+                          // ── تنبيه المتأخر في الدفع بشاشة الحضور (spec 029) ──
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.warning_amber_rounded,
+                                iconColor: const Color(0xFFF59E0B),
+                                title: 'تنبيه المتأخر في شاشة الحضور',
+                                subtitle: settings.attendanceOverdueWarning.value
+                                    ? 'بيظهر شريط تحذير جنب اسم الطالب المتأخر وقت تسجيل حضوره'
+                                    : 'معطّل — مفيش تحذير دفع في شاشة الحضور',
+                                rxValue: settings.attendanceOverdueWarning,
+                                onChanged: (v) async => await settings
+                                    .setAttendanceOverdueWarning(v),
+                              )),
+                          _buildDivider(isDark),
                           // ── تسجيل "متأخر" تلقائيًا عبر QR (spec 011) ──
                           Obx(() => _buildSwitchTile(
                                 context,

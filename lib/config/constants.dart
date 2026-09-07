@@ -206,6 +206,9 @@ const String SETTING_LATE_GRACE_MINUTES = 'late_grace_minutes';
 // app_settings key — تفعيل/تعطيل حساب "متأخر" تلقائيًا عند مسح الـQR.
 // افتراضيًا مفعّل؛ لو معطّل الـQR يسجّل "حاضر" دايمًا. (spec 011)
 const String SETTING_QR_AUTO_LATE_ENABLED = 'qr_auto_late_enabled';
+// app_settings key — إظهار تنبيه "متأخر في الدفع" جنب اسم الطالب في
+// شاشات الحضور. افتراضيًا مفعّل. محلي، غير مُزامن. (spec 029)
+const String SETTING_ATTENDANCE_OVERDUE_WARNING = 'attendance_overdue_warning';
 // app_settings key — تفعيل دعم جهاز قارئ باركود خارجي (HID) في شاشتَي
 // الحضور والدفع. افتراضيًا معطّل — المدرّس يفعّله من الإعدادات. محلي
 // لكل جهاز، غير مُزامن. (spec 027)
