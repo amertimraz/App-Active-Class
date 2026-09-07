@@ -30,6 +30,16 @@
 
 **سبيك كامل:** `specs/027-hardware-barcode-scanner/` — T001–T018 + T020 ✅، **T019 (تحقّق جهازي بجهاز HID حقيقي — quickstart سيناريوهات 1–11) لسه ماتعملش**.
 
+### ريليس v1.2.50 (منشور بالكامل)
+
+- **`pubspec.yaml`** + `android/local.properties`: `1.2.49+4067` → **`1.2.50+4068`**.
+- **Commit `79ad6d3`** + **tag `v1.2.50`** مدفوعين.
+- **GitHub Release** (latest): https://github.com/amertimraz/App-Active-Class/releases/tag/v1.2.50 — أصول: `-arm64-v8a.apk` (sha256 `546d11891c260974f33673ca12cdb0e9d18b68d519b910008f9af277ec4c1679`)، `-armeabi-v7a.apk`، `-x86_64.apk`، `-play.aab`. الثلاث APK **universal** (كل الـABIs) versionCode 4068، توقيع release صحيح (`5f74fe10...`). محليًا في `release_assets/ActiveClass-v1.2.50-*`.
+- **VPS:** `/var/www/active-class.online/downloads/ActiveClass-arm64-v8a.apk` (backup `.bak-1.2.49`). التحقق: `curl -sI` → 200، 48228892 بايت، sha256 مطابق.
+- **booking_site:** `booking_site/downloads_ready/ActiveClass-arm64-v8a.apk` محدّث (ضمن `79ad6d3`).
+- **release notes:** `scratchpad/release_notes_v1.2.50.md`.
+- **درس البناء تأكّد تاني:** `--split-per-abi` = OOM. الحل: `flutter build apk --release --flavor direct --target-platform android-arm64` (وبعده `android-arm`، `android-x64`) — بيكتب فوق `build/app/outputs/flutter-apk/app-direct-release.apk` (universal فعليًا مش ABI واحد) فانسخه فورًا. الـAAB: `flutter build appbundle --release --flavor play`. كل بناء ~4.5–6 دقايق، مفيش OOM المرة دي.
+
 ### hotfix — سجل جلسة الدفع كان بيعرض عرض الإخوة عنصر واحد بالمبلغ الكامل (Commit `47cf022`، مدفوع)
 
 كان سجل "دفعوا اليوم" الحيّ يضيف عنصرًا واحدًا باسم الطالب الممسوح وبالمبلغ الإجمالي (150) بدل عنصر لكل أخ بنصيبه (75+75). القاعدة كانت مضبوطة والـhydrate بعد إعادة التشغيل صح — الخطأ في `_session.add` الحيّ فقط.
@@ -89,7 +99,7 @@
 
 ## ⏳ متبقّي / مفتوح
 
-1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.49-play.aab`.
+1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.50-play.aab`.
 2. **spec 027 T019 — تحقّق جهازي بجهاز HID حقيقي** (لسه ماتعملش): quickstart سيناريوهات 1–11 — يشمل توقيت الجهاز الفعلي، سلوك إقران البلوتوث، كتابة يدوية لا تسجّل، وضع القارئ الخالص، "جرّب القارئ"، شارة النشاط، عدم الانحدار عند التعطيل. المنطق مغطّى باختبارات وحدة.
 3. **T016 — تحقّق spec 026 جهازيًا** (لسه ماتعملش):
    - عدم انحدار المجموعات **الشهرية** في شاشة الدفع بالماسح (month chips، اختيار شهور، تحصيل، لا حقل مبلغ حرّ، لا سطر «= N حصة») — quickstart سيناريو 5.
