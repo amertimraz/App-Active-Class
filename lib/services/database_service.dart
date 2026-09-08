@@ -1849,7 +1849,17 @@ class DatabaseService {
             if (examIdsInRange.isEmpty) {
               deleted[t] = 0;
             } else {
-              // FK ON DELETE CASCADE بيمسح التوابع (زي deleteExam).
+              // نحذف التوابع صراحةً (زي deleteAllData) بدل الاعتماد على
+              // FK CASCADE — لو foreign_keys اتوقفت لأي سبب، كان هيسيب
+              // درجات/أسئلة/تسليمات يتيمة محليًا.
+              await txn.delete(TABLE_EXAM_GRADES,
+                  where: '$COL_GRADE_EXAM_ID IN ($examInClause)');
+              await txn.delete(TABLE_EXAM_GROUPS,
+                  where: '$COL_EG_EXAM_ID IN ($examInClause)');
+              await txn.delete(TABLE_EXAM_QUESTIONS,
+                  where: '$COL_EQ_EXAM_ID IN ($examInClause)');
+              await txn.delete(TABLE_EXAM_SUBMISSIONS,
+                  where: '$COL_ES_EXAM_ID IN ($examInClause)');
               deleted[t] = await txn.delete(TABLE_EXAMS,
                   where: '$COL_EXAM_ID IN ($examInClause)');
             }

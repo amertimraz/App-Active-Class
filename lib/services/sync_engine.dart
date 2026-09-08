@@ -222,17 +222,14 @@ class SyncEngine with WidgetsBindingObserver {
     _drainRound++;
     try {
       final db = await _dbService.database;
-      // spec 030 — صفوف "مسمومة" (فشلت ≥ العتبة) تُستبعَد من نافذة الـ50
-      // عشان متحتكرهاش وتمنع الصفوف الأحدث توصل. بنعيد المحاولة عليها
-      // كل kPoisonRetryEvery جولة بس (بدون NOT IN في تلك الجولة).
-      final poison = _outboxFails.entries
-          .where((e) => e.value >= kMaxOutboxFails)
-          .map((e) => e.key)
-          .toList();
+      // spec 030 — صفوف "مسمومة" (`_loggedPoison` = بلغت عتبة الفشل)
+      // تُستبعَد من نافذة الـ50 عشان متحتكرهاش وتمنع الصفوف الأحدث توصل.
+      // بنعيد المحاولة عليها كل kPoisonRetryEvery جولة بس.
       final retryPoison = _drainRound % kPoisonRetryEvery == 0;
       final where = StringBuffer('$COL_OUTBOX_SYNCED = 0');
-      if (poison.isNotEmpty && !retryPoison) {
-        where.write(' AND $COL_OUTBOX_ID NOT IN (${poison.join(',')})');
+      if (_loggedPoison.isNotEmpty && !retryPoison) {
+        where.write(
+            ' AND $COL_OUTBOX_ID NOT IN (${_loggedPoison.join(',')})');
       }
       final rows = await db.query(
         TABLE_SYNC_OUTBOX,
@@ -266,11 +263,16 @@ class SyncEngine with WidgetsBindingObserver {
                 where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
             _forgetOutbox(outboxId);
           } else {
-            // الأب لسه مش متزامن — نسيبه، وبنعدّه فشلة عشان لو فضل
-            // كده كتير يتخطّى بدل ما يسدّ رأس الطابور.
-            _recordOutboxFail(outboxId, table, rowId, 'الأب لسه بلا remote_id');
+            // done == false = "الأب لسه بلا remote_id" — ده مش خطأ، ده
+            // انتظار طبيعي (الأب بيتزامن في جولة أو اتنين). منعدّهوش
+            // فشلة (عتبة عالية جدًا) عشان متتخطّاش صفوف سليمة بتستنى
+            // أباها بالغلط. بس لو فضل كده مئات الجولات (أب معطوب فعلًا)
+            // نتخطّاه.
+            _recordOutboxFail(outboxId, table, rowId,
+                'الأب لسه بلا remote_id', maxFails: kMaxOutboxFails * 40);
           }
         } catch (e) {
+          // استثناء فعلي (RLS/trigger/شبكة) — ده اللي بيسدّ رأس الطابور.
           _recordOutboxFail(outboxId, table, rowId, e.toString());
           debugPrint('SyncEngine: فشل push لـ $table/$rowId — $e');
         }
@@ -280,11 +282,12 @@ class SyncEngine with WidgetsBindingObserver {
     }
   }
 
-  void _recordOutboxFail(int id, String table, int rowId, String err) {
+  void _recordOutboxFail(int id, String table, int rowId, String err,
+      {int maxFails = kMaxOutboxFails}) {
     final n = (_outboxFails[id] ?? 0) + 1;
     _outboxFails[id] = n;
     _lastOutboxErr[id] = err;
-    if (n >= kMaxOutboxFails && _loggedPoison.add(id)) {
+    if (n >= maxFails && _loggedPoison.add(id)) {
       debugPrint(
           'SyncEngine: ⚠️ صف عالق بعد $n محاولات — $table/$rowId — آخر خطأ: $err');
     }
