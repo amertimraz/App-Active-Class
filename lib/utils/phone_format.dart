@@ -1,12 +1,8 @@
 // lib/utils/phone_format.dart
 //
-// تطبيع رقم الهاتف لرابط wa.me — نفس منطق إرسال تقارير الحضور/الدرجات.
+// spec 033 — غلاف رفيع فوق PhoneHelper للتوافق مع المستدعين القدامى.
+// المنطق كله دلوقتي في phone_helper.dart (نقطة واحدة).
+import 'package:active_class/utils/phone_helper.dart';
 
-String normalizeWhatsappPhone(String input, String defaultDial) {
-  var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
-  if (p.startsWith('+')) p = p.substring(1);
-  if (p.startsWith('00')) p = p.substring(2);
-  if (p.startsWith(defaultDial)) return p;
-  if (RegExp(r'^[1-9][0-9]{6,}$').hasMatch(p)) return p;
-  return defaultDial + p.replaceFirst(RegExp(r'^0+'), '');
-}
+String normalizeWhatsappPhone(String input, String defaultDial) =>
+    PhoneHelper.waMe(input, defaultDial);

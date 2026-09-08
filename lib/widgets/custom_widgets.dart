@@ -1,5 +1,6 @@
 // lib/widgets/custom_widgets.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/config/constants.dart';
@@ -180,6 +181,10 @@ class CustomTextField extends StatelessWidget {
   final bool enabled; // تمكين/تعطيل الحقل
   final VoidCallback? onClear;
   final FocusNode? focusNode;
+  // spec 033 — اختيارية، صفر تأثير على الاستخدامات القائمة.
+  final TextDirection? textDirection;
+  final TextAlign textAlign;
+  final List<TextInputFormatter>? inputFormatters;
 
   const CustomTextField({
     Key? key,
@@ -195,6 +200,9 @@ class CustomTextField extends StatelessWidget {
     this.enabled = true,
     this.onClear,
     this.focusNode,
+    this.textDirection,
+    this.textAlign = TextAlign.start,
+    this.inputFormatters,
   }) : super(key: key);
 
   @override
@@ -208,6 +216,9 @@ class CustomTextField extends StatelessWidget {
       minLines: minLines,
       obscureText: obscureText,
       validator: validator,
+      textDirection: textDirection,
+      textAlign: textAlign,
+      inputFormatters: inputFormatters,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,

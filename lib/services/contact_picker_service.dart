@@ -1,6 +1,7 @@
 // lib/services/contact_picker_service.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:active_class/utils/phone_helper.dart';
 
 /// يطلب إذن جهات الاتصال ويعرض قائمة بحث داخل التطبيق نفسه لاختيار
 /// جهة اتصال، ويرجّع رقم الهاتف بصيغة محلية مصرية (01xxxxxxxxx).
@@ -34,8 +35,9 @@ class ContactPickerService {
   }
 
   static String _normalize(String raw) {
-    var digits = raw.replaceAll(RegExp(r'[^0-9+]'), '');
-
+    // spec 033 — عبر PhoneHelper (يحوّل الأرقام العربية + يشيل علامات الاتجاه).
+    var digits = PhoneHelper.cleanForStorage(raw);
+    // البوابة بترجّع صيغة محلية مصرية (01…) لو الرقم مصري.
     if (digits.startsWith('+20')) {
       digits = '0${digits.substring(3)}';
     } else if (digits.startsWith('0020')) {
@@ -43,7 +45,6 @@ class ContactPickerService {
     } else if (digits.startsWith('20') && digits.length == 12) {
       digits = '0${digits.substring(2)}';
     }
-
     return digits;
   }
 }

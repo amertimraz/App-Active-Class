@@ -8,7 +8,8 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/contact_picker_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
-import 'package:active_class/config/constants.dart';
+import 'package:active_class/widgets/phone_field.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
 import 'package:active_class/widgets/code_scanner_page.dart';
 
@@ -77,7 +78,12 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _priceCtrl;
   late final TextEditingController _phoneCtrl;
+  late final TextEditingController _whatsappCtrl;
   late final TextEditingController _exemptCustomCtrl;
+
+  String get _dialCode => Get.isRegistered<SettingsController>()
+      ? Get.find<SettingsController>().countryDial.value
+      : '20';
   late final TextEditingController _sibTotalCtrl;
 
   DateTime? _attendanceStart;
@@ -113,6 +119,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     _nameCtrl = TextEditingController(text: s.name);
     _priceCtrl = TextEditingController(text: s.price.toStringAsFixed(0));
     _phoneCtrl = TextEditingController(text: s.guardianPhone ?? '');
+    _whatsappCtrl = TextEditingController(text: s.guardianWhatsapp ?? '');
     _sibTotalCtrl =
         TextEditingController(text: s.siblingsTotal?.toString() ?? '');
     _attendanceStart = s.attendanceStart ?? DateTime.now();
@@ -185,6 +192,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     _nameCtrl.dispose();
     _priceCtrl.dispose();
     _phoneCtrl.dispose();
+    _whatsappCtrl.dispose();
     _exemptCustomCtrl.dispose();
     _sibTotalCtrl.dispose();
     _codeCtrl.dispose();
@@ -397,6 +405,9 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
         attendanceStart: _attendanceStart,
         guardianPhone:
             _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+        guardianWhatsapp:
+            _whatsappCtrl.text.trim().isEmpty ? null : _whatsappCtrl.text.trim(),
+        clearGuardianWhatsapp: _whatsappCtrl.text.trim().isEmpty,
         birthDate: _birthDate,
         exemptPercent: _isExempt ? _exemptPercent : 0,
         exemptReason: finalReason,
@@ -568,31 +579,25 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                 label: 'الرسوم',
                 keyboardType: TextInputType.number),
             const SizedBox(height: 12),
-            Row(children: [
-              Expanded(
-                  child: CustomTextField(
-                      controller: _phoneCtrl,
-                      label: 'ولي الأمر',
-                      keyboardType: TextInputType.phone)),
-              const SizedBox(width: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: widget.accentColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(BORDER_RADIUS_NORMAL),
-                ),
-                child: IconButton(
-                  tooltip: 'اختيار من جهات الاتصال',
-                  icon: Icon(Icons.contacts_rounded, color: widget.accentColor),
-                  onPressed: () async {
-                    final phone =
-                        await ContactPickerService.pickPhoneNumber(context);
-                    if (phone != null) {
-                      setState(() => _phoneCtrl.text = phone);
-                    }
-                  },
-                ),
-              ),
-            ]),
+            PhoneField(
+              controller: _phoneCtrl,
+              dialCode: _dialCode,
+              label: 'ولي الأمر',
+              onContactPick: () async {
+                final phone =
+                    await ContactPickerService.pickPhoneNumber(context);
+                if (phone != null && mounted) {
+                  setState(() => _phoneCtrl.text = phone);
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            CustomTextField(
+              controller: _whatsappCtrl,
+              label: 'واتساب ولي الأمر (رابط/اسم مستخدم — اختياري)',
+              textDirection: TextDirection.ltr,
+              textAlign: TextAlign.left,
+            ),
             const SizedBox(height: 12),
 
             // المجموعة (لو الشاشة المستدعية بعتت قائمة المجموعات)

@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 29;
+const int DATABASE_VERSION = 30;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -141,6 +141,7 @@ const String COL_STUDENT_SIBLING_GROUP_ID = 'sibling_group_id';
 const String COL_STUDENT_CREATED_AT = 'created_at';
 const String COL_STUDENT_ATTENDANCE_START = 'attendance_start';
 const String COL_STUDENT_GUARDIAN_PHONE = 'guardian_phone';
+const String COL_STUDENT_GUARDIAN_WHATSAPP = 'guardian_whatsapp'; // spec 033
 const String COL_STUDENT_BIRTH_DATE = 'birth_date';
 const String COL_STUDENT_EXEMPT_PERCENT = 'exempt_percent';
 const String COL_STUDENT_EXEMPT_REASON  = 'exempt_reason';

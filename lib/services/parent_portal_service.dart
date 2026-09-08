@@ -22,6 +22,7 @@ import 'package:get/get.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/utils/phone_helper.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
@@ -225,7 +226,10 @@ class ParentPortalService {
   /// التليفون فاضي أو أقل من 4 أرقام، الطالب ده مينفعش يتنشر خالص
   /// (بدل ما نضعّف الحماية).
   String? _last4(String? phone) {
-    final digits = (phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+    // spec 033 — حوّل أي أرقام عربية-هندية قبل الاقتطاع (أرقام قديمة مخزّنة
+    // بصيغة ملوّثة) عشان معرّف مستند البوابة يطابق.
+    final digits = PhoneHelper.toLatinDigits(phone ?? '')
+        .replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length < 4) return null;
     return digits.substring(digits.length - 4);
   }

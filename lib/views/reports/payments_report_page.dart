@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:active_class/utils/phone_helper.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
@@ -829,15 +830,8 @@ class _WhatsButton extends StatelessWidget {
           ? null
           : () async {
               final settings = Get.find<SettingsController>();
-              String normalize(String input, String defaultDial) {
-                var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
-                if (p.startsWith('+')) p = p.substring(1);
-                if (p.startsWith('00')) p = p.substring(2);
-                if (p.startsWith(defaultDial)) return p;
-                if (RegExp(r'^[1-9][0-9]{6,}$').hasMatch(p)) return p;
-                p = p.replaceFirst(RegExp(r'^0+'), '');
-                return defaultDial + p;
-              }
+              String normalize(String input, String defaultDial) =>
+                  PhoneHelper.waMe(input, defaultDial);
 
               final dial = settings.countryDial.value;
               final phoneNorm = normalize(phone, dial);

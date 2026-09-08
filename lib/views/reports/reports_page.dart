@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:active_class/utils/phone_helper.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/report_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
@@ -14,15 +15,8 @@ import 'package:active_class/views/reports/session_breakdown_page.dart';
 
 // نفس منطق تطبيع رقم التليفون المستخدم في group_details_page.dart — بيحوّل
 // أي شكل مكتوب بيه الرقم (بمسافات/+/00/صفر البداية) لصيغة wa.me الصحيحة.
-String _normalizePhone(String input, String defaultDial) {
-  var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
-  if (p.startsWith('+')) p = p.substring(1);
-  if (p.startsWith('00')) p = p.substring(2);
-  if (p.startsWith(defaultDial)) return p;
-  if (RegExp(r'^[1-9][0-9]{6,}$').hasMatch(p)) return p;
-  p = p.replaceFirst(RegExp(r'^0+'), '');
-  return defaultDial + p;
-}
+String _normalizePhone(String input, String defaultDial) =>
+    PhoneHelper.waMe(input, defaultDial);
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});

@@ -1,13 +1,16 @@
 // lib/widgets/add_student_sheet.dart
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:active_class/controllers/student_controller.dart';
+import 'package:active_class/controllers/settings_controller.dart';
+import 'package:active_class/widgets/phone_field.dart';
+import 'package:active_class/utils/phone_helper.dart';
 import 'package:active_class/widgets/code_scanner_page.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/contact_picker_service.dart';
 import 'package:active_class/services/notification_service.dart';
-import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
@@ -80,7 +83,12 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   // Controllers
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
+  final _whatsappCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
+
+  String get _dialCode => Get.isRegistered<SettingsController>()
+      ? Get.find<SettingsController>().countryDial.value
+      : '20';
   final _sibTotalCtrl = TextEditingController();
   final _codeCtrl = TextEditingController();
 
@@ -120,7 +128,9 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   void initState() {
     super.initState();
     if (widget.initialName != null) _nameCtrl.text = widget.initialName!;
-    if (widget.initialPhone != null) _phoneCtrl.text = widget.initialPhone!;
+    if (widget.initialPhone != null) {
+      _phoneCtrl.text = PhoneHelper.cleanForStorage(widget.initialPhone!);
+    }
     _init();
   }
 
@@ -308,7 +318,14 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   Future<void> _submit() async {
     final name = _nameCtrl.text.trim();
     final phone = _phoneCtrl.text.trim();
+    final whatsapp = _whatsappCtrl.text.trim();
     final price = double.tryParse(_priceCtrl.text.trim());
+
+    if (whatsapp.isNotEmpty &&
+        PhoneHelper.parseWhatsappHandle(whatsapp).kind ==
+            WhatsappHandleKind.invalid) {
+      _toast('حقل الواتساب مش رابط ولا اسم مستخدم واضح — هيتحفظ زي ما هو');
+    }
     final g = _selectedGroup;
 
     if (name.isEmpty) {
@@ -359,6 +376,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
       createdAt: DateTime.now(),
       attendanceStart: _attendanceStart,
       guardianPhone: phone.isEmpty ? null : phone,
+      guardianWhatsapp: whatsapp.isEmpty ? null : whatsapp,
       birthDate: _birthDate,
       siblingsTotal: sibTotal,
       exemptPercent: _isExempt ? _exemptPercent : 0,
@@ -397,6 +415,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
     // تلقائي أول ما الشيت يتقفل ويتفتح تاني.
     _nameCtrl.clear();
     _phoneCtrl.clear();
+    _whatsappCtrl.clear();
     _sibTotalCtrl.clear();
     _exemptCustomCtrl.clear();
     _birthDate = null;
@@ -433,6 +452,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   void dispose() {
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
+    _whatsappCtrl.dispose();
     _priceCtrl.dispose();
     _sibTotalCtrl.dispose();
     _codeCtrl.dispose();
@@ -740,35 +760,27 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                       // ── رقم ولي الأمر ─────────────────────────────────────
                       _Label('رقم ولي الأمر'),
                       const SizedBox(height: 6),
-                      Row(children: [
-                        Expanded(
-                          child: CustomTextField(
-                            controller: _phoneCtrl,
-                            label: '01xxxxxxxxx',
-                            keyboardType: TextInputType.phone,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: primary.withValues(alpha: 0.1),
-                            borderRadius:
-                                BorderRadius.circular(BORDER_RADIUS_NORMAL),
-                          ),
-                          child: IconButton(
-                            tooltip: 'اختيار من جهات الاتصال',
-                            icon: Icon(Icons.contacts_rounded, color: primary),
-                            onPressed: () async {
-                              final phone =
-                                  await ContactPickerService.pickPhoneNumber(
-                                      context);
-                              if (phone != null) {
-                                setState(() => _phoneCtrl.text = phone);
-                              }
-                            },
-                          ),
-                        ),
-                      ]),
+                      PhoneField(
+                        controller: _phoneCtrl,
+                        dialCode: _dialCode,
+                        onContactPick: () async {
+                          final phone =
+                              await ContactPickerService.pickPhoneNumber(
+                                  context);
+                          if (phone != null && mounted) {
+                            setState(() => _phoneCtrl.text = phone);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      _Label('واتساب ولي الأمر (رابط أو اسم مستخدم — اختياري)'),
+                      const SizedBox(height: 6),
+                      CustomTextField(
+                        controller: _whatsappCtrl,
+                        label: 'wa.me/... أو @username',
+                        textDirection: TextDirection.ltr,
+                        textAlign: TextAlign.left,
+                      ),
 
                       const SizedBox(height: 14),
 

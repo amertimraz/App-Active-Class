@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
@@ -120,8 +121,9 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
 
   Future<void> _shareMonthlyReport(Student s) async {
     final rawPhone = s.guardianPhone?.trim() ?? '';
-    if (rawPhone.isEmpty) {
-      ToastHelper.info('أضف رقم ولي الأمر أولاً');
+    final rawWhatsapp = s.guardianWhatsapp?.trim() ?? '';
+    if (rawPhone.isEmpty && rawWhatsapp.isEmpty) {
+      ToastHelper.info('أضف رقم أو واتساب ولي الأمر أولاً');
       return;
     }
 
@@ -292,19 +294,14 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
       );
     }
 
-    String normalize(String input, String defaultDial) {
-      var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
-      if (p.startsWith('+')) p = p.substring(1);
-      if (p.startsWith('00')) p = p.substring(2);
-      if (p.startsWith(defaultDial)) return p;
-      if (RegExp(r'^[1-9][0-9]{6,}$').hasMatch(p)) return p;
-      return defaultDial + p.replaceFirst(RegExp(r'^0+'), '');
-    }
-
-    final phone = normalize(rawPhone, settings.countryDial.value);
-    final uri = Uri.parse(
-        'https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!mounted) return;
+    await launchGuardianWhatsapp(
+      context: context,
+      phone: rawPhone,
+      whatsapp: rawWhatsapp,
+      message: message,
+      dialCode: settings.countryDial.value,
+    );
   }
 
   // ─── حذف الطالب (أرشفة / حذف نهائي) ──────────────────────────────────────

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'dart:ui' as ui;
 import 'dart:io';
 import 'package:get/get.dart';
+import 'package:active_class/utils/phone_helper.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
@@ -2010,15 +2011,8 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
   final maxMonth = defaultCollectionMonth();
   final sentMap = await db.getReportSentMap(ids, maxMonth);
 
-  String normalize(String input, String defaultDial) {
-    var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
-    if (p.startsWith('+')) p = p.substring(1);
-    if (p.startsWith('00')) p = p.substring(2);
-    if (p.startsWith(defaultDial)) return p;
-    if (RegExp(r'^[1-9][0-9]{6,}$').hasMatch(p)) return p;
-    p = p.replaceFirst(RegExp(r'^0+'), '');
-    return defaultDial + p;
-  }
+  String normalize(String input, String defaultDial) =>
+      PhoneHelper.waMe(input, defaultDial);
 
   if (!context.mounted) return;
   await showDialog(
@@ -2437,15 +2431,8 @@ void _gdShowFeesBreakdownDialog(
           : Get.put(AttendanceController());
       DateTime selected = defaultCollectionMonth();
 
-      String normalize(String input, String defaultDial) {
-        var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
-        if (p.startsWith('+')) p = p.substring(1);
-        if (p.startsWith('00')) p = p.substring(2);
-        if (p.startsWith(defaultDial)) return p;
-        if (RegExp(r'^[1-9][0-9]{6,}$').hasMatch(p)) return p;
-        p = p.replaceFirst(RegExp(r'^0+'), '');
-        return defaultDial + p;
-      }
+      String normalize(String input, String defaultDial) =>
+          PhoneHelper.waMe(input, defaultDial);
 
       Future<Map<String, dynamic>> load(DateTime monthStart) async {
         final monthEnd =

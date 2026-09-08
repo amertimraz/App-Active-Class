@@ -216,6 +216,7 @@ class DatabaseService {
         $COL_STUDENT_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_STUDENT_ATTENDANCE_START TEXT,
         $COL_STUDENT_GUARDIAN_PHONE TEXT,
+        $COL_STUDENT_GUARDIAN_WHATSAPP TEXT,
         $COL_STUDENT_BIRTH_DATE TEXT,
         $COL_STUDENT_EXEMPT_PERCENT REAL DEFAULT 0,
         $COL_STUDENT_EXEMPT_REASON TEXT,
@@ -794,6 +795,14 @@ class DatabaseService {
       } catch (_) {}
       try {
         await db.execute(_sessionOverridesIndexSql);
+      } catch (_) {}
+    }
+
+    if (oldVersion < 30) {
+      // spec 033 — عمود واتساب ولي الأمر (رابط/username). القديم = NULL.
+      try {
+        await db.execute(
+            'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_GUARDIAN_WHATSAPP TEXT');
       } catch (_) {}
     }
   }

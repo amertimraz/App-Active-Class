@@ -13,6 +13,7 @@ class Student {
   final DateTime? createdAt;
   final DateTime? attendanceStart;
   final String? guardianPhone;
+  final String? guardianWhatsapp;  // spec 033 — رابط wa.me أو اسم مستخدم (اختياري)
   final DateTime? birthDate;       // تاريخ الميلاد
   final double exemptPercent;      // 0 = لا إعفاء، 100 = إعفاء كامل، 50 = 50%
   final String? exemptReason;      // سبب الإعفاء
@@ -32,6 +33,7 @@ class Student {
     this.createdAt,
     this.attendanceStart,
     this.guardianPhone,
+    this.guardianWhatsapp,
     this.birthDate,
     this.exemptPercent = 0,
     this.exemptReason,
@@ -62,6 +64,7 @@ class Student {
       'created_at': createdAt?.toIso8601String(),
       'attendance_start': attendanceStart?.toIso8601String(),
       'guardian_phone': guardianPhone,
+      'guardian_whatsapp': guardianWhatsapp,
       'birth_date': birthDate?.toIso8601String(),
       'exempt_percent': exemptPercent,
       'exempt_reason': exemptReason,
@@ -88,6 +91,7 @@ class Student {
           ? DateTime.parse(map['attendance_start'] as String)
           : null,
       guardianPhone: map['guardian_phone'] as String?,
+      guardianWhatsapp: map['guardian_whatsapp'] as String?,
       birthDate: map['birth_date'] != null
           ? DateTime.parse(map['birth_date'] as String)
           : null,
@@ -115,6 +119,8 @@ class Student {
     DateTime? createdAt,
     DateTime? attendanceStart,
     String? guardianPhone,
+    String? guardianWhatsapp,
+    bool clearGuardianWhatsapp = false,
     DateTime? birthDate,
     double? exemptPercent,
     String? exemptReason,
@@ -142,6 +148,9 @@ class Student {
       createdAt: createdAt ?? this.createdAt,
       attendanceStart: attendanceStart ?? this.attendanceStart,
       guardianPhone: guardianPhone ?? this.guardianPhone,
+      guardianWhatsapp: clearGuardianWhatsapp
+          ? null
+          : (guardianWhatsapp ?? this.guardianWhatsapp),
       birthDate: birthDate ?? this.birthDate,
       exemptPercent: exemptPercent ?? this.exemptPercent,
       exemptReason: clearExemptReason ? null : (exemptReason ?? this.exemptReason),
