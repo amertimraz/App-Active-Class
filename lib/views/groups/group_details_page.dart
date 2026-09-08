@@ -1991,11 +1991,13 @@ Future<void> _startGroupWhatsappBatchSend(
   final settings = Get.find<SettingsController>();
   final students = await db.getStudentsByGroup(groupId);
   final valid = students
-      .where((s) => (s.guardianPhone ?? '').trim().isNotEmpty)
+      .where((s) =>
+          (s.guardianPhone ?? '').trim().isNotEmpty ||
+          (s.guardianWhatsapp ?? '').trim().isNotEmpty)
       .toList()
     ..sort((a, b) => a.name.compareTo(b.name));
   if (valid.isEmpty) {
-    ToastHelper.info('لا يوجد أولياء أمور بأرقام مسجلة');
+    ToastHelper.info('لا يوجد أولياء أمور بأرقام أو واتساب مسجلة');
     return;
   }
   if (!context.mounted) return;
