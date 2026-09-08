@@ -9,13 +9,13 @@
 
 ### spec 033 — تنظيف رقم ولي الأمر + واتساب (متنفّذ + **مدفوع**، migration مطبّق، **تحقّق جهازي لسه**)
 
-**Commits:** `6fc07a8` سبيك · `60fbedb` خطة · `3f26046` مهام · `23893ed` تنفيذ · `aeb0ac6`+`ca981e9` وصل الإرسال · `f3c1643`+`aeff70f` مراجعة باجات · `05d7e8c` آخر 3 شاشات — كلها مدفوعة.
+**Commits:** `6fc07a8` سبيك · `60fbedb` خطة · `3f26046` مهام · `23893ed` تنفيذ · `aeb0ac6`+`ca981e9` وصل الإرسال · `05d7e8c` آخر 3 شاشات · **4 مراجعات:** `f3c1643`+`aeff70f` (أرقام دولية، regression `groupsForDay`) · `3694ae5` (normalizers مكسورة فاتوا في settings/reports/auth/db) · `51b49a6` (حذف كود ميت) — كلها مدفوعة.
 
 **الباج:** دالة تطبيع الرقم القديمة `replaceAll(RegExp(r'[^0-9+]'), '')` كانت بتمسح الأرقام العربية (٠١٢٣) بالكامل → واتساب يفتح فاضي. + حقل الرقم RTL بلا `textDirection` → الرقم يتعرض معكوس.
 
 **اللي اتعمل:**
 - **`lib/utils/phone_helper.dart`** (جديد، نقي): `PhoneHelper` — `toLatinDigits` (عربي/فارسي→لاتيني)، `cleanForStorage` (يشيل علامات الاتجاه/المسافات/الرموز، يوحّد `+`/`00`)، `waMe(raw, dial)` (رقم دولي صريح — بـ`+` أو `00` أو تسلسل ≥11 خانة بلا صفر — يُحترم؛ غيره + رمز الدولة)، `displayIntl` (‎+20 …، ومايفترضش مصر لرقم دولي مختلف)، `isLikelyValid`، `parseWhatsappHandle` → `WhatsappHandle{kind,value}` (waLink/phone/username/invalid). **36 اختبار** (`test/phone_helper_test.dart`).
-- **`lib/utils/phone_format.dart`**: `normalizeWhatsappPhone` بقى غلاف رفيع فوق `PhoneHelper.waMe`.
+- **`lib/utils/phone_format.dart`**: **اتشال** (كان غلاف `normalizeWhatsappPhone` — بقى بلا مستدعين بعد ما كل النقاط اتوصلت بـ`whatsapp_launcher`).
 - **`CustomTextField`**: + `textDirection`/`textAlign`/`inputFormatters` اختيارية (صفر تأثير على القائم).
 - **`lib/widgets/phone_field.dart`** (جديد): `PhoneSanitizerFormatter` + `PhoneField` — LTR + تنظيف لحظي + معاينة «هيتبعت على: ‎+20 …» + تحذير «الرقم يبدو غير مكتمل» (غير معطِّل).
 - **`add_student_sheet` + `edit_student_sheet`**: `PhoneField` بدل الحقل القديم + حقل `_whatsappCtrl` LTR جديد «واتساب ولي الأمر (رابط/username)».
