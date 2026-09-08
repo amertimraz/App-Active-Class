@@ -66,15 +66,19 @@ extension DeletableRecordTypeX on DeletableRecordType {
   bool get isTeamSynced => this != DeletableRecordType.reportLogs;
 }
 
-/// حدود المدى للاستعلام: [fromIso, toIso) — يوم البداية 00:00:00 حتى
-/// نهاية يوم النهاية (باستثناء أول لحظة من اليوم التالي)، مستقلّ عن
-/// جزء الوقت المخزَّن في الصف.
+/// حدود المدى للاستعلام كنصّ **تاريخ فقط** (`YYYY-MM-DD`): `[fromIso, toIso)`
+/// — يوم البداية شامل، أول لحظة من اليوم التالي للنهاية غير شاملة.
+///
+/// نستخدم تاريخ فقط (لا وقت) عشان المقارنة النصّية تشتغل صح سواء العمود
+/// مخزَّن تاريخ فقط (`"2025-09-01"`) أو ISO كامل (`"2025-09-01T08:00:00.000"`):
+/// - `"2025-09-01"` مقابل `fromIso "2025-09-01"` → `>=` ✓ (لو استخدمنا وقت
+///   كامل في fromIso كان صف التاريخ-فقط في يوم البداية بالظبط هيتستبعد
+///   لأنه "أقصر" وبالتالي أصغر معجميًا).
+/// - أي وقت في نفس اليوم `"...T08:00"` أطول ونفس البادئة → أكبر ✓.
 ({String fromIso, String toIso}) rangeIsoBounds(DateTime from, DateTime to) {
-  final start = DateTime(from.year, from.month, from.day);
-  final endExclusive =
-      DateTime(to.year, to.month, to.day).add(const Duration(days: 1));
+  String d(DateTime x) => x.toIso8601String().substring(0, 10);
   return (
-    fromIso: start.toIso8601String(),
-    toIso: endExclusive.toIso8601String(),
+    fromIso: d(DateTime(from.year, from.month, from.day)),
+    toIso: d(DateTime(to.year, to.month, to.day).add(const Duration(days: 1))),
   );
 }

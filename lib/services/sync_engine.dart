@@ -191,6 +191,7 @@ class SyncEngine with WidgetsBindingObserver {
     _drainRound = 0;
     _emptyMembershipStreak = 0;
     _deviceUnboundStreak = 0;
+    _lastRefreshAttempt = null;
     final ch = _channel;
     final chX = _channelX;
     _channel = null;
@@ -675,11 +676,20 @@ class SyncEngine with WidgetsBindingObserver {
   /// (مش error) لو التوكن خلص/التحديث اتأخّر — واللي كان بيتفهم غلط
   /// إنه "المساعد اتشال من الفريق" ويسجّل خروجه. لو الجلسة مش صالحة
   /// منستنتجش أي إزالة، ونحاول نجدّدها ونأجّل الفحص.
+  DateTime? _lastRefreshAttempt;
+
   bool _sessionUsable() {
     final s = client.auth.currentSession;
     if (s == null || s.isExpired) {
-      unawaited(client.auth.refreshSession().then((_) {}, onError: (_) {}));
-      debugPrint('SyncEngine: تخطّي فحص الفريق — جلسة غير صالحة، محاولة تجديد');
+      // _sessionUsable بتتنادى 3 مرات كل _checkStillAllowed + 3 مع
+      // catchUpPull — منكرّرش refreshSession أكتر من مرة كل 15 ثانية.
+      final now = DateTime.now();
+      if (_lastRefreshAttempt == null ||
+          now.difference(_lastRefreshAttempt!) > const Duration(seconds: 15)) {
+        _lastRefreshAttempt = now;
+        unawaited(client.auth.refreshSession().then((_) {}, onError: (_) {}));
+        debugPrint('SyncEngine: جلسة غير صالحة — محاولة تجديد وتأجيل فحوصات الفريق');
+      }
       return false;
     }
     return true;

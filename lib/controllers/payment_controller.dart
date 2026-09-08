@@ -21,6 +21,9 @@ class PaymentController extends GetxController {
 
   // State
   final RxBool isLoading = false.obs;
+  // صار true بعد أول تحميل ناجح — عشان أي واجهة تعتمد على المديونية
+  // (تنبيه المتأخر spec 029) متعرضش أرقام غلط قبل ما الدفعات تتحمّل.
+  final RxBool loadedOnce = false.obs;
   final RxDouble totalPayments = 0.0.obs;
 
   // Filters & Sorting
@@ -43,6 +46,7 @@ class PaymentController extends GetxController {
       payments.assignAll(loadedPayments);
       _applyFilter();
       calculateTotalPayments();
+      loadedOnce.value = true;
     } catch (e) {
       ToastHelper.error('حدث خطأ في تحميل المدفوعات');
     } finally {

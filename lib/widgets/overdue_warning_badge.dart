@@ -111,6 +111,10 @@ class OverdueWarningFor extends StatelessWidget {
       if (!settings.attendanceOverdueWarning.value) {
         return const SizedBox.shrink();
       }
+      // متعرضش تنبيه قبل ما الدفعات تتحمّل — وإلا accumulatedDebt هيرجع
+      // المستحق الكامل بلا خصم دفعات = بادج "متأخر" كاذب يومض. الشاشتان
+      // (الحضور بـQR + الحضور العادي) بتحمّلا الدفعات عند الفتح. (spec 029)
+      if (!payCtrl.loadedOnce.value) return const SizedBox.shrink();
       final group =
           groups.firstWhereOrNull((g) => g.id == student.groupId);
       final show = PricingHelper.showsAttendanceOverdueWarning(

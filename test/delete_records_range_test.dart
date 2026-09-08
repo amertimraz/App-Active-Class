@@ -10,27 +10,32 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('rangeIsoBounds', () {
-    test('يشمل يوم البداية كاملًا ونهاية يوم النهاية', () {
+    test('حدود تاريخ فقط: يوم البداية شامل، اليوم التالي للنهاية حصري', () {
       final b = rangeIsoBounds(
         DateTime(2025, 9, 1, 14, 30), // جزء الوقت يُتجاهَل
         DateTime(2025, 9, 30, 3, 0),
       );
-      expect(b.fromIso, DateTime(2025, 9, 1).toIso8601String());
-      // حصري: أول لحظة من 1 أكتوبر
-      expect(b.toIso, DateTime(2025, 10, 1).toIso8601String());
+      expect(b.fromIso, '2025-09-01');
+      expect(b.toIso, '2025-10-01');
     });
 
-    test('صف بتاريخ = from 23:00 داخل المدى', () {
+    test('صف تاريخ-فقط في يوم البداية داخل المدى', () {
       final b = rangeIsoBounds(DateTime(2025, 9, 1), DateTime(2025, 9, 1));
-      final row = DateTime(2025, 9, 1, 23, 0).toIso8601String();
-      expect(row.compareTo(b.fromIso) >= 0, isTrue);
-      expect(row.compareTo(b.toIso) < 0, isTrue);
+      const dateOnlyRow = '2025-09-01';
+      final fullIsoRow = DateTime(2025, 9, 1, 23, 0).toIso8601String();
+      expect(dateOnlyRow.compareTo(b.fromIso) >= 0, isTrue); // كان بيفشل قبل الإصلاح
+      expect(dateOnlyRow.compareTo(b.toIso) < 0, isTrue);
+      expect(fullIsoRow.compareTo(b.fromIso) >= 0, isTrue);
+      expect(fullIsoRow.compareTo(b.toIso) < 0, isTrue);
     });
 
-    test('صف بتاريخ = to+1 يوم 00:00 خارج المدى', () {
+    test('صف في اليوم التالي للنهاية خارج المدى (تاريخ-فقط و ISO كامل)', () {
       final b = rangeIsoBounds(DateTime(2025, 9, 1), DateTime(2025, 9, 30));
-      final row = DateTime(2025, 10, 1, 0, 0).toIso8601String();
-      expect(row.compareTo(b.toIso) < 0, isFalse);
+      expect('2025-10-01'.compareTo(b.toIso) < 0, isFalse);
+      expect(DateTime(2025, 10, 1, 0, 0)
+              .toIso8601String()
+              .compareTo(b.toIso) <
+          0, isFalse);
     });
   });
 

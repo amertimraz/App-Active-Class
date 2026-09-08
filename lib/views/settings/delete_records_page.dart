@@ -290,6 +290,7 @@ class DeleteRecordsPage extends StatelessWidget {
         },
       ),
     );
+    wordCtrl.dispose();
     if (ok != true || !context.mounted) return;
 
     final outcome = await ProgressDialog.run<DeleteOutcome>(
