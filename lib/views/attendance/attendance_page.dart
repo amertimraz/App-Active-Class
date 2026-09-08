@@ -239,8 +239,12 @@ class _RegisterTabState extends State<_RegisterTab> {
     return Obx(() {
       final students  = widget.studentCtrl.students;
       final allGroups = widget.groupCtrl.groups;
+      // بطاقات اليوم تشمل المجموعات الملغاة (عشان زر التراجع) — لكن
+      // إحصاءات الشريط العلوي تحسب المجموعات النشطة فقط (spec 032).
       final todayGroups =
           widget.controller.groupsForDayWithOverrides(allGroups, selectedDay);
+      final activeGroups =
+          widget.controller.groupsForDay(allGroups, selectedDay);
 
       final dayRecords = widget.controller.attendance
           .where((a) => !a.date.isBefore(dayStart) && !a.date.isAfter(dayEnd));
@@ -249,7 +253,7 @@ class _RegisterTabState extends State<_RegisterTab> {
       };
 
       final todayIds = students
-          .where((s) => todayGroups.any((g) => g.id == s.groupId))
+          .where((s) => activeGroups.any((g) => g.id == s.groupId))
           .map((s) => s.id)
           .toSet();
       final presentCount  = statusMap.entries.where((e) => todayIds.contains(e.key) && normalizeAttendanceStatus(e.value) == ATTENDANCE_PRESENT).length;

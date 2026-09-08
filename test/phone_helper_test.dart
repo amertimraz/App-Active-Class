@@ -75,6 +75,12 @@ void main() {
     test('دولي غير مصري يُحترم', () {
       expect(PhoneHelper.waMe('+966501234567', '20'), '966501234567');
     });
+    test('رمز دولة بلا + (سعودي طويل) يُحترم', () {
+      expect(PhoneHelper.waMe('966501234567', '20'), '966501234567');
+    });
+    test('محلي مصري 11 خانة بصفر → يتبقّى له 20', () {
+      expect(PhoneHelper.waMe('01001234567', '20'), '201001234567');
+    });
     test('ثبات — تطبيق مزدوج', () {
       final once = PhoneHelper.waMe('+20 100 123 4567', '20');
       expect(PhoneHelper.waMe(once, '20'), once);
@@ -93,6 +99,11 @@ void main() {
     });
     test('فارغ', () {
       expect(PhoneHelper.displayIntl('', '20'), '');
+    });
+    test('دولي غير مصري — مايفترضش +20', () {
+      final d = PhoneHelper.displayIntl('+966501234567', '20');
+      expect(d.contains('+966'), true);
+      expect(d.contains('+20'), false);
     });
   });
 
