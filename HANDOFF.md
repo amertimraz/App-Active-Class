@@ -88,6 +88,7 @@
 - `delete_records_controller.dart` (جديد): `GetxController` — المدى/الأنواع/المعاينة، `runPreview()`، `runDelete()` → نسخة احتياطية إجبارية (`BackupService().createBackup()`، فشل → `DeleteBackupFailed` بلا حذف) ثم `deleteRecordsInRange` ثم تحديث `Attendance/Payment/Exam/Dashboard` كونترولرز. `DeleteOutcome` = `DeleteSuccess`/`DeleteBackupFailed`/`DeleteError`.
 - `delete_records_page.dart` (جديد): رأس تحذيري + تاريخَي من/إلى (`showDatePicker`) + `CheckboxListTile` لكل نوع + معاينة + حوار تأكيد (كتابة "حذف" لو الإجمالي > 100) + `ProgressDialog`. تحذير مزامنة الفريق لو `teamModeEnabled && previewTotal > 500`.
 - `settings_page.dart`: سطر "حذف سجلّات بمدى تواريخ" في قسم النسخ الاحتياطي، **بلا** `requireTeamOwnerIfTeamMode` (المساعد يقدر يحذف — الحذف يتزامن اتجاهين).
+- **fix صلاحيات (بعد مراجعة المزامنة):** `DeleteRecordsController.isTypeAllowed` — في وضع الفريق، عضو بلا `canDeleteAttendanceNow`/`canDeletePaymentsNow` ميقدرش يختار "الحضور"/"الدفعات" (Supabase triggers `check_delete_*` بترفض soft-delete من عضو بلا صلاحية → صف outbox مسموم). checkbox معطّل + "مالكش صلاحية". باقي الأنواع مفيهاش trigger.
 - `test/delete_records_range_test.dart` (جديد، 9 اختبارات — `rangeIsoBounds` + خصائص الـenum + عتبة التأكيد؛ تنفيذ الحذف على القاعدة يُتحقَّق يدويًا لعدم وجود بنية اختبار DB in-memory).
 
 **التحقّق:** `flutter test` (83) يعدّي، `flutter analyze` = 34 (baseline، صفر جديد).

@@ -61,14 +61,25 @@ class DeleteRecordsPage extends StatelessWidget {
           const SizedBox(height: 18),
           _sectionTitle('نوع السجلّات'),
           const SizedBox(height: 4),
-          ...DeletableRecordType.values.map((t) => Obx(() => CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(t.label,
-                    style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
-                value: c.selectedTypes.contains(t),
-                onChanged: (_) => c.toggleType(t),
-              ))),
+          ...DeletableRecordType.values.map((t) => Obx(() {
+                final allowed = c.isTypeAllowed(t);
+                return CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  enabled: allowed,
+                  title: Text(t.label,
+                      style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 13,
+                          color: allowed ? null : Colors.grey)),
+                  subtitle: allowed
+                      ? null
+                      : const Text('مالكش صلاحية حذف النوع ده في الفريق',
+                          style: TextStyle(fontSize: 10, color: Colors.grey)),
+                  value: c.selectedTypes.contains(t),
+                  onChanged: allowed ? (_) => c.toggleType(t) : null,
+                );
+              })),
           const SizedBox(height: 14),
           Obx(() => SizedBox(
                 width: double.infinity,

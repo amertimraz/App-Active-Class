@@ -11,6 +11,7 @@ import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/models/deletable_record_type.dart';
 import 'package:active_class/services/backup_service.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
 
 /// نتيجة محاولة الحذف.
 sealed class DeleteOutcome {
@@ -52,6 +53,18 @@ class DeleteRecordsController extends GetxController {
 
   bool get needsTypeConfirm => previewTotal > kBulkDeleteThreshold;
   bool get canPreview => rangeValid && selectedTypes.isNotEmpty;
+
+  /// أنواع لا يستطيع المستخدم الحالي حذفها في وضع الفريق — trigger
+  /// السيرفر (check_delete_*) يرفض soft-delete من عضو بلا صلاحية،
+  /// فيصير صف outbox مسموم لا يتزامن أبدًا. نمنع اختيارها من الأساس.
+  bool isTypeAllowed(DeletableRecordType t) {
+    final tm = TeamModeService();
+    return switch (t) {
+      DeletableRecordType.attendance => tm.canDeleteAttendanceNow,
+      DeletableRecordType.payments => tm.canDeletePaymentsNow,
+      _ => true, // درجات/امتحانات/واجبات/تقارير — لا trigger صلاحية عليها
+    };
+  }
   bool get canDelete =>
       preview.value != null && previewTotal > 0 && !isRunning.value;
 
@@ -67,6 +80,7 @@ class DeleteRecordsController extends GetxController {
   }
 
   void toggleType(DeletableRecordType t) {
+    if (!isTypeAllowed(t)) return; // بلا صلاحية — لا يُختار
     if (selectedTypes.contains(t)) {
       selectedTypes.remove(t);
     } else {
@@ -75,12 +89,16 @@ class DeleteRecordsController extends GetxController {
     preview.value = null;
   }
 
+  /// الأنواع المسموح فعليًا حذفها (بعد استبعاد ما لا صلاحية له).
+  Set<DeletableRecordType> get _effectiveTypes =>
+      selectedTypes.where(isTypeAllowed).toSet();
+
   Future<void> runPreview() async {
     if (!canPreview) return;
     preview.value = await DatabaseService().countDeletableRecordsInRange(
       from: fromDate.value!,
       to: toDate.value!,
-      types: selectedTypes.toSet(),
+      types: _effectiveTypes,
     );
   }
 
@@ -96,7 +114,7 @@ class DeleteRecordsController extends GetxController {
       final deleted = await DatabaseService().deleteRecordsInRange(
         from: fromDate.value!,
         to: toDate.value!,
-        types: selectedTypes.toSet(),
+        types: _effectiveTypes,
       );
 
       _refreshOpenControllers();
