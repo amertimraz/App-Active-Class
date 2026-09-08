@@ -7,7 +7,9 @@
 
 ## ✅ اللي اتعمل في الجلسة الحالية
 
-### spec 032 — إلغاء حصة اليوم وتعويضها (متنفّذ، migration مطبّق عبر SSH، **تحقّق جهازي لسه**)
+### spec 032 — إلغاء حصة اليوم وتعويضها (متنفّذ + **مدفوع** على `main`، migration مطبّق عبر SSH، **تحقّق جهازي لسه**)
+
+**Commits:** `15d940d` (خطة + مهام) + `04230b4` (تنفيذ) — مدفوعين.
 
 **الفكرة:** مفيش كيان "حصة" — الحصص مشتقّة من `Group.schedule` + التاريخ. جدول جديد `session_overrides` (مفتاح منطقي `(group_id, date)`، `type ∈ {cancelled, makeup, extra}`, `compensates_date` للـmakeup).
 
@@ -27,8 +29,6 @@
 - **اختبارات:** `test/session_override_model_test.dart` + `test/session_schedule_override_test.dart` (15 اختبار). كل `flutter test` (113) يعدّي، `flutter analyze` = 34 (baseline).
 
 **متبقّي:** T024 (بوابة الأهل — مؤجّل: مستند Firestore + صفحة ويب منفصلة)، T026/T029/T031 (تحقّق جهازي + جهازين). سبيك: `specs/032-cancel-makeup-session/`.
-
-> ملاحظة: commit `62d88dc` (spec 031) **لسه مش مدفوع**.
 
 ### spec 027 — دعم جهاز قارئ باركود خارجي (HID) في شاشتَي الحضور والدفع (متنفّذ + مدفوع على `main`)
 
@@ -86,7 +86,7 @@
 
 **⚠️ لسه محتاج:** commit + تحقّق جهازي.
 
-### spec 031 — اتساق تعارضات المزامنة (متنفّذ + migration مطبّق)
+### spec 031 — اتساق تعارضات المزامنة (متنفّذ + **مدفوع** `62d88dc` + migration مطبّق)
 
 بعد مراجعة أعمق للمزامنة: سببان لـ"المدرّس والمساعد مش متطابقين":
 
@@ -96,7 +96,7 @@
 - `lib/utils/sync_conflict.dart` (جديد): `syncConflictIncomingWins(...)` نقية (وقت + tie-break بالمعرّف الأصغر معجميًا). 6 اختبارات.
 - صفر تغيير schema محلي (v28)، صفر تغيير RLS، الـtrigger يضبط `updated_at` فقط.
 
-**التحقّق:** `flutter test` (97) + `analyze` نظيف. **لسه:** commit + تحقّق جهازين (ساعة منحرفة، حضور/درجة مزدوجة).
+**التحقّق:** `flutter test` + `analyze` نظيف. **لسه:** تحقّق جهازين (ساعة منحرفة، حضور/درجة مزدوجة).
 
 **⚠️ توافق رجعي:** البيانات القديمة على الخادم طوابعها المحلية القديمة تبقى لحد أول تعديل يمرّ عبر الخادم فيأخذ الوقت الموحّد. أثر انتقالي بسيط أول أيام.
 
@@ -195,8 +195,10 @@
 
 1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.50-play.aab`.
 2. **spec 027 T019 — تحقّق جهازي بجهاز HID حقيقي** (لسه ماتعملش): quickstart سيناريوهات 1–11 — يشمل توقيت الجهاز الفعلي، سلوك إقران البلوتوث، كتابة يدوية لا تسجّل، وضع القارئ الخالص، "جرّب القارئ"، شارة النشاط، عدم الانحدار عند التعطيل. المنطق مغطّى باختبارات وحدة.
-3. **spec 029 — commit + تحقّق جهازي** (quickstart 1–10): شهري متأخر، per-session حصة اليوم فقط (لا تنبيه) vs حصص قديمة (تنبيه)، معفى، تحديث فوري بعد دفعة، تعطيل المفتاح.
-4. **spec 028 — commit + تحقّق جهازي** (quickstart 1–9): فشل النسخة الاحتياطية → إلغاء، جهازين للمزامنة، عدم انحدار الروستر.
+3. **spec 029 — تحقّق جهازي** (مدفوع؛ quickstart 1–10): شهري متأخر، per-session حصة اليوم فقط (لا تنبيه) vs حصص قديمة (تنبيه)، معفى، تحديث فوري بعد دفعة، تعطيل المفتاح.
+4. **spec 028 — تحقّق جهازي** (مدفوع؛ quickstart 1–9): فشل النسخة الاحتياطية → إلغاء، جهازين للمزامنة، عدم انحدار الروستر.
+5. **spec 031 — تحقّق جهازين** (مدفوع `62d88dc` + migration مطبّق): ساعة منحرفة، حضور/درجة مزدوجة، عدم انحدار التعديل العادي.
+6. **spec 032 — تحقّق جهازي + جهازين** (مدفوع `04230b4` + migration مطبّق؛ quickstart 1–8): إلغاء/تراجع، تعويضية/إضافية، الفوترة per-session، سجل الطالب، مزامنة `(group,date)` جهازين، عدم الانحدار. **T024 (بوابة الأهل) مؤجّل.**
 3. **T016 — تحقّق spec 026 جهازيًا** (لسه ماتعملش):
    - عدم انحدار المجموعات **الشهرية** في شاشة الدفع بالماسح (month chips، اختيار شهور، تحصيل، لا حقل مبلغ حرّ، لا سطر «= N حصة») — quickstart سيناريو 5.
    - اختبار جهازين (مدرس + مساعد): الدفعة الجزئية تظهر عند المساعد بمبلغها (مؤكَّد بالكود — بيمرّ بـ`insertPayment` بلا تفرّع، بس مش متأكَّد جهازيًا).
@@ -212,8 +214,9 @@
 - **git push فقط بإذن صريح.** الـspecs بتتعمل commit على `main` مباشرة (عرف المشروع).
 - **التوقيع:** نفس keystore كل مرة (`android/key.properties` + `RELEASE_SIGNING_INFO.md` — الاتنين gitignored، فيهم باسورد `gG1lrhvSog96kQbwCYtyoRxN`، **متتعملش commit ولا expose**). SHA-256 = `5f74fe10af2da396cbf0a98895af02bb5ffbdc01cdf68a55bea25a841f02ec7b`. مزج debug/release أو إلغاء-وإعادة تثبيت = مسح بيانات محلية (slug بوابة الأهل + الرخصة).
 - **SSH VPS:** `ssh -i ~/.ssh/ovh_key root@active-class.online` — شغّال من الساندبوكس. حاوية Supabase: `active-class-auth-db-1`، compose في `/opt/active-class-auth/docker`. تطبيق migration: `ssh ... 'docker exec -i active-class-auth-db-1 psql -U postgres -d postgres -v ON_ERROR_STOP=1' < supabase/migration_X.sql`.
-- **DB version = 28** (v26 explanation → v27 exam sync cols → v28 bank_questions). spec 026 **مازادش النسخة**.
-- **مزامنة الفريق (`SyncEngine`):** قناتان Realtime — `_channel` (`_coreTables`) + `_channelX` (`_extendedTables` = `[TABLE_EXAM_QUESTIONS, TABLE_EXAM_SUBMISSIONS, TABLE_BANK_QUESTIONS]`). CHANNEL_ERROR في واحدة معزول عن التانية (إصلاح دائم لحادثة `student_follow_ups`).
+- **DB version = 29** (v27 exam sync cols → v28 bank_questions → **v29 session_overrides (spec 032)**). spec 026/029/030/031 **مازادوش النسخة**.
+- **مزامنة الفريق (`SyncEngine`):** قناتان Realtime — `_channel` (`_coreTables`، وفيها دلوقتي `TABLE_SESSION_OVERRIDES` — spec 032) + `_channelX` (`_extendedTables` = `[TABLE_EXAM_QUESTIONS, TABLE_EXAM_SUBMISSIONS, TABLE_BANK_QUESTIONS]`). CHANNEL_ERROR في واحدة معزول عن التانية (إصلاح دائم لحادثة `student_follow_ups`). تعارض الصف المكرّر → `_reconcileDuplicate` (LWW، spec 031) للجداول ذات مفتاح منطقي: attendance/homework/exam_groups/exam_grades/exam_submissions/**session_overrides**.
+- **وقت الخادم (spec 031):** `trg_set_updated_at` على 12 جدول متزامن (11 + `session_overrides`) يفرض `updated_at = now()` — LWW متسق رغم انحراف ساعات الأجهزة.
 - **`PricingHelper`:** `accumulatedDebt` = مجموع `monthlyDue` من شهر الانضمام لدلوقتي ناقص **كل** الدفعات (رصيد واحد FIFO). per-session: `monthlyDue = student.price * sessionsAttended(month)`. `billingArrears` / `prorateFirstMonth` static flags (per-session بيتجاهلهم). الإخوة: `siblingsTotal / count` عبر `siblingGroupMembers`.
 - **`toCloudMap()` لـ`ExamQuestion`** لازم يفضل نضيف من `correctIndex`/`points`/`explanation` (اختبار `exam_question_cloud_map_test.dart` بيفرض ده — FR-034 spec 016). مفاتيح التصحيح بس في `results/{attemptKey}` بعد اعتماد المدرس.
 - **الرخصة auto-rebind:** "سيبه زي ماهو" — متغيّرش. الإلغاء عبر `status: suspended`.
