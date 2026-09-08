@@ -29,6 +29,7 @@ import 'package:active_class/controllers/question_bank_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/sync_retry_policy.dart';
+import 'package:active_class/utils/sync_conflict.dart';
 
 class SyncEngine with WidgetsBindingObserver {
   final SupabaseClient client;
@@ -973,6 +974,8 @@ class SyncEngine with WidgetsBindingObserver {
       }
       final localUpdatedAt =
           DateTime.tryParse(localRow[COL_SYNC_UPDATED_AT] as String? ?? '');
+      // spec 031 — الطوابع دلوقتي موحّدة من الخادم (trg_set_updated_at)،
+      // فالمقارنة دي متسقة رغم انحراف ساعات أجهزة الفريق.
       if (localUpdatedAt != null &&
           remoteUpdatedAt != null &&
           !remoteUpdatedAt.isAfter(localUpdatedAt)) {
@@ -1024,8 +1027,8 @@ class SyncEngine with WidgetsBindingObserver {
             limit: 1,
           );
           if (dup.isNotEmpty) {
-            debugPrint(
-                'SyncEngine: تجاهل صف حضور مكرر (طالب $studentId، يوم $dayPrefix) وارد من جهاز تاني');
+            await _reconcileDuplicate(
+                db, table, pkCol, dup.first, remote, localMap);
             return;
           }
         }
@@ -1044,8 +1047,8 @@ class SyncEngine with WidgetsBindingObserver {
             limit: 1,
           );
           if (dup.isNotEmpty) {
-            debugPrint(
-                'SyncEngine: تجاهل صف واجب مكرر (طالب $studentId، يوم $dayPrefix) وارد من جهاز تاني');
+            await _reconcileDuplicate(
+                db, table, pkCol, dup.first, remote, localMap);
             return;
           }
         }
@@ -1060,8 +1063,8 @@ class SyncEngine with WidgetsBindingObserver {
               where: '$COL_EG_EXAM_ID = ? AND $COL_EG_GROUP_ID = ?',
               whereArgs: [examId, groupId], limit: 1);
           if (dup.isNotEmpty) {
-            debugPrint(
-                'SyncEngine: تجاهل ربط امتحان/مجموعة مكرر (امتحان $examId، مجموعة $groupId) وارد من جهاز تاني');
+            await _reconcileDuplicate(
+                db, table, pkCol, dup.first, remote, localMap);
             return;
           }
         }
@@ -1077,8 +1080,8 @@ class SyncEngine with WidgetsBindingObserver {
               where: '$COL_GRADE_EXAM_ID = ? AND $COL_GRADE_STUDENT_ID = ?',
               whereArgs: [examId, studentId], limit: 1);
           if (dup.isNotEmpty) {
-            debugPrint(
-                'SyncEngine: تجاهل درجة مكررة (امتحان $examId، طالب $studentId) وارد من جهاز تاني');
+            await _reconcileDuplicate(
+                db, table, pkCol, dup.first, remote, localMap);
             return;
           }
         }
@@ -1094,8 +1097,8 @@ class SyncEngine with WidgetsBindingObserver {
               where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
               whereArgs: [examId, studentId], limit: 1);
           if (dup.isNotEmpty) {
-            debugPrint(
-                'SyncEngine: تجاهل تسليم مكرر (امتحان $examId، طالب $studentId) وارد من جهاز تاني');
+            await _reconcileDuplicate(
+                db, table, pkCol, dup.first, remote, localMap);
             return;
           }
         }
@@ -1107,6 +1110,41 @@ class SyncEngine with WidgetsBindingObserver {
       // نكسر حلقة المزامنة كلها.
       debugPrint('SyncEngine: تعذر إدراج صف مستلم من $table — $e');
     }
+  }
+
+  /// spec 031 — وُجد صف محلي [dupRow] يطابق منطقيًا الصف الوارد لكن
+  /// بمعرّف مزامنة مختلف (المدرس والمساعد سجّلوا نفس الحضور/الدرجة قبل
+  /// المزامنة). بدل تجاهل الوارد بصمت (اللي كان بيخلّي كل جهاز يفضل
+  /// على نسخته للأبد)، نطبّق LWW على حقول البيانات:
+  ///  - الوارد أحدث (بوقت الخادم) → نحدّث الصف المحلي.
+  ///  - أقدم → نبقيه.
+  /// **بنحتفظ بـ remote_id المحلي زي ما هو** — تغييره بيربك دفعات
+  /// الـoutbox اللاحقة. الصف "الخاسر" على الخادم بيفضل يعيد البثّ لكنه
+  /// بيخسر LWW كل مرة (اتساق نهائي).
+  Future<void> _reconcileDuplicate(
+    DatabaseExecutor db,
+    String table,
+    String pkCol,
+    Map<String, Object?> dupRow,
+    Map<String, dynamic> remote,
+    Map<String, dynamic> localMap,
+  ) async {
+    final wins = syncConflictIncomingWins(
+      localUpdatedAt: DateTime.tryParse(
+          dupRow[COL_SYNC_UPDATED_AT] as String? ?? ''),
+      remoteUpdatedAt: DateTime.tryParse(remote['updated_at'] as String? ?? ''),
+      localRemoteId: dupRow[COL_SYNC_REMOTE_ID] as String? ?? '',
+      remoteRemoteId: remote['id'] as String,
+    );
+    if (!wins) {
+      debugPrint('SyncEngine: صف مكرر وارد أقدم/خاسر — إبقاء المحلي ($table)');
+      return;
+    }
+    final data = Map<String, Object?>.from(localMap)
+      ..remove(COL_SYNC_REMOTE_ID);
+    await db.update(table, data,
+        where: '$pkCol = ?', whereArgs: [dupRow[pkCol]]);
+    debugPrint('SyncEngine: توفيق صف مكرر — طُبِّق الوارد الأحدث ($table)');
   }
 
   /// كود الطالب بيتولّد محليًا على كل جهاز لوحده (بعدّ طلاب نفس
