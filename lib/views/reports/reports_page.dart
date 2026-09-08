@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:active_class/utils/phone_helper.dart';
+import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/report_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
@@ -12,11 +11,6 @@ import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/views/reports/session_breakdown_page.dart';
-
-// نفس منطق تطبيع رقم التليفون المستخدم في group_details_page.dart — بيحوّل
-// أي شكل مكتوب بيه الرقم (بمسافات/+/00/صفر البداية) لصيغة wa.me الصحيحة.
-String _normalizePhone(String input, String defaultDial) =>
-    PhoneHelper.waMe(input, defaultDial);
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -636,19 +630,24 @@ class _UnpaidStudentCard extends StatelessWidget {
   const _UnpaidStudentCard({required this.data, required this.isDark});
 
   Future<void> _sendReminder(BuildContext context) async {
-    final raw = (data.student.guardianPhone ?? '').trim();
-    if (raw.isEmpty) {
-      AppToast.error(context, 'مفيش رقم ولي أمر مسجّل لهذا الطالب');
+    final hasContact =
+        (data.student.guardianPhone ?? '').trim().isNotEmpty ||
+            (data.student.guardianWhatsapp ?? '').trim().isNotEmpty;
+    if (!hasContact) {
+      AppToast.error(context, 'مفيش رقم أو واتساب ولي أمر مسجّل لهذا الطالب');
       return;
     }
     final settings = Get.find<SettingsController>();
-    final phone = _normalizePhone(raw, settings.countryDial.value);
     final monthLabel = DateFormat('MMMM yyyy', 'ar').format(data.month);
     final message =
         'السلام عليكم 🌸\nتذكير بسيط بخصوص رسوم ${data.student.name} لشهر $monthLabel، نتمنى السداد في أقرب وقت يناسبكم. جزاكم الله خيرًا 🙏';
-    final uri =
-        Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    await launchGuardianWhatsapp(
+      context: context,
+      phone: data.student.guardianPhone,
+      whatsapp: data.student.guardianWhatsapp,
+      message: message,
+      dialCode: settings.countryDial.value,
+    );
   }
 
   @override

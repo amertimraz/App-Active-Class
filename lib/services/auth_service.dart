@@ -13,6 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:active_class/config/supabase_config.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/utils/phone_helper.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
@@ -74,12 +75,12 @@ class AuthService {
   Future<SupabaseClient?> ensureClient() => _ensureClient();
 
   String _phoneToSyntheticEmail(String phone) {
-    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    final digits = PhoneHelper.toLatinDigits(phone).replaceAll(RegExp(r'[^0-9]'), '');
     return '$digits@app.local';
   }
 
   String? validatePhone(String phone) {
-    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    final digits = PhoneHelper.toLatinDigits(phone).replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length < 8 || digits.length > 15) {
       return 'رقم التليفون غير صحيح';
     }
@@ -106,7 +107,7 @@ class AuthService {
     final client = await _ensureClient();
     if (client == null) return 'تعذر الاتصال بسيرفر الحسابات — تأكد من الإعدادات';
 
-    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    final digits = PhoneHelper.toLatinDigits(phone).replaceAll(RegExp(r'[^0-9]'), '');
     try {
       final res = await client.auth.signUp(
         email: _phoneToSyntheticEmail(phone),

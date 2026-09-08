@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:active_class/config/constants.dart';
@@ -1972,11 +1973,13 @@ class SettingsPage extends StatelessWidget {
       // ده شغل يومي نشط، مش سجل تاريخي.
       final valid = students
           .where((s) => !s.isArchived)
-          .where((s) => (s.guardianPhone ?? '').trim().isNotEmpty)
+          .where((s) =>
+              (s.guardianPhone ?? '').trim().isNotEmpty ||
+              (s.guardianWhatsapp ?? '').trim().isNotEmpty)
           .toList();
       if (valid.isEmpty) {
         LoadingDialog.hide();
-        ToastHelper.info('لا يوجد أولياء أمور بأرقام مسجلة');
+        ToastHelper.info('لا يوجد أولياء أمور بأرقام أو واتساب مسجلة');
         return;
       }
 
@@ -2002,20 +2005,7 @@ class SettingsPage extends StatelessWidget {
       final monthEnd =
           DateTime(month.year, month.month + 1, 0, 23, 59, 59);
 
-      String normalize(String input, String defaultDial) {
-        var p = input.replaceAll(RegExp(r'[^0-9+]'), '');
-        if (p.startsWith('+')) p = p.substring(1);
-        if (p.startsWith('00')) p = p.substring(2);
-        if (p.startsWith(defaultDial)) return p;
-        if (RegExp(r'^[1-9][0-9]{6,}$').hasMatch(p)) return p;
-        p = p.replaceFirst(RegExp(r'^0+'), '');
-        return defaultDial + p;
-      }
-
       for (final s in selected) {
-        final rawPhone = s.guardianPhone!.trim();
-        final phone = normalize(rawPhone, settings.countryDial.value);
-
         final group = await db.getGroup(s.groupId);
 
         final atts = await db.getAttendanceByStudent(s.id!);
@@ -2051,9 +2041,14 @@ class SettingsPage extends StatelessWidget {
           canSeeAcademics: TeamModeService().canSeeAcademics,
         );
 
-        final uri = Uri.parse(
-            'https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (!context.mounted) break;
+        await launchGuardianWhatsapp(
+          context: context,
+          phone: s.guardianPhone,
+          whatsapp: s.guardianWhatsapp,
+          message: message,
+          dialCode: settings.countryDial.value,
+        );
         await _waitForResume();
       }
     } catch (e) {

@@ -17,6 +17,7 @@ import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
 import 'package:active_class/models/bank_question_model.dart';
 import 'package:active_class/models/session_override_model.dart';
+import 'package:active_class/utils/phone_helper.dart';
 import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
@@ -2893,8 +2894,8 @@ class DatabaseService {
     var excluded = 0;
     for (final r in rows) {
       final code = (r['code'] as String? ?? '').trim().toUpperCase();
-      final digits =
-          (r['phone'] as String? ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+      final digits = PhoneHelper.toLatinDigits(r['phone'] as String? ?? '')
+          .replaceAll(RegExp(r'[^0-9]'), '');
       if (code.isEmpty || digits.length < 4 || r['id'] == null) {
         excluded++;
         continue;
