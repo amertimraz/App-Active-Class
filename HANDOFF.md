@@ -17,13 +17,13 @@
 - **`CustomTextField`**: + `textDirection`/`textAlign`/`inputFormatters` اختيارية (صفر تأثير على القائم).
 - **`lib/widgets/phone_field.dart`** (جديد): `PhoneSanitizerFormatter` + `PhoneField` — LTR + تنظيف لحظي + معاينة «هيتبعت على: ‎+20 …» + تحذير «الرقم يبدو غير مكتمل» (غير معطِّل).
 - **`add_student_sheet` + `edit_student_sheet`**: `PhoneField` بدل الحقل القديم + حقل `_whatsappCtrl` LTR جديد «واتساب ولي الأمر (رابط/username)».
-- **`lib/utils/whatsapp_launcher.dart`** (جديد): `launchGuardianWhatsapp({phone, whatsapp, message, dialCode})` — أولوية: رابط `wa.me` → رقم → username (+نسخ الرسالة + توست). **موصول في `student_details_page._shareMonthlyReport` بس** — باقي نقاط الإرسال (~7) اتشال منها الـnormalizer المكسور واتبدّل بـ`PhoneHelper.waMe` (الباج اتصلّح) لكن من غير أولوية حقل الواتساب. **متبقّي T026: وصّل `launchGuardianWhatsapp` في باقي النقاط.**
+- **`lib/utils/whatsapp_launcher.dart`** (جديد): `launchGuardianWhatsapp({phone, whatsapp, message, dialCode})` — أولوية: رابط `wa.me` → رقم → username (+نسخ الرسالة + توست). **موصول في**: `student_details_page`، `attendance_page` (فردي + جماعي + غياب اليوم)، `group_details_page` (×2)، `payments_report_page`، `student_exam_history_page`. **باقي (مسار الرقم فقط، الباج متصلّح)**: `exam_grades_page` (×3)، `online_exam_results_page`، `at_risk_students_page`.
 - **US3 عمود:** `students.guardian_whatsapp TEXT`، **DB v29→v30**، `Student.guardianWhatsapp` (toMap/fromMap/copyWith)، مُزامَن في `sync_engine` (`_buildRemoteRow`/`_toLocalMap` لـTABLE_STUDENTS). `supabase/migration_guardian_whatsapp.sql` **مطبّق عبر SSH كـ`-U supabase_admin`** (جدول students مملوك لـsupabase_admin مش postgres — اتوثّق في memory).
 - **`contact_picker_service._normalize`** + **`parent_portal_service._last4`**: يمرّوا عبر `PhoneHelper` (تحويل الأرقام العربية).
 - **التخزين يفضل صيغة بشرية** (`01…`)؛ التطبيع للـ`wa.me` لحظة الإرسال — صفر ترحيل بيانات، صفر موجة مزامنة.
 - **اختبارات:** `flutter test` 146 ✅، `flutter analyze` 34 (baseline).
 
-**متبقّي:** T026 (وصل الـlauncher في باقي نقاط الإرسال)، T031 (تحقّق جهازي — quickstart 1–11: لصق من سجل مكالمات حقيقي، جهازين للمزامنة). سبيك: `specs/033-guardian-phone-cleanup/`.
+**متبقّي:** T031 (تحقّق جهازي — quickstart 1–11: لصق من سجل مكالمات حقيقي، جهازين للمزامنة) + اختياري: وصل `launchGuardianWhatsapp` في `exam_grades_page`/`online_exam_results_page`/`at_risk_students_page`. سبيك: `specs/033-guardian-phone-cleanup/`.
 
 ### spec 032 — إلغاء حصة اليوم وتعويضها (متنفّذ + **مدفوع** على `main`، migration مطبّق عبر SSH، **تحقّق جهازي لسه**)
 

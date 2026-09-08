@@ -3,8 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:active_class/utils/phone_helper.dart';
+import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/exam_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
@@ -48,9 +47,10 @@ class _StudentExamHistoryPageState extends State<StudentExamHistoryPage> {
   // ── مشاركة نتائج الامتحانات عبر واتساب ────────────────────────────────────
   Future<void> _shareViaWhatsApp() async {
     final student = await DatabaseService().getStudent(widget.studentId);
-    final rawPhone = student?.guardianPhone?.trim() ?? '';
-    if (rawPhone.isEmpty) {
-      ToastHelper.error('لا يوجد رقم ولي أمر مسجّل لهذا الطالب');
+    final hasContact = (student?.guardianPhone?.trim().isNotEmpty ?? false) ||
+        (student?.guardianWhatsapp?.trim().isNotEmpty ?? false);
+    if (student == null || !hasContact) {
+      ToastHelper.error('لا يوجد رقم أو واتساب ولي أمر مسجّل لهذا الطالب');
       return;
     }
 
@@ -78,16 +78,17 @@ class _StudentExamHistoryPageState extends State<StudentExamHistoryPage> {
     }
     buffer.writeln('\nتم الإرسال من تطبيق Active Class');
 
-    String normalize(String input, String defaultDial) =>
-        PhoneHelper.waMe(input, defaultDial);
-
     final dial = Get.isRegistered<SettingsController>()
         ? Get.find<SettingsController>().countryDial.value
         : '20';
-    final phone = normalize(rawPhone, dial);
-    final uri = Uri.parse(
-        'https://wa.me/$phone?text=${Uri.encodeComponent(buffer.toString())}');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!mounted) return;
+    await launchGuardianWhatsapp(
+      context: context,
+      phone: student.guardianPhone,
+      whatsapp: student.guardianWhatsapp,
+      message: buffer.toString(),
+      dialCode: dial,
+    );
   }
 
   double get _overallPct {

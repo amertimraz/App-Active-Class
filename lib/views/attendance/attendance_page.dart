@@ -3,7 +3,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:active_class/utils/phone_helper.dart';
+import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
@@ -33,7 +33,6 @@ import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class AttendancePage extends StatefulWidget {
   const AttendancePage({super.key});
@@ -1471,11 +1470,12 @@ Future<void> _showSendReportConfirm(
   final withPhone = <Student>[];
   final skipped = <Student>[];
   for (final s in students) {
-    final phone = s.guardianPhone?.trim() ?? '';
-    if (phone.isEmpty) {
-      skipped.add(s);
-    } else {
+    final hasContact = (s.guardianPhone?.trim().isNotEmpty ?? false) ||
+        (s.guardianWhatsapp?.trim().isNotEmpty ?? false);
+    if (hasContact) {
       withPhone.add(s);
+    } else {
+      skipped.add(s);
     }
   }
 
@@ -1522,9 +1522,6 @@ Future<void> _showSendReportConfirm(
   if (confirmed != true) return;
   if (!context.mounted) return;
 
-  String normalizePhone(String input, String defaultDial) =>
-      PhoneHelper.waMe(input, defaultDial);
-
   final settings = Get.find<SettingsController>();
   final countryDial = settings.countryDial.value;
   final teacherName = settings.teacherFullName.value.trim();
@@ -1547,10 +1544,14 @@ Future<void> _showSendReportConfirm(
       teacherName: teacherName,
       teacherSpecialization: teacherSpecialization,
     );
-    final phone = normalizePhone(s.guardianPhone!.trim(), countryDial);
-    final uri =
-        Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!context.mounted) break;
+    await launchGuardianWhatsapp(
+      context: context,
+      phone: s.guardianPhone,
+      whatsapp: s.guardianWhatsapp,
+      message: message,
+      dialCode: countryDial,
+    );
     await _atWaitForResume();
   }
   onSent();
@@ -3313,9 +3314,6 @@ class _AbsentTodayTab extends StatefulWidget {
 class _AbsentTodayTabState extends State<_AbsentTodayTab> {
   final Set<int> _selected = {};
 
-  String _normalizePhone(String input, String defaultDial) =>
-      PhoneHelper.waMe(input, defaultDial);
-
   String _buildMessage(Student s, String groupName, String teacherName,
       String teacherSpecialization) {
     final dateStr = DateFormat('yyyy-MM-dd', 'ar').format(DateTime.now());
@@ -3334,18 +3332,22 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
   }
 
   Future<void> _sendWhatsapp(Student s, String groupName) async {
-    final rawPhone = s.guardianPhone?.trim() ?? '';
-    if (rawPhone.isEmpty) {
-      AppToast.warning(context, 'لا يوجد رقم ولي أمر لـ ${s.name}');
+    final hasContact = (s.guardianPhone?.trim().isNotEmpty ?? false) ||
+        (s.guardianWhatsapp?.trim().isNotEmpty ?? false);
+    if (!hasContact) {
+      AppToast.warning(context, 'لا يوجد رقم أو واتساب ولي أمر لـ ${s.name}');
       return;
     }
     final settings = Get.find<SettingsController>();
-    final phone = _normalizePhone(rawPhone, settings.countryDial.value);
     final msg = _buildMessage(s, groupName, settings.teacherFullName.value.trim(),
         settings.teacherSpecialization.value.trim());
-    final uri =
-        Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    await launchGuardianWhatsapp(
+      context: context,
+      phone: s.guardianPhone,
+      whatsapp: s.guardianWhatsapp,
+      message: msg,
+      dialCode: settings.countryDial.value,
+    );
   }
 
   Future<bool?> _confirmSendDialog(_AbsentEntry entry, int index, int total) {
@@ -3379,7 +3381,9 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
     if (queue.isEmpty) return;
 
     final withPhone = queue
-        .where((e) => (e.student.guardianPhone ?? '').trim().isNotEmpty)
+        .where((e) =>
+            (e.student.guardianPhone ?? '').trim().isNotEmpty ||
+            (e.student.guardianWhatsapp ?? '').trim().isNotEmpty)
         .toList();
     final withoutPhoneCount = queue.length - withPhone.length;
 

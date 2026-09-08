@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:active_class/utils/phone_helper.dart';
+import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
@@ -13,7 +13,6 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/billing_period.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/widgets/clock_text.dart';
 
@@ -821,25 +820,24 @@ class _WhatsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final phone = (student.guardianPhone ?? '').trim();
-    final enabled = phone.isNotEmpty;
+    final enabled = (student.guardianPhone ?? '').trim().isNotEmpty ||
+        (student.guardianWhatsapp ?? '').trim().isNotEmpty;
     return IconButton(
-      tooltip: enabled ? 'إرسال تذكير واتساب' : 'لا يوجد رقم',
+      tooltip: enabled ? 'إرسال تذكير واتساب' : 'لا يوجد رقم أو واتساب',
       icon: const Icon(Icons.chat, color: Colors.green),
       onPressed: !enabled
           ? null
           : () async {
               final settings = Get.find<SettingsController>();
-              String normalize(String input, String defaultDial) =>
-                  PhoneHelper.waMe(input, defaultDial);
-
-              final dial = settings.countryDial.value;
-              final phoneNorm = normalize(phone, dial);
               final msg =
                   'تذكير برسوم شهر $monthLabel للطالب ${student.name} (الكود: ${student.code}) في مجموعة $groupName. المتبقي: ${FormatHelper.formatCurrency(remaining)}';
-              final uri = Uri.parse(
-                  'https://wa.me/$phoneNorm?text=${Uri.encodeComponent(msg)}');
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
+              await launchGuardianWhatsapp(
+                context: context,
+                phone: student.guardianPhone,
+                whatsapp: student.guardianWhatsapp,
+                message: msg,
+                dialCode: settings.countryDial.value,
+              );
             },
     );
   }

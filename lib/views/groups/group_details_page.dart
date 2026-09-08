@@ -4,7 +4,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'dart:ui' as ui;
 import 'dart:io';
 import 'package:get/get.dart';
-import 'package:active_class/utils/phone_helper.dart';
+import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
@@ -29,7 +29,6 @@ import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/widgets/locked_feature.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -2011,8 +2010,6 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
   final maxMonth = defaultCollectionMonth();
   final sentMap = await db.getReportSentMap(ids, maxMonth);
 
-  String normalize(String input, String defaultDial) =>
-      PhoneHelper.waMe(input, defaultDial);
 
   if (!context.mounted) return;
   await showDialog(
@@ -2200,8 +2197,6 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
                         for (int i = 0; i < items.length; i++) {
                           if (!sel[i]) continue;
                           final s = items[i];
-                          final phone = normalize(s.guardianPhone!.trim(),
-                              settings.countryDial.value);
                           final group = await db.getGroup(s.groupId);
                           final atts = await db.getAttendanceByStudent(s.id!);
                           final pays = await db.getPaymentsByStudent(s.id!);
@@ -2245,10 +2240,14 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
                             canSeeAcademics: TeamModeService().canSeeAcademics,
                           );
 
-                          final uri = Uri.parse(
-                              'https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
-                          await launchUrl(uri,
-                              mode: LaunchMode.externalApplication);
+                          if (!context.mounted) break;
+                          await launchGuardianWhatsapp(
+                            context: context,
+                            phone: s.guardianPhone,
+                            whatsapp: s.guardianWhatsapp,
+                            message: message,
+                            dialCode: settings.countryDial.value,
+                          );
                           await _gdWaitForResume();
 
                           final sentAt = DateTime.now();
@@ -2431,8 +2430,6 @@ void _gdShowFeesBreakdownDialog(
           : Get.put(AttendanceController());
       DateTime selected = defaultCollectionMonth();
 
-      String normalize(String input, String defaultDial) =>
-          PhoneHelper.waMe(input, defaultDial);
 
       Future<Map<String, dynamic>> load(DateTime monthStart) async {
         final monthEnd =
@@ -2666,16 +2663,15 @@ void _gdShowFeesBreakdownDialog(
                                               Icons.message_rounded,
                                               color: Colors.green),
                                           onPressed: () async {
-                                            final raw =
-                                                (s.guardianPhone ?? '').trim();
-                                            if (raw.isEmpty) return;
-                                            final phone = normalize(raw,
-                                                settings.countryDial.value);
-                                            final uri = Uri.parse(
-                                                'https://wa.me/$phone?text=${Uri.encodeComponent('تذكير برسوم شهر ${data['month']} للطالب ${s.name}.')}');
-                                            await launchUrl(uri,
-                                                mode: LaunchMode
-                                                    .externalApplication);
+                                            await launchGuardianWhatsapp(
+                                              context: context,
+                                              phone: s.guardianPhone,
+                                              whatsapp: s.guardianWhatsapp,
+                                              message:
+                                                  'تذكير برسوم شهر ${data['month']} للطالب ${s.name}.',
+                                              dialCode:
+                                                  settings.countryDial.value,
+                                            );
                                           },
                                         ),
                                       )),
