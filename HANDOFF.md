@@ -1,18 +1,20 @@
 # Active Class — Handoff (محادثة جديدة)
 
-> آخر تحديث: 2026-09-07 (مساءً). المشروع: `C:\repo\active_class` — تطبيق Flutter عربي/RTL للمدرّسين الخصوصيين.
+> آخر تحديث: 2026-09-08 (مساءً). المشروع: `C:\repo\active_class` — تطبيق Flutter عربي/RTL للمدرّسين الخصوصيين.
 > كلّمني عربي (مصري). Flutter 3.38.1 / Dart 3.5.4، GetX، sqflite، Firebase (بوابة أولياء الأمور + امتحانات أونلاين)، Supabase self-hosted على VPS (مزامنة وضع الفريق).
 
 ---
 
 ## ✅ اللي اتعمل في الجلسة الحالية
 
-### spec 033 — تنظيف رقم ولي الأمر + واتساب (متنفّذ، migration مطبّق، **تحقّق جهازي لسه**)
+### spec 033 — تنظيف رقم ولي الأمر + واتساب (متنفّذ + **مدفوع**، migration مطبّق، **تحقّق جهازي لسه**)
+
+**Commits:** `6fc07a8` سبيك · `60fbedb` خطة · `3f26046` مهام · `23893ed` تنفيذ · `aeb0ac6`+`ca981e9` وصل الإرسال · `f3c1643`+`aeff70f` مراجعة باجات · `05d7e8c` آخر 3 شاشات — كلها مدفوعة.
 
 **الباج:** دالة تطبيع الرقم القديمة `replaceAll(RegExp(r'[^0-9+]'), '')` كانت بتمسح الأرقام العربية (٠١٢٣) بالكامل → واتساب يفتح فاضي. + حقل الرقم RTL بلا `textDirection` → الرقم يتعرض معكوس.
 
 **اللي اتعمل:**
-- **`lib/utils/phone_helper.dart`** (جديد، نقي): `PhoneHelper` — `toLatinDigits` (عربي/فارسي→لاتيني)، `cleanForStorage` (يشيل علامات الاتجاه/المسافات/الرموز، يوحّد `+`/`00`)، `waMe(raw, dial)`، `displayIntl` (‎+20 …)، `isLikelyValid`، `parseWhatsappHandle` → `WhatsappHandle{kind,value}` (waLink/phone/username/invalid). **33 اختبار** (`test/phone_helper_test.dart`).
+- **`lib/utils/phone_helper.dart`** (جديد، نقي): `PhoneHelper` — `toLatinDigits` (عربي/فارسي→لاتيني)، `cleanForStorage` (يشيل علامات الاتجاه/المسافات/الرموز، يوحّد `+`/`00`)، `waMe(raw, dial)` (رقم دولي صريح — بـ`+` أو `00` أو تسلسل ≥11 خانة بلا صفر — يُحترم؛ غيره + رمز الدولة)، `displayIntl` (‎+20 …، ومايفترضش مصر لرقم دولي مختلف)، `isLikelyValid`، `parseWhatsappHandle` → `WhatsappHandle{kind,value}` (waLink/phone/username/invalid). **36 اختبار** (`test/phone_helper_test.dart`).
 - **`lib/utils/phone_format.dart`**: `normalizeWhatsappPhone` بقى غلاف رفيع فوق `PhoneHelper.waMe`.
 - **`CustomTextField`**: + `textDirection`/`textAlign`/`inputFormatters` اختيارية (صفر تأثير على القائم).
 - **`lib/widgets/phone_field.dart`** (جديد): `PhoneSanitizerFormatter` + `PhoneField` — LTR + تنظيف لحظي + معاينة «هيتبعت على: ‎+20 …» + تحذير «الرقم يبدو غير مكتمل» (غير معطِّل).
@@ -21,13 +23,15 @@
 - **US3 عمود:** `students.guardian_whatsapp TEXT`، **DB v29→v30**، `Student.guardianWhatsapp` (toMap/fromMap/copyWith)، مُزامَن في `sync_engine` (`_buildRemoteRow`/`_toLocalMap` لـTABLE_STUDENTS). `supabase/migration_guardian_whatsapp.sql` **مطبّق عبر SSH كـ`-U supabase_admin`** (جدول students مملوك لـsupabase_admin مش postgres — اتوثّق في memory).
 - **`contact_picker_service._normalize`** + **`parent_portal_service._last4`**: يمرّوا عبر `PhoneHelper` (تحويل الأرقام العربية).
 - **التخزين يفضل صيغة بشرية** (`01…`)؛ التطبيع للـ`wa.me` لحظة الإرسال — صفر ترحيل بيانات، صفر موجة مزامنة.
-- **اختبارات:** `flutter test` 146 ✅، `flutter analyze` 34 (baseline).
+- **اختبارات:** `flutter test` 149 ✅، `flutter analyze` 34 (baseline).
 
 **متبقّي:** T031 (تحقّق جهازي — quickstart 1–11: لصق من سجل مكالمات حقيقي، جهازين للمزامنة). سبيك: `specs/033-guardian-phone-cleanup/`.
 
+**باج قديم (مش من spec 033):** تعديل طالب وإفراغ حقل الرقم مابيتحفظش — `Student.copyWith` مفهوش `clearGuardianPhone` (زيّ ما `guardianWhatsapp` بقى ليه `clearGuardianWhatsapp`).
+
 ### spec 032 — إلغاء حصة اليوم وتعويضها (متنفّذ + **مدفوع** على `main`، migration مطبّق عبر SSH، **تحقّق جهازي لسه**)
 
-**Commits:** `15d940d` (خطة + مهام) + `04230b4` (تنفيذ) — مدفوعين.
+**Commits:** `15d940d` خطة+مهام · `04230b4` تنفيذ · `c5f9e2b` T018 (إخفاء القائمة للحصة الملغاة) · `aeff70f` مراجعة (regression `groupsForDay`). مدفوعين.
 
 **الفكرة:** مفيش كيان "حصة" — الحصص مشتقّة من `Group.schedule` + التاريخ. جدول جديد `session_overrides` (مفتاح منطقي `(group_id, date)`، `type ∈ {cancelled, makeup, extra}`, `compensates_date` للـmakeup).
 
@@ -44,9 +48,10 @@
 - **`views/students/student_details_page.dart`**: `_SessionOverridesSection` (عرض فقط، فوق قائمة الشهور — مش بيتحسب في النِسبة).
 - **`supabase/migration_session_overrides.sql`** (جديد): جدول + RLS (`is_team_member AND is_team_license_active`) + `check_delete_session_overrides` (صلاحية `delete_attendance`) + `trg_set_updated_at` + `replica identity full` + realtime publication. **مطبّق عبر SSH + متحقَّق**.
 - **الفوترة: صفر تغيير** (`PricingHelper` ملمسناهوش — كلها من صفوف الحضور).
-- **اختبارات:** `test/session_override_model_test.dart` + `test/session_schedule_override_test.dart` (15 اختبار). كل `flutter test` (113) يعدّي، `flutter analyze` = 34 (baseline).
+- **اختبارات:** `test/session_override_model_test.dart` + `test/session_schedule_override_test.dart` (15 اختبار). `flutter test` 149 ✅، `flutter analyze` 34.
+- **مراجعة (`aeff70f`):** `groupsForDay` كان بيعرض المجموعات بلا جدول كل يوم (regression — `groupHasSessionOnDay` بترجّع true افتراضيًا) → رجّعنا السلوك القديم: مجموعة بلا جدول تظهر فقط لو ليها `makeup`/`extra` صريح لليوم ده. + `_toLocalMap` بيحط `created_at = updated_at` بدل null.
 
-**متبقّي:** T024 (بوابة الأهل — مؤجّل: مستند Firestore + صفحة ويب منفصلة)، T026/T029/T031 (تحقّق جهازي + جهازين). سبيك: `specs/032-cancel-makeup-session/`.
+**متبقّي:** T024 (بوابة الأهل — مؤجّل: مستند Firestore + صفحة ويب منفصلة)، T029 + **تحقّق جهازي/جهازين** (quickstart 1–8). سبيك: `specs/032-cancel-makeup-session/`.
 
 ### spec 027 — دعم جهاز قارئ باركود خارجي (HID) في شاشتَي الحضور والدفع (متنفّذ + مدفوع على `main`)
 
@@ -81,7 +86,7 @@
 - **release notes:** `scratchpad/release_notes_v1.2.50.md`.
 - **درس البناء تأكّد تاني:** `--split-per-abi` = OOM. الحل: `flutter build apk --release --flavor direct --target-platform android-arm64` (وبعده `android-arm`، `android-x64`) — بيكتب فوق `build/app/outputs/flutter-apk/app-direct-release.apk` (universal فعليًا مش ABI واحد) فانسخه فورًا. الـAAB: `flutter build appbundle --release --flavor play`. كل بناء ~4.5–6 دقايق، مفيش OOM المرة دي.
 
-### spec 029 — تنبيه "متأخر في الدفع" في شاشة الحضور (متنفّذ بالكامل، لسه ماتعملّوش commit)
+### spec 029 — تنبيه "متأخر في الدفع" في شاشة الحضور (متنفّذ + **مدفوع** `220305f`)
 
 **القاعدة:** بادج تحذير بصري جنب اسم الطالب وقت تسجيل حضوره:
 - شهري / بلا مجموعة → `PricingHelper.isOverdue(...)` (بمهلة السماح `paymentGraceDays`)
@@ -118,7 +123,7 @@
 
 **⚠️ توافق رجعي:** البيانات القديمة على الخادم طوابعها المحلية القديمة تبقى لحد أول تعديل يمرّ عبر الخادم فيأخذ الوقت الموحّد. أثر انتقالي بسيط أول أيام.
 
-### spec 030 — تقوية مزامنة وضع الفريق (متنفّذ بالكامل، لسه ماتعملّوش commit)
+### spec 030 — تقوية مزامنة وضع الفريق (متنفّذ + **مدفوع** `9540952` + مراجعات `31d77ed`/`d4268fe`)
 
 **3 باجات في `sync_engine.dart` بلّغ عنها مساعد** (بيانات مش بتوصل / بتتأخّر / تسجيل خروج تلقائي):
 
@@ -136,7 +141,7 @@
 
 **⚠️ لسه محتاج:** commit + تحقّق جهازين (هبّة شبكة لا تسجّل خروج، إزالة فعلية تسجّله، مزامنة ثنائية كاملة).
 
-### spec 028 — حذف السجلات بمدى تواريخ (متنفّذ بالكامل، لسه ماتعملّوش commit)
+### spec 028 — حذف السجلات بمدى تواريخ (متنفّذ + **مدفوع** `3aa0d20` + `5588c99`)
 
 - `lib/models/deletable_record_type.dart` (جديد): `enum DeletableRecordType` (attendance/payments/examGrades/exams/homework/reportLogs) + `label`/`mainTable`/`dateColumn`/`pkColumn`/`isTeamSynced`؛ `rangeIsoBounds(from,to)` → `[fromIso, toIso)` (يوم البداية 00:00 حتى نهاية يوم النهاية)؛ ثوابت `kBulkDeleteThreshold=100` / `kDeleteConfirmWord='حذف'`.
 - `database_service.dart`: `countDeletableRecordsInRange(...)` (معاينة) + `deleteRecordsInRange(...)` — يجمّع `(table,id,remote_id)` للصفوف المُزامَنة قبل الحذف، `db.transaction` يحذف كل الأنواع، ثم `_queueDelete` لكل صف مُزامَن (وضع الفريق فقط). `report_logs` → حذف محلي بلا queue. الامتحانات: `DELETE exams WHERE id IN (...)` + FK CASCADE للتوابع (زي `deleteExam`). درجات منفصلة: `exam_id IN (امتحانات المدى)`. **درجات الامتحانات تُفلتَر بتاريخ الامتحان الأب** (`exam_grades` مالوش تاريخ ذاتي).
@@ -212,18 +217,18 @@
 ## ⏳ متبقّي / مفتوح
 
 1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.50-play.aab`.
-2. **spec 027 T019 — تحقّق جهازي بجهاز HID حقيقي** (لسه ماتعملش): quickstart سيناريوهات 1–11 — يشمل توقيت الجهاز الفعلي، سلوك إقران البلوتوث، كتابة يدوية لا تسجّل، وضع القارئ الخالص، "جرّب القارئ"، شارة النشاط، عدم الانحدار عند التعطيل. المنطق مغطّى باختبارات وحدة.
-3. **spec 029 — تحقّق جهازي** (مدفوع؛ quickstart 1–10): شهري متأخر، per-session حصة اليوم فقط (لا تنبيه) vs حصص قديمة (تنبيه)، معفى، تحديث فوري بعد دفعة، تعطيل المفتاح.
-4. **spec 028 — تحقّق جهازي** (مدفوع؛ quickstart 1–9): فشل النسخة الاحتياطية → إلغاء، جهازين للمزامنة، عدم انحدار الروستر.
-5. **spec 031 — تحقّق جهازين** (مدفوع `62d88dc` + migration مطبّق): ساعة منحرفة، حضور/درجة مزدوجة، عدم انحدار التعديل العادي.
-6. **spec 032 — تحقّق جهازي + جهازين** (مدفوع `04230b4` + migration مطبّق؛ quickstart 1–8): إلغاء/تراجع، تعويضية/إضافية، الفوترة per-session، سجل الطالب، مزامنة `(group,date)` جهازين، عدم الانحدار. **T024 (بوابة الأهل) مؤجّل.**
-3. **T016 — تحقّق spec 026 جهازيًا** (لسه ماتعملش):
-   - عدم انحدار المجموعات **الشهرية** في شاشة الدفع بالماسح (month chips، اختيار شهور، تحصيل، لا حقل مبلغ حرّ، لا سطر «= N حصة») — quickstart سيناريو 5.
-   - اختبار جهازين (مدرس + مساعد): الدفعة الجزئية تظهر عند المساعد بمبلغها (مؤكَّد بالكود — بيمرّ بـ`insertPayment` بلا تفرّع، بس مش متأكَّد جهازيًا).
-   - quickstart سيناريوهات 1–4 كلها على جهاز حقيقي.
-3. **مؤجَّلات قديمة من جلسات سابقة (مش عاجلة):**
-   - `supabase/migration_student_follow_ups.sql` لسه ماتطبّقش (بس لو هنعيد تفعيل مزامنة `student_follow_ups` — حاليًا متشالة من `_tables`).
-   - تحقّق جهازين لـspecs 024 + 025.
+2. **ريليس v1.2.51** بعد التحقّق الجهازي للـspecs التحت — يجمع 028/029/030/031/032/033.
+3. **تحقّق جهازي — كله متنفّذ ومدفوع، لسه محتاج جهاز/جهازين:**
+   - **spec 027 T019** — قارئ HID حقيقي (quickstart 1–11).
+   - **spec 028** — حذف بمدى تواريخ (quickstart 1–9): فشل النسخة الاحتياطية → إلغاء، جهازين، عدم انحدار الروستر.
+   - **spec 029** — تحذير تأخّر الدفع (quickstart 1–10).
+   - **spec 030** — تقوية المزامنة (3 باجات SyncEngine): outbox poison، سحب دوري، عدم auto-logout كاذب.
+   - **spec 031** — اتساق التعارضات (`62d88dc`): ساعة منحرفة، حضور/درجة مزدوجة، عدم انحدار.
+   - **spec 032** — إلغاء/تعويض الحصة (quickstart 1–8): إلغاء/تراجع، تعويضية/إضافية، فوترة per-session، سجل الطالب، مزامنة `(group,date)` جهازين. **T024 (بوابة الأهل) مؤجّل.**
+   - **spec 033** — تنظيف الرقم + واتساب (quickstart 1–11): لصق من سجل مكالمات حقيقي بلغة عربية، معاينة، رابط/username، جهازين لعمود `guardian_whatsapp`.
+   - **spec 026 T016** — عدم انحدار المجموعات الشهرية في شاشة الدفع بالماسح + الدفعة الجزئية جهازين.
+4. **مؤجَّلات قديمة (مش عاجلة):** `migration_student_follow_ups.sql` لسه ماتطبّقش (لو هنعيد تفعيل مزامنة `student_follow_ups`)؛ تحقّق جهازين لـ024 + 025.
+5. **باج قديم:** `Student.copyWith` مفهوش `clearGuardianPhone` → إفراغ رقم ولي الأمر في التعديل مابيتحفظش.
 
 ---
 
@@ -231,8 +236,8 @@
 
 - **git push فقط بإذن صريح.** الـspecs بتتعمل commit على `main` مباشرة (عرف المشروع).
 - **التوقيع:** نفس keystore كل مرة (`android/key.properties` + `RELEASE_SIGNING_INFO.md` — الاتنين gitignored، فيهم باسورد `gG1lrhvSog96kQbwCYtyoRxN`، **متتعملش commit ولا expose**). SHA-256 = `5f74fe10af2da396cbf0a98895af02bb5ffbdc01cdf68a55bea25a841f02ec7b`. مزج debug/release أو إلغاء-وإعادة تثبيت = مسح بيانات محلية (slug بوابة الأهل + الرخصة).
-- **SSH VPS:** `ssh -i ~/.ssh/ovh_key root@active-class.online` — شغّال من الساندبوكس. حاوية Supabase: `active-class-auth-db-1`، compose في `/opt/active-class-auth/docker`. تطبيق migration: `ssh ... 'docker exec -i active-class-auth-db-1 psql -U postgres -d postgres -v ON_ERROR_STOP=1' < supabase/migration_X.sql`.
-- **DB version = 29** (v27 exam sync cols → v28 bank_questions → **v29 session_overrides (spec 032)**). spec 026/029/030/031 **مازادوش النسخة**.
+- **SSH VPS:** `ssh -i ~/.ssh/ovh_key root@active-class.online` — شغّال من الساندبوكس. حاوية Supabase: `active-class-auth-db-1`، compose في `/opt/active-class-auth/docker`. تطبيق migration: `ssh ... 'docker exec -i active-class-auth-db-1 psql -U postgres -d postgres -v ON_ERROR_STOP=1' < supabase/migration_X.sql`. ⚠️ **`ALTER TABLE public.students`** لازم `-U supabase_admin` (الجدول مملوك لـsupabase_admin مش postgres) — spec 033.
+- **DB version = 30** (v28 bank_questions → v29 session_overrides (spec 032) → **v30 students.guardian_whatsapp (spec 033)**). spec 026/029/030/031 **مازادوش النسخة**.
 - **مزامنة الفريق (`SyncEngine`):** قناتان Realtime — `_channel` (`_coreTables`، وفيها دلوقتي `TABLE_SESSION_OVERRIDES` — spec 032) + `_channelX` (`_extendedTables` = `[TABLE_EXAM_QUESTIONS, TABLE_EXAM_SUBMISSIONS, TABLE_BANK_QUESTIONS]`). CHANNEL_ERROR في واحدة معزول عن التانية (إصلاح دائم لحادثة `student_follow_ups`). تعارض الصف المكرّر → `_reconcileDuplicate` (LWW، spec 031) للجداول ذات مفتاح منطقي: attendance/homework/exam_groups/exam_grades/exam_submissions/**session_overrides**.
 - **وقت الخادم (spec 031):** `trg_set_updated_at` على 12 جدول متزامن (11 + `session_overrides`) يفرض `updated_at = now()` — LWW متسق رغم انحراف ساعات الأجهزة.
 - **`PricingHelper`:** `accumulatedDebt` = مجموع `monthlyDue` من شهر الانضمام لدلوقتي ناقص **كل** الدفعات (رصيد واحد FIFO). per-session: `monthlyDue = student.price * sessionsAttended(month)`. `billingArrears` / `prorateFirstMonth` static flags (per-session بيتجاهلهم). الإخوة: `siblingsTotal / count` عبر `siblingGroupMembers`.
