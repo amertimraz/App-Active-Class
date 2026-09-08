@@ -291,8 +291,28 @@ class _RegisterTabState extends State<_RegisterTab> {
                   ? _NoSessionsToday(allGroups: allGroups, selectedDay: selectedDay)
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                      itemCount: todayGroups.length,
+                      itemCount: todayGroups.length + 1,
                       itemBuilder: (ctx, gi) {
+                        // آخر عنصر: زر إضافة حصة استثنائية (تعويضية/إضافية)
+                        // لأي مجموعة — حتى لو اليوم ده مش في جدولها.
+                        if (gi == todayGroups.length) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Center(
+                              child: TextButton.icon(
+                                onPressed: () => showAddSessionOverrideFlow(
+                                  context,
+                                  groups: allGroups.cast<Group>(),
+                                  day: selectedDay,
+                                ),
+                                icon: const Icon(
+                                    Icons.add_circle_outline_rounded, size: 18),
+                                label: const Text(
+                                    'حصة تعويضية / إضافية لمجموعة تانية'),
+                              ),
+                            ),
+                          );
+                        }
                         final group = todayGroups[gi];
                         final sessionTime = widget.controller.sessionTimeForGroupOnDay(group, selectedDay);
                         final groupStudents = students
