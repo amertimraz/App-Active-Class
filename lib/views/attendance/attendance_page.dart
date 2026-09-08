@@ -919,6 +919,9 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       );
 
       final sessionTime = controller.sessionTimeForGroupOnDay(group, selectedDay);
+      final cancelled =
+          controller.sessionOverrideFor(group, selectedDay)?.type ==
+              SessionOverrideType.cancelled;
 
       return Container(
         decoration: BoxDecoration(
@@ -972,6 +975,44 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                   ? const SizedBox.shrink()
                   : SessionOverrideBanner(ovr: o);
             }),
+            // spec 032 — حصة ملغاة: نخفي قائمة الطلاب ونعرض زر تراجع فقط
+            // (منمنعش تسجيل حضور بالغلط على حصة اتلغت).
+            if (cancelled)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+                child: Column(children: [
+                  const Icon(Icons.event_busy_rounded,
+                      size: 40, color: Color(0xFFEF4444)),
+                  const SizedBox(height: 12),
+                  const Text('الحصة اتلغت النهارده',
+                      style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15)),
+                  const SizedBox(height: 4),
+                  Text('مفيش تسجيل حضور — ترجع تفتح الحصة من الزر ده',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.grey.shade500)),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.undo_rounded, size: 18),
+                    label: const Text('تراجع عن الإلغاء'),
+                    onPressed: () async {
+                      final so = Get.find<SessionOverrideController>();
+                      final o =
+                          so.overrideFor(group.id!, selectedDay);
+                      if (o == null) return;
+                      final err = await so.removeOverride(o);
+                      await controller.loadAttendance();
+                      if (context.mounted) {
+                        AppToast.info(context, err ?? 'رجعت الحصة');
+                      }
+                    },
+                  ),
+                ]),
+              )
+            else ...[
             // ميعاد الحصة + العداد التنازلي + نسبة الحضور — Wrap عشان لو
             // المساحة ضاقت (اسم طويل أخد سطرين، أو شاشة صغيرة) الشارات
             // تنزل سطر تاني بدل overflow.
@@ -1235,6 +1276,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                   ],
                 ),
               ),
+            ],
           ],
         ),
       );
