@@ -91,123 +91,108 @@ class ReaderReadyPanel extends StatelessWidget {
   }
 }
 
-/// سطر "جرّب القارئ" في شاشة الإعدادات — يظهر فقط عند تفعيل المفتاح.
-/// يلتقط مسحًا واحدًا من الجهاز ويعرض النص المقروء ومؤشّر نجاح، بلا أي
-/// تسجيل حضور/دفع أو أثر على البيانات. spec 027 (US4).
-class HardwareScannerTestTile extends StatefulWidget {
+/// سطر "جرّب القارئ" في شاشة الإعدادات — يفتح حوارًا يلتقط مسحًا واحدًا
+/// من الجهاز ويعرض النص المقروء ومؤشّر نجاح، بلا أي تسجيل حضور/دفع أو
+/// أثر على البيانات. حوار modal عشان التقاط الكيبورد يكون معزولًا عن
+/// باقي شاشة الإعدادات (وإلا كان بيسدّ الكتابة في أي حقل تاني). spec 027 (US4).
+class HardwareScannerTestTile extends StatelessWidget {
   const HardwareScannerTestTile({super.key});
 
   @override
-  State<HardwareScannerTestTile> createState() =>
-      _HardwareScannerTestTileState();
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.sensors_rounded, color: Color(0xFF0EA5E9)),
+      title: const Text('جرّب القارئ',
+          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600)),
+      trailing: const Icon(Icons.chevron_left_rounded),
+      onTap: () => showDialog<void>(
+        context: context,
+        builder: (_) => const _HardwareScannerTestDialog(),
+      ),
+    );
+  }
 }
 
-class _HardwareScannerTestTileState extends State<HardwareScannerTestTile> {
-  bool _open = false;
+class _HardwareScannerTestDialog extends StatefulWidget {
+  const _HardwareScannerTestDialog();
+
+  @override
+  State<_HardwareScannerTestDialog> createState() =>
+      _HardwareScannerTestDialogState();
+}
+
+class _HardwareScannerTestDialogState
+    extends State<_HardwareScannerTestDialog> {
   bool _success = false;
   String? _lastReadText;
-  HardwareScanBuffer? _buffer;
+  late final HardwareScanBuffer _buffer;
 
-  bool _keyHandler(KeyEvent e) {
-    if (!_open || _buffer == null) return false;
-    return _buffer!.feedKey(e);
-  }
+  bool _keyHandler(KeyEvent e) => _buffer.feedKey(e);
 
-  void _toggle() {
-    setState(() {
-      _open = !_open;
-      if (_open) {
-        _success = false;
-        _lastReadText = null;
-        _buffer = HardwareScanBuffer(onScan: (code) {
-          if (!mounted) return;
-          setState(() {
-            _success = true;
-            _lastReadText = code;
-          });
-        });
-        HardwareKeyboard.instance.addHandler(_keyHandler);
-      } else {
-        HardwareKeyboard.instance.removeHandler(_keyHandler);
-        _buffer?.dispose();
-        _buffer = null;
-      }
+  @override
+  void initState() {
+    super.initState();
+    _buffer = HardwareScanBuffer(onScan: (code) {
+      if (!mounted) return;
+      setState(() {
+        _success = true;
+        _lastReadText = code;
+      });
     });
+    HardwareKeyboard.instance.addHandler(_keyHandler);
   }
 
   @override
   void dispose() {
-    if (_open) HardwareKeyboard.instance.removeHandler(_keyHandler);
-    _buffer?.dispose();
+    HardwareKeyboard.instance.removeHandler(_keyHandler);
+    _buffer.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ListTile(
-          leading: const Icon(Icons.sensors_rounded, color: Color(0xFF0EA5E9)),
-          title: const Text('جرّب القارئ',
-              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w600)),
-          trailing: Icon(_open
-              ? Icons.keyboard_arrow_up_rounded
-              : Icons.keyboard_arrow_down_rounded),
-          onTap: _toggle,
-        ),
-        if (_open)
-          Container(
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: (_success ? const Color(0xFF10B981) : const Color(0xFF0EA5E9))
-                    .withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color: (_success
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFF0EA5E9))
-                        .withValues(alpha: 0.3)),
+    final c = _success ? const Color(0xFF10B981) : const Color(0xFF0EA5E9);
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('جرّب القارئ'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(
+                _success
+                    ? Icons.check_circle_rounded
+                    : Icons.hourglass_empty_rounded,
+                color: c,
+                size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _success
+                    ? 'الجهاز يعمل كلوحة مفاتيح (HID) ✅'
+                    : 'امسح أي باركود بالجهاز الآن…',
+                style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: onSurface),
               ),
-              child: Row(children: [
-                Icon(
-                  _success
-                      ? Icons.check_circle_rounded
-                      : Icons.hourglass_empty_rounded,
-                  color: _success
-                      ? const Color(0xFF10B981)
-                      : const Color(0xFF0EA5E9),
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _success
-                            ? 'الجهاز يعمل كلوحة مفاتيح (HID) ✅'
-                            : 'امسح أي باركود بالجهاز الآن…',
-                        style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                            color: onSurface),
-                      ),
-                      if (_lastReadText != null) ...[
-                        const SizedBox(height: 3),
-                        Text('النص المقروء: $_lastReadText',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: onSurface.withValues(alpha: 0.6))),
-                      ],
-                    ],
-                  ),
-                ),
-              ]),
-          ),
+            ),
+          ]),
+          if (_lastReadText != null) ...[
+            const SizedBox(height: 8),
+            Text('النص المقروء: $_lastReadText',
+                style: TextStyle(
+                    fontSize: 11, color: onSurface.withValues(alpha: 0.6))),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('تمام')),
       ],
     );
   }
