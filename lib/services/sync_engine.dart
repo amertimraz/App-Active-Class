@@ -1367,7 +1367,9 @@ class SyncEngine with WidgetsBindingObserver {
           COL_SO_TYPE: remote['type'],
           COL_SO_COMPENSATES_DATE: remote['compensates_date'],
           COL_SO_NOTE: remote['note'],
-          COL_SO_CREATED_AT: remote['created_at'],
+          // created_at مش عمود على الخادم — نستخدم updated_at كتقريب بدل null
+          // (عشان مايتصفّرش عند التوفيق LWW).
+          COL_SO_CREATED_AT: updatedAt,
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };

@@ -587,9 +587,19 @@ class AttendanceController extends GetxController {
     return count < 0 ? 0 : count;
   }
 
-  // المجموعات التي لها حصة في يوم معين (جدول + استثناءات spec 032)
+  // المجموعات التي لها حصة في يوم معين (جدول + استثناءات spec 032).
+  // مجموعة بلا جدول مُدخَل: ماتظهرش كل يوم (زي السلوك القديم) — تظهر فقط
+  // لو ليها استثناء makeup/extra صريح لليوم ده.
   List<Group> groupsForDay(List<Group> groups, DateTime day) {
-    return groups.where((g) => groupHasSessionOnDay(g, day)).toList();
+    return groups.where((g) {
+      final hasSchedule =
+          g.schedule != null && g.schedule!.trim().isNotEmpty;
+      if (!hasSchedule) {
+        final o = sessionOverrideFor(g, day);
+        return o != null && o.type != SessionOverrideType.cancelled;
+      }
+      return groupHasSessionOnDay(g, day);
+    }).toList();
   }
 
   // زي groupsForDay لكن بيضمّ كمان المجموعات اللي حصتها اتلغت اليوم ده
