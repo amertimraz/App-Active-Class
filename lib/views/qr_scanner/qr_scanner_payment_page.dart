@@ -186,7 +186,18 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
     if (!mounted || _scanBuffer == null) return false;
     if (_tabController.index != 0) return false;
     if (ModalRoute.of(context)?.isCurrent != true) return false;
+    // لو المدرّس بيكتب في حقل (زي حقل "ادفع مبلغًا من المديونية" —
+    // spec 026)، مانلمسش الإدخال.
+    if (_aTextFieldIsFocused()) return false;
     return _scanBuffer!.feedKey(event);
+  }
+
+  /// هل في حقل نص ماسك الفوكس دلوقتي؟ (نبحث لأعلى من عقدة الفوكس عن
+  /// EditableTextState — الطريقة الموثوقة بدل فحص نوع الودجت مباشرةً.)
+  static bool _aTextFieldIsFocused() {
+    final ctx = FocusManager.instance.primaryFocus?.context;
+    return ctx != null &&
+        ctx.findAncestorStateOfType<EditableTextState>() != null;
   }
 
   // ── Search ───────────────────────────────────────────────────

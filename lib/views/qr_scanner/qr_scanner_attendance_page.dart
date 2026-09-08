@@ -471,6 +471,12 @@ class _QRScannerAttendancePageState extends State<QRScannerAttendancePage>
     if (!mounted || _scanBuffer == null) return false;
     if (_tabController.index != 0) return false;
     if (ModalRoute.of(context)?.isCurrent != true) return false;
+    // احتياط: لو أي حقل نص ماسك الفوكس، مانلمسش الإدخال.
+    final fctx = FocusManager.instance.primaryFocus?.context;
+    if (fctx != null &&
+        fctx.findAncestorStateOfType<EditableTextState>() != null) {
+      return false;
+    }
     return _scanBuffer!.feedKey(event);
   }
 
