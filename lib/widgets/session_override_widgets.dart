@@ -149,8 +149,9 @@ class SessionOverrideMenuButton extends StatelessWidget {
   void _toast(BuildContext context, String msg) => AppToast.info(context, msg);
 }
 
-/// تدفّق إضافة حصة استثنائية (تعويضية/إضافية) ليوم بلا حصص مجدولة:
-/// اختيار المجموعة → النوع → (للتعويضية) تاريخ الحصة الملغاة.
+/// تدفّق إضافة حصة استثنائية (تعويضية/إضافية):
+/// المجموعة → النوع → تاريخ الحصة (يقبل أيام مستقبلية) → (للتعويضية)
+/// تاريخ الحصة الملغاة اللي بنعوّضها.
 Future<void> showAddSessionOverrideFlow(
   BuildContext context, {
   required List<Group> groups,
@@ -191,24 +192,43 @@ Future<void> showAddSessionOverrideFlow(
   );
   if (type == null || !context.mounted) return;
 
+  // تاريخ الحصة نفسها — يقبل أيام مستقبلية (زي ما اتفقت مع الطلاب على
+  // الواتس إنهم ييجوا يوم كذا).
+  final today = DateTime.now();
+  final sessionDate = await showDatePicker(
+    context: context,
+    initialDate: day.isBefore(DateTime(today.year, today.month, today.day))
+        ? DateTime(today.year, today.month, today.day)
+        : day,
+    firstDate: DateTime(today.year, today.month, today.day),
+    lastDate: today.add(const Duration(days: 120)),
+    helpText: type == SessionOverrideType.makeup
+        ? 'امتى الحصة التعويضية؟'
+        : 'امتى الحصة الإضافية؟',
+  );
+  if (sessionDate == null || !context.mounted) return;
+
   if (type == SessionOverrideType.extra) {
-    final err = await _so.addExtra(group: group, day: day);
-    if (context.mounted) AppToast.info(context, err ?? 'تمت الإضافة');
+    final err = await _so.addExtra(group: group, day: sessionDate);
+    if (context.mounted) {
+      AppToast.info(context, err ?? 'اتضافت حصة إضافية ${_ar(sessionDate)}');
+    }
     return;
   }
 
-  final picked = await showDatePicker(
+  final compensates = await showDatePicker(
     context: context,
-    initialDate: day.subtract(const Duration(days: 1)),
-    firstDate: DateTime(day.year - 1),
-    lastDate: day,
+    initialDate: sessionDate.subtract(const Duration(days: 1)),
+    firstDate: DateTime(sessionDate.year - 1),
+    lastDate: sessionDate,
     helpText: 'الحصة الملغاة اللي بنعوّضها',
   );
-  if (picked == null || !context.mounted) return;
+  if (compensates == null || !context.mounted) return;
   final err = await _so.addMakeup(
-      group: group, day: day, compensatesDate: picked);
+      group: group, day: sessionDate, compensatesDate: compensates);
   if (context.mounted) {
-    AppToast.info(context, err ?? 'تمت إضافة حصة تعويضية عن ${_ar(picked)}');
+    AppToast.info(context,
+        err ?? 'اتضافت حصة تعويضية ${_ar(sessionDate)} عن ${_ar(compensates)}');
   }
 }
 

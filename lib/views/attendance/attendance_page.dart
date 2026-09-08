@@ -307,8 +307,7 @@ class _RegisterTabState extends State<_RegisterTab> {
                                 ),
                                 icon: const Icon(
                                     Icons.add_circle_outline_rounded, size: 18),
-                                label: const Text(
-                                    'حصة تعويضية / إضافية لمجموعة تانية'),
+                                label: const Text('حصة تعويضية / إضافية'),
                               ),
                             ),
                           );
