@@ -34,16 +34,16 @@ Future<bool> launchGuardianWhatsapp({
     return _open(url);
   }
 
-  // 2) رقم
-  String? num;
+  // 2) رقم (من حقل الواتساب لو كان رقمًا، وإلا من حقل الرقم)
+  String waNumber = '';
   if (handle.kind == WhatsappHandleKind.phone) {
-    num = PhoneHelper.waMe(handle.value, dialCode);
+    waNumber = PhoneHelper.waMe(handle.value, dialCode);
   }
-  if ((num == null || num.isEmpty) && (phone != null && phone.trim().isNotEmpty)) {
-    num = PhoneHelper.waMe(phone, dialCode);
+  if (waNumber.isEmpty && (phone != null && phone.trim().isNotEmpty)) {
+    waNumber = PhoneHelper.waMe(phone, dialCode);
   }
-  if (num != null && num.isNotEmpty) {
-    return _open('https://wa.me/$num?text=$encoded');
+  if (waNumber.isNotEmpty) {
+    return _open('https://wa.me/$waNumber?text=$encoded');
   }
 
   // 3) username
