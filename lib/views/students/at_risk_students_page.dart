@@ -14,7 +14,7 @@ import 'package:active_class/controllers/at_risk_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/at_risk_model.dart';
 import 'package:active_class/models/student_follow_up_model.dart';
-import 'package:active_class/utils/phone_format.dart';
+import 'package:active_class/utils/whatsapp_launcher.dart';
 
 class AtRiskStudentsPage extends StatefulWidget {
   const AtRiskStudentsPage({super.key});
@@ -37,15 +37,16 @@ class _AtRiskStudentsPageState extends State<AtRiskStudentsPage> {
   }
 
   Future<void> _whatsapp(AtRiskStudent e) async {
-    final phone = e.guardianPhone;
-    if (phone == null || phone.trim().isEmpty) return;
     final settings =
         Get.isRegistered<SettingsController>() ? Get.find<SettingsController>() : null;
     final dial = settings?.countryDial.value ?? '20';
-    final normalized = normalizeWhatsappPhone(phone, dial);
-    final uri = Uri.parse(
-        'https://wa.me/$normalized?text=${Uri.encodeComponent(_riskMessage(e, settings))}');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    await launchGuardianWhatsapp(
+      context: context,
+      phone: e.student.guardianPhone,
+      whatsapp: e.student.guardianWhatsapp,
+      message: _riskMessage(e, settings),
+      dialCode: dial,
+    );
   }
 
   /// رسالة واتساب جاهزة لولي الأمر بناءً على أسباب رصد الطالب.
@@ -239,6 +240,7 @@ class _AtRiskStudentsPageState extends State<AtRiskStudentsPage> {
   Widget _card(ColorScheme cs, AtRiskStudent e, {StudentFollowUp? followUp}) {
     final phone = e.guardianPhone;
     final hasPhone = phone != null && phone.trim().isNotEmpty;
+    final hasWhatsapp = (e.student.guardianWhatsapp ?? '').trim().isNotEmpty;
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 10),
@@ -339,8 +341,11 @@ class _AtRiskStudentsPageState extends State<AtRiskStudentsPage> {
                 IconButton(
                   tooltip: 'واتساب',
                   icon: const Icon(Icons.chat_rounded, size: 19),
-                  color: hasPhone ? const Color(0xFF25D366) : cs.onSurface.withValues(alpha: 0.25),
-                  onPressed: hasPhone ? () => _whatsapp(e) : null,
+                  color: (hasPhone || hasWhatsapp)
+                      ? const Color(0xFF25D366)
+                      : cs.onSurface.withValues(alpha: 0.25),
+                  onPressed:
+                      (hasPhone || hasWhatsapp) ? () => _whatsapp(e) : null,
                 ),
                 IconButton(
                   tooltip: 'فتح صفحة الطالب',

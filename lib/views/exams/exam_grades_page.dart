@@ -9,7 +9,6 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/exam_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
@@ -21,7 +20,7 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/export_service.dart';
 import 'package:active_class/views/exams/certificates_sheet.dart';
 import 'package:active_class/utils/helpers.dart';
-import 'package:active_class/utils/phone_format.dart';
+import 'package:active_class/utils/whatsapp_launcher.dart';
 
 class ExamGradesPage extends StatefulWidget {
   final Exam exam;
@@ -265,28 +264,27 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
   Future<void> _sendResultToGuardian(ExamGrade grade) async {
     if (!grade.isEntered) return; // احتياطي: مفروض الزر مش ظاهر أصلاً
     final student = _studentsById[grade.studentId];
-    final rawPhone = student?.guardianPhone?.trim() ?? '';
-    if (rawPhone.isEmpty) {
+    final hasContact = (student?.guardianPhone?.trim().isNotEmpty ?? false) ||
+        (student?.guardianWhatsapp?.trim().isNotEmpty ?? false);
+    if (!hasContact) {
       ToastHelper.error(
-          'لا يوجد رقم ولي أمر مسجّل لـ ${grade.studentName ?? "هذا الطالب"}');
+          'لا يوجد رقم أو واتساب ولي أمر مسجّل لـ ${grade.studentName ?? "هذا الطالب"}');
       return;
     }
     final settings = Get.find<SettingsController>();
-    final phone = _normalizePhone(rawPhone, settings.countryDial.value);
-    if (phone.isEmpty) {
-      ToastHelper.error(
-          'رقم ولي أمر ${grade.studentName ?? "الطالب"} غير صالح');
-      return;
-    }
     final message = _ec.buildGuardianExamResultMessage(
       grade: grade,
       exam: widget.exam,
       teacherName: settings.teacherFullName.value.trim(),
       teacherSpecialization: settings.teacherSpecialization.value.trim(),
     );
-    final uri =
-        Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    await launchGuardianWhatsapp(
+      context: context,
+      phone: student?.guardianPhone,
+      whatsapp: student?.guardianWhatsapp,
+      message: message,
+      dialCode: settings.countryDial.value,
+    );
   }
 
   // ── شهادات تقدير (spec 018) ───────────────────────────────────────────────
@@ -318,19 +316,19 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
     final skipped = <ExamGrade>[];
     final settings = Get.find<SettingsController>();
     for (final g in entered) {
-      final rawPhone = _studentsById[g.studentId]?.guardianPhone?.trim() ?? '';
-      final normalized = rawPhone.isEmpty
-          ? ''
-          : _normalizePhone(rawPhone, settings.countryDial.value);
-      if (normalized.isEmpty) {
-        skipped.add(g);
-      } else {
+      final st = _studentsById[g.studentId];
+      final hasContact = (st?.guardianPhone?.trim().isNotEmpty ?? false) ||
+          (st?.guardianWhatsapp?.trim().isNotEmpty ?? false);
+      if (hasContact) {
         withPhone.add(g);
+      } else {
+        skipped.add(g);
       }
     }
 
     if (withPhone.isEmpty) {
-      ToastHelper.error('مفيش أي طالب مستوفٍ حاليًا (درجة/غياب مسجّل + رقم ولي أمر)');
+      ToastHelper.error(
+          'مفيش أي طالب مستوفٍ حاليًا (درجة/غياب مسجّل + رقم أو واتساب ولي أمر)');
       return;
     }
 
@@ -371,17 +369,21 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
     if (!mounted) return;
 
     for (final g in withPhone) {
-      final rawPhone = _studentsById[g.studentId]!.guardianPhone!.trim();
-      final phone = _normalizePhone(rawPhone, settings.countryDial.value);
+      final st = _studentsById[g.studentId];
       final message = _ec.buildGuardianExamResultMessage(
         grade: g,
         exam: widget.exam,
         teacherName: settings.teacherFullName.value.trim(),
         teacherSpecialization: settings.teacherSpecialization.value.trim(),
       );
-      final uri = Uri.parse(
-          'https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!mounted) break;
+      await launchGuardianWhatsapp(
+        context: context,
+        phone: st?.guardianPhone,
+        whatsapp: st?.guardianWhatsapp,
+        message: message,
+        dialCode: settings.countryDial.value,
+      );
       await _examWaitForResume();
     }
     if (mounted) {
@@ -1002,10 +1004,7 @@ class _ArabicDigitsInputFormatter extends TextInputFormatter {
   }
 }
 
-// ── مساعدات إرسال واتساب (نفس منطق attendance_page.dart._showSendReportConfirm) ──
-
-String _normalizePhone(String input, String defaultDial) =>
-    normalizeWhatsappPhone(input, defaultDial);
+// ── مساعدات إرسال واتساب ──
 
 // بيستنى رجوع التطبيق من الخلفية (المستخدم يرجع من واتساب) قبل ما يفتح
 // رسالة تانية في حلقة الإرسال الجماعي — نفس آلية attendance_page.dart.

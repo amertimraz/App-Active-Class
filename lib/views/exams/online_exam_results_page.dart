@@ -6,7 +6,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/exam_controller.dart';
@@ -17,7 +16,7 @@ import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/helpers.dart';
-import 'package:active_class/utils/phone_format.dart';
+import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:active_class/views/exams/certificates_sheet.dart';
@@ -306,22 +305,21 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
       }
     }
     final settings = Get.find<SettingsController>();
-    final ready = <(ExamGrade, String)>[];
+    final ready = <(ExamGrade, Student)>[];
     final skipped = <String>[];
     for (final g in grades) {
-      final raw = students[g.studentId]?.guardianPhone?.trim() ?? '';
-      final phone = raw.isEmpty
-          ? ''
-          : normalizeWhatsappPhone(raw, settings.countryDial.value);
-      if (phone.isEmpty) {
-        skipped.add(g.studentName ?? '؟');
+      final st = students[g.studentId];
+      final hasContact = (st?.guardianPhone?.trim().isNotEmpty ?? false) ||
+          (st?.guardianWhatsapp?.trim().isNotEmpty ?? false);
+      if (st != null && hasContact) {
+        ready.add((g, st));
       } else {
-        ready.add((g, phone));
+        skipped.add(g.studentName ?? '؟');
       }
     }
     if (!mounted) return;
     if (ready.isEmpty) {
-      ToastHelper.error('مفيش أرقام أولياء أمور مسجّلة للطلاب المعتمَدين');
+      ToastHelper.error('مفيش أرقام أو واتساب أولياء أمور للطلاب المعتمَدين');
       return;
     }
 
@@ -359,7 +357,7 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
     );
     if (ok != true || !mounted) return;
 
-    for (final (g, phone) in ready) {
+    for (final (g, st) in ready) {
       if (!mounted) break;
       final msg = _ec.buildGuardianExamResultMessage(
         grade: g,
@@ -367,9 +365,12 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
         teacherName: settings.teacherFullName.value.trim(),
         teacherSpecialization: settings.teacherSpecialization.value.trim(),
       );
-      await launchUrl(
-        Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(msg)}'),
-        mode: LaunchMode.externalApplication,
+      await launchGuardianWhatsapp(
+        context: context,
+        phone: st.guardianPhone,
+        whatsapp: st.guardianWhatsapp,
+        message: msg,
+        dialCode: settings.countryDial.value,
       );
       await _waitForResume();
     }
