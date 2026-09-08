@@ -337,6 +337,10 @@ class TeamModeService {
   }
 
   void _startEngine(SupabaseClient client, String tId) {
+    // spec 030 — SyncEngine بقى بيسجّل WidgetsBindingObserver + تايمر
+    // سحب دوري، فلو فيه محرّك قديم شغّال لازم يتوقف الأول عشان
+    // متبقاش observers/تايمرات مكرّرة.
+    _engine?.stop();
     final deviceId = LicenseController.to.deviceId.value;
     _engine = SyncEngine(
       client: client,

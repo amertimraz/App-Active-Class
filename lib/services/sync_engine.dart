@@ -12,6 +12,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding, WidgetsBindingObserver, AppLifecycleState;
 import 'package:get/get.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -27,8 +28,9 @@ import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/question_bank_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/utils/sync_retry_policy.dart';
 
-class SyncEngine {
+class SyncEngine with WidgetsBindingObserver {
   final SupabaseClient client;
   final String teamId;
   final String deviceId;
@@ -108,10 +110,22 @@ class SyncEngine {
   final DatabaseService _dbService = DatabaseService();
   Timer? _pushTimer;
   Timer? _membershipTimer;
+  Timer? _catchUpTimer; // spec 030 — سحب لحاق دوري (لو Realtime وقع)
   RealtimeChannel? _channel;
   RealtimeChannel? _channelX; // spec 024 — القناة الممتدة
   bool _draining = false;
   bool _pulling = false;
+
+  // spec 030 — تقوية طابور الإرسال: صف بيفشل باستمرار مايوقفش الطابور.
+  final Map<int, int> _outboxFails = {};      // outboxId → عدد الفشل المتتالي
+  final Map<int, String> _lastOutboxErr = {}; // outboxId → آخر نص خطأ (للّوج)
+  final Set<int> _loggedPoison = {};          // اتسجّل في اللوج مرة واحدة
+  int _drainRound = 0;
+
+  // spec 030 — حارس فحص الخروج من الفريق: هبّة شبكة/توكن متأخّر مايسجّلش
+  // خروج المساعد؛ لازم نتائج فاضية متتالية + جلسة صالحة.
+  int _emptyMembershipStreak = 0;
+  int _deviceUnboundStreak = 0;
 
   String _pkCol(String table) => switch (table) {
         TABLE_GROUPS => COL_GROUP_ID,
@@ -145,8 +159,21 @@ class SyncEngine {
       _membershipTimer = Timer.periodic(
           const Duration(seconds: 15), (_) => _checkStillAllowed());
     }
+    // spec 030 — سحب لحاق دوري: Realtime وحده مش كفاية على الموبايل
+    // (الـsocket بيموت في الخلفية وإعادة الاتصال بتفشل صامت كتير).
+    // catchUpPull عنده _lastCatchUp guard (≥3s) فالنداءات المتقاربة
+    // من (التايمر + Realtime subscribed + resume) مش بتتكرر.
+    _catchUpTimer = Timer.periodic(
+        const Duration(seconds: 50), (_) => unawaited(catchUpPull()));
+    WidgetsBinding.instance.addObserver(this);
     unawaited(drainOutbox());
     _subscribeRealtime();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // spec 030 — سحب فوري عند رجوع التطبيق من الخلفية.
+    if (state == AppLifecycleState.resumed) unawaited(catchUpPull());
   }
 
   Future<void> stop() async {
@@ -155,6 +182,15 @@ class SyncEngine {
     _pushTimer = null;
     _membershipTimer?.cancel();
     _membershipTimer = null;
+    _catchUpTimer?.cancel();
+    _catchUpTimer = null;
+    WidgetsBinding.instance.removeObserver(this);
+    _outboxFails.clear();
+    _lastOutboxErr.clear();
+    _loggedPoison.clear();
+    _drainRound = 0;
+    _emptyMembershipStreak = 0;
+    _deviceUnboundStreak = 0;
     final ch = _channel;
     final chX = _channelX;
     _channel = null;
@@ -183,11 +219,24 @@ class SyncEngine {
   Future<void> drainOutbox() async {
     if (_draining) return;
     _draining = true;
+    _drainRound++;
     try {
       final db = await _dbService.database;
+      // spec 030 — صفوف "مسمومة" (فشلت ≥ العتبة) تُستبعَد من نافذة الـ50
+      // عشان متحتكرهاش وتمنع الصفوف الأحدث توصل. بنعيد المحاولة عليها
+      // كل kPoisonRetryEvery جولة بس (بدون NOT IN في تلك الجولة).
+      final poison = _outboxFails.entries
+          .where((e) => e.value >= kMaxOutboxFails)
+          .map((e) => e.key)
+          .toList();
+      final retryPoison = _drainRound % kPoisonRetryEvery == 0;
+      final where = StringBuffer('$COL_OUTBOX_SYNCED = 0');
+      if (poison.isNotEmpty && !retryPoison) {
+        where.write(' AND $COL_OUTBOX_ID NOT IN (${poison.join(',')})');
+      }
       final rows = await db.query(
         TABLE_SYNC_OUTBOX,
-        where: '$COL_OUTBOX_SYNCED = 0',
+        where: where.toString(),
         orderBy: '$COL_OUTBOX_ID ASC',
         limit: 50,
       );
@@ -203,6 +252,7 @@ class SyncEngine {
         if (!_tables.contains(table)) {
           await db.delete(TABLE_SYNC_OUTBOX,
               where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
+          _forgetOutbox(outboxId);
           continue;
         }
         try {
@@ -214,15 +264,36 @@ class SyncEngine {
             // الوقت من غير أي فايدة).
             await db.delete(TABLE_SYNC_OUTBOX,
                 where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
+            _forgetOutbox(outboxId);
+          } else {
+            // الأب لسه مش متزامن — نسيبه، وبنعدّه فشلة عشان لو فضل
+            // كده كتير يتخطّى بدل ما يسدّ رأس الطابور.
+            _recordOutboxFail(outboxId, table, rowId, 'الأب لسه بلا remote_id');
           }
-          // لو مش done (أب لسه مش متزامن) — نسيبه، هيتحاول تاني الجولة الجاية
         } catch (e) {
+          _recordOutboxFail(outboxId, table, rowId, e.toString());
           debugPrint('SyncEngine: فشل push لـ $table/$rowId — $e');
         }
       }
     } finally {
       _draining = false;
     }
+  }
+
+  void _recordOutboxFail(int id, String table, int rowId, String err) {
+    final n = (_outboxFails[id] ?? 0) + 1;
+    _outboxFails[id] = n;
+    _lastOutboxErr[id] = err;
+    if (n >= kMaxOutboxFails && _loggedPoison.add(id)) {
+      debugPrint(
+          'SyncEngine: ⚠️ صف عالق بعد $n محاولات — $table/$rowId — آخر خطأ: $err');
+    }
+  }
+
+  void _forgetOutbox(int id) {
+    _outboxFails.remove(id);
+    _lastOutboxErr.remove(id);
+    _loggedPoison.remove(id);
   }
 
   Future<bool> _pushOne(
@@ -597,9 +668,24 @@ class SyncEngine {
   /// RLS بترفض بصمت (نتيجة فاضية) مش بترمي error، فمن غير الفحص
   /// الصريح ده محدش هيعرف إنه اتشال. بتتنادى مع catchUpPull (كل ما
   /// الاتصال يرجع) عشان نلحق الحالة دي بسرعة معقولة.
+  /// spec 030 — هل جلسة الدخول الحالية صالحة؟ RLS بترجّع نتيجة فاضية
+  /// (مش error) لو التوكن خلص/التحديث اتأخّر — واللي كان بيتفهم غلط
+  /// إنه "المساعد اتشال من الفريق" ويسجّل خروجه. لو الجلسة مش صالحة
+  /// منستنتجش أي إزالة، ونحاول نجدّدها ونأجّل الفحص.
+  bool _sessionUsable() {
+    final s = client.auth.currentSession;
+    if (s == null || s.isExpired) {
+      unawaited(client.auth.refreshSession().then((_) {}, onError: (_) {}));
+      debugPrint('SyncEngine: تخطّي فحص الفريق — جلسة غير صالحة، محاولة تجديد');
+      return false;
+    }
+    return true;
+  }
+
   Future<bool> _wasRemovedFromTeam() async {
     final uid = client.auth.currentUser?.id;
     if (uid == null) return false;
+    if (!_sessionUsable()) return false; // spec 030 — FR-011
     try {
       final rows = await client
           .from('team_members')
@@ -608,9 +694,20 @@ class SyncEngine {
           .eq('user_id', uid)
           .limit(1);
       if ((rows as List).isEmpty) {
-        onRemovedFromTeam?.call();
-        return true;
+        // spec 030 — FR-012: لازم نتائج فاضية متتالية قبل تسجيل الخروج.
+        _emptyMembershipStreak++;
+        if (shouldFireTeamExit(
+            sessionUsable: true, emptyStreak: _emptyMembershipStreak)) {
+          debugPrint('SyncEngine: تأكّدت الإزالة بعد '
+              '$_emptyMembershipStreak نتائج عضوية فاضية');
+          onRemovedFromTeam?.call();
+          return true;
+        }
+        debugPrint('SyncEngine: عضوية فاضية '
+            '($_emptyMembershipStreak/$kTeamExitStreak) — بانتظار تأكيد');
+        return false;
       }
+      _emptyMembershipStreak = 0; // أي نتيجة صحيحة تُصفّر العدّاد
       return false;
     } catch (e) {
       debugPrint('SyncEngine: فشل التحقق من العضوية — $e');
@@ -623,6 +720,7 @@ class SyncEngine {
   /// (TeamModeService._watchOwnerLicense). لو موقوف، لازم نعطّل الـ
   /// bypass المحلي هنا كمان، مش بس نعتمد على RLS إنها تقفل السيرفر.
   Future<bool> _wasLicenseDeactivated() async {
+    if (!_sessionUsable()) return false; // spec 030 — FR-014
     try {
       final row = await client
           .from('teams')
@@ -646,13 +744,25 @@ class SyncEngine {
   /// عمدًا، عشان لو المدرس فكّ الارتباط، الجهاز القديم (لو لسه شغال)
   /// مايربطش نفسه تاني تلقائيًا قبل ما جهاز جديد ياخد الفرصة.
   Future<bool> _wasDeviceUnbound() async {
+    if (!_sessionUsable()) return false; // spec 030 — FR-013
     try {
       final stillBound = await client.rpc('is_device_still_bound',
           params: {'_team_id': teamId, '_device_id': deviceId}) as bool;
       if (!stillBound) {
-        onDeviceUnbound?.call();
-        return true;
+        // spec 030 — نفس منطق العتبة المتتالية لتفادي الإيجابيات الكاذبة.
+        _deviceUnboundStreak++;
+        if (shouldFireTeamExit(
+            sessionUsable: true, emptyStreak: _deviceUnboundStreak)) {
+          debugPrint('SyncEngine: تأكّد فكّ الجهاز بعد '
+              '$_deviceUnboundStreak نتائج متتالية');
+          onDeviceUnbound?.call();
+          return true;
+        }
+        debugPrint('SyncEngine: الجهاز يبدو غير مرتبط '
+            '($_deviceUnboundStreak/$kTeamExitStreak) — بانتظار تأكيد');
+        return false;
       }
+      _deviceUnboundStreak = 0;
       return false;
     } catch (e) {
       debugPrint('SyncEngine: فشل التحقق من ارتباط الجهاز — $e');

@@ -63,6 +63,24 @@
 
 **⚠️ لسه محتاج:** commit + تحقّق جهازي.
 
+### spec 030 — تقوية مزامنة وضع الفريق (متنفّذ بالكامل، لسه ماتعملّوش commit)
+
+**3 باجات في `sync_engine.dart` بلّغ عنها مساعد** (بيانات مش بتوصل / بتتأخّر / تسجيل خروج تلقائي):
+
+1. **طابور الإرسال بيتجوّع من صفوف مسمومة** — `drainOutbox` كان `WHERE synced=0 ... LIMIT 50`؛ صف بيفشل دايمًا بيتراكم في المقدمة وأول ما يوصلوا 50 → صفر تقدّم. **الحل:** `Map _outboxFails` في الذاكرة، صف تجاوز 5 فشل → `WHERE id NOT IN (poison)` (يُعاد المحاولة كل 20 جولة)، لوج واحد عبر `_loggedPoison`.
+2. **مفيش سحب دوري** — السحب بس عند البدء وعند Realtime `subscribed`. **الحل:** `_catchUpTimer = Timer.periodic(50s → catchUpPull)` + `SyncEngine with WidgetsBindingObserver` → `catchUpPull` عند `resumed`. يُلغى في `stop()`.
+3. **`_wasRemovedFromTeam` بيسجّل خروج على استعلام فاضٍ واحد** — RLS بترجّع فاضي على توكن قرب يخلص. **الحل:** `_sessionUsable()` (`currentSession` صالحة، وإلا `refreshSession` + تأجيل) + `_emptyMembershipStreak >= 3` قبل `onRemovedFromTeam`. نفس المبدأ لـ`_wasDeviceUnbound`. `_wasLicenseDeactivated` += حارس الجلسة فقط.
+
+- `lib/utils/sync_retry_policy.dart` (جديد): `shouldAttemptOutboxRow` + `shouldFireTeamExit` (دوال نقية) + ثوابت `kMaxOutboxFails=5`/`kPoisonRetryEvery=20`/`kTeamExitStreak=3`.
+- `test/sync_retry_policy_test.dart` (جديد، 8 اختبارات).
+- `team_mode_service.dart`: `_startEngine` بقى ينادي `_engine?.stop()` الأول (SyncEngine بقى بيسجّل observer + تايمر).
+
+**التحقّق:** `flutter test` (91) يعدّي، `flutter analyze` = 34 (baseline). صفر تغيير DB/خادم/بروتوكول.
+
+**سبيك:** `specs/030-team-sync-hardening/` — T001–T014 + T016 ✅، **T015 (تحقّق جهازين — quickstart) لسه**.
+
+**⚠️ لسه محتاج:** commit + تحقّق جهازين (هبّة شبكة لا تسجّل خروج، إزالة فعلية تسجّله، مزامنة ثنائية كاملة).
+
 ### spec 028 — حذف السجلات بمدى تواريخ (متنفّذ بالكامل، لسه ماتعملّوش commit)
 
 - `lib/models/deletable_record_type.dart` (جديد): `enum DeletableRecordType` (attendance/payments/examGrades/exams/homework/reportLogs) + `label`/`mainTable`/`dateColumn`/`pkColumn`/`isTeamSynced`؛ `rangeIsoBounds(from,to)` → `[fromIso, toIso)` (يوم البداية 00:00 حتى نهاية يوم النهاية)؛ ثوابت `kBulkDeleteThreshold=100` / `kDeleteConfirmWord='حذف'`.
