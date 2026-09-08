@@ -77,6 +77,17 @@
 
 **سبيك كامل:** `specs/027-hardware-barcode-scanner/` — T001–T018 + T020 ✅، **T019 (تحقّق جهازي بجهاز HID حقيقي — quickstart سيناريوهات 1–11) لسه ماتعملش**.
 
+### ريليس v1.2.51 (منشور بالكامل — يضم specs 028/029/030/031/032/033)
+
+- **`pubspec.yaml`** + `android/local.properties`: `1.2.50+4068` → **`1.2.51+4069`**.
+- **Commit `1e4b3ab`** + **tag `v1.2.51`** مدفوعين.
+- **GitHub Release** (latest، مش draft/pre): https://github.com/amertimraz/App-Active-Class/releases/tag/v1.2.51
+  - أصول: `-arm64-v8a.apk` (sha256 `29ec4836fd0376a1239eb401cac5e7a911fd90b7a90975f20d938280135ad14a`)، `-armeabi-v7a.apk` (`d4e7b0cb…`)، `-x86_64.apk` (`038fb996…`)، `-play.aab` (`6f1db283…`). كلها versionCode **4069**، توقيع release صحيح (`5f74fe10…`)، universal (كل الـABIs). محليًا في `release_assets/ActiveClass-v1.2.51-*`.
+- **VPS:** `/var/www/active-class.online/downloads/ActiveClass-arm64-v8a.apk` (backup `.bak-1.2.50`). التحقق: `curl -sI` → 200، 47829184 بايت، sha256 مطابق (`29ec4836…`).
+- **`/releases/latest`** يرجّع v1.2.51 → التحديث الذاتي داخل التطبيق شغّال.
+- **درس البناء:** `flutter build apk --release --flavor direct` (بلا target-platform) = fat 99MB. الصح: `--target-platform android-arm64` (~48MB، universal فعليًا) ثم `android-arm` ثم `android-x64`، انسخ فورًا. AAB: `flutter build appbundle --release --flavor play`. ~5 دقايق لكل بناء، صفر OOM.
+- **⏳ متبقّي على المستخدم:** رفع `release_assets/ActiveClass-v1.2.51-play.aab` على Play Console يدويًا.
+
 ### ريليس v1.2.50 (منشور بالكامل)
 
 - **`pubspec.yaml`** + `android/local.properties`: `1.2.49+4067` → **`1.2.50+4068`**.
@@ -217,9 +228,9 @@
 
 ## ⏳ متبقّي / مفتوح
 
-1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.50-play.aab`.
-2. **ريليس v1.2.51** بعد التحقّق الجهازي للـspecs التحت — يجمع 028/029/030/031/032/033.
-3. **تحقّق جهازي — كله متنفّذ ومدفوع، لسه محتاج جهاز/جهازين:**
+1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.51-play.aab`.
+2. **ريليس v1.2.51 اتنشر** (`1e4b3ab` + tag) — يضم 028–033. التحقّق الجهازي تحت (اتعمل بعد النشر).
+3. **تحقّق جهازي — كله منشور في v1.2.51، لسه محتاج جهاز/جهازين للتأكيد:**
    - **spec 027 T019** — قارئ HID حقيقي (quickstart 1–11).
    - **spec 028** — حذف بمدى تواريخ (quickstart 1–9): فشل النسخة الاحتياطية → إلغاء، جهازين، عدم انحدار الروستر.
    - **spec 029** — تحذير تأخّر الدفع (quickstart 1–10).
