@@ -26,6 +26,7 @@ import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/homework_controller.dart';
 import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/question_bank_controller.dart';
+import 'package:active_class/controllers/session_override_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/sync_retry_policy.dart';
@@ -76,6 +77,7 @@ class SyncEngine with WidgetsBindingObserver {
     TABLE_ATTENDANCE,
     TABLE_PAYMENTS,
     TABLE_HOMEWORK,
+    TABLE_SESSION_OVERRIDES, // spec 032 — أبوه المجموعة (موجود فوق)
     TABLE_EXAMS,
     TABLE_EXAM_QUESTIONS, // spec 024
     TABLE_BANK_QUESTIONS, // spec 025 — مستقل (بلا أب)
@@ -98,6 +100,7 @@ class SyncEngine with WidgetsBindingObserver {
     TABLE_ATTENDANCE,
     TABLE_PAYMENTS,
     TABLE_HOMEWORK,
+    TABLE_SESSION_OVERRIDES, // spec 032
     TABLE_EXAMS,
     TABLE_EXAM_GROUPS,
     TABLE_EXAM_GRADES,
@@ -134,6 +137,7 @@ class SyncEngine with WidgetsBindingObserver {
         TABLE_ATTENDANCE => COL_ATTENDANCE_ID,
         TABLE_PAYMENTS => COL_PAYMENT_ID,
         TABLE_HOMEWORK => COL_HOMEWORK_ID,
+        TABLE_SESSION_OVERRIDES => COL_SO_ID,
         TABLE_EXAMS => COL_EXAM_ID,
         TABLE_EXAM_QUESTIONS => COL_EQ_ID,
         TABLE_BANK_QUESTIONS => COL_BQ_ID,
@@ -447,6 +451,22 @@ class SyncEngine with WidgetsBindingObserver {
           'student_remote_id': studentRemoteId,
           'date': payload[COL_HOMEWORK_DATE],
           'status': payload[COL_HOMEWORK_STATUS],
+        };
+      case TABLE_SESSION_OVERRIDES: // spec 032 — أبوه المجموعة
+        final groupLocalId = payload[COL_SO_GROUP_ID] as int?;
+        String? groupRemoteId;
+        if (groupLocalId != null) {
+          groupRemoteId =
+              await _localRemoteId(TABLE_GROUPS, COL_GROUP_ID, groupLocalId);
+          if (groupRemoteId == null) return null;
+        }
+        return {
+          ...base,
+          'group_remote_id': groupRemoteId,
+          'date': payload[COL_SO_DATE],
+          'type': payload[COL_SO_TYPE],
+          'compensates_date': payload[COL_SO_COMPENSATES_DATE],
+          'note': payload[COL_SO_NOTE],
         };
       case TABLE_EXAMS:
         return {
@@ -904,6 +924,14 @@ class SyncEngine with WidgetsBindingObserver {
           Get.find<AtRiskController>().refresh();
         }
         break;
+      case TABLE_SESSION_OVERRIDES: // spec 032
+        if (Get.isRegistered<SessionOverrideController>()) {
+          Get.find<SessionOverrideController>().load();
+        }
+        if (Get.isRegistered<AttendanceController>()) {
+          Get.find<AttendanceController>().loadAttendance();
+        }
+        break;
     }
     if (Get.isRegistered<DashboardController>()) {
       Get.find<DashboardController>().loadDashboardData();
@@ -1096,6 +1124,24 @@ class SyncEngine with WidgetsBindingObserver {
           final dup = await db.query(table,
               where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
               whereArgs: [examId, studentId], limit: 1);
+          if (dup.isNotEmpty) {
+            await _reconcileDuplicate(
+                db, table, pkCol, dup.first, remote, localMap);
+            return;
+          }
+        }
+      }
+
+      // spec 032 — نفس المنطق: استثناء حصة لنفس (المجموعة، اليوم)
+      // (UNIQUE(group_id, date) محلي) اتعمل على الجهازين قبل تبادل المزامنة.
+      if (table == TABLE_SESSION_OVERRIDES) {
+        final groupId = localMap[COL_SO_GROUP_ID];
+        final date = localMap[COL_SO_DATE] as String?;
+        if (groupId != null && date != null) {
+          final dayPrefix = date.length >= 10 ? date.substring(0, 10) : date;
+          final dup = await db.query(table,
+              where: '$COL_SO_GROUP_ID = ? AND $COL_SO_DATE = ?',
+              whereArgs: [groupId, dayPrefix], limit: 1);
           if (dup.isNotEmpty) {
             await _reconcileDuplicate(
                 db, table, pkCol, dup.first, remote, localMap);
@@ -1303,6 +1349,23 @@ class SyncEngine with WidgetsBindingObserver {
           COL_HOMEWORK_STUDENT_ID: localStudentId,
           COL_HOMEWORK_DATE: remote['date'],
           COL_HOMEWORK_STATUS: remote['status'],
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_SESSION_OVERRIDES: // spec 032
+        final groupRemoteId = remote['group_remote_id'] as String?;
+        final localGroupId = groupRemoteId != null
+            ? await _localIdForRemote(TABLE_GROUPS, COL_GROUP_ID, groupRemoteId,
+                executor: executor)
+            : null;
+        if (groupRemoteId != null && localGroupId == null) return null;
+        return {
+          COL_SO_GROUP_ID: localGroupId,
+          COL_SO_DATE: remote['date'],
+          COL_SO_TYPE: remote['type'],
+          COL_SO_COMPENSATES_DATE: remote['compensates_date'],
+          COL_SO_NOTE: remote['note'],
+          COL_SO_CREATED_AT: remote['created_at'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };

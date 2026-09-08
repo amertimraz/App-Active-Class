@@ -14,6 +14,9 @@ import 'package:active_class/services/parent_portal_service.dart';
 import 'package:intl/intl.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/session_schedule_resolver.dart';
+import 'package:active_class/models/session_override_model.dart';
+import 'package:active_class/controllers/session_override_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AttendanceController extends GetxController {
@@ -496,26 +499,28 @@ class AttendanceController extends GetxController {
     return map;
   }
 
-  int _countExpectedForGroup(Group group, DateTimeRange range) {
-    if (group.schedule == null || group.schedule!.isEmpty) return 0;
+  SessionOverrideController? get _soCtrl =>
+      Get.isRegistered<SessionOverrideController>()
+          ? Get.find<SessionOverrideController>()
+          : null;
 
+  // أيام الأسبوع (1=الاثنين..7=الأحد) اللي المجموعة ليها فيها حصة حسب
+  // نص/JSON الجدول. فاضية = مفيش جدول مُدخَل أو تعذّر تحليله.
+  Set<int> _scheduleWeekdays(Group group) {
     final Set<int> weekdays = {};
-    final raw = group.schedule!.trim();
-
-    // المحاولة 1: JSON بصيغة [{"day":1,...}]
+    final raw = group.schedule?.trim() ?? '';
+    if (raw.isEmpty) return weekdays;
     try {
       final parsed = json.decode(raw);
       if (parsed is List) {
         for (final item in parsed) {
-          final day = (item is Map && item['day'] is num) ? (item['day'] as num).toInt() : null;
+          final day = (item is Map && item['day'] is num)
+              ? (item['day'] as num).toInt()
+              : null;
           if (day != null && day >= 1 && day <= 7) weekdays.add(day);
         }
       }
-    } catch (_) {
-      // تجاهل خطأ JSON — سنحاول نص حر
-    }
-
-    // المحاولة 2: نص حر مثل "السبت 18:00-19:00, الاثنين 19:00-20:00"
+    } catch (_) {}
     if (weekdays.isEmpty) {
       const Map<String, int> mapArDays = {
         'الاثنين': 1,
@@ -526,8 +531,7 @@ class AttendanceController extends GetxController {
         'السبت': 6,
         'الأحد': 7,
       };
-      final parts = raw.split(',');
-      for (final p in parts) {
+      for (final p in raw.split(',')) {
         final s = p.trim();
         for (final name in mapArDays.keys) {
           if (s.startsWith(name)) {
@@ -537,12 +541,18 @@ class AttendanceController extends GetxController {
         }
       }
     }
+    return weekdays;
+  }
 
+  // عدد الحصص من الجدول الأسبوعي فقط (بدون أي استثناءات spec 032).
+  int _scheduleCountForGroup(Group group, DateTimeRange range) {
+    final weekdays = _scheduleWeekdays(group);
     if (weekdays.isEmpty) return 0;
-
     int count = 0;
-    DateTime cursor = DateTime(range.start.year, range.start.month, range.start.day);
-    final DateTime end = DateTime(range.end.year, range.end.month, range.end.day);
+    DateTime cursor =
+        DateTime(range.start.year, range.start.month, range.start.day);
+    final DateTime end =
+        DateTime(range.end.year, range.end.month, range.end.day);
     while (!cursor.isAfter(end)) {
       if (weekdays.contains(cursor.weekday)) count += 1;
       cursor = cursor.add(const Duration(days: 1));
@@ -550,27 +560,78 @@ class AttendanceController extends GetxController {
     return count;
   }
 
-  // المجموعات التي لها حصة في يوم معين (حسب الجدول الأسبوعي)
-  List<Group> groupsForDay(List<Group> groups, DateTime day) {
-    final singleDay = DateTimeRange(
-      start: DateTime(day.year, day.month, day.day),
-      end: DateTime(day.year, day.month, day.day, 23, 59, 59),
-    );
-    return groups
-        .where((g) => _countExpectedForGroup(g, singleDay) > 0)
-        .toList();
-  }
-
-  // هل عند المجموعة دي حصة في يوم معين حسب جدولها الأسبوعي؟
-  // لو المجموعة لسه محددتش جدول أصلاً، بنرجّع true (منسمحش نمنع تسجيل
-  // الحضور لمجموعات ملهاش جدول مُدخَل، عشان الميزة دي اختيارية).
-  bool groupHasSessionOnDay(Group group, DateTime day) {
+  // هل الجدول الأسبوعي (وحده، بدون استثناءات spec 032) يقول إن فيه حصة
+  // في اليوم ده؟ — تستخدمه واجهة إلغاء/تعويض الحصة للتحقّق.
+  bool groupHasSessionOnDayScheduleOnly(Group group, DateTime day) {
     if (group.schedule == null || group.schedule!.trim().isEmpty) return true;
     final singleDay = DateTimeRange(
       start: DateTime(day.year, day.month, day.day),
       end: DateTime(day.year, day.month, day.day, 23, 59, 59),
     );
-    return _countExpectedForGroup(group, singleDay) > 0;
+    return _scheduleCountForGroup(group, singleDay) > 0;
+  }
+
+  // العدد المتوقّع = الجدول + فرق استثناءات spec 032 (إلغاء ينقص،
+  // تعويض/إضافي في يوم مش جدول يزيد).
+  int _countExpectedForGroup(Group group, DateTimeRange range) {
+    int count = _scheduleCountForGroup(group, range);
+    final so = _soCtrl;
+    if (so != null && group.id != null) {
+      final weekdays = _scheduleWeekdays(group);
+      count += expectedCountDelta(
+        overridesInRange:
+            so.overridesForGroupInRange(group.id!, range.start, range.end),
+        scheduleHasDay: (d) => weekdays.contains(d.weekday),
+      );
+    }
+    return count < 0 ? 0 : count;
+  }
+
+  // المجموعات التي لها حصة في يوم معين (جدول + استثناءات spec 032)
+  List<Group> groupsForDay(List<Group> groups, DateTime day) {
+    return groups.where((g) => groupHasSessionOnDay(g, day)).toList();
+  }
+
+  // زي groupsForDay لكن بيضمّ كمان المجموعات اللي حصتها اتلغت اليوم ده
+  // (عشان الكارت يفضل ظاهر فيمكن التراجع عن الإلغاء) — spec 032.
+  List<Group> groupsForDayWithOverrides(List<Group> groups, DateTime day) {
+    final so = _soCtrl;
+    final result = groupsForDay(groups, day);
+    if (so == null) return result;
+    final seen = result.map((g) => g.id).toSet();
+    for (final g in groups) {
+      if (g.id == null || seen.contains(g.id)) continue;
+      if (so.overrideFor(g.id!, day) != null) result.add(g);
+    }
+    return result;
+  }
+
+  SessionOverride? sessionOverrideFor(Group group, DateTime day) {
+    if (group.id == null) return null;
+    return _soCtrl?.overrideFor(group.id!, day);
+  }
+
+  // هل عند المجموعة دي حصة في يوم معين؟ (الجدول الأسبوعي + استثناء spec
+  // 032 لو موجود: cancelled → لا، makeup/extra → نعم).
+  // لو المجموعة لسه محددتش جدول أصلاً وبلا استثناء، بنرجّع true (منسمحش
+  // نمنع تسجيل الحضور لمجموعات ملهاش جدول مُدخَل، الميزة اختيارية).
+  bool groupHasSessionOnDay(Group group, DateTime day) {
+    final so = _soCtrl;
+    final override = (so != null && group.id != null)
+        ? so.overrideFor(group.id!, day)
+        : null;
+    final bool scheduleSays;
+    if (group.schedule == null || group.schedule!.trim().isEmpty) {
+      scheduleSays = true;
+    } else {
+      final singleDay = DateTimeRange(
+        start: DateTime(day.year, day.month, day.day),
+        end: DateTime(day.year, day.month, day.day, 23, 59, 59),
+      );
+      scheduleSays = _scheduleCountForGroup(group, singleDay) > 0;
+    }
+    return resolveHasSession(
+        scheduleSays: scheduleSays, overrideType: override?.type);
   }
 
   // وقت الحصة لمجموعة في يوم معين (للعرض في الواجهة)

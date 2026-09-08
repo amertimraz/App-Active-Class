@@ -7,6 +7,29 @@
 
 ## ✅ اللي اتعمل في الجلسة الحالية
 
+### spec 032 — إلغاء حصة اليوم وتعويضها (متنفّذ، migration مطبّق عبر SSH، **تحقّق جهازي لسه**)
+
+**الفكرة:** مفيش كيان "حصة" — الحصص مشتقّة من `Group.schedule` + التاريخ. جدول جديد `session_overrides` (مفتاح منطقي `(group_id, date)`، `type ∈ {cancelled, makeup, extra}`, `compensates_date` للـmakeup).
+
+**اللي اتعمل:**
+- **`constants.dart`**: `TABLE_SESSION_OVERRIDES` + `COL_SO_*` + `DATABASE_VERSION = 29`.
+- **`models/session_override_model.dart`** (جديد): `SessionOverride` + `SessionOverrideType` + `toMap/fromMap` (تاريخ ↔ `YYYY-MM-DD`، نوع مجهول → `cancelled`).
+- **`utils/session_schedule_resolver.dart`** (جديد، نقي): `resolveHasSession({scheduleSays, overrideType})` + `expectedCountDelta({overridesInRange, scheduleHasDay})`.
+- **`services/database_service.dart`**: `_sessionOverridesTableSql` (+ UNIQUE index `(group_id,date)`) في `_createTables` + `_onUpgrade` v29. CRUD: `getAllSessionOverrides`/`getSessionOverride`/`insertSessionOverride`(+`_queueSync`)/`deleteSessionOverride`(+`_queueDelete`). `countAttendanceForGroupOnDay`/`deleteAttendanceForGroupOnDay` (JOIN students بالـgroup، txn + `_queueDelete` لكل صف).
+- **`services/sync_engine.dart`**: `TABLE_SESSION_OVERRIDES` في `_tables`+`_coreTables`+`_pkCol`+`_buildRemoteRow` (group_id محلي → `group_remote_id` uuid)+`_toLocalMap`+`_refreshUiForTable`. كتلة dup على `(group_id,date)` → `_reconcileDuplicate` (spec 031).
+- **`controllers/session_override_controller.dart`** (جديد، GetX، `permanent` في main.dart، `onInit`→`load()`): `overrides` RxList، `overrideFor`/`overridesForGroupInRange`/`cancelledForGroup`، طفرات `cancelToday`/`addMakeup`/`addExtra`/`removeOverride` (ترجع `String?` خطأ، تطبّق قواعد التحقّق).
+- **`controllers/attendance_controller.dart`**: استخرجت `_scheduleWeekdays` + `_scheduleCountForGroup` (جدول فقط). `groupHasSessionOnDay`/`_countExpectedForGroup`/`groupsForDay` بقوا override-aware. جديد: `groupsForDayWithOverrides` (بيسيب كارت المجموعة الملغاة ظاهر عشان التراجع)، `sessionOverrideFor`، `groupHasSessionOnDayScheduleOnly`.
+- **`widgets/session_override_widgets.dart`** (جديد): `SessionOverrideMenuButton` (⋮ في رأس موديل الحضور: إلغاء/تعويضية/إضافية/تراجع — الإلغاء متبوّب بـ`canDeleteAttendanceNow` + حوار "هيتمسح N")، `SessionOverrideBanner`، `showAddSessionOverrideFlow` (من `_NoSessionsToday`).
+- **`views/attendance/attendance_page.dart`**: القائمة + البانر في الموديل، شارة "ملغاة/تعويضية/إضافية" على `_GroupSummaryCard`، `_RegisterTabState.initState`→`load()`.
+- **`views/students/student_details_page.dart`**: `_SessionOverridesSection` (عرض فقط، فوق قائمة الشهور — مش بيتحسب في النِسبة).
+- **`supabase/migration_session_overrides.sql`** (جديد): جدول + RLS (`is_team_member AND is_team_license_active`) + `check_delete_session_overrides` (صلاحية `delete_attendance`) + `trg_set_updated_at` + `replica identity full` + realtime publication. **مطبّق عبر SSH + متحقَّق**.
+- **الفوترة: صفر تغيير** (`PricingHelper` ملمسناهوش — كلها من صفوف الحضور).
+- **اختبارات:** `test/session_override_model_test.dart` + `test/session_schedule_override_test.dart` (15 اختبار). كل `flutter test` (113) يعدّي، `flutter analyze` = 34 (baseline).
+
+**متبقّي:** T024 (بوابة الأهل — مؤجّل: مستند Firestore + صفحة ويب منفصلة)، T026/T029/T031 (تحقّق جهازي + جهازين). سبيك: `specs/032-cancel-makeup-session/`.
+
+> ملاحظة: commit `62d88dc` (spec 031) **لسه مش مدفوع**.
+
 ### spec 027 — دعم جهاز قارئ باركود خارجي (HID) في شاشتَي الحضور والدفع (متنفّذ + مدفوع على `main`)
 
 **Commits:** `827a44d` (التنفيذ) + `6e5dc3f` (تحسين خوارزمية الكشف = متوسط الزمن). كلها مدفوعة.

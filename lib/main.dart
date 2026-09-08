@@ -33,6 +33,7 @@ import 'package:active_class/views/schedule/schedule_page.dart';
 import 'package:active_class/views/bookings/bookings_page.dart';
 import 'package:active_class/views/bookings/booking_settings_page.dart';
 import 'package:active_class/controllers/exam_controller.dart';
+import 'package:active_class/controllers/session_override_controller.dart';
 import 'package:active_class/controllers/auth_controller.dart';
 import 'package:active_class/views/auth/login_screen.dart';
 import 'package:active_class/views/auth/register_screen.dart';
@@ -158,6 +159,9 @@ void main() async {
   ParentPortalService().init();
   Get.put(SessionLogController(), permanent: true);
   Get.put(ExamController(), permanent: true);
+  // spec 032 — استثناءات الحصص (إلغاء/تعويض). دايم عشان SyncEngine
+  // و AttendanceController يلاقوه جاهز.
+  Get.put(SessionOverrideController(), permanent: true);
   // نظام تسجيل الدخول المستقل — تهيئته الفعلية (اتصال Supabase) كسولة
   // ومتحصلش إلا لو المستخدم فعلاً فتح شاشة الحساب أو كان مسجّل دخول
   // قبل كده، عشان صفر تأثير على باقي المستخدمين.

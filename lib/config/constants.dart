@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 28;
+const int DATABASE_VERSION = 29;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -351,3 +351,18 @@ const String SETTING_ATRISK_NOTIF_ENABLED = 'atrisk_weekly_notif_enabled';    //
 const String SETTING_ATRISK_NOTIF_DAY     = 'atrisk_weekly_notif_day';        // 'الأحد'
 const String SETTING_ATRISK_NOTIF_HOUR    = 'atrisk_weekly_notif_hour';       // 9
 const String SETTING_ATRISK_NOTIF_MINUTE  = 'atrisk_weekly_notif_minute';     // 0
+
+// ─────────────────────────────────────────────────────────────────
+//  spec 032 — إلغاء حصة اليوم وتعويضها. جدول جديد واحد، متزامن عبر
+//  الفريق (القناة الأساسية). مفتاح منطقي (group_id, date). النوع:
+//  cancelled = مفيش حصة، makeup/extra = فيه حصة زيادة. الفوترة من
+//  صفوف الحضور زي ما هي — صفر تغيير في PricingHelper.
+// ─────────────────────────────────────────────────────────────────
+const String TABLE_SESSION_OVERRIDES  = 'session_overrides';
+const String COL_SO_ID                = 'id';
+const String COL_SO_GROUP_ID          = 'group_id';
+const String COL_SO_DATE              = 'date';             // 'YYYY-MM-DD'
+const String COL_SO_TYPE              = 'type';             // cancelled | makeup | extra
+const String COL_SO_COMPENSATES_DATE  = 'compensates_date'; // 'YYYY-MM-DD' — للـmakeup
+const String COL_SO_NOTE              = 'note';             // اختياري
+const String COL_SO_CREATED_AT        = 'created_at';       // ISO-8601

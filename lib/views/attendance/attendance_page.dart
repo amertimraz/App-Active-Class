@@ -17,6 +17,9 @@ import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/utils/student_sort_helper.dart';
 import 'package:active_class/widgets/student_sort_bar.dart';
 import 'package:active_class/widgets/overdue_warning_badge.dart';
+import 'package:active_class/widgets/session_override_widgets.dart';
+import 'package:active_class/controllers/session_override_controller.dart';
+import 'package:active_class/models/session_override_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/export_service.dart';
@@ -209,6 +212,15 @@ class _RegisterTab extends StatefulWidget {
 }
 
 class _RegisterTabState extends State<_RegisterTab> {
+  @override
+  void initState() {
+    super.initState();
+    // spec 032 — تحديث استثناءات الحصص عند فتح الشاشة (نمط spec 029).
+    if (Get.isRegistered<SessionOverrideController>()) {
+      Get.find<SessionOverrideController>().load();
+    }
+  }
+
   bool get _isToday {
     final n = DateTime.now();
     return widget.selectedDay.year == n.year &&
@@ -227,7 +239,8 @@ class _RegisterTabState extends State<_RegisterTab> {
     return Obx(() {
       final students  = widget.studentCtrl.students;
       final allGroups = widget.groupCtrl.groups;
-      final todayGroups = widget.controller.groupsForDay(allGroups, selectedDay);
+      final todayGroups =
+          widget.controller.groupsForDayWithOverrides(allGroups, selectedDay);
 
       final dayRecords = widget.controller.attendance
           .where((a) => !a.date.isBefore(dayStart) && !a.date.isAfter(dayEnd));
@@ -302,6 +315,9 @@ class _RegisterTabState extends State<_RegisterTab> {
                           totalCount: gTotal,
                           attendanceRate: gRate,
                           controller: widget.controller,
+                          overrideType: widget.controller
+                              .sessionOverrideFor(group, selectedDay)
+                              ?.type,
                           onTap: () => showAttendanceSheet(
                             context,
                             group: group,
@@ -483,6 +499,7 @@ class _GroupSummaryCard extends StatelessWidget {
   final double attendanceRate;
   final AttendanceController controller;
   final VoidCallback onTap;
+  final SessionOverrideType? overrideType;
 
   const _GroupSummaryCard({
     required this.isDark,
@@ -494,7 +511,39 @@ class _GroupSummaryCard extends StatelessWidget {
     required this.attendanceRate,
     required this.controller,
     required this.onTap,
+    this.overrideType,
   });
+
+  Widget _overrideChip(SessionOverrideType t) {
+    Color c;
+    String label;
+    switch (t) {
+      case SessionOverrideType.cancelled:
+        c = const Color(0xFFEF4444);
+        label = 'ملغاة';
+        break;
+      case SessionOverrideType.makeup:
+        c = const Color(0xFF10B981);
+        label = 'تعويضية';
+        break;
+      case SessionOverrideType.extra:
+        c = const Color(0xFF6366F1);
+        label = 'إضافية';
+        break;
+    }
+    return Container(
+      margin: const EdgeInsets.only(left: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.withValues(alpha: 0.35)),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 10, fontWeight: FontWeight.w800, color: c)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -550,6 +599,7 @@ class _GroupSummaryCard extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                         fontSize: 15)),
               ),
+              if (overrideType != null) _overrideChip(overrideType!),
               Icon(Icons.chevron_left_rounded, color: Colors.grey.shade400),
             ]),
             const SizedBox(height: 6),
@@ -899,6 +949,11 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                           fontWeight: FontWeight.w800,
                           fontSize: 16)),
                 ),
+                SessionOverrideMenuButton(
+                  group: group,
+                  day: selectedDay,
+                  attCtrl: controller,
+                ),
                 IconButton(
                   icon: const Icon(Icons.close_rounded),
                   tooltip: 'إغلاق',
@@ -906,6 +961,13 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                 ),
               ]),
             ),
+            // spec 032 — بانر حالة الاستثناء (ملغاة / تعويضية / إضافية)
+            Builder(builder: (_) {
+              final o = controller.sessionOverrideFor(group, selectedDay);
+              return o == null
+                  ? const SizedBox.shrink()
+                  : SessionOverrideBanner(ovr: o);
+            }),
             // ميعاد الحصة + العداد التنازلي + نسبة الحضور — Wrap عشان لو
             // المساحة ضاقت (اسم طويل أخد سطرين، أو شاشة صغيرة) الشارات
             // تنزل سطر تاني بدل overflow.
@@ -2079,6 +2141,16 @@ class _NoSessionsToday extends StatelessWidget {
                   )),
                 ],
               ),
+            ),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: () => showAddSessionOverrideFlow(
+                context,
+                groups: allGroups.whereType<Group>().toList(),
+                day: selectedDay,
+              ),
+              icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+              label: const Text('إضافة حصة استثنائية (تعويضية / إضافية)'),
             ),
           ],
         ),

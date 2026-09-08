@@ -16,6 +16,7 @@ import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
 import 'package:active_class/models/bank_question_model.dart';
+import 'package:active_class/models/session_override_model.dart';
 import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
@@ -133,6 +134,27 @@ const String _bankQuestionsTableSql = '''
 const String _bankQuestionsIndexSql =
     'CREATE INDEX IF NOT EXISTS idx_${TABLE_BANK_QUESTIONS}_subject '
     'ON $TABLE_BANK_QUESTIONS($COL_BQ_SUBJECT)';
+
+// spec 032 — إلغاء/تعويض الحصة. جدول مستقل، متزامن عبر الفريق (القناة
+// الأساسية) بأعمدة COL_SYNC_* من الإنشاء. المفتاح المنطقي (group_id, date).
+const String _sessionOverridesTableSql = '''
+  CREATE TABLE IF NOT EXISTS $TABLE_SESSION_OVERRIDES (
+    $COL_SO_ID               INTEGER PRIMARY KEY AUTOINCREMENT,
+    $COL_SO_GROUP_ID         INTEGER NOT NULL,
+    $COL_SO_DATE             TEXT NOT NULL,
+    $COL_SO_TYPE             TEXT NOT NULL,
+    $COL_SO_COMPENSATES_DATE TEXT,
+    $COL_SO_NOTE             TEXT,
+    $COL_SO_CREATED_AT       TEXT,
+    $COL_SYNC_UPDATED_AT     TEXT,
+    $COL_SYNC_REMOTE_ID      TEXT,
+    FOREIGN KEY($COL_SO_GROUP_ID) REFERENCES $TABLE_GROUPS($COL_GROUP_ID) ON DELETE CASCADE
+  )
+''';
+
+const String _sessionOverridesIndexSql =
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_SESSION_OVERRIDES}_group_date '
+    'ON $TABLE_SESSION_OVERRIDES($COL_SO_GROUP_ID, $COL_SO_DATE)';
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -334,6 +356,10 @@ class DatabaseService {
     // Bank Questions (spec 025) — بنك أسئلة قابل لإعادة الاستخدام، متزامن عبر الفريق.
     await db.execute(_bankQuestionsTableSql);
     await db.execute(_bankQuestionsIndexSql);
+
+    // Session Overrides (spec 032) — إلغاء/تعويض الحصة، متزامن عبر الفريق.
+    await db.execute(_sessionOverridesTableSql);
+    await db.execute(_sessionOverridesIndexSql);
 
     // App settings (key/value) — اسم المعلم، العملة، تفضيلات الواجهة...
     await db.execute('''
@@ -757,6 +783,17 @@ class DatabaseService {
       } catch (_) {}
       try {
         await db.execute(_bankQuestionsIndexSql);
+      } catch (_) {}
+    }
+
+    if (oldVersion < 29) {
+      // spec 032 — جدول استثناءات الحصص (جديد بالكامل، بأعمدة المزامنة من
+      // الإنشاء) — صفر تأثير على أي جدول موجود.
+      try {
+        await db.execute(_sessionOverridesTableSql);
+      } catch (_) {}
+      try {
+        await db.execute(_sessionOverridesIndexSql);
       } catch (_) {}
     }
   }
@@ -1527,6 +1564,94 @@ class DatabaseService {
     final db = await database;
     final result = await db.query(TABLE_HOMEWORK, orderBy: '$COL_HOMEWORK_DATE DESC');
     return result.map((map) => Homework.fromMap(map)).toList();
+  }
+
+  // ========== SESSION OVERRIDES (spec 032) ==========
+  // جدول مستقل، متزامن عبر الفريق (القناة الأساسية) زي TABLE_HOMEWORK.
+  Future<List<SessionOverride>> getAllSessionOverrides() async {
+    final db = await database;
+    final rows = await db.query(TABLE_SESSION_OVERRIDES,
+        orderBy: '$COL_SO_DATE DESC');
+    return rows.map((m) => SessionOverride.fromMap(m)).toList();
+  }
+
+  Future<SessionOverride?> getSessionOverride(int groupId, DateTime day) async {
+    final db = await database;
+    final rows = await db.query(
+      TABLE_SESSION_OVERRIDES,
+      where: '$COL_SO_GROUP_ID = ? AND $COL_SO_DATE = ?',
+      whereArgs: [groupId, SessionOverride.ymd(day)],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return SessionOverride.fromMap(rows.first);
+  }
+
+  Future<int> insertSessionOverride(SessionOverride o) async {
+    final db = await database;
+    final map = {
+      ...o.toMap(),
+      COL_SO_CREATED_AT: (o.createdAt ?? DateTime.now()).toIso8601String(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    }..remove(COL_SO_ID);
+    final id = await db.insert(TABLE_SESSION_OVERRIDES, map);
+    _notifyChanged();
+    await _queueSync(TABLE_SESSION_OVERRIDES, id, 'insert',
+        payload: {...map, COL_SO_ID: id});
+    return id;
+  }
+
+  Future<int> deleteSessionOverride(int id) async {
+    final db = await database;
+    final remoteId =
+        await _remoteIdOf(db, TABLE_SESSION_OVERRIDES, COL_SO_ID, id);
+    final n = await db.delete(TABLE_SESSION_OVERRIDES,
+        where: '$COL_SO_ID = ?', whereArgs: [id]);
+    _notifyChanged();
+    await _queueDelete(TABLE_SESSION_OVERRIDES, id, remoteId);
+    return n;
+  }
+
+  /// عدد صفوف الحضور المسجّلة لطلاب [groupId] في يوم [day] (للحوار
+  /// "هيتمسح N سجل" قبل تأكيد الإلغاء).
+  Future<int> countAttendanceForGroupOnDay(int groupId, DateTime day) async {
+    final db = await database;
+    final r = await db.rawQuery(
+      'SELECT COUNT(*) c FROM $TABLE_ATTENDANCE a '
+      'JOIN $TABLE_STUDENTS s ON s.$COL_STUDENT_ID = a.$COL_ATTENDANCE_STUDENT_ID '
+      'WHERE s.$COL_STUDENT_GROUP_ID = ? '
+      'AND substr(a.$COL_ATTENDANCE_DATE, 1, 10) = ?',
+      [groupId, SessionOverride.ymd(day)],
+    );
+    return Sqflite.firstIntValue(r) ?? 0;
+  }
+
+  /// يمسح صفوف حضور طلاب [groupId] في يوم [day] (عند تأكيد إلغاء الحصة)،
+  /// ويطابر الحذف لمزامنة الفريق لكل صف مُزامَن.
+  Future<int> deleteAttendanceForGroupOnDay(int groupId, DateTime day) async {
+    final db = await database;
+    final ymd = SessionOverride.ymd(day);
+    final rows = await db.rawQuery(
+      'SELECT a.$COL_ATTENDANCE_ID id, a.$COL_SYNC_REMOTE_ID rid '
+      'FROM $TABLE_ATTENDANCE a '
+      'JOIN $TABLE_STUDENTS s ON s.$COL_STUDENT_ID = a.$COL_ATTENDANCE_STUDENT_ID '
+      'WHERE s.$COL_STUDENT_GROUP_ID = ? '
+      'AND substr(a.$COL_ATTENDANCE_DATE, 1, 10) = ?',
+      [groupId, ymd],
+    );
+    if (rows.isEmpty) return 0;
+    final ids = rows.map((r) => r['id'] as int).toList();
+    final inClause = ids.join(',');
+    await db.transaction((txn) async {
+      await txn.delete(TABLE_ATTENDANCE,
+          where: '$COL_ATTENDANCE_ID IN ($inClause)');
+    });
+    _notifyChanged();
+    for (final r in rows) {
+      await _queueDelete(
+          TABLE_ATTENDANCE, r['id'] as int, r['rid'] as String?);
+    }
+    return ids.length;
   }
 
   // ========== STUDENT FOLLOW-UPS (spec 021) ==========

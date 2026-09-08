@@ -22,7 +22,7 @@ description: "Task list for feature 032 — إلغاء حصة اليوم وتع�
 
 ## Phase 1: Setup
 
-- [ ] T001 في [lib/config/constants.dart](../../lib/config/constants.dart): أضف `const String TABLE_SESSION_OVERRIDES = 'session_overrides';` وغيّر `DATABASE_VERSION` من 28 إلى 29.
+- [X] T001 في [lib/config/constants.dart](../../lib/config/constants.dart): أضف `const String TABLE_SESSION_OVERRIDES = 'session_overrides';` وغيّر `DATABASE_VERSION` من 28 إلى 29.
 
 ---
 
@@ -30,31 +30,31 @@ description: "Task list for feature 032 — إلغاء حصة اليوم وتع�
 
 ### النموذج + الدوال النقية
 
-- [ ] T002 [P] أنشئ [lib/models/session_override_model.dart](../../lib/models/session_override_model.dart) وفق [contracts/session-override-model-db.md](./contracts/session-override-model-db.md): `enum SessionOverrideType { cancelled, makeup, extra }` + class `SessionOverride` (`id?, groupId, date, type, compensatesDate?, note?, createdAt?`) + `toMap`/`fromMap` (تاريخ ↔ `YYYY-MM-DD`، type ↔ `.name`، نوع غير معروف → `cancelled` + `debugPrint`) + `copyWith`.
-- [ ] T003 [P] أنشئ [lib/utils/session_schedule_resolver.dart](../../lib/utils/session_schedule_resolver.dart) وفق [contracts/schedule-override-aware.md](./contracts/schedule-override-aware.md): `bool resolveHasSession({required bool scheduleSays, SessionOverrideType? overrideType})` + `int expectedCountDelta({required Iterable<SessionOverride> overridesInRange, required bool Function(DateTime) scheduleHasDay})`.
-- [ ] T004 [P] أنشئ [test/session_override_model_test.dart](../../test/session_override_model_test.dart): round-trip `toMap`/`fromMap` لكل نوع، تاريخ منزوع الوقت، `compensatesDate` null/قيمة، نوع غير معروف → `cancelled`.
-- [ ] T005 [P] أنشئ [test/session_schedule_override_test.dart](../../test/session_schedule_override_test.dart): `resolveHasSession` (cancelled→false، makeup/extra→true، null+true→true، null+false→false)؛ `expectedCountDelta` (cancelled على يوم جدول→-1، cancelled على غيره→0، makeup على غير يوم جدول→+1، makeup على يوم جدول→0، مزيج→المجموع، فارغ→0).
+- [X] T002 [P] أنشئ [lib/models/session_override_model.dart](../../lib/models/session_override_model.dart) وفق [contracts/session-override-model-db.md](./contracts/session-override-model-db.md): `enum SessionOverrideType { cancelled, makeup, extra }` + class `SessionOverride` (`id?, groupId, date, type, compensatesDate?, note?, createdAt?`) + `toMap`/`fromMap` (تاريخ ↔ `YYYY-MM-DD`، type ↔ `.name`، نوع غير معروف → `cancelled` + `debugPrint`) + `copyWith`.
+- [X] T003 [P] أنشئ [lib/utils/session_schedule_resolver.dart](../../lib/utils/session_schedule_resolver.dart) وفق [contracts/schedule-override-aware.md](./contracts/schedule-override-aware.md): `bool resolveHasSession({required bool scheduleSays, SessionOverrideType? overrideType})` + `int expectedCountDelta({required Iterable<SessionOverride> overridesInRange, required bool Function(DateTime) scheduleHasDay})`.
+- [X] T004 [P] أنشئ [test/session_override_model_test.dart](../../test/session_override_model_test.dart): round-trip `toMap`/`fromMap` لكل نوع، تاريخ منزوع الوقت، `compensatesDate` null/قيمة، نوع غير معروف → `cancelled`.
+- [X] T005 [P] أنشئ [test/session_schedule_override_test.dart](../../test/session_schedule_override_test.dart): `resolveHasSession` (cancelled→false، makeup/extra→true، null+true→true، null+false→false)؛ `expectedCountDelta` (cancelled على يوم جدول→-1، cancelled على غيره→0، makeup على غير يوم جدول→+1، makeup على يوم جدول→0، مزيج→المجموع، فارغ→0).
 
 ### قاعدة البيانات المحلية
 
-- [ ] T006 في [lib/services/database_service.dart](../../lib/services/database_service.dart): أضف ثابتَي SQL (`_sessionOverridesTableSql` مع FK `ON DELETE CASCADE` + `_sessionOverridesIndexSql` = `UNIQUE INDEX ... (group_id, date)`). نادِهما في `_createTables`، وفي `_onUpgrade` أضف `if (oldVersion < 29) { try { ... } catch (_) {} }`. استورد `session_override_model.dart`.
-- [ ] T007 في [lib/services/database_service.dart](../../lib/services/database_service.dart): أضف CRUD وفق [contracts/session-override-model-db.md](./contracts/session-override-model-db.md): `getAllSessionOverrides()`، `getSessionOverride(groupId, day)`، `insertSessionOverride(o)` (+ `_queueSync`)، `deleteSessionOverride(id)` (جلب remote_id قبل الحذف + `_queueDelete`).
-- [ ] T008 في [lib/services/database_service.dart](../../lib/services/database_service.dart): أضف `countAttendanceForGroupOnDay(groupId, day)`، `attendanceForGroupOnDay(groupId, day)` (`date LIKE 'YYYY-MM-DD%'`)، و`deleteAttendanceForGroupOnDay(groupId, day)` (داخل `transaction` + `_queueDelete` لكل صف بعد الـcommit).
+- [X] T006 في [lib/services/database_service.dart](../../lib/services/database_service.dart): أضف ثابتَي SQL (`_sessionOverridesTableSql` مع FK `ON DELETE CASCADE` + `_sessionOverridesIndexSql` = `UNIQUE INDEX ... (group_id, date)`). نادِهما في `_createTables`، وفي `_onUpgrade` أضف `if (oldVersion < 29) { try { ... } catch (_) {} }`. استورد `session_override_model.dart`.
+- [X] T007 في [lib/services/database_service.dart](../../lib/services/database_service.dart): أضف CRUD وفق [contracts/session-override-model-db.md](./contracts/session-override-model-db.md): `getAllSessionOverrides()`، `getSessionOverride(groupId, day)`، `insertSessionOverride(o)` (+ `_queueSync`)، `deleteSessionOverride(id)` (جلب remote_id قبل الحذف + `_queueDelete`).
+- [X] T008 في [lib/services/database_service.dart](../../lib/services/database_service.dart): أضف `countAttendanceForGroupOnDay(groupId, day)`، `attendanceForGroupOnDay(groupId, day)` (`date LIKE 'YYYY-MM-DD%'`)، و`deleteAttendanceForGroupOnDay(groupId, day)` (داخل `transaction` + `_queueDelete` لكل صف بعد الـcommit).
 
 ### المزامنة
 
-- [ ] T009 في [lib/services/sync_engine.dart](../../lib/services/sync_engine.dart): سجّل `TABLE_SESSION_OVERRIDES` في `_tables` + `_coreTables` + `_pkCol` (`'id'`) + `_buildRemoteRow` (يحوّل `group_id` المحلي → `group_remote_id` uuid زي ربط الحضور بالطالب؛ يمرّر `date`/`type`/`compensates_date`/`note`) + `_toLocalMap` (عكسي) + `_applyRemoteRow` + تحديث UI (`_refreshUiForTable`).
-- [ ] T010 في [lib/services/sync_engine.dart](../../lib/services/sync_engine.dart): في `_applyRemoteRow` لـ`TABLE_SESSION_OVERRIDES` أضف كتلة dup على المفتاح المنطقي `(group_id, date)` تستدعي `_reconcileDuplicate(db, table, pkCol, dup.first, remote, localMap)` (spec 031) بدل الإدراج الأعمى.
+- [X] T009 في [lib/services/sync_engine.dart](../../lib/services/sync_engine.dart): سجّل `TABLE_SESSION_OVERRIDES` في `_tables` + `_coreTables` + `_pkCol` (`'id'`) + `_buildRemoteRow` (يحوّل `group_id` المحلي → `group_remote_id` uuid زي ربط الحضور بالطالب؛ يمرّر `date`/`type`/`compensates_date`/`note`) + `_toLocalMap` (عكسي) + `_applyRemoteRow` + تحديث UI (`_refreshUiForTable`).
+- [X] T010 في [lib/services/sync_engine.dart](../../lib/services/sync_engine.dart): في `_applyRemoteRow` لـ`TABLE_SESSION_OVERRIDES` أضف كتلة dup على المفتاح المنطقي `(group_id, date)` تستدعي `_reconcileDuplicate(db, table, pkCol, dup.first, remote, localMap)` (spec 031) بدل الإدراج الأعمى.
 
 ### حالة runtime
 
-- [ ] T011 أنشئ [lib/controllers/session_override_controller.dart](../../lib/controllers/session_override_controller.dart) وفق [contracts/schedule-override-aware.md](./contracts/schedule-override-aware.md): `RxList<SessionOverride> overrides` + `RxBool loadedOnce` + `load()` + `overrideFor(groupId, day)` + `overridesForGroupInRange(...)` + `cancelledForGroup(groupId)` + طفرات `cancelToday`/`addMakeup`/`addExtra`/`removeOverride` (ترجع `String?` رسالة خطأ أو null؛ تطبّق قواعد قرار 7).
-- [ ] T012 في [lib/main.dart](../../lib/main.dart) (أو bindings الأساسية): `Get.put(SessionOverrideController(), permanent: true)`.
+- [X] T011 أنشئ [lib/controllers/session_override_controller.dart](../../lib/controllers/session_override_controller.dart) وفق [contracts/schedule-override-aware.md](./contracts/schedule-override-aware.md): `RxList<SessionOverride> overrides` + `RxBool loadedOnce` + `load()` + `overrideFor(groupId, day)` + `overridesForGroupInRange(...)` + `cancelledForGroup(groupId)` + طفرات `cancelToday`/`addMakeup`/`addExtra`/`removeOverride` (ترجع `String?` رسالة خطأ أو null؛ تطبّق قواعد قرار 7).
+- [X] T012 في [lib/main.dart](../../lib/main.dart) (أو bindings الأساسية): `Get.put(SessionOverrideController(), permanent: true)`.
 
 ### migration الخادم
 
-- [ ] T013 [P] أنشئ [supabase/migration_session_overrides.sql](../../supabase/migration_session_overrides.sql) وفق [research.md](./research.md) قرار 3: `CREATE TABLE public.session_overrides (...)` + `enable row level security` + 3 سياسات (`select`/`insert`/`update` = `is_team_member(team_id) AND is_team_license_active(team_id)`) + `replica identity full` + `alter publication supabase_realtime add table session_overrides` + `trg_set_updated_at`.
-- [ ] T014 طبّق الـmigration عبر SSH: `ssh -i ~/.ssh/ovh_key root@active-class.online "docker exec -i active-class-auth-db-1 psql -U postgres -d postgres -v ON_ERROR_STOP=1" < supabase/migration_session_overrides.sql`. تحقّق: الجدول موجود، ضمن `supabase_realtime`، وله `trg_set_updated_at`.
+- [X] T013 [P] أنشئ [supabase/migration_session_overrides.sql](../../supabase/migration_session_overrides.sql) وفق [research.md](./research.md) قرار 3: `CREATE TABLE public.session_overrides (...)` + `enable row level security` + 3 سياسات (`select`/`insert`/`update` = `is_team_member(team_id) AND is_team_license_active(team_id)`) + `replica identity full` + `alter publication supabase_realtime add table session_overrides` + `trg_set_updated_at`.
+- [X] T014 طبّق الـmigration عبر SSH: `ssh -i ~/.ssh/ovh_key root@active-class.online "docker exec -i active-class-auth-db-1 psql -U postgres -d postgres -v ON_ERROR_STOP=1" < supabase/migration_session_overrides.sql`. تحقّق: الجدول موجود، ضمن `supabase_realtime`، وله `trg_set_updated_at`.
 
 **Checkpoint**: النموذج + الجدول (محلي + خادم) + الـcontroller + المزامنة جاهزة. القصص تقدر تبدأ.
 
@@ -66,11 +66,11 @@ description: "Task list for feature 032 — إلغاء حصة اليوم وتع�
 
 **Independent Test**: quickstart سيناريوهات 1 + 2 + 3.
 
-- [ ] T015 [US1] في [lib/controllers/attendance_controller.dart](../../lib/controllers/attendance_controller.dart): اكتسب `SessionOverrideController` عبر `Get.find` (مع `Get.isRegistered` guard). عدّل `groupHasSessionOnDay(group, day)` لتصير override-aware عبر `resolveHasSession(scheduleSays: <القديم>, overrideType: so?.overrideFor(group.id!, day)?.type)`.
-- [ ] T016 [US1] في [lib/controllers/attendance_controller.dart](../../lib/controllers/attendance_controller.dart): عدّل `_countExpectedForGroup(group, range)` لإضافة `expectedCountDelta(...)` بعد العدّ القديم ثم `clamp(0, ...)`. تحقّق أن `getExpectedSessionsPerGroup` و`groupsForDay` يمرّان عبر الدوال المعدّلة.
-- [ ] T017 [US1] في [lib/views/attendance/attendance_page.dart](../../lib/views/attendance/attendance_page.dart): أضف عنصر "إلغاء حصة اليوم" في قائمة "⋮" (يظهر لو الجدول يقول فيه حصة و لا يوجد `cancelled`). حوار تأكيد؛ لو `countAttendanceForGroupOnDay > 0` → حوار "هيتمسح N"؛ عند التأكيد `deleteAttendanceForGroupOnDay` ثم `soCtrl.cancelToday(...)` ثم تحديث `AttendanceController`.
-- [ ] T018 [US1] في [lib/views/attendance/attendance_page.dart](../../lib/views/attendance/attendance_page.dart): لو يوجد `cancelled` لليوم المحدّد → استبدل قائمة الطلاب ببانر "الحصة اتلغت النهارده" + زر "تراجع عن الإلغاء" (→ `soCtrl.removeOverride`).
-- [ ] T019 [US1] في [lib/views/attendance/attendance_page.dart](../../lib/views/attendance/attendance_page.dart): `soCtrl.load()` عند فتح الشاشة (نمط spec 029). طبّق قيد الإذن (نفس منطق تعديل الحضور القائم في الشاشة).
+- [X] T015 [US1] في [lib/controllers/attendance_controller.dart](../../lib/controllers/attendance_controller.dart): اكتسب `SessionOverrideController` عبر `Get.find` (مع `Get.isRegistered` guard). عدّل `groupHasSessionOnDay(group, day)` لتصير override-aware عبر `resolveHasSession(scheduleSays: <القديم>, overrideType: so?.overrideFor(group.id!, day)?.type)`.
+- [X] T016 [US1] في [lib/controllers/attendance_controller.dart](../../lib/controllers/attendance_controller.dart): عدّل `_countExpectedForGroup(group, range)` لإضافة `expectedCountDelta(...)` بعد العدّ القديم ثم `clamp(0, ...)`. تحقّق أن `getExpectedSessionsPerGroup` و`groupsForDay` يمرّان عبر الدوال المعدّلة.
+- [X] T017 [US1] في [lib/views/attendance/attendance_page.dart](../../lib/views/attendance/attendance_page.dart): أضف عنصر "إلغاء حصة اليوم" في قائمة "⋮" (يظهر لو الجدول يقول فيه حصة و لا يوجد `cancelled`). حوار تأكيد؛ لو `countAttendanceForGroupOnDay > 0` → حوار "هيتمسح N"؛ عند التأكيد `deleteAttendanceForGroupOnDay` ثم `soCtrl.cancelToday(...)` ثم تحديث `AttendanceController`.
+- [X] T018 [US1] في [lib/views/attendance/attendance_page.dart](../../lib/views/attendance/attendance_page.dart): لو يوجد `cancelled` لليوم المحدّد → استبدل قائمة الطلاب ببانر "الحصة اتلغت النهارده" + زر "تراجع عن الإلغاء" (→ `soCtrl.removeOverride`).
+- [X] T019 [US1] في [lib/views/attendance/attendance_page.dart](../../lib/views/attendance/attendance_page.dart): `soCtrl.load()` عند فتح الشاشة (نمط spec 029). طبّق قيد الإذن (نفس منطق تعديل الحضور القائم في الشاشة).
 
 **Checkpoint**: الإلغاء + التراجع يعملان؛ الأعداد المتوقّعة صحيحة.
 
@@ -82,8 +82,8 @@ description: "Task list for feature 032 — إلغاء حصة اليوم وتع�
 
 **Independent Test**: quickstart سيناريوهات 4 + 5.
 
-- [ ] T020 [US2] في [lib/views/attendance/attendance_page.dart](../../lib/views/attendance/attendance_page.dart): عنصر "إضافة حصة تعويضية / إضافية" في "⋮" → حوار: اختيار النوع (`makeup`/`extra`)؛ لو `makeup` → منتقي تاريخ "تعويض عن" + تحقّق (قرار 7: يُرفض لو التاريخ عليه `cancelled` مختلف المجموعة؟ لا — يُرفض لو التاريخ الحالي عليه استثناء). يستدعي `soCtrl.addMakeup`/`addExtra`.
-- [ ] T021 [US2] في [lib/views/attendance/attendance_page.dart](../../lib/views/attendance/attendance_page.dart): في يوم عليه `makeup`/`extra` اعرض قائمة طلاب المجموعة كاملة (عبر `groupHasSessionOnDay` = true) مع لِيبل أعلى القائمة «حصة معوّضة عن {تاريخ}» / «حصة إضافية».
+- [X] T020 [US2] في [lib/views/attendance/attendance_page.dart](../../lib/views/attendance/attendance_page.dart): عنصر "إضافة حصة تعويضية / إضافية" في "⋮" → حوار: اختيار النوع (`makeup`/`extra`)؛ لو `makeup` → منتقي تاريخ "تعويض عن" + تحقّق (قرار 7: يُرفض لو التاريخ عليه `cancelled` مختلف المجموعة؟ لا — يُرفض لو التاريخ الحالي عليه استثناء). يستدعي `soCtrl.addMakeup`/`addExtra`.
+- [X] T021 [US2] في [lib/views/attendance/attendance_page.dart](../../lib/views/attendance/attendance_page.dart): في يوم عليه `makeup`/`extra` اعرض قائمة طلاب المجموعة كاملة (عبر `groupHasSessionOnDay` = true) مع لِيبل أعلى القائمة «حصة معوّضة عن {تاريخ}» / «حصة إضافية».
 - [ ] T022 [US2] تحقّق يدويًا أن الفوترة per-session صحيحة بلا تغيير كود (`PricingHelper` سليم): حضور في حصة تعويضية = `monthlyDue` يعدّه؛ حذف حضور حصة ملغاة = المستحق ينزل. (لا كود — فحص فقط.)
 
 **Checkpoint**: التعويض/الإضافي يعمل؛ الفوترة صحيحة تلقائيًا.
@@ -96,7 +96,7 @@ description: "Task list for feature 032 — إلغاء حصة اليوم وتع�
 
 **Independent Test**: quickstart سيناريو 6.
 
-- [ ] T023 [US3] في [lib/views/students/student_details_page.dart](../../lib/views/students/student_details_page.dart): ادمج `soCtrl.cancelledForGroup(student.currentGroupId)` كعناصر عرض "الحصة اتلغت — {تاريخ}" في قسم سجل الحضور، مرتّبة تنازليًا بالتاريخ، غير محتسَبة في النِسب. أضف لِيبل «• حصة معوّضة»/«• حصة إضافية» على صفوف الحضور المطابقة تاريخيًا لاستثناء مجموعة الطالب.
+- [X] T023 [US3] في [lib/views/students/student_details_page.dart](../../lib/views/students/student_details_page.dart): ادمج `soCtrl.cancelledForGroup(student.currentGroupId)` كعناصر عرض "الحصة اتلغت — {تاريخ}" في قسم سجل الحضور، مرتّبة تنازليًا بالتاريخ، غير محتسَبة في النِسب. أضف لِيبل «• حصة معوّضة»/«• حصة إضافية» على صفوف الحضور المطابقة تاريخيًا لاستثناء مجموعة الطالب.
 - [ ] T024 [US3] في [lib/services/parent_portal_service.dart](../../lib/services/parent_portal_service.dart): في بناء `attendanceHistory` (المدفوعة) أضف عناصر `cancelled` لمجموعة الطالب كـ«تم إلغاء الحصة» + لِيبل «حصة تعويضية» على الصفوف المطابقة. لا تغيير في حسابات المبالغ.
 
 **Checkpoint**: السجل يعرض الإلغاء/التعويض بوضوح دون تشويه الإحصاء.
@@ -109,17 +109,17 @@ description: "Task list for feature 032 — إلغاء حصة اليوم وتع�
 
 **Independent Test**: quickstart سيناريو 7 (جهازان).
 
-- [ ] T025 [US4] `flutter analyze` على `sync_engine.dart` + `session_override_controller.dart` + `session_override_model.dart` + `session_schedule_resolver.dart` — نظيف فوق baseline (34).
+- [X] T025 [US4] `flutter analyze` على `sync_engine.dart` + `session_override_controller.dart` + `session_override_model.dart` + `session_schedule_resolver.dart` — نظيف فوق baseline (34).
 - [ ] T026 [US4] نفّذ quickstart سيناريو 7 على جهازين: إلغاء من المدرّس يظهر عند المساعد؛ إنشاء مزدوج لنفس `(group, date)` → لا تكرار، LWW يفوز.
 
 ---
 
 ## Phase 7: Polish & Cross-Cutting
 
-- [ ] T027 [P] `flutter test` كاملًا — كل الاختبارات خضراء (baseline 97 + الجديدة).
-- [ ] T028 [P] `flutter analyze` كامل — صفر مشاكل جديدة فوق baseline 34.
+- [X] T027 [P] `flutter test` كاملًا — كل الاختبارات خضراء (baseline 97 + الجديدة).
+- [X] T028 [P] `flutter analyze` كامل — صفر مشاكل جديدة فوق baseline 34.
 - [ ] T029 نفّذ quickstart سيناريو 8 (عدم الانحدار): مجموعة بلا استثناءات → كل الأعداد والقوائم مطابقة لما قبل spec 032.
-- [ ] T030 [P] حدّث [HANDOFF.md](../../HANDOFF.md) و`memory/spec-032-cancel-makeup-session.md` (من "SPEC ONLY" إلى "IMPLEMENTED — device test pending"): الجدول الجديد، DB v29، الـmigration مطبّق عبر SSH، الدوال النقية، الجدولة override-aware، سجل الطالب دمج عرض، الفوترة صفر كود.
+- [X] T030 [P] حدّث [HANDOFF.md](../../HANDOFF.md) و`memory/spec-032-cancel-makeup-session.md` (من "SPEC ONLY" إلى "IMPLEMENTED — device test pending"): الجدول الجديد، DB v29، الـmigration مطبّق عبر SSH، الدوال النقية، الجدولة override-aware، سجل الطالب دمج عرض، الفوترة صفر كود.
 - [ ] T031 [US1] device test T019-equivalent: قارئ فعلي غير مطلوب — اختبار يدوي على جهاز للإلغاء/التعويض/التراجع + الفوترة.
 
 ---

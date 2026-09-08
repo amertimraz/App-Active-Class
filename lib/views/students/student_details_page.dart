@@ -10,6 +10,8 @@ import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/homework_controller.dart';
 import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
+import 'package:active_class/controllers/session_override_controller.dart';
+import 'package:active_class/models/session_override_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/payment_model.dart';
@@ -512,7 +514,13 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                   presentCount: presentCount,
                   absentCount: absentCount,
                   attRate: attRate,
-                  accentColor: primary),
+                  accentColor: primary,
+                  groupOverrides: Get.isRegistered<SessionOverrideController>()
+                      ? Get.find<SessionOverrideController>()
+                          .overrides
+                          .where((o) => o.groupId == s.groupId)
+                          .toList()
+                      : const []),
               _HomeworkTab(homework: studentHomework, accentColor: primary),
               _canSeeFinancials
                   ? _PaymentsTab(
@@ -1055,6 +1063,7 @@ class _AttendanceTab extends StatelessWidget {
   final int absentCount;
   final double attRate;
   final Color accentColor;
+  final List<SessionOverride> groupOverrides;
 
   const _AttendanceTab({
     required this.attendance,
@@ -1062,6 +1071,7 @@ class _AttendanceTab extends StatelessWidget {
     required this.absentCount,
     required this.attRate,
     required this.accentColor,
+    this.groupOverrides = const [],
   });
 
   @override
@@ -1137,6 +1147,12 @@ class _AttendanceTab extends StatelessWidget {
         ),
 
         const SizedBox(height: 16),
+
+        // spec 032 — حصص ملغاة / تعويضية / إضافية للمجموعة
+        if (groupOverrides.isNotEmpty) ...[
+          _SessionOverridesSection(overrides: groupOverrides, isDark: isDark),
+          const SizedBox(height: 16),
+        ],
 
         // قائمة بالشهر
         ...months.map((month) {
@@ -1233,6 +1249,71 @@ class _AttendanceTab extends StatelessWidget {
               ]);
         }),
       ],
+    );
+  }
+}
+
+// spec 032 — قسم "حصص ملغاة / تعويضية / إضافية" أعلى سجل حضور الطالب.
+// عرض فقط — مش بيتحسب في نسبة الحضور (اللي مبنية على صفوف attendance).
+class _SessionOverridesSection extends StatelessWidget {
+  final List<SessionOverride> overrides;
+  final bool isDark;
+  const _SessionOverridesSection(
+      {required this.overrides, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = List.of(overrides)..sort((a, b) => b.date.compareTo(a.date));
+    final df = DateFormat('d MMMM yyyy', 'ar');
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A2540) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isDark
+            ? []
+            : [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('حصص استثنائية',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+        const SizedBox(height: 8),
+        ...sorted.map((o) {
+          final Color c;
+          final String label;
+          switch (o.type) {
+            case SessionOverrideType.cancelled:
+              c = const Color(0xFFEF4444);
+              label = 'الحصة اتلغت';
+              break;
+            case SessionOverrideType.makeup:
+              c = const Color(0xFF10B981);
+              label = o.compensatesDate != null
+                  ? 'حصة معوّضة عن ${df.format(o.compensatesDate!)}'
+                  : 'حصة معوّضة';
+              break;
+            case SessionOverrideType.extra:
+              c = const Color(0xFF6366F1);
+              label = 'حصة إضافية';
+              break;
+          }
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(children: [
+              Icon(Icons.circle, size: 8, color: c),
+              const SizedBox(width: 8),
+              Text(df.format(o.date),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(label,
+                    style: TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w700, color: c)),
+              ),
+            ]),
+          );
+        }),
+      ]),
     );
   }
 }
