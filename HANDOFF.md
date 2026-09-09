@@ -51,12 +51,17 @@
 - **الفوترة: صفر تغيير** (`PricingHelper` ملمسناهوش — كلها من صفوف الحضور).
 - **اختبارات:** `test/session_override_model_test.dart` + `test/session_schedule_override_test.dart` (15 اختبار). `flutter test` 149 ✅، `flutter analyze` 34.
 - **مراجعة (`aeff70f`):** `groupsForDay` كان بيعرض المجموعات بلا جدول كل يوم (regression — `groupHasSessionOnDay` بترجّع true افتراضيًا) → رجّعنا السلوك القديم: مجموعة بلا جدول تظهر فقط لو ليها `makeup`/`extra` صريح لليوم ده. + `_toLocalMap` بيحط `created_at = updated_at` بدل null.
-- **بعد v1.2.51 (لسه محتاج v1.2.52):**
-  - `a626665` — زر «حصة تعويضية / إضافية» تحت كروت المجموعات كمان (كان الوصول لـ`showAddSessionOverrideFlow` محصور في شاشة «لا توجد حصص»).
-  - `8aad01e` — الفلو بقى فيه خطوة «امتى الحصة؟» تقبل **تاريخ مستقبلي** (لحد 120 يوم) — مؤشر يوم الحضور مقفول على اليوم/الماضي فماكانش ينفع تحدّد تعويضية في يوم جاي.
-  - `456b288` — `confirmUndoSessionCancel`: حوار تحذير صريح قبل التراجع عن إلغاء («الحضور المتمسح مش هيرجع») — «تراجع» كان موهم undo كامل. + حوار الإلغاء بقى دايمًا يتأكّد.
+- **تحسينات UX (v1.2.52، اتجربت على جهاز):**
+  - `a626665`+`8aad01e`+`456b288`+`3ff2e22`+`4f7ed13`+`b2eae35`:
+  - **فورم واحد** `_AddSessionOverrideSheet` (bottom sheet: مجموعة + نوع + تاريخ + من/إلى + بتعوّض عن حصة) بدل 4 حوارات متتالية. شِلت `makeup`/`extra` من قائمة ⋮ (بقت في الفورم بس).
+  - تاريخ الحصة يقبل **مستقبلي** (لحد 120 يوم).
+  - **ميعاد الحصة إجباري** — حقلين «من»/«إلى»، النهاية أوتوماتيك = البداية +ساعة (قابلة للتعديل). يتخزّن `HH:mm-HH:mm` في عمود `session_overrides.session_time` (**DB v31**). `sessionTimeForGroupOnDay`/`remainingSessionTime` بيتعاملوا معاه زي جدول المجموعة.
+  - **التعويضية لازم تكون عن حصة ملغاة فعليًا** — «بتعوّض عن حصة» = قائمة الحصص الملغاة للمجموعة اللي لسه مالهاش تعويض (`uncompensatedCancelledForGroup`). `addMakeup` بيرفض لو `compensatesDate` مش ملغي.
+  - `confirmUndoSessionCancel`: تحذير صريح قبل التراجع («الحضور المتمسح مش هيرجع»). حوار الإلغاء بقى دايمًا يتأكّد.
+  - `_NoSessionsToday` بقى scrollable + الزر `OutlinedButton` كامل العرض فوق.
+  - migration `migration_session_override_time.sql` مطبّق عبر SSH (`-U postgres`).
 
-**تقييم صادق للسلوك (spec 032):** المنطق سليم والفوترة صح (per-session من صفوف الحضور، الشهري مايتأثرش). حتات خشنة باقية: (1) التراجع عن إلغاء مابيرجّعش الحضور المتمسح — دلوقتي بيحذّر بس مش undo حقيقي؛ (2) **بوابة الأهل** لسه مابتعرضش الإلغاء/التعويض (T024) — ولي الأمر يشوف شهر ناقص حصة بلا تفسير؛ (3) تعويض بين شهرين بيوزّع النسبة؛ (4) `compensatesDate` مجرد لافتة (مش متحقَّق).
+**تقييم صادق للسلوك (spec 032):** المنطق سليم والفوترة صح (per-session من صفوف الحضور، الشهري مايتأثرش). حتات خشنة باقية: (1) التراجع عن إلغاء مابيرجّعش الحضور المتمسح — بيحذّر بس مش undo حقيقي؛ (2) **بوابة الأهل** لسه مابتعرضش الإلغاء/التعويض (T024)؛ (3) تعويض بين شهرين بيوزّع النسبة على شهرين.
 
 **متبقّي:** T024 (بوابة الأهل)، T029 + **تحقّق جهازي/جهازين** (quickstart 1–8). سبيك: `specs/032-cancel-makeup-session/`.
 
@@ -83,6 +88,15 @@
 
 **سبيك كامل:** `specs/027-hardware-barcode-scanner/` — T001–T018 + T020 ✅، **T019 (تحقّق جهازي بجهاز HID حقيقي — quickstart سيناريوهات 1–11) لسه ماتعملش**.
 
+### ريليس v1.2.52 (منشور بالكامل — تحسينات spec 032 UX + إصلاح spec 028)
+
+- `1.2.51+4069` → **`1.2.52+4070`**. Commit `142c45c` + tag `v1.2.52` مدفوعين.
+- **GitHub Release** (latest): https://github.com/amertimraz/App-Active-Class/releases/tag/v1.2.52 — `-arm64-v8a.apk` sha256 `bcf54bf9da6aa7e6d3aafd66cc09d6f59ef1d06c367fd52b52a052cbfb30f8db` · `-armeabi-v7a` `172ef5ff…` · `-x86_64` `517bb623…` · `-play.aab` `860895be…`. versionCode 4070، توقيع `5f74fe10…`.
+- **VPS:** backup `.bak-1.2.51` ثم scp. `curl -sI` → 200، 47894720 بايت، sha مطابق. `/releases/latest` → v1.2.52.
+- **DB v31** (عمود `session_overrides.session_time`). migrations `migration_guardian_whatsapp.sql` + `migration_session_override_time.sql` مطبّقين عبر SSH.
+- **بيتضمّن:** كل تكرارات spec 032 UX (فورم واحد، ميعاد إجباري من/إلى، تاريخ مستقبلي، تعويضية مربوطة بإلغاء فعلي، تحذير التراجع) + **إصلاح المربّع الرمادي في شاشة «حذف سجلّات بمدى تواريخ»** (كان ObxError من `teamModeEnabled && ...` short-circuit).
+- **⏳ متبقّي على المستخدم:** رفع `release_assets/ActiveClass-v1.2.52-play.aab` على Play Console.
+
 ### ريليس v1.2.51 (منشور بالكامل — يضم specs 028/029/030/031/032/033)
 
 - **`pubspec.yaml`** + `android/local.properties`: `1.2.50+4068` → **`1.2.51+4069`**.
@@ -93,7 +107,6 @@
 - **`/releases/latest`** يرجّع v1.2.51 → التحديث الذاتي داخل التطبيق شغّال.
 - **درس البناء:** `flutter build apk --release --flavor direct` (بلا target-platform) = fat 99MB. الصح: `--target-platform android-arm64` (~48MB، universal فعليًا) ثم `android-arm` ثم `android-x64`، انسخ فورًا. AAB: `flutter build appbundle --release --flavor play`. ~5 دقايق لكل بناء، صفر OOM.
 - **⏳ متبقّي على المستخدم:** رفع `release_assets/ActiveClass-v1.2.51-play.aab` على Play Console يدويًا.
-- **⏳ v1.2.52 لسه ماتعملّهاش:** فيه 3 كوميتات بعد v1.2.51 (`a626665` + `8aad01e` + `456b288` — كلها spec 032: زر التعويضية، تاريخ مستقبلي، تحذير التراجع). محتاجين ريليس جديد.
 
 ### ريليس v1.2.50 (منشور بالكامل)
 
@@ -235,7 +248,7 @@
 
 ## ⏳ متبقّي / مفتوح
 
-1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.51-play.aab`.
+1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.52-play.aab`.
 2. **ريليس v1.2.51 اتنشر** (`1e4b3ab` + tag) — يضم 028–033. التحقّق الجهازي تحت (اتعمل بعد النشر).
 3. **تحقّق جهازي — كله منشور في v1.2.51، لسه محتاج جهاز/جهازين للتأكيد:**
    - **spec 027 T019** — قارئ HID حقيقي (quickstart 1–11).
@@ -256,7 +269,7 @@
 - **git push فقط بإذن صريح.** الـspecs بتتعمل commit على `main` مباشرة (عرف المشروع).
 - **التوقيع:** نفس keystore كل مرة (`android/key.properties` + `RELEASE_SIGNING_INFO.md` — الاتنين gitignored، فيهم باسورد `gG1lrhvSog96kQbwCYtyoRxN`، **متتعملش commit ولا expose**). SHA-256 = `5f74fe10af2da396cbf0a98895af02bb5ffbdc01cdf68a55bea25a841f02ec7b`. مزج debug/release أو إلغاء-وإعادة تثبيت = مسح بيانات محلية (slug بوابة الأهل + الرخصة).
 - **SSH VPS:** `ssh -i ~/.ssh/ovh_key root@active-class.online` — شغّال من الساندبوكس. حاوية Supabase: `active-class-auth-db-1`، compose في `/opt/active-class-auth/docker`. تطبيق migration: `ssh ... 'docker exec -i active-class-auth-db-1 psql -U postgres -d postgres -v ON_ERROR_STOP=1' < supabase/migration_X.sql`. ⚠️ **`ALTER TABLE public.students`** لازم `-U supabase_admin` (الجدول مملوك لـsupabase_admin مش postgres) — spec 033.
-- **DB version = 30** (v28 bank_questions → v29 session_overrides (spec 032) → **v30 students.guardian_whatsapp (spec 033)**). spec 026/029/030/031 **مازادوش النسخة**.
+- **DB version = 31** (v29 session_overrides (spec 032) → v30 students.guardian_whatsapp (spec 033) → **v31 session_overrides.session_time (spec 032)**). spec 026/029/030/031 **مازادوش النسخة**.
 - **مزامنة الفريق (`SyncEngine`):** قناتان Realtime — `_channel` (`_coreTables`، وفيها دلوقتي `TABLE_SESSION_OVERRIDES` — spec 032) + `_channelX` (`_extendedTables` = `[TABLE_EXAM_QUESTIONS, TABLE_EXAM_SUBMISSIONS, TABLE_BANK_QUESTIONS]`). CHANNEL_ERROR في واحدة معزول عن التانية (إصلاح دائم لحادثة `student_follow_ups`). تعارض الصف المكرّر → `_reconcileDuplicate` (LWW، spec 031) للجداول ذات مفتاح منطقي: attendance/homework/exam_groups/exam_grades/exam_submissions/**session_overrides**.
 - **وقت الخادم (spec 031):** `trg_set_updated_at` على 12 جدول متزامن (11 + `session_overrides`) يفرض `updated_at = now()` — LWW متسق رغم انحراف ساعات الأجهزة.
 - **`PricingHelper`:** `accumulatedDebt` = مجموع `monthlyDue` من شهر الانضمام لدلوقتي ناقص **كل** الدفعات (رصيد واحد FIFO). per-session: `monthlyDue = student.price * sessionsAttended(month)`. `billingArrears` / `prorateFirstMonth` static flags (per-session بيتجاهلهم). الإخوة: `siblingsTotal / count` عبر `siblingGroupMembers`.
