@@ -63,6 +63,26 @@ class SessionOverrideController extends GetxController {
           o.groupId == groupId && o.type == SessionOverrideType.cancelled)
       .toList();
 
+  /// حصص ملغاة للمجموعة **لسه مالهاش تعويض** — دي اللي المدرّس يقدر
+  /// يختارها كـ"بتعوّض عن يوم" عند إضافة حصة تعويضية.
+  List<SessionOverride> uncompensatedCancelledForGroup(int groupId) {
+    final all = overrides.toList();
+    final compensatedDays = all
+        .where((o) =>
+            o.groupId == groupId &&
+            o.type == SessionOverrideType.makeup &&
+            o.compensatesDate != null)
+        .map((o) => _ymd(o.compensatesDate!))
+        .toSet();
+    return all
+        .where((o) =>
+            o.groupId == groupId &&
+            o.type == SessionOverrideType.cancelled &&
+            !compensatedDays.contains(_ymd(o.date)))
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+  }
+
   /// ألغِ حصة اليوم. لازم [scheduleHasSession] = true (الجدول يقول فيه
   /// حصة) — وإلا الإلغاء بلا معنى. مسح صفوف الحضور مسؤولية الشاشة (حوار
   /// "هيتمسح N") قبل استدعاء الدالة دي.
@@ -102,6 +122,13 @@ class SessionOverrideController extends GetxController {
       return existing.type == SessionOverrideType.cancelled
           ? 'اليوم ده متلغّي — احذف الإلغاء الأول'
           : 'فيه استثناء بالفعل لليوم ده';
+    }
+    // التعويضية لازم تكون عن حصة ملغاة فعليًا لنفس المجموعة.
+    final cKey = _ymd(compensatesDate);
+    final hasCancel = cancelledForGroup(group.id!)
+        .any((o) => _ymd(o.date) == cKey);
+    if (!hasCancel) {
+      return 'اليوم اللي بتعوّض عنه مش ملغي — الغِ الحصة الأول أو اختار «إضافية»';
     }
     await _db.insertSessionOverride(SessionOverride(
       groupId: group.id!,

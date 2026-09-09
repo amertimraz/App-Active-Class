@@ -261,16 +261,33 @@ class _AddSessionOverrideSheetState extends State<_AddSessionOverrideSheet> {
   bool _endAfterStart(TimeOfDay s, TimeOfDay e) =>
       e.hour * 60 + e.minute > s.hour * 60 + s.minute;
 
+  /// اختيار «بتعوّض عن يوم» — من الحصص الملغاة للمجموعة اللي لسه مالهاش
+  /// تعويض. لو مفيش → نوضّح للمدرّس إنه لازم يلغي الحصة الأول.
   Future<void> _pickCompensates() async {
-    final anchor = _sessionDate ?? DateTime.now();
-    final p = await showDatePicker(
+    if (_group?.id == null) {
+      AppToast.info(context, 'اختر المجموعة الأول');
+      return;
+    }
+    final options = _so.uncompensatedCancelledForGroup(_group!.id!);
+    if (options.isEmpty) {
+      AppToast.info(context,
+          'مفيش حصص ملغاة للمجموعة دي — الغِ الحصة من شاشة الحضور الأول');
+      return;
+    }
+    final picked = await showDialog<DateTime>(
       context: context,
-      initialDate: _compensates ?? anchor.subtract(const Duration(days: 1)),
-      firstDate: DateTime(anchor.year - 1),
-      lastDate: anchor,
-      helpText: 'يوم الحصة الملغاة',
+      builder: (_) => SimpleDialog(
+        title: const Text('الحصة الملغاة اللي بتعوّضها'),
+        children: [
+          for (final o in options)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, o.date),
+              child: Text(_ar(o.date)),
+            ),
+        ],
+      ),
     );
-    if (p != null) setState(() => _compensates = p);
+    if (picked != null) setState(() => _compensates = picked);
   }
 
   static String _hhmm(TimeOfDay t) =>
@@ -351,7 +368,10 @@ class _AddSessionOverrideSheetState extends State<_AddSessionOverrideSheet> {
                 for (final g in widget.groups)
                   DropdownMenuItem(value: g, child: Text(g.name)),
               ],
-              onChanged: (g) => setState(() => _group = g),
+              onChanged: (g) => setState(() {
+                _group = g;
+                _compensates = null; // الحصص الملغاة مختلفة لكل مجموعة
+              }),
             ),
             const SizedBox(height: 14),
 
@@ -398,11 +418,21 @@ class _AddSessionOverrideSheetState extends State<_AddSessionOverrideSheet> {
             if (_type == SessionOverrideType.makeup) ...[
               const SizedBox(height: 10),
               _DateRow(
-                label: 'بتعوّض عن يوم',
+                label: 'بتعوّض عن حصة',
                 value: _compensates,
-                hint: 'اختر يوم الحصة اللي اتلغت',
+                hint: 'اختر الحصة الملغاة',
                 onTap: _pickCompensates,
               ),
+              if (_group != null &&
+                  _so.uncompensatedCancelledForGroup(_group!.id ?? -1).isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, right: 4),
+                  child: Text(
+                      'مفيش حصص ملغاة للمجموعة دي. الغِ الحصة من شاشة الحضور، '
+                      'أو اختار «إضافية».',
+                      style: TextStyle(
+                          fontSize: 11, color: Colors.orange.shade800)),
+                ),
             ],
             const SizedBox(height: 20),
 
