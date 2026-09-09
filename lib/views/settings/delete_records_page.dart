@@ -110,6 +110,8 @@ class DeleteRecordsPage extends StatelessWidget {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _danger,
                     foregroundColor: Colors.white,
+                    disabledBackgroundColor: _danger.withValues(alpha: 0.35),
+                    disabledForegroundColor: Colors.white,
                   ),
                   onPressed:
                       c.canDelete ? () => _confirmAndDelete(context, c) : null,
@@ -119,6 +121,13 @@ class DeleteRecordsPage extends StatelessWidget {
                           fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
                 ),
               )),
+          Obx(() => (c.preview.value == null || c.previewTotal == 0)
+              ? const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Text('اختر المدى والنوع ثم «معاينة» عشان يتفعّل الزر',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 11, color: Colors.grey)))
+              : const SizedBox.shrink()),
         ],
       ),
     );

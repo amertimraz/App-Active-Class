@@ -146,6 +146,7 @@ const String _sessionOverridesTableSql = '''
     $COL_SO_TYPE             TEXT NOT NULL,
     $COL_SO_COMPENSATES_DATE TEXT,
     $COL_SO_NOTE             TEXT,
+    $COL_SO_SESSION_TIME     TEXT,
     $COL_SO_CREATED_AT       TEXT,
     $COL_SYNC_UPDATED_AT     TEXT,
     $COL_SYNC_REMOTE_ID      TEXT,
@@ -804,6 +805,14 @@ class DatabaseService {
       try {
         await db.execute(
             'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_GUARDIAN_WHATSAPP TEXT');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 31) {
+      // spec 032 — ميعاد الحصة التعويضية/الإضافية (HH:mm، اختياري).
+      try {
+        await db.execute(
+            'ALTER TABLE $TABLE_SESSION_OVERRIDES ADD COLUMN $COL_SO_SESSION_TIME TEXT');
       } catch (_) {}
     }
   }

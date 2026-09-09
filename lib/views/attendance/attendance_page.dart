@@ -2128,12 +2128,10 @@ class _NoSessionsToday extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+      child: Column(
+        children: [
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -2160,6 +2158,23 @@ class _NoSessionsToday extends StatelessWidget {
                   fontSize: 13,
                   color: Colors.grey.shade500),
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => showAddSessionOverrideFlow(
+                  context,
+                  groups: allGroups.whereType<Group>().toList(),
+                  day: selectedDay,
+                ),
+                icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                label: const Text('حصة تعويضية / إضافية',
+                    style: TextStyle(fontFamily: 'Cairo')),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
             ),
             const SizedBox(height: 24),
             Container(
@@ -2202,18 +2217,7 @@ class _NoSessionsToday extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            TextButton.icon(
-              onPressed: () => showAddSessionOverrideFlow(
-                context,
-                groups: allGroups.whereType<Group>().toList(),
-                day: selectedDay,
-              ),
-              icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-              label: const Text('إضافة حصة استثنائية (تعويضية / إضافية)'),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }

@@ -94,6 +94,7 @@ class SessionOverrideController extends GetxController {
     required DateTime day,
     required DateTime compensatesDate,
     String? note,
+    String? sessionTime,
   }) async {
     if (group.id == null) return 'المجموعة غير محفوظة';
     final existing = overrideFor(group.id!, day);
@@ -109,6 +110,7 @@ class SessionOverrideController extends GetxController {
       compensatesDate: DateTime(
           compensatesDate.year, compensatesDate.month, compensatesDate.day),
       note: note,
+      sessionTime: sessionTime,
     ));
     await load();
     return null;
@@ -119,6 +121,7 @@ class SessionOverrideController extends GetxController {
     required Group group,
     required DateTime day,
     String? note,
+    String? sessionTime,
   }) async {
     if (group.id == null) return 'المجموعة غير محفوظة';
     final existing = overrideFor(group.id!, day);
@@ -132,6 +135,7 @@ class SessionOverrideController extends GetxController {
       date: DateTime(day.year, day.month, day.day),
       type: SessionOverrideType.extra,
       note: note,
+      sessionTime: sessionTime,
     ));
     await load();
     return null;

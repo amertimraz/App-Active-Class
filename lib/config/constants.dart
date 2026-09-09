@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 30;
+const int DATABASE_VERSION = 31;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -366,4 +366,5 @@ const String COL_SO_DATE              = 'date';             // 'YYYY-MM-DD'
 const String COL_SO_TYPE              = 'type';             // cancelled | makeup | extra
 const String COL_SO_COMPENSATES_DATE  = 'compensates_date'; // 'YYYY-MM-DD' — للـmakeup
 const String COL_SO_NOTE              = 'note';             // اختياري
+const String COL_SO_SESSION_TIME      = 'session_time';     // 'HH:mm' اختياري (v31)
 const String COL_SO_CREATED_AT        = 'created_at';       // ISO-8601

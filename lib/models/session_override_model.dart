@@ -18,6 +18,7 @@ class SessionOverride {
   final SessionOverrideType type;
   final DateTime? compensatesDate; // للـmakeup بس
   final String? note;
+  final String? sessionTime; // 'HH:mm' — للـmakeup/extra (اختياري)
   final DateTime? createdAt;
 
   const SessionOverride({
@@ -27,6 +28,7 @@ class SessionOverride {
     required this.type,
     this.compensatesDate,
     this.note,
+    this.sessionTime,
     this.createdAt,
   });
 
@@ -49,6 +51,7 @@ class SessionOverride {
       COL_SO_COMPENSATES_DATE:
           compensatesDate == null ? null : ymd(compensatesDate!),
       COL_SO_NOTE: note,
+      COL_SO_SESSION_TIME: sessionTime,
       COL_SO_CREATED_AT: (createdAt ?? DateTime.now()).toIso8601String(),
     };
   }
@@ -80,6 +83,7 @@ class SessionOverride {
       compensatesDate:
           (rawComp == null || rawComp.isEmpty) ? null : _parseYmd(rawComp),
       note: map[COL_SO_NOTE] as String?,
+      sessionTime: map[COL_SO_SESSION_TIME] as String?,
       createdAt: (rawCreated == null || rawCreated.isEmpty)
           ? null
           : DateTime.tryParse(rawCreated),
@@ -93,6 +97,7 @@ class SessionOverride {
     SessionOverrideType? type,
     DateTime? compensatesDate,
     String? note,
+    String? sessionTime,
     DateTime? createdAt,
   }) {
     return SessionOverride(
@@ -102,6 +107,7 @@ class SessionOverride {
       type: type ?? this.type,
       compensatesDate: compensatesDate ?? this.compensatesDate,
       note: note ?? this.note,
+      sessionTime: sessionTime ?? this.sessionTime,
       createdAt: createdAt ?? this.createdAt,
     );
   }

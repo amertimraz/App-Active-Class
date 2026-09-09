@@ -468,6 +468,7 @@ class SyncEngine with WidgetsBindingObserver {
           'type': payload[COL_SO_TYPE],
           'compensates_date': payload[COL_SO_COMPENSATES_DATE],
           'note': payload[COL_SO_NOTE],
+          'session_time': payload[COL_SO_SESSION_TIME],
         };
       case TABLE_EXAMS:
         return {
@@ -1367,6 +1368,7 @@ class SyncEngine with WidgetsBindingObserver {
           COL_SO_TYPE: remote['type'],
           COL_SO_COMPENSATES_DATE: remote['compensates_date'],
           COL_SO_NOTE: remote['note'],
+          COL_SO_SESSION_TIME: remote['session_time'],
           // created_at مش عمود على الخادم — نستخدم updated_at كتقريب بدل null
           // (عشان مايتصفّرش عند التوفيق LWW).
           COL_SO_CREATED_AT: updatedAt,

@@ -51,10 +51,6 @@ class SessionOverrideMenuButton extends StatelessWidget {
           items.add(const PopupMenuItem(
               value: 'cancel', child: Text('إلغاء حصة اليوم')));
         }
-        items.add(const PopupMenuItem(
-            value: 'makeup', child: Text('حصة تعويضية عن يوم')));
-        items.add(const PopupMenuItem(
-            value: 'extra', child: Text('حصة إضافية')));
       } else if (override.type == SessionOverrideType.cancelled) {
         if (canDelete) {
           items.add(const PopupMenuItem(
@@ -96,13 +92,6 @@ class SessionOverrideMenuButton extends StatelessWidget {
           await attCtrl.loadAttendance();
         }
         break;
-      case 'makeup':
-        await _doMakeup(context);
-        break;
-      case 'extra':
-        final err = await _so.addExtra(group: group, day: day);
-        if (context.mounted) _toast(context, err ?? 'تمت إضافة حصة إضافية');
-        break;
     }
   }
 
@@ -140,22 +129,6 @@ class SessionOverrideMenuButton extends StatelessWidget {
     if (context.mounted) _toast(context, err ?? 'تم إلغاء حصة اليوم');
   }
 
-  Future<void> _doMakeup(BuildContext context) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: day.subtract(const Duration(days: 1)),
-      firstDate: DateTime(day.year - 1),
-      lastDate: day,
-      helpText: 'الحصة الملغاة اللي بنعوّضها',
-    );
-    if (picked == null || !context.mounted) return;
-    final err = await _so.addMakeup(
-        group: group, day: day, compensatesDate: picked);
-    if (context.mounted) {
-      _toast(context, err ?? 'تمت إضافة حصة تعويضية عن ${_ar(picked)}');
-    }
-  }
-
   void _toast(BuildContext context, String msg) => AppToast.info(context, msg);
 }
 
@@ -189,86 +162,303 @@ Future<bool> confirmUndoSessionCancel(
   return true;
 }
 
-/// تدفّق إضافة حصة استثنائية (تعويضية/إضافية):
-/// المجموعة → النوع → تاريخ الحصة (يقبل أيام مستقبلية) → (للتعويضية)
-/// تاريخ الحصة الملغاة اللي بنعوّضها.
+/// فورم واحد لإضافة حصة استثنائية (تعويضية/إضافية) — بدل سلسلة حوارات.
 Future<void> showAddSessionOverrideFlow(
   BuildContext context, {
   required List<Group> groups,
   required DateTime day,
 }) async {
   if (groups.isEmpty) return;
-  final group = await showDialog<Group>(
+  await showModalBottomSheet<void>(
     context: context,
-    builder: (_) => SimpleDialog(
-      title: const Text('اختر المجموعة'),
-      children: [
-        for (final g in groups)
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, g),
-            child: Text(g.name),
-          ),
-      ],
-    ),
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _AddSessionOverrideSheet(groups: groups, initialDay: day),
   );
-  if (group == null || !context.mounted) return;
+}
 
-  final type = await showDialog<SessionOverrideType>(
-    context: context,
-    builder: (_) => SimpleDialog(
-      title: const Text('نوع الحصة'),
-      children: [
-        SimpleDialogOption(
-          onPressed: () =>
-              Navigator.pop(context, SessionOverrideType.makeup),
-          child: const Text('تعويضية عن حصة اتلغت'),
-        ),
-        SimpleDialogOption(
-          onPressed: () => Navigator.pop(context, SessionOverrideType.extra),
-          child: const Text('إضافية'),
-        ),
-      ],
-    ),
-  );
-  if (type == null || !context.mounted) return;
+class _AddSessionOverrideSheet extends StatefulWidget {
+  final List<Group> groups;
+  final DateTime initialDay;
+  const _AddSessionOverrideSheet(
+      {required this.groups, required this.initialDay});
 
-  // تاريخ الحصة نفسها — يقبل أيام مستقبلية (زي ما اتفقت مع الطلاب على
-  // الواتس إنهم ييجوا يوم كذا).
-  final today = DateTime.now();
-  final sessionDate = await showDatePicker(
-    context: context,
-    initialDate: day.isBefore(DateTime(today.year, today.month, today.day))
-        ? DateTime(today.year, today.month, today.day)
-        : day,
-    firstDate: DateTime(today.year, today.month, today.day),
-    lastDate: today.add(const Duration(days: 120)),
-    helpText: type == SessionOverrideType.makeup
-        ? 'امتى الحصة التعويضية؟'
-        : 'امتى الحصة الإضافية؟',
-  );
-  if (sessionDate == null || !context.mounted) return;
+  @override
+  State<_AddSessionOverrideSheet> createState() =>
+      _AddSessionOverrideSheetState();
+}
 
-  if (type == SessionOverrideType.extra) {
-    final err = await _so.addExtra(group: group, day: sessionDate);
-    if (context.mounted) {
-      AppToast.info(context, err ?? 'اتضافت حصة إضافية ${_ar(sessionDate)}');
-    }
-    return;
+class _AddSessionOverrideSheetState extends State<_AddSessionOverrideSheet> {
+  Group? _group;
+  SessionOverrideType _type = SessionOverrideType.makeup;
+  DateTime? _sessionDate;
+  TimeOfDay? _sessionTime;
+  DateTime? _compensates;
+  bool _saving = false;
+
+  static const _primary = Color(0xFF6366F1);
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.groups.length == 1) _group = widget.groups.first;
+    final today = DateTime.now();
+    final t0 = DateTime(today.year, today.month, today.day);
+    _sessionDate =
+        widget.initialDay.isBefore(t0) ? t0 : widget.initialDay;
   }
 
-  final compensates = await showDatePicker(
-    context: context,
-    initialDate: sessionDate.subtract(const Duration(days: 1)),
-    firstDate: DateTime(sessionDate.year - 1),
-    lastDate: sessionDate,
-    helpText: 'الحصة الملغاة اللي بنعوّضها',
-  );
-  if (compensates == null || !context.mounted) return;
-  final err = await _so.addMakeup(
-      group: group, day: sessionDate, compensatesDate: compensates);
-  if (context.mounted) {
-    AppToast.info(context,
-        err ?? 'اتضافت حصة تعويضية ${_ar(sessionDate)} عن ${_ar(compensates)}');
+  bool get _valid =>
+      _group != null &&
+      _sessionDate != null &&
+      (_type == SessionOverrideType.extra || _compensates != null);
+
+  Future<void> _pickSessionDate() async {
+    final today = DateTime.now();
+    final t0 = DateTime(today.year, today.month, today.day);
+    final p = await showDatePicker(
+      context: context,
+      initialDate: _sessionDate ?? t0,
+      firstDate: t0,
+      lastDate: t0.add(const Duration(days: 120)),
+      helpText: 'تاريخ الحصة',
+    );
+    if (p != null) setState(() => _sessionDate = p);
+  }
+
+  Future<void> _pickTime() async {
+    final t = await showTimePicker(
+      context: context,
+      initialTime: _sessionTime ?? const TimeOfDay(hour: 16, minute: 0),
+      helpText: 'ميعاد الحصة',
+    );
+    if (t != null) setState(() => _sessionTime = t);
+  }
+
+  Future<void> _pickCompensates() async {
+    final anchor = _sessionDate ?? DateTime.now();
+    final p = await showDatePicker(
+      context: context,
+      initialDate: _compensates ?? anchor.subtract(const Duration(days: 1)),
+      firstDate: DateTime(anchor.year - 1),
+      lastDate: anchor,
+      helpText: 'يوم الحصة الملغاة',
+    );
+    if (p != null) setState(() => _compensates = p);
+  }
+
+  String? get _timeStr => _sessionTime == null
+      ? null
+      : '${_sessionTime!.hour.toString().padLeft(2, '0')}:'
+          '${_sessionTime!.minute.toString().padLeft(2, '0')}';
+
+  Future<void> _submit() async {
+    if (!_valid || _saving) return;
+    setState(() => _saving = true);
+    final String? err;
+    if (_type == SessionOverrideType.extra) {
+      err = await _so.addExtra(
+          group: _group!, day: _sessionDate!, sessionTime: _timeStr);
+    } else {
+      err = await _so.addMakeup(
+          group: _group!,
+          day: _sessionDate!,
+          compensatesDate: _compensates!,
+          sessionTime: _timeStr);
+    }
+    if (!mounted) return;
+    Navigator.pop(context);
+    AppToast.info(
+        context,
+        err ??
+            (_type == SessionOverrideType.extra
+                ? 'اتضافت حصة إضافية ${_ar(_sessionDate!)}'
+                : 'اتضافت حصة تعويضية ${_ar(_sessionDate!)}'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF131D31) : Colors.white,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const Text('إضافة حصة استثنائية',
+                style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16)),
+            const SizedBox(height: 16),
+
+            // المجموعة
+            DropdownButtonFormField<Group>(
+              initialValue: _group,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'المجموعة',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: [
+                for (final g in widget.groups)
+                  DropdownMenuItem(value: g, child: Text(g.name)),
+              ],
+              onChanged: (g) => setState(() => _group = g),
+            ),
+            const SizedBox(height: 14),
+
+            // النوع
+            SegmentedButton<SessionOverrideType>(
+              segments: const [
+                ButtonSegment(
+                    value: SessionOverrideType.makeup,
+                    label: Text('تعويضية عن حصة اتلغت',
+                        style: TextStyle(fontSize: 12))),
+                ButtonSegment(
+                    value: SessionOverrideType.extra,
+                    label: Text('إضافية', style: TextStyle(fontSize: 12))),
+              ],
+              selected: {_type},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) => setState(() => _type = s.first),
+            ),
+            const SizedBox(height: 14),
+
+            _DateRow(
+              label: 'تاريخ الحصة',
+              value: _sessionDate,
+              onTap: _pickSessionDate,
+            ),
+            const SizedBox(height: 10),
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: _pickTime,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Theme.of(context).dividerColor),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.schedule_rounded, size: 18),
+                  const SizedBox(width: 10),
+                  const Text('ميعاد الحصة:',
+                      style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _sessionTime != null
+                          ? _sessionTime!.format(context)
+                          : 'اختياري',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          color: _sessionTime != null
+                              ? null
+                              : Colors.grey.shade500),
+                    ),
+                  ),
+                  Icon(Icons.chevron_left_rounded, color: Colors.grey.shade400),
+                ]),
+              ),
+            ),
+            if (_type == SessionOverrideType.makeup) ...[
+              const SizedBox(height: 10),
+              _DateRow(
+                label: 'بتعوّض عن يوم',
+                value: _compensates,
+                hint: 'اختر يوم الحصة اللي اتلغت',
+                onTap: _pickCompensates,
+              ),
+            ],
+            const SizedBox(height: 20),
+
+            SizedBox(
+              height: 46,
+              child: FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: _primary),
+                onPressed: _valid && !_saving ? _submit : null,
+                child: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Text('إضافة الحصة',
+                        style: TextStyle(
+                            fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DateRow extends StatelessWidget {
+  final String label;
+  final DateTime? value;
+  final String? hint;
+  final VoidCallback onTap;
+  const _DateRow(
+      {required this.label, required this.value, required this.onTap, this.hint});
+
+  @override
+  Widget build(BuildContext context) {
+    final df = DateFormat('EEEE d MMMM', 'ar');
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: Row(children: [
+          const Icon(Icons.event_rounded, size: 18),
+          const SizedBox(width: 10),
+          Text('$label:',
+              style: const TextStyle(
+                  fontFamily: 'Cairo', fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value != null ? df.format(value!) : (hint ?? 'اختر'),
+              style: TextStyle(
+                  fontSize: 12.5,
+                  color: value != null ? null : Colors.grey.shade500),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Icon(Icons.chevron_left_rounded, color: Colors.grey.shade400),
+        ]),
+      ),
+    );
   }
 }
 

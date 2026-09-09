@@ -647,6 +647,13 @@ class AttendanceController extends GetxController {
   // وقت الحصة لمجموعة في يوم معين (للعرض في الواجهة)
   // يُرجع مثلاً "10:00 - 11:00"
   String? sessionTimeForGroupOnDay(Group group, DateTime day) {
+    // spec 032 — حصة تعويضية/إضافية ليها ميعادها الخاص (لو المدرّس دخّله).
+    final ov = sessionOverrideFor(group, day);
+    if (ov != null &&
+        ov.type != SessionOverrideType.cancelled &&
+        (ov.sessionTime?.isNotEmpty ?? false)) {
+      return ov.sessionTime;
+    }
     final schedule = group.schedule?.trim();
     if (schedule == null || schedule.isEmpty) return null;
     const Map<String, int> mapArDays = {
