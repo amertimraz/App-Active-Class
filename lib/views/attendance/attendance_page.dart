@@ -1016,16 +1016,15 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     icon: const Icon(Icons.undo_rounded, size: 18),
-                    label: const Text('تراجع عن الإلغاء'),
+                    label: const Text('رجّع الحصة'),
                     onPressed: () async {
                       final so = Get.find<SessionOverrideController>();
-                      final o =
-                          so.overrideFor(group.id!, selectedDay);
+                      final o = so.overrideFor(group.id!, selectedDay);
                       if (o == null) return;
-                      final err = await so.removeOverride(o);
+                      final done = await confirmUndoSessionCancel(context, o);
                       await controller.loadAttendance();
-                      if (context.mounted) {
-                        AppToast.info(context, err ?? 'رجعت الحصة');
+                      if (context.mounted && done) {
+                        AppToast.info(context, 'رجعت الحصة');
                       }
                     },
                   ),

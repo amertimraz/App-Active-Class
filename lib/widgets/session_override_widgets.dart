@@ -84,8 +84,16 @@ class SessionOverrideMenuButton extends StatelessWidget {
         break;
       case 'undo':
         if (override != null) {
-          final err = await _so.removeOverride(override);
-          if (context.mounted) _toast(context, err ?? 'تم التراجع');
+          if (override.type == SessionOverrideType.cancelled) {
+            final done = await confirmUndoSessionCancel(context, override);
+            if (context.mounted && done) _toast(context, 'رجعت الحصة');
+          } else {
+            final err = await _so.removeOverride(override);
+            if (context.mounted) {
+              _toast(context, err ?? 'اتحذفت الحصة الاستثنائية');
+            }
+          }
+          await attCtrl.loadAttendance();
         }
         break;
       case 'makeup':
@@ -102,24 +110,26 @@ class SessionOverrideMenuButton extends StatelessWidget {
     final n =
         await DatabaseService().countAttendanceForGroupOnDay(group.id!, day);
     if (!context.mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('إلغاء حصة اليوم'),
+        content: Text(n > 0
+            ? 'فيه $n سجل حضور مسجّل النهارده — الإلغاء هيمسحهم، ومش هيرجعوا لو '
+                'تراجعت بعد كده. تمام؟'
+            : 'الحصة هتختفي من حضور اليوم ومن العدّ المتوقّع. تمام؟'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('لأ')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(n > 0 ? 'إلغاء الحصة ومسح الحضور' : 'إلغاء الحصة')),
+        ],
+      ),
+    );
+    if (ok != true) return;
     if (n > 0) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('إلغاء الحصة'),
-          content: Text(
-              'فيه $n سجل حضور مسجّل النهارده للمجموعة دي. الإلغاء هيمسحهم. تمام؟'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('تراجع')),
-            FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('إلغاء الحصة ومسح الحضور')),
-          ],
-        ),
-      );
-      if (ok != true) return;
       await DatabaseService().deleteAttendanceForGroupOnDay(group.id!, day);
       await attCtrl.loadAttendance();
     }
@@ -147,6 +157,36 @@ class SessionOverrideMenuButton extends StatelessWidget {
   }
 
   void _toast(BuildContext context, String msg) => AppToast.info(context, msg);
+}
+
+/// يؤكّد التراجع عن إلغاء حصة (بتحذير إن الحضور اللي كان مسجّل قبل
+/// الإلغاء مش هيرجع)، ثم يحذف استثناء الإلغاء. يرجّع true لو اتعمل.
+Future<bool> confirmUndoSessionCancel(
+    BuildContext context, SessionOverride cancelled) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('ترجّع الحصة؟'),
+      content: const Text(
+          'الحصة هتتفتح تاني وتقدر تسجّل حضورها.\n\n'
+          'لو كان فيه حضور مسجّل قبل الإلغاء — مش هيرجع، هتحتاج تسجّله من الأول.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('لأ')),
+        FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('رجّع الحصة')),
+      ],
+    ),
+  );
+  if (ok != true) return false;
+  final err = await _so.removeOverride(cancelled);
+  if (context.mounted && err != null) {
+    AppToast.error(context, err);
+    return false;
+  }
+  return true;
 }
 
 /// تدفّق إضافة حصة استثنائية (تعويضية/إضافية):
