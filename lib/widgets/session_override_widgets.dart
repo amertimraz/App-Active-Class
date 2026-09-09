@@ -192,7 +192,8 @@ class _AddSessionOverrideSheetState extends State<_AddSessionOverrideSheet> {
   Group? _group;
   SessionOverrideType _type = SessionOverrideType.makeup;
   DateTime? _sessionDate;
-  TimeOfDay? _sessionTime;
+  TimeOfDay? _startTime;
+  TimeOfDay? _endTime;
   DateTime? _compensates;
   bool _saving = false;
 
@@ -211,6 +212,8 @@ class _AddSessionOverrideSheetState extends State<_AddSessionOverrideSheet> {
   bool get _valid =>
       _group != null &&
       _sessionDate != null &&
+      _startTime != null &&
+      _endTime != null &&
       (_type == SessionOverrideType.extra || _compensates != null);
 
   Future<void> _pickSessionDate() async {
@@ -226,14 +229,37 @@ class _AddSessionOverrideSheetState extends State<_AddSessionOverrideSheet> {
     if (p != null) setState(() => _sessionDate = p);
   }
 
-  Future<void> _pickTime() async {
+  Future<void> _pickStart() async {
     final t = await showTimePicker(
       context: context,
-      initialTime: _sessionTime ?? const TimeOfDay(hour: 16, minute: 0),
-      helpText: 'ميعاد الحصة',
+      initialTime: _startTime ?? const TimeOfDay(hour: 16, minute: 0),
+      helpText: 'بداية الحصة',
     );
-    if (t != null) setState(() => _sessionTime = t);
+    if (t == null) return;
+    setState(() {
+      _startTime = t;
+      // نهاية افتراضية بعد ساعة — إلا لو المدرّس عدّلها بنفسه.
+      final end = TimeOfDay(hour: (t.hour + 1) % 24, minute: t.minute);
+      if (_endTime == null || !_endAfterStart(_startTime!, _endTime!)) {
+        _endTime = end;
+      }
+    });
   }
+
+  Future<void> _pickEnd() async {
+    final t = await showTimePicker(
+      context: context,
+      initialTime: _endTime ??
+          TimeOfDay(
+              hour: ((_startTime?.hour ?? 16) + 1) % 24,
+              minute: _startTime?.minute ?? 0),
+      helpText: 'نهاية الحصة',
+    );
+    if (t != null) setState(() => _endTime = t);
+  }
+
+  bool _endAfterStart(TimeOfDay s, TimeOfDay e) =>
+      e.hour * 60 + e.minute > s.hour * 60 + s.minute;
 
   Future<void> _pickCompensates() async {
     final anchor = _sessionDate ?? DateTime.now();
@@ -247,10 +273,12 @@ class _AddSessionOverrideSheetState extends State<_AddSessionOverrideSheet> {
     if (p != null) setState(() => _compensates = p);
   }
 
-  String? get _timeStr => _sessionTime == null
+  static String _hhmm(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  String? get _timeStr => (_startTime == null || _endTime == null)
       ? null
-      : '${_sessionTime!.hour.toString().padLeft(2, '0')}:'
-          '${_sessionTime!.minute.toString().padLeft(2, '0')}';
+      : '${_hhmm(_startTime!)}-${_hhmm(_endTime!)}';
 
   Future<void> _submit() async {
     if (!_valid || _saving) return;
@@ -350,41 +378,23 @@ class _AddSessionOverrideSheetState extends State<_AddSessionOverrideSheet> {
               onTap: _pickSessionDate,
             ),
             const SizedBox(height: 10),
-            InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: _pickTime,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Theme.of(context).dividerColor),
+            Row(children: [
+              Expanded(
+                child: _TimeRow(
+                  label: 'من',
+                  value: _startTime,
+                  onTap: _pickStart,
                 ),
-                child: Row(children: [
-                  const Icon(Icons.schedule_rounded, size: 18),
-                  const SizedBox(width: 10),
-                  const Text('ميعاد الحصة:',
-                      style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _sessionTime != null
-                          ? _sessionTime!.format(context)
-                          : 'اختياري',
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          color: _sessionTime != null
-                              ? null
-                              : Colors.grey.shade500),
-                    ),
-                  ),
-                  Icon(Icons.chevron_left_rounded, color: Colors.grey.shade400),
-                ]),
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _TimeRow(
+                  label: 'إلى',
+                  value: _endTime,
+                  onTap: _pickEnd,
+                ),
+              ),
+            ]),
             if (_type == SessionOverrideType.makeup) ...[
               const SizedBox(height: 10),
               _DateRow(
@@ -414,6 +424,46 @@ class _AddSessionOverrideSheetState extends State<_AddSessionOverrideSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TimeRow extends StatelessWidget {
+  final String label;
+  final TimeOfDay? value;
+  final VoidCallback onTap;
+  const _TimeRow(
+      {required this.label, required this.value, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: Row(children: [
+          const Icon(Icons.schedule_rounded, size: 16),
+          const SizedBox(width: 6),
+          Text('$label ',
+              style: const TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12)),
+          Expanded(
+            child: Text(
+              value != null ? value!.format(context) : '--:--',
+              style: TextStyle(
+                  fontSize: 12.5,
+                  color: value != null ? null : Colors.grey.shade500),
+            ),
+          ),
+        ]),
       ),
     );
   }
