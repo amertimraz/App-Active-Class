@@ -92,9 +92,16 @@ class DeleteRecordsPage extends StatelessWidget {
           const SizedBox(height: 14),
           Obx(() => _previewCard(c)),
           const SizedBox(height: 8),
-          Obx(() => (DatabaseService.teamModeEnabled && c.previewTotal > 500)
-              ? _teamNote()
-              : const SizedBox.shrink()),
+          Obx(() {
+            // ملاحظة: نقرأ previewTotal (observable) أول حاجة عشان الـObx
+            // يفضل يسمع للتغيير حتى لو وضع الفريق مقفول (لو بدأنا بـ
+            // teamModeEnabled && ... الـ&& بيقصّر ومايقراش أي observable →
+            // GetX يرمي ObxError = مربّع رمادي في الريليس).
+            final total = c.previewTotal;
+            return (total > 500 && DatabaseService.teamModeEnabled)
+                ? _teamNote()
+                : const SizedBox.shrink();
+          }),
           const SizedBox(height: 18),
           Obx(() => SizedBox(
                 width: double.infinity,
