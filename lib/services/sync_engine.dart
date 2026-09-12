@@ -278,6 +278,18 @@ class SyncEngine with WidgetsBindingObserver {
                 'الأب لسه بلا remote_id', maxFails: kMaxOutboxFails * 40);
           }
         } catch (e) {
+          // تعارض مفتاح أجنبي (23503) = الأب (الطالب/المجموعة) اللي الصف
+          // ده بيشير له مش موجود على الخادم وعمره ما هيوصل — ده صف يتيم
+          // (غالبًا فاضل من مجموعة تجريبية اتمسحت). إعادة المحاولة عليه
+          // للأبد بتغرق الخادم بآلاف الطلبات الفاشلة. نمسحه من الطابور.
+          if (e is PostgrestException && e.code == '23503') {
+            await db.delete(TABLE_SYNC_OUTBOX,
+                where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
+            _forgetOutbox(outboxId);
+            debugPrint(
+                'SyncEngine: صف يتيم (مفتاح أجنبي مفقود) اتشال من الطابور — $table/$rowId');
+            continue;
+          }
           // استثناء فعلي (RLS/trigger/شبكة) — ده اللي بيسدّ رأس الطابور.
           _recordOutboxFail(outboxId, table, rowId, e.toString());
           debugPrint('SyncEngine: فشل push لـ $table/$rowId — $e');
@@ -811,66 +823,71 @@ class SyncEngine with WidgetsBindingObserver {
   /// بعض) — لو اشتغلوا مع بعض ممكن الاتنين يحاولوا يدرجوا نفس الصف
   /// الجديد محليًا في نفس الوقت قبل ما أي حد يسجّل remote_id، فيتكرر
   /// الصف بدل ما يتوحّد.
+  // حجم صفحة السحب من الخادم، وحجم دفعة التطبيق المحلي. جدول الحضور
+  // بيوصل لآلاف الصفوف — لو جبناه كله في طلب واحد وطبّقناه في transaction
+  // واحدة، الطلب بيفشل/يتقطع على النت الضعيف، والـtransaction الكبيرة لو
+  // التطبيق راح للخلفية قبل ما تعمل commit بترجع (rollback) وكل الصفوف
+  // بتضيع — فالجدول عمره ما بيوصل. الصفحات + الدفعات الصغيرة بتخلي اللي
+  // اتطبّق يفضل محفوظ حتى لو القطع حصل في النص.
+  static const int _pullPageSize = 500;
+  static const int _applyBatchSize = 200;
+
   Future<void> _fullPull({required bool includeDeleted}) async {
     if (_pulling) return;
     _pulling = true;
     try {
-      // نجيب كل الجداول بالتوازي (طلبات شبكة مستقلة عن بعض) بدل ما
-      // نستنى كل جدول لوحده على التالي — كان ده بيبطّئ أول انضمام
-      // لمساعد (كل الجداول بالتتابع) بدون أي داعي.
-      //
-      // كل جدول ليه try/catch لوحده: Future.wait الافتراضي بيرفض
-      // بأول خطأ ويسيب كل الجداول التانية (اللي ممكن تكون نجحت فعلاً)
-      // من غير ما تتطبّق خالص. لو جدول واحد (مثلاً الحضور لو فيه
-      // آلاف السجلات وحصل timeout) فشل، مش لازم نضيّع بيانات المجموعات
-      // والطلاب اللي نجحت معاه.
-      final results = await Future.wait(_tables.map((table) async {
-        try {
-          final rows = includeDeleted
-              ? await client.from(table).select().eq('team_id', teamId)
-              : await client
-                  .from(table)
-                  .select()
-                  .eq('team_id', teamId)
-                  .isFilter('deleted_at', null);
-          return rows;
-        } catch (e) {
-          // spec 024 — يشمل حالة جدول مش موجود على الخادم بعد
-          // (migration_online_exam_sync.sql لسه ماتشغّلش): "relation
-          // ... does not exist" → null → يتخطّى في حلقة التطبيق تحت،
-          // وباقي الجداول تتحمّل عادي.
-          debugPrint('SyncEngine: فشل تحميل جدول $table — $e');
-          return null;
-        }
-      }));
-
       final db = await _dbService.database;
-      for (var i = 0; i < _tables.length; i++) {
-        final rows = results[i] as List?;
-        if (rows == null || rows.isEmpty) continue;
-        // كل صفوف الجدول ده جوه transaction واحدة بدل ما كل صف يعمل
-        // commit لوحده — ده كان أكبر سبب للبطء وقت أول تحميل كامل
-        // لفريق فيه بيانات كتير (مئات سجلات الحضور/المدفوعات).
-        await db.transaction((txn) async {
-          for (final r in rows) {
-            try {
-              await _applyRemoteRow(_tables[i], r as Map<String, dynamic>,
-                  executor: txn);
-            } catch (e) {
-              // خطأ في صف واحد (زي تعارض UNIQUE وقت تحديث صف موجود)
-              // ميوقفش باقي صفوف الجدول ده — لو مسيباه يطلع من غير
-              // catch هنا، الـ transaction كلها بتترجع (rollback) وكل
-              // صفوف الجدول ده اللي نجحت قبله بتضيع معاه.
-              debugPrint(
-                  'SyncEngine: تعذر تطبيق صف من ${_tables[i]} — $e');
-            }
-          }
-        });
-        _refreshUiForTable(_tables[i]);
+      // بالتتابع (مش Future.wait) — الترتيب بيضمن الآباء قبل الأبناء،
+      // و12 طلب كبير متوازيين كانوا بيزوّدوا فرص الفشل على الموبايل.
+      // فشل جدول واحد (مثلاً جدول لسه مالوش migration على الخادم) بيتسجّل
+      // ويكمل للباقي — مايوقفش السحب كله.
+      for (final table in _tables) {
+        try {
+          await _pullTable(db, table, includeDeleted: includeDeleted);
+        } catch (e) {
+          debugPrint('SyncEngine: فشل سحب جدول $table — $e');
+        }
       }
     } finally {
       _pulling = false;
     }
+  }
+
+  Future<void> _pullTable(Database db, String table,
+      {required bool includeDeleted}) async {
+    var offset = 0;
+    var appliedAny = false;
+    while (true) {
+      final base = client.from(table).select().eq('team_id', teamId);
+      final filtered =
+          includeDeleted ? base : base.isFilter('deleted_at', null);
+      // ترتيب بالـid (UUID فريد وثابت) — updated_at ممكن يتكرر لصفوف
+      // اترفعت في نفس المعاملة (نفس طابع now())، فالترقيم بيه بيتخطّى/يكرّر.
+      final page = (await filtered
+          .order('id', ascending: true)
+          .range(offset, offset + _pullPageSize - 1)) as List;
+      if (page.isEmpty) break;
+      for (var i = 0; i < page.length; i += _applyBatchSize) {
+        final end =
+            (i + _applyBatchSize < page.length) ? i + _applyBatchSize : page.length;
+        // كل دفعة transaction مستقلة — لو صف واحد رمى استثناء بنمسكه هنا
+        // عشان الـtransaction ماترجعش وتضيّع باقي صفوف الدفعة.
+        await db.transaction((txn) async {
+          for (var j = i; j < end; j++) {
+            try {
+              await _applyRemoteRow(table, page[j] as Map<String, dynamic>,
+                  executor: txn);
+            } catch (e) {
+              debugPrint('SyncEngine: تعذر تطبيق صف من $table — $e');
+            }
+          }
+        });
+      }
+      appliedAny = true;
+      if (page.length < _pullPageSize) break;
+      offset += _pullPageSize;
+    }
+    if (appliedAny) _refreshUiForTable(table);
   }
 
   /// بيانات الفريق الواردة (أول تحميل كامل أو Realtime) بتتكتب في

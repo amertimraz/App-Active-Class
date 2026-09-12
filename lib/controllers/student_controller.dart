@@ -35,6 +35,11 @@ class StudentController extends GetxController {
   /// في الشاشات النشطة العادية.
   int totalStudentCount = 0;
 
+  /// سبب آخر فشل في [addStudent] — الشيت بيعرضه في حوار ظاهر بدل ما
+  /// يعتمد على توست عابر ممكن المدرّس ميلمحهوش (حصل فعليًا في الإنتاج:
+  /// مدرّس مش عارف يضيف طالب ومفيش رسالة).
+  String? lastAddStudentError;
+
   @override
   void onInit() {
     super.onInit();
@@ -102,9 +107,11 @@ class StudentController extends GetxController {
   /// الفحص بيحسب كل الطلاب (نشط + مؤرشف) — الأرشفة مش بتفضّي مكان في
   /// حد الباقة (قرار FR-013).
   Future<Student?> addStudent(Student student) async {
+    lastAddStudentError = null;
     final licenseErr =
         Get.find<LicenseController>().checkCanAddStudent(totalStudentCount);
     if (licenseErr != null) {
+      lastAddStudentError = licenseErr;
       ToastHelper.error(licenseErr);
       return null;
     }
@@ -117,7 +124,9 @@ class StudentController extends GetxController {
       unawaited(ParentPortalService().pushStudentSummary(id));
       return newStudent;
     } catch (e) {
-      ToastHelper.error(_studentErrorMessage(e, 'إضافة'));
+      final msg = _studentErrorMessage(e, 'إضافة');
+      lastAddStudentError = msg;
+      ToastHelper.error(msg);
       return null;
     }
   }

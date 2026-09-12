@@ -385,11 +385,28 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
 
     final created = await widget.controller.addStudent(student);
 
-    // فشلت الإضافة (كود مكرر، تجاوز حد الترخيص، ...) — الكنترولر عرض
-    // رسالة الخطأ بالفعل. سيبي الحقول زي ما هي عشان المستخدم يقدر
-    // يصلّح ويحاول تاني، من غير ما نمسح بياناته أو نظهر نجاح وهمي.
+    // فشلت الإضافة (كود مكرر، تجاوز حد الترخيص، ...). التوست العابر من
+    // الكنترولر ممكن ميتلمحش (حصل في الإنتاج)، فبنعرض السبب في حوار
+    // ظاهر لازم المدرّس يقفله. سيبي الحقول زي ما هي عشان يقدر يصلّح.
     if (created == null) {
       if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        final reason = widget.controller.lastAddStudentError ??
+            'لم تتم إضافة الطالب — حاول تاني أو غيّر كود الطالب';
+        await showDialog<void>(
+          context: context,
+          builder: (dctx) => AlertDialog(
+            title: const Text('لم تتم الإضافة'),
+            content: Text(reason),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dctx).pop(),
+                child: const Text('تمام'),
+              ),
+            ],
+          ),
+        );
+      }
       return;
     }
 
