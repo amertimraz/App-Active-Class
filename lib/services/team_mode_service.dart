@@ -56,8 +56,21 @@ class TeamModeService {
     final storedTeamId = await _db.getSetting(SETTING_TEAM_ID);
     if (storedTeamId == null) return;
 
+    // فعّل طابور الإرسال فورًا (فحص محلي بس، من غير أي طلب شبكة) قبل ما
+    // نكمل التحقق (ensureClient/claimDevice بيعملوا طلبات شبكة ممكن
+    // تاخد ثواني على نت ضعيف). لو استنينا الآخر، أي إضافة (حضور/طالب)
+    // يعملها المستخدم في أول لحظة يفتح فيها التطبيق (شائع جدًا: مدرس
+    // بيفتح التطبيق ويسجّل حضور على طول) كانت بتتحفظ محليًا من غير ما
+    // تتسجّل في طابور المزامنة خالص — تضيع للأبد بلا أي أثر أو خطأ.
+    // ده باگ إنتاج حقيقي فسّر "بيضيف حاجات مش بتوصل للمساعد" — مستقل
+    // تمامًا عن باگ السحب (v1.2.53).
+    DatabaseService.teamModeEnabled = true;
+
     final client = await _auth.ensureClient();
-    if (client == null || client.auth.currentUser == null) return;
+    if (client == null || client.auth.currentUser == null) {
+      DatabaseService.teamModeEnabled = false;
+      return;
+    }
 
     teamId.value = storedTeamId;
     await _refreshMyPermissions(client, storedTeamId);
