@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/auth_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
+import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/views/auth/login_screen.dart';
@@ -386,6 +387,7 @@ class _SyncDiagnostics extends StatefulWidget {
 class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
   Timer? _timer;
   int? _pending;
+  Map<String, int> _byTable = const {};
   String? _lastError;
   DateTime? _lastDrainAt;
 
@@ -398,9 +400,11 @@ class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
 
   Future<void> _refresh() async {
     final pending = await widget.team.pendingOutboxCount();
+    final byTable = await widget.team.pendingOutboxByTable();
     if (!mounted) return;
     setState(() {
       _pending = pending;
+      _byTable = byTable;
       _lastError = widget.team.lastOutboxError;
       _lastDrainAt = widget.team.lastDrainAt;
     });
@@ -431,6 +435,16 @@ class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
+            'علم الإرسال (teamModeEnabled): ${DatabaseService.teamModeEnabled}',
+            style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: DatabaseService.teamModeEnabled
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFFEF4444)),
+          ),
+          Text(
             _pending == null
                 ? 'تشخيص المزامنة: بيتحمّل...'
                 : 'معلّق للإرسال: $_pending',
@@ -438,6 +452,14 @@ class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
           ),
           Text(drainAgo,
               style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: subColor)),
+          if (_byTable.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'حسب الجدول: ${_byTable.entries.map((e) => '${e.key}=${e.value}').join('، ')}',
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: subColor),
+              ),
+            ),
           if (_lastError != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -447,6 +469,22 @@ class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
                       fontSize: 11,
                       color: isDarkErrorColor(widget.isDark))),
             ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () async {
+                final ok = await widget.team.resyncAll();
+                if (!mounted) return;
+                ToastHelper.info(ok
+                    ? 'جاري إعادة إرسال كل البيانات المحلية...'
+                    : 'وضع الفريق مش شغّال دلوقتي');
+                unawaited(_refresh());
+              },
+              icon: const Icon(Icons.sync_rounded, size: 16),
+              label: const Text('إعادة مزامنة كل البيانات',
+                  style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+            ),
+          ),
         ],
       ),
     );

@@ -38,6 +38,8 @@ class TeamModeService {
   /// فورًا هل المشكلة "تراكم بيتصفّى ببطء" ولا "المحرك واقف تمامًا".
   Future<int?> pendingOutboxCount() => _engine?.pendingOutboxCount() ??
       Future.value(null);
+  Future<Map<String, int>> pendingOutboxByTable() =>
+      _engine?.pendingOutboxByTable() ?? Future.value(const {});
   String? get lastOutboxError => _engine?.lastOutboxError;
   DateTime? get lastDrainAt => _engine?.lastDrainAt;
   Worker? _licenseWorker;
@@ -175,6 +177,19 @@ class TeamModeService {
   Future<bool> resyncExams() async {
     if (!isEnabled.value || _engine == null) return false;
     await _engine!.enqueueExistingExams();
+    return true;
+  }
+
+  /// إعادة إرسال **كل** الصفوف المحلية لكل الجداول المتزامنة — أداة
+  /// إنقاذ عامة (زر يدوي في شاشة تشخيص المزامنة) لحادثة موثّقة: صف أب
+  /// (مجموعة/امتحان...) اتسجّل قبل ما وضع الفريق يشتغل صح فعليًا، فعمره
+  /// ما اتسجّل في طابور الإرسال أصلاً — وبقي عالق للأبد بلا أي تفسير في
+  /// السجلات (مش خطأ متكرر، مجرد غياب تام من الطابور). إعادة الإرسال
+  /// آمنة تمامًا: upsert بمفتاح (team,device,local_id) فالصفوف
+  /// المتزامنة بالفعل بترجع تحديث بلا أثر (idempotent).
+  Future<bool> resyncAll() async {
+    if (!isEnabled.value || _engine == null) return false;
+    await _engine!.enqueueAllExistingLocalRows();
     return true;
   }
 

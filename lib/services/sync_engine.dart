@@ -284,11 +284,18 @@ class SyncEngine with WidgetsBindingObserver {
           } else {
             // done == false = "الأب لسه بلا remote_id" — ده مش خطأ، ده
             // انتظار طبيعي (الأب بيتزامن في جولة أو اتنين). منعدّهوش
-            // فشلة (عتبة عالية جدًا) عشان متتخطّاش صفوف سليمة بتستنى
-            // أباها بالغلط. بس لو فضل كده مئات الجولات (أب معطوب فعلًا)
-            // نتخطّاه.
-            _recordOutboxFail(outboxId, table, rowId,
-                'الأب لسه بلا remote_id', maxFails: kMaxOutboxFails * 40);
+            // فشلة بعتبة قليلة عشان متتخطّاش صفوف سليمة بتستنى أباها
+            // بالغلط. لكن حادثة إنتاج فعلية أثبتت إن الانتظار كان أبديًا
+            // حرفيًا (الأب — مجموعة/طالب — اتمسح محليًا وعمره ما هيرجع)
+            // — فلازم عتبة استسلام نهائية معقولة (دقايق، مش ساعات) بدل
+            // انتظار للأبد.
+            final giveUp = _recordOutboxFail(outboxId, table, rowId,
+                'الأب لسه بلا remote_id', maxFails: kMaxOutboxFails * 4);
+            if (giveUp) {
+              await db.delete(TABLE_SYNC_OUTBOX,
+                  where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
+              _forgetOutbox(outboxId);
+            }
           }
         } catch (e) {
           // تعارض مفتاح أجنبي (23503) = الأب (الطالب/المجموعة) اللي الصف
@@ -304,8 +311,15 @@ class SyncEngine with WidgetsBindingObserver {
             continue;
           }
           // استثناء فعلي (RLS/trigger/شبكة) — ده اللي بيسدّ رأس الطابور.
-          _recordOutboxFail(outboxId, table, rowId, e.toString());
+          // لو تكرر بعد عدد معقول من المحاولات، امسحه بدل ما يفضل عالق
+          // للأبد (كان بيتسجّل تحذير بس من غير أي تنظيف فعلي).
+          final giveUp = _recordOutboxFail(outboxId, table, rowId, e.toString());
           debugPrint('SyncEngine: فشل push لـ $table/$rowId — $e');
+          if (giveUp) {
+            await db.delete(TABLE_SYNC_OUTBOX,
+                where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
+            _forgetOutbox(outboxId);
+          }
         }
       }
     } finally {
@@ -326,15 +340,47 @@ class SyncEngine with WidgetsBindingObserver {
   String? get lastOutboxError =>
       _lastOutboxErr.values.isEmpty ? null : _lastOutboxErr.values.last;
 
-  void _recordOutboxFail(int id, String table, int rowId, String err,
+  /// تشخيص إضافي: عدد الصفوف المعلّقة مقسّمة حسب الجدول — بتوضّح فورًا
+  /// مين المحتلّ الحقيقي للطابور (مثلاً "attendance: 118" يعني أب واحد
+  /// بس عالق ومعاه ١١٨ سجل حضور مستنيينه).
+  Future<Map<String, int>> pendingOutboxByTable() async {
+    final db = await _dbService.database;
+    final rows = await db.query(TABLE_SYNC_OUTBOX,
+        columns: [COL_OUTBOX_TABLE], where: '$COL_OUTBOX_SYNCED = 0');
+    final counts = <String, int>{};
+    for (final r in rows) {
+      final t = r[COL_OUTBOX_TABLE] as String;
+      counts[t] = (counts[t] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  // حادثة إنتاج فعلية: ١١٩ صف "مستني أباه" (maxFails العالية عمدًا —
+  // ×40 — عشان منديش عليه بدري) احتلّوا نافذة الـ٥٠ بالكامل كل جولة
+  // للأبد (أباهم نفسه عالق)، فمنعوا أي صف جديد جاهز (حتى لو مضاف
+  // النهارده) من الوصول للطابور خالص — التطبيق بيفضل "شغّال" (نبضة
+  // drainOutbox بتتحدّث عادي) بس بلا أي تقدّم حقيقي. الاستبعاد من
+  // النافذة دلوقتي بيحصل بعد محاولات قليلة جدًا (مش لازم ننتظر maxFails
+  // الكاملة) — الصف برضو بيتعاد فحصه كل kPoisonRetryEvery جولة، بس
+  // مابيحتلّش مكان صفوف تانية طول ما هو عالق.
+  static const int kWindowExcludeThreshold = 3;
+
+  /// بترجع true لو الصف وصل لعتبة "استسلام نهائي" (maxFails) — المُنادي
+  /// مسؤول وقتها يمسح الصف فعليًا من الطابور، مش يكتفي بتسجيل تحذير
+  /// وسيبه عالق للأبد (حادثة إنتاج فعلية: طلاب بيشيروا لمجموعة اتمسحت
+  /// محليًا — الأب عمره ما هيرجع، والانتظار كان أبديًا حرفيًا).
+  bool _recordOutboxFail(int id, String table, int rowId, String err,
       {int maxFails = kMaxOutboxFails}) {
     final n = (_outboxFails[id] ?? 0) + 1;
     _outboxFails[id] = n;
     _lastOutboxErr[id] = err;
-    if (n >= maxFails && _loggedPoison.add(id)) {
+    if (n >= kWindowExcludeThreshold) _loggedPoison.add(id);
+    if (n >= maxFails) {
       debugPrint(
           'SyncEngine: ⚠️ صف عالق بعد $n محاولات — $table/$rowId — آخر خطأ: $err');
+      return true;
     }
+    return false;
   }
 
   void _forgetOutbox(int id) {
