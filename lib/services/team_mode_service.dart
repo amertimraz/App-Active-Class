@@ -32,6 +32,14 @@ class TeamModeService {
   final AuthService _auth = AuthService();
   final DatabaseService _db = DatabaseService();
   SyncEngine? _engine;
+
+  /// تشخيص لواجهة "وضع الفريق" — عدد العمليات المعلّقة في طابور
+  /// الإرسال + آخر خطأ فعلي + آخر لحظة حاول فيها الإرسال يشتغل. بيوضّح
+  /// فورًا هل المشكلة "تراكم بيتصفّى ببطء" ولا "المحرك واقف تمامًا".
+  Future<int?> pendingOutboxCount() => _engine?.pendingOutboxCount() ??
+      Future.value(null);
+  String? get lastOutboxError => _engine?.lastOutboxError;
+  DateTime? get lastDrainAt => _engine?.lastDrainAt;
   Worker? _licenseWorker;
   Worker? _profileWorker;
 

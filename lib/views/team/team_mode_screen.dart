@@ -310,6 +310,8 @@ class _EnabledCard extends StatelessWidget {
                   fontSize: 13,
                   color: isDark ? Colors.white60 : Colors.black45),
             )),
+        const SizedBox(height: 12),
+        _SyncDiagnostics(isDark: isDark, team: team),
         const SizedBox(height: 20),
         Obx(() {
           if (!team.isOwner.value && !team.canManageMembers.value) {
@@ -367,6 +369,91 @@ class _EnabledCard extends StatelessWidget {
       ],
     );
   }
+}
+
+/// تشخيص بسيط لحالة المزامنة — عدد العمليات المعلّقة في طابور الإرسال
+/// + آخر خطأ فعلي + من قد إيه آخر محاولة إرسال. بيفضح فورًا هل المشكلة
+/// "تراكم قديم بيتصفّى" ولا "المحرك واقف تمامًا" بدل التخمين وقت الدعم.
+class _SyncDiagnostics extends StatefulWidget {
+  final bool isDark;
+  final TeamModeService team;
+  const _SyncDiagnostics({required this.isDark, required this.team});
+
+  @override
+  State<_SyncDiagnostics> createState() => _SyncDiagnosticsState();
+}
+
+class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
+  Timer? _timer;
+  int? _pending;
+  String? _lastError;
+  DateTime? _lastDrainAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _refresh());
+  }
+
+  Future<void> _refresh() async {
+    final pending = await widget.team.pendingOutboxCount();
+    if (!mounted) return;
+    setState(() {
+      _pending = pending;
+      _lastError = widget.team.lastOutboxError;
+      _lastDrainAt = widget.team.lastDrainAt;
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final subColor = widget.isDark ? Colors.white54 : Colors.black45;
+    final drainAgo = _lastDrainAt == null
+        ? 'لسه ماحاولش يرسل'
+        : 'آخر محاولة إرسال: ${DateTime.now().difference(_lastDrainAt!).inSeconds} ثانية فاتت';
+    return Container(
+      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.only(bottom: 4),
+      decoration: BoxDecoration(
+        color: widget.isDark
+            ? Colors.white.withValues(alpha: 0.04)
+            : Colors.black.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _pending == null
+                ? 'تشخيص المزامنة: بيتحمّل...'
+                : 'معلّق للإرسال: $_pending',
+            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: subColor),
+          ),
+          Text(drainAgo,
+              style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: subColor)),
+          if (_lastError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('آخر خطأ: $_lastError',
+                  style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 11,
+                      color: isDarkErrorColor(widget.isDark))),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Color isDarkErrorColor(bool isDark) =>
+      isDark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C);
 }
 
 class _Card extends StatelessWidget {

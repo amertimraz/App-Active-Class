@@ -229,9 +229,15 @@ class SyncEngine with WidgetsBindingObserver {
   }
 
   // ── Push: تفريغ sync_outbox ──────────────────────────────────────
+  /// آخر لحظة بدأت فيها drainOutbox فعليًا تنفّذ — نبضة حياة بسيطة
+  /// لشاشة التشخيص: لو الوقت ده واقف من قديم رغم إن التطبيق مفتوح،
+  /// يبقى التايمر الدوري نفسه توقف (مش بس فشل الإرسال).
+  DateTime? lastDrainAt;
+
   Future<void> drainOutbox() async {
     if (_draining) return;
     _draining = true;
+    lastDrainAt = DateTime.now();
     _drainRound++;
     try {
       final db = await _dbService.database;
@@ -306,6 +312,19 @@ class SyncEngine with WidgetsBindingObserver {
       _draining = false;
     }
   }
+
+  /// تشخيص: عدد صفوف الطابور اللي لسه معلّقة (مش اتبعتت بنجاح). لواجهة
+  /// تشخيص بسيطة تفضح الرقم الحقيقي بدل التخمين وقت الدعم الفني.
+  Future<int> pendingOutboxCount() async {
+    final db = await _dbService.database;
+    final rows = await db.query(TABLE_SYNC_OUTBOX,
+        columns: [COL_OUTBOX_ID], where: '$COL_OUTBOX_SYNCED = 0');
+    return rows.length;
+  }
+
+  /// آخر رسالة خطأ فعلية اتسجّلت لأي صف في الطابور (لو موجودة).
+  String? get lastOutboxError =>
+      _lastOutboxErr.values.isEmpty ? null : _lastOutboxErr.values.last;
 
   void _recordOutboxFail(int id, String table, int rowId, String err,
       {int maxFails = kMaxOutboxFails}) {
