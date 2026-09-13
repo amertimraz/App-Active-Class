@@ -18,6 +18,12 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/sync_engine.dart';
 import 'package:active_class/widgets/team_disconnect_dialog.dart';
 
+// مهلة زمنية لطلبات init()/_claimDevice الحرجة — من غيرها، طلب معلّق
+// (نت اتقطع في نص الرد مثلاً) بيأخّر _startEngine للأبد فيوقف كل
+// مزامنة الفريق على الجهاز ده صامت لحد ما التطبيق يتقفل ويتفتح تاني.
+// راجع نفس الفكرة في sync_engine.dart (_kNetworkTimeout).
+const Duration kTeamModeNetworkTimeout = Duration(seconds: 20);
+
 class TeamModeService {
   static final TeamModeService _instance = TeamModeService._internal();
   factory TeamModeService() => _instance;
@@ -101,8 +107,9 @@ class TeamModeService {
       return true;
     }
     try {
-      final allowed = await client.rpc('claim_device',
-          params: {'_team_id': tId, '_device_id': deviceId}) as bool;
+      final allowed = await client
+          .rpc('claim_device', params: {'_team_id': tId, '_device_id': deviceId})
+          .timeout(kTeamModeNetworkTimeout) as bool;
       deviceBlocked.value = !allowed;
       return allowed;
     } catch (e) {
@@ -506,7 +513,8 @@ class TeamModeService {
           .from('team_members')
           .select()
           .eq('team_id', tId)
-          .eq('user_id', uid);
+          .eq('user_id', uid)
+          .timeout(kTeamModeNetworkTimeout);
       if (rows.isEmpty) return;
       final m = rows.first;
       isOwner.value = m['is_owner'] as bool? ?? false;

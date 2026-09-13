@@ -32,6 +32,13 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/sync_retry_policy.dart';
 import 'package:active_class/utils/sync_conflict.dart';
 
+// مهلة زمنية موحّدة لكل طلبات الشبكة في المحرك — من غيرها، طلب واحد
+// "معلّق" (مثلاً النت اتقطع في نص الرد، من غير حتى timeout/error من
+// نظام التشغيل) بيسيب `_draining`/`_pulling` علي true للأبد، فمحرك
+// الإرسال/السحب بالكامل بيقف صامت لحد ما التطبيق يتقفل ويتفتح تاني —
+// حادثة إنتاج فعلية (مدرّس معملش أي push لدقايق رغم فتح التطبيق).
+const Duration _kNetworkTimeout = Duration(seconds: 20);
+
 class SyncEngine with WidgetsBindingObserver {
   final SupabaseClient client;
   final String teamId;
@@ -334,7 +341,8 @@ class SyncEngine with WidgetsBindingObserver {
         await client
             .from(table)
             .update({'deleted_at': DateTime.now().toIso8601String()})
-            .eq('id', remoteId);
+            .eq('id', remoteId)
+            .timeout(_kNetworkTimeout);
       } else {
         // الصف ده اتحذف قبل حتى ما يتزامن أصلاً — لازم يكون جه من نفس
         // الجهاز ده (مستحيل يكون عند زميل عرفه من غيرنا)، فالطريقة
@@ -344,7 +352,8 @@ class SyncEngine with WidgetsBindingObserver {
             .update({'deleted_at': DateTime.now().toIso8601String()})
             .eq('team_id', teamId)
             .eq('origin_device_id', deviceId)
-            .eq('local_id', rowId);
+            .eq('local_id', rowId)
+            .timeout(_kNetworkTimeout);
       }
       return true;
     }
@@ -357,7 +366,8 @@ class SyncEngine with WidgetsBindingObserver {
         .from(table)
         .upsert(remoteRow, onConflict: 'team_id,origin_device_id,local_id')
         .select('id')
-        .single();
+        .single()
+        .timeout(_kNetworkTimeout);
     final remoteId = res['id'] as String;
     final db = await _dbService.database;
     await db.update(table, {COL_SYNC_REMOTE_ID: remoteId},
@@ -740,7 +750,8 @@ class SyncEngine with WidgetsBindingObserver {
           .select('user_id')
           .eq('team_id', teamId)
           .eq('user_id', uid)
-          .limit(1);
+          .limit(1)
+          .timeout(_kNetworkTimeout);
       if ((rows as List).isEmpty) {
         // spec 030 — FR-012: لازم نتائج فاضية متتالية قبل تسجيل الخروج.
         _emptyMembershipStreak++;
@@ -774,7 +785,8 @@ class SyncEngine with WidgetsBindingObserver {
           .from('teams')
           .select('owner_license_active')
           .eq('id', teamId)
-          .single();
+          .single()
+          .timeout(_kNetworkTimeout);
       final active = row['owner_license_active'] as bool? ?? true;
       if (!active) {
         onLicenseInactive?.call();
@@ -794,8 +806,10 @@ class SyncEngine with WidgetsBindingObserver {
   Future<bool> _wasDeviceUnbound() async {
     if (!_sessionUsable()) return false; // spec 030 — FR-013
     try {
-      final stillBound = await client.rpc('is_device_still_bound',
-          params: {'_team_id': teamId, '_device_id': deviceId}) as bool;
+      final stillBound = await client
+          .rpc('is_device_still_bound',
+              params: {'_team_id': teamId, '_device_id': deviceId})
+          .timeout(_kNetworkTimeout) as bool;
       if (!stillBound) {
         // spec 030 — نفس منطق العتبة المتتالية لتفادي الإيجابيات الكاذبة.
         _deviceUnboundStreak++;
@@ -865,7 +879,8 @@ class SyncEngine with WidgetsBindingObserver {
       // اترفعت في نفس المعاملة (نفس طابع now())، فالترقيم بيه بيتخطّى/يكرّر.
       final page = (await filtered
           .order('id', ascending: true)
-          .range(offset, offset + _pullPageSize - 1)) as List;
+          .range(offset, offset + _pullPageSize - 1)
+          .timeout(_kNetworkTimeout)) as List;
       if (page.isEmpty) break;
       for (var i = 0; i < page.length; i += _applyBatchSize) {
         final end =
