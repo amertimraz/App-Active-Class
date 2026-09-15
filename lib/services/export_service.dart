@@ -152,6 +152,106 @@ class ExportService {
   }
 
   // ─────────────────────────────────────────────────────────────────
+  //  تقرير مدفوعات اليوم (قائمة معاملات، مش تقرير شهري لكل الطلاب)
+  // ─────────────────────────────────────────────────────────────────
+  Future<ExportResult> exportTodayPaymentsPDF({
+    required DateTime date,
+    required List<
+        ({
+          String studentName,
+          String studentCode,
+          String groupName,
+          double amount,
+          DateTime time,
+        })> entries,
+  }) async {
+    try {
+      await _loadFonts();
+      final doc = pw.Document();
+      final dateLabel = DateFormat('EEEE، d MMMM yyyy', 'ar').format(date);
+      final total = entries.fold<double>(0, (sum, e) => sum + e.amount);
+
+      doc.addPage(pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        textDirection: pw.TextDirection.rtl,
+        margin: const pw.EdgeInsets.all(28),
+        header: (_) => _pageHeader('مدفوعات اليوم — $dateLabel'),
+        footer: (ctx) => _pageFooter(ctx),
+        build: (ctx) => [
+          pw.Container(
+            padding: const pw.EdgeInsets.all(14),
+            decoration: pw.BoxDecoration(
+              color: _lightGrey,
+              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+              border: pw.Border.all(color: _accent, width: 0.5),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+              children: [
+                _statBox('عدد الدفعات', '${entries.length}', _primary),
+                _statBox('الإجمالي', _fmt(total), _success),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 16),
+          _todayPaymentsTable(entries),
+        ],
+      ));
+
+      return _savePdf(
+          doc, 'today_payments_${DateFormat('yyyy_MM_dd').format(date)}');
+    } catch (e) {
+      return ExportResult.fail('فشل إنشاء PDF: $e');
+    }
+  }
+
+  pw.Widget _todayPaymentsTable(
+      List<
+          ({
+            String studentName,
+            String studentCode,
+            String groupName,
+            double amount,
+            DateTime time,
+          })> entries) {
+    const headers = ['#', 'الاسم', 'الكود', 'المجموعة', 'الوقت', 'المبلغ'];
+    final colWidths = [
+      pw.FixedColumnWidth(25),
+      pw.FlexColumnWidth(3),
+      pw.FlexColumnWidth(1.5),
+      pw.FlexColumnWidth(2),
+      pw.FlexColumnWidth(1.5),
+      pw.FlexColumnWidth(1.5),
+    ];
+
+    final rows = <List<pw.Widget>>[];
+    rows.add(headers.map((h) => _th(h)).toList());
+
+    for (var i = 0; i < entries.length; i++) {
+      final e = entries[i];
+      final isEven = i % 2 == 0;
+      rows.add([
+        _td('${i + 1}', isEven: isEven),
+        _td(e.studentName, isEven: isEven, bold: true),
+        _td(e.studentCode, isEven: isEven),
+        _td(e.groupName, isEven: isEven),
+        _td(DateFormat('HH:mm').format(e.time), isEven: isEven),
+        _td(_fmt(e.amount), isEven: isEven, bold: true, color: _success),
+      ]);
+    }
+
+    return pw.Table(
+      columnWidths: {
+        for (var i = 0; i < colWidths.length; i++) i: colWidths[i]
+      },
+      border: pw.TableBorder.all(color: _grey, width: 0.3),
+      children: rows
+          .map((r) => pw.TableRow(children: r))
+          .toList(),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   //  تقرير الحضور الشهري
   // ─────────────────────────────────────────────────────────────────
   Future<ExportResult> exportAttendancePDF({

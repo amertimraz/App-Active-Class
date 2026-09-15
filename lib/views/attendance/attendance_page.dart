@@ -3381,12 +3381,30 @@ class _AbsentTodayTab extends StatefulWidget {
 
 class _AbsentTodayTabState extends State<_AbsentTodayTab> {
   final Set<int> _selected = {};
+  final Set<int> _selectedLate = {};
 
   String _buildMessage(Student s, String groupName, String teacherName,
       String teacherSpecialization) {
     final dateStr = DateFormat('yyyy-MM-dd', 'ar').format(DateTime.now());
     final buffer = StringBuffer()
       ..writeln('⚠️ *تنبيه غياب*')
+      ..writeln('👤 ${s.name} (${s.code})')
+      ..writeln('👥 $groupName')
+      ..writeln('📅 $dateStr');
+    if (teacherName.isNotEmpty) {
+      buffer.writeln('👨‍🏫 $teacherName');
+    }
+    if (teacherSpecialization.isNotEmpty) {
+      buffer.writeln('📘 $teacherSpecialization');
+    }
+    return buffer.toString().trimRight();
+  }
+
+  String _buildLateMessage(Student s, String groupName, String teacherName,
+      String teacherSpecialization) {
+    final dateStr = DateFormat('yyyy-MM-dd', 'ar').format(DateTime.now());
+    final buffer = StringBuffer()
+      ..writeln('⚠️ *تنبيه تأخير*')
       ..writeln('👤 ${s.name} (${s.code})')
       ..writeln('👥 $groupName')
       ..writeln('📅 $dateStr');
@@ -3418,13 +3436,34 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
     );
   }
 
-  Future<bool?> _confirmSendDialog(_AbsentEntry entry, int index, int total) {
+  Future<void> _sendLateWhatsapp(Student s, String groupName) async {
+    final hasContact = (s.guardianPhone?.trim().isNotEmpty ?? false) ||
+        (s.guardianWhatsapp?.trim().isNotEmpty ?? false);
+    if (!hasContact) {
+      AppToast.warning(context, 'لا يوجد رقم أو واتساب ولي أمر لـ ${s.name}');
+      return;
+    }
+    final settings = Get.find<SettingsController>();
+    final msg = _buildLateMessage(s, groupName,
+        settings.teacherFullName.value.trim(),
+        settings.teacherSpecialization.value.trim());
+    await launchGuardianWhatsapp(
+      context: context,
+      phone: s.guardianPhone,
+      whatsapp: s.guardianWhatsapp,
+      message: msg,
+      dialCode: settings.countryDial.value,
+    );
+  }
+
+  Future<bool?> _confirmSendDialog(_AbsentEntry entry, int index, int total,
+      {String label = 'غياب'}) {
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('إرسال $index من $total'),
         content: Text(
-            'إرسال رسالة غياب لولي أمر ${entry.student.name} (${entry.groupName})؟'),
+            'إرسال رسالة $label لولي أمر ${entry.student.name} (${entry.groupName})؟'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, null),
@@ -3470,6 +3509,43 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
 
     if (!mounted) return;
     setState(_selected.clear);
+    AppToast.success(
+      context,
+      'تم الإرسال',
+      subtitle: withoutPhoneCount > 0
+          ? '$withoutPhoneCount طالب بدون رقم ولي أمر تم تخطيه'
+          : null,
+    );
+  }
+
+  Future<void> _sendLateToSelected(List<_AbsentEntry> lateEntries) async {
+    final queue =
+        lateEntries.where((e) => _selectedLate.contains(e.student.id)).toList();
+    if (queue.isEmpty) return;
+
+    final withPhone = queue
+        .where((e) =>
+            (e.student.guardianPhone ?? '').trim().isNotEmpty ||
+            (e.student.guardianWhatsapp ?? '').trim().isNotEmpty)
+        .toList();
+    final withoutPhoneCount = queue.length - withPhone.length;
+
+    if (withPhone.isEmpty) {
+      AppToast.warning(context, 'لا يوجد أرقام أولياء أمور للطلاب المحددين');
+      return;
+    }
+
+    for (var i = 0; i < withPhone.length; i++) {
+      final entry = withPhone[i];
+      final proceed = await _confirmSendDialog(entry, i + 1, withPhone.length,
+          label: 'تأخير');
+      if (proceed == null) break;
+      if (proceed) await _sendLateWhatsapp(entry.student, entry.groupName);
+      if (!mounted) return;
+    }
+
+    if (!mounted) return;
+    setState(_selectedLate.clear);
     AppToast.success(
       context,
       'تم الإرسال',
@@ -3529,9 +3605,11 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
           .toList()
         ..sort(byGroupThenName);
 
-      // نظّف أي تحديد لطالب مبقاش غايب بعد إعادة تحميل الحضور
+      // نظّف أي تحديد لطالب مبقاش غايب/متأخر بعد إعادة تحميل الحضور
       final validIds = entries.map((e) => e.student.id!).toSet();
       _selected.removeWhere((id) => !validIds.contains(id));
+      final validLateIds = lateEntries.map((e) => e.student.id!).toSet();
+      _selectedLate.removeWhere((id) => !validLateIds.contains(id));
 
       if (entries.isEmpty && lateEntries.isEmpty) {
         return const EmptyState(
@@ -3544,6 +3622,10 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
       final selectedCount =
           entries.where((e) => _selected.contains(e.student.id)).length;
       final allSelected = selectedCount == entries.length;
+      final selectedLateCount = lateEntries
+          .where((e) => _selectedLate.contains(e.student.id))
+          .length;
+      final allLateSelected = selectedLateCount == lateEntries.length;
 
       return Column(children: [
         Padding(
@@ -3610,35 +3692,80 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
                               ? Colors.white
                               : const Color(0xFF111827),
                         )),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: () => setState(() {
+                        if (allLateSelected) {
+                          _selectedLate.clear();
+                        } else {
+                          _selectedLate
+                            ..clear()
+                            ..addAll(lateEntries.map((e) => e.student.id!));
+                        }
+                      }),
+                      icon: Icon(
+                        allLateSelected
+                            ? Icons.deselect_rounded
+                            : Icons.select_all_rounded,
+                        size: 18,
+                      ),
+                      label: Text(allLateSelected ? 'إلغاء التحديد' : 'تحديد الكل'),
+                    ),
                   ]),
                 );
               }
 
-              // صفوف "متأخرين" (info-only، بلا checkbox/إرسال)
+              // صفوف "متأخرين" — نفس أسلوب صفوف الغياب (تحديد + إرسال واتساب)
               final lateStart =
                   entries.length + (entries.isEmpty ? 0 : 1);
               if (i >= lateStart) {
                 final le = lateEntries[i - lateStart];
+                final ls = le.student;
+                final lateHasPhone =
+                    (ls.guardianPhone ?? '').trim().isNotEmpty ||
+                        (ls.guardianWhatsapp ?? '').trim().isNotEmpty;
+                final lateChecked = _selectedLate.contains(ls.id);
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
                     color: isDark ? const Color(0xFF131D31) : Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                        color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+                      color: lateChecked
+                          ? const Color(0xFFF59E0B)
+                          : const Color(0xFFF59E0B).withValues(alpha: 0.4),
+                    ),
                   ),
-                  child: ListTile(
-                    leading: const Icon(Icons.schedule_rounded,
-                        color: Color(0xFFF59E0B)),
-                    title: Text(le.student.name,
+                  child: CheckboxListTile(
+                    value: lateChecked,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged: (v) => setState(() {
+                      if (v == true) {
+                        _selectedLate.add(ls.id!);
+                      } else {
+                        _selectedLate.remove(ls.id);
+                      }
+                    }),
+                    title: Text(ls.name,
                         style: const TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 13.5)),
                     subtitle: Text(
-                      'الكود: ${le.student.code} • المجموعة: ${le.groupName} • متأخر',
+                      'الكود: ${ls.code} • المجموعة: ${le.groupName} • متأخر'
+                      '${lateHasPhone ? '' : ' • لا يوجد رقم ولي أمر'}',
                       style: TextStyle(
-                          fontSize: 11.5,
-                          color:
-                              isDark ? Colors.white60 : Colors.grey.shade600),
+                        fontSize: 11.5,
+                        color: lateHasPhone
+                            ? (isDark ? Colors.white60 : Colors.grey.shade600)
+                            : const Color(0xFFEF4444),
+                      ),
+                    ),
+                    secondary: IconButton(
+                      tooltip:
+                          lateHasPhone ? 'إرسال واتساب' : 'لا يوجد رقم ولي أمر',
+                      icon: const Icon(Icons.chat, color: Colors.green),
+                      onPressed: !lateHasPhone
+                          ? null
+                          : () => _sendLateWhatsapp(ls, le.groupName),
                     ),
                   ),
                 );
@@ -3709,6 +3836,20 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
                 label: Text('إرسال واتساب للمحددين ($selectedCount)'),
                 style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF10B981)),
+              ),
+            ),
+          ),
+        if (selectedLateCount > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _sendLateToSelected(lateEntries),
+                icon: const Icon(Icons.chat_rounded),
+                label: Text('إرسال واتساب للمتأخرين المحددين ($selectedLateCount)'),
+                style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFF59E0B)),
               ),
             ),
           ),

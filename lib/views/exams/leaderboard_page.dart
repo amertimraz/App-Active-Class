@@ -19,6 +19,8 @@ import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/views/exams/certificates_sheet.dart';
 import 'package:active_class/views/exams/student_exam_history_page.dart';
 
+enum _RankPickMode { count, minPercent, studentPercent }
+
 class LeaderboardPage extends StatefulWidget {
   const LeaderboardPage({super.key});
   @override
@@ -203,18 +205,23 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
         filterLabel: _filterLabel, teacherLine: tLine));
   }
 
-  void _rankCertificates() {
+  Future<void> _rankCertificates() async {
     if (_entries.isEmpty) return;
+    final maxCount = _entries.length;
+    final count = await _pickRankCount(maxCount);
+    if (count == null) return;
+
     const kinds = [CertKind.rank1, CertKind.rank2, CertKind.rank3];
     final items = <CertificateData>[];
-    for (var i = 0; i < _entries.length && i < 3; i++) {
+    for (var i = 0; i < count && i < _entries.length; i++) {
       final e = _entries[i];
       items.add(_ec.buildRankCert(
         studentName: e.studentName,
-        kind: kinds[i],
+        kind: i < 3 ? kinds[i] : CertKind.appreciation,
         pct: e.percentage,
         examCount: e.examCount,
         scopeLabel: _certScope,
+        rankNumber: i + 1,
       ));
     }
     Get.to(() => CertificatesSheet(
@@ -222,6 +229,147 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
           fileName: 'شهادات_المراكز',
           items: items,
         ));
+  }
+
+  /// حوار اختيار عدد الطلاب اللي هيتطبعلهم شهادات مراكز — تلات طرق:
+  /// عدد ثابت، أو نسبة من درجة الطالب (نسبة تفوّق)، أو نسبة من إجمالي
+  /// عدد الطلاب. التلاتة بيرجّعوا "عدد" في الآخر (بادئة القايمة
+  /// المرتّبة أصلاً تنازليًا، فالنتيجة بتفضل أعلى X مباشرة).
+  Future<int?> _pickRankCount(int maxCount) {
+    _RankPickMode mode = _RankPickMode.count;
+    int countTemp = maxCount < 3 ? maxCount : 3;
+    double minPctTemp = 90;
+    double studentPctTemp = 10;
+
+    int countFromMinPct(double minPct) =>
+        _entries.where((e) => e.percentage >= minPct).length;
+    int countFromStudentPct(double pct) =>
+        (maxCount * pct / 100).ceil().clamp(1, maxCount);
+
+    return showDialog<int>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) {
+          final resultCount = switch (mode) {
+            _RankPickMode.count => countTemp,
+            _RankPickMode.minPercent => countFromMinPct(minPctTemp),
+            _RankPickMode.studentPercent => countFromStudentPct(studentPctTemp),
+          };
+          return AlertDialog(
+            title: const Text('عدد شهادات المراكز',
+                style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SegmentedButton<_RankPickMode>(
+                    segments: const [
+                      ButtonSegment(
+                          value: _RankPickMode.count,
+                          label: Text('عدد ثابت', style: TextStyle(fontFamily: 'Cairo', fontSize: 11))),
+                      ButtonSegment(
+                          value: _RankPickMode.minPercent,
+                          label: Text('نسبة الدرجة', style: TextStyle(fontFamily: 'Cairo', fontSize: 11))),
+                      ButtonSegment(
+                          value: _RankPickMode.studentPercent,
+                          label: Text('% من الطلاب', style: TextStyle(fontFamily: 'Cairo', fontSize: 11))),
+                    ],
+                    selected: {mode},
+                    onSelectionChanged: (s) =>
+                        setStateDialog(() => mode = s.first),
+                  ),
+                  const SizedBox(height: 16),
+                  if (mode == _RankPickMode.count) ...[
+                    Text('اختر عدد الطلاب مباشرةً (من إجمالي $maxCount):',
+                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle_outline_rounded),
+                          onPressed: countTemp <= 1
+                              ? null
+                              : () => setStateDialog(() => countTemp--),
+                        ),
+                        Expanded(
+                          child: Slider(
+                            value: countTemp.toDouble(),
+                            min: 1,
+                            max: maxCount.toDouble(),
+                            divisions: maxCount > 1 ? maxCount - 1 : 1,
+                            label: '$countTemp',
+                            onChanged: (v) =>
+                                setStateDialog(() => countTemp = v.round()),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline_rounded),
+                          onPressed: countTemp >= maxCount
+                              ? null
+                              : () => setStateDialog(() => countTemp++),
+                        ),
+                      ],
+                    ),
+                  ] else if (mode == _RankPickMode.minPercent) ...[
+                    Text(
+                        'كل طالب نسبته ≥ ${minPctTemp.toStringAsFixed(0)}% هياخد شهادة:',
+                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+                    Slider(
+                      value: minPctTemp,
+                      min: 50,
+                      max: 100,
+                      divisions: 50,
+                      label: '${minPctTemp.toStringAsFixed(0)}%',
+                      onChanged: (v) => setStateDialog(() => minPctTemp = v),
+                    ),
+                  ] else ...[
+                    Text(
+                        'أعلى ${studentPctTemp.toStringAsFixed(0)}% من إجمالي الطلاب ($maxCount) هياخدوا شهادة:',
+                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+                    Slider(
+                      value: studentPctTemp,
+                      min: 5,
+                      max: 100,
+                      divisions: 19,
+                      label: '${studentPctTemp.toStringAsFixed(0)}%',
+                      onChanged: (v) => setStateDialog(() => studentPctTemp = v),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      resultCount <= 0
+                          ? 'مفيش طلاب مطابقين للمعيار ده'
+                          : '$resultCount طالب هياخدوا شهادة',
+                      style: const TextStyle(
+                          fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, null),
+                child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
+              ),
+              FilledButton(
+                onPressed: resultCount <= 0
+                    ? null
+                    : () => Navigator.pop(ctx, resultCount),
+                child: const Text('متابعة', style: TextStyle(fontFamily: 'Cairo')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   @override

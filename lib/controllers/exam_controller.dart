@@ -269,22 +269,28 @@ class ExamController extends GetxController {
   }
 
   /// شهادة مركز من صفحة الأوائل — النص بمعدّل النسبة عبر عدة امتحانات.
+  /// [rankNumber] اختياري: لو أكبر من ٣ (توسيع عدد الشهادات بعد أول ٣
+  /// مراكز)، بيُستخدم لبناء نص "المركز الرابع/الخامس/..." بدل الاعتماد
+  /// على [kind] (اللي بيفضل rank1/2/3 بس).
   CertificateData buildRankCert({
     required String studentName,
     required CertKind kind,
     required double pct,
     required int examCount,
     String? scopeLabel,
+    int? rankNumber,
   }) {
     final s = Get.find<SettingsController>();
     final scope =
         (scopeLabel != null && scopeLabel.trim().isNotEmpty) ? ' ${scopeLabel.trim()}' : '';
-    final rank = switch (kind) {
-      CertKind.rank1 => 'المركز الأول',
-      CertKind.rank2 => 'المركز الثاني',
-      CertKind.rank3 => 'المركز الثالث',
-      _ => 'مركز متقدّم',
-    };
+    final rank = (rankNumber != null && rankNumber > 3)
+        ? 'المركز ${_ordinalWord(rankNumber)}'
+        : switch (kind) {
+            CertKind.rank1 => 'المركز الأول',
+            CertKind.rank2 => 'المركز الثاني',
+            CertKind.rank3 => 'المركز الثالث',
+            _ => 'مركز متقدّم',
+          };
     final tn = s.teacherFullName.value.trim();
     final ts = s.teacherSpecialization.value.trim();
     return CertificateData(
@@ -300,6 +306,28 @@ class ExamController extends GetxController {
       teacherTitle: s.teacherTitle,
     );
   }
+
+  static const _ordinalWords = {
+    4: 'الرابع',
+    5: 'الخامس',
+    6: 'السادس',
+    7: 'السابع',
+    8: 'الثامن',
+    9: 'التاسع',
+    10: 'العاشر',
+    11: 'الحادي عشر',
+    12: 'الثاني عشر',
+    13: 'الثالث عشر',
+    14: 'الرابع عشر',
+    15: 'الخامس عشر',
+    16: 'السادس عشر',
+    17: 'السابع عشر',
+    18: 'الثامن عشر',
+    19: 'التاسع عشر',
+    20: 'العشرون',
+  };
+
+  String _ordinalWord(int n) => _ordinalWords[n] ?? 'رقم $n';
 
   // ══════════════════════════════════════════════════════════════════════════
   // spec 016 — امتحان إلكتروني

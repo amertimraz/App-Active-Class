@@ -11,6 +11,8 @@ import 'package:active_class/views/license/trial_banner.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/export_service.dart';
+import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/locked_feature.dart';
@@ -1413,6 +1415,31 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _exportTodayPaymentsPDF(
+      BuildContext context, List<TodayPaymentEntry> entries) async {
+    AppToast.info(context, 'جاري إنشاء تقرير مدفوعات اليوم...');
+    final svc = ExportService();
+    final result = await svc.exportTodayPaymentsPDF(
+      date: DateTime.now(),
+      entries: entries
+          .map((e) => (
+                studentName: e.studentName,
+                studentCode: e.studentCode,
+                groupName: e.groupName,
+                amount: e.amount,
+                time: e.date,
+              ))
+          .toList(),
+    );
+    if (!context.mounted) return;
+    if (result.success && result.path != null) {
+      AppToast.success(context, 'تم إنشاء التقرير');
+      await svc.sharePDF(result.path!);
+    } else {
+      AppToast.error(context, result.error ?? 'فشل التصدير');
+    }
+  }
+
   void _showTodayPaymentsSheet(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currency = _settingsController.currencyCode.value;
@@ -1447,11 +1474,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   const Icon(Icons.payments_rounded,
                       color: Color(0xFF10B981), size: 20),
                   const SizedBox(width: 8),
-                  Text(
-                    'مدفوعات اليوم (${entries.length})',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 15),
+                  Expanded(
+                    child: Text(
+                      'مدفوعات اليوم (${entries.length}) — '
+                      '${entries.fold<double>(0, (s, e) => s + e.amount).toStringAsFixed(0)} $currency',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
                   ),
+                  if (entries.isNotEmpty)
+                    IconButton(
+                      tooltip: 'تصدير PDF',
+                      icon: const Icon(Icons.picture_as_pdf_rounded,
+                          color: Color(0xFF10B981)),
+                      onPressed: () => _exportTodayPaymentsPDF(context, entries),
+                    ),
                 ],
               ),
             ),

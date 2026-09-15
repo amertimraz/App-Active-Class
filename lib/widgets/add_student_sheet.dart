@@ -368,22 +368,38 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
       }
     }
 
-    final student = Student(
-      name: name,
-      code: _nextCode,
-      groupId: g.id!,
-      price: price,
-      createdAt: DateTime.now(),
-      attendanceStart: _attendanceStart,
-      guardianPhone: phone.isEmpty ? null : phone,
-      guardianWhatsapp: whatsapp.isEmpty ? null : whatsapp,
-      birthDate: _birthDate,
-      siblingsTotal: sibTotal,
-      exemptPercent: _isExempt ? _exemptPercent : 0,
-      exemptReason: finalReason,
-    );
+    // الكود التلقائي بيتحسب وقت فتح الشيت/اختيار المجموعة، وممكن جهاز
+    // تاني في وضع الفريق يزامن طالب بنفس الكود قبل ما المدرّس يضغط
+    // "إضافة" (خصوصًا لو قعد شوية يملا البيانات). لو الكود كان تلقائي
+    // (مش مكتوب يدويًا)، نعيد توليده ونحاول تاني بدل ما نوقف المدرّس
+    // برسالة "الكود محجوز" على كود هو أصلاً مااختارهوش.
+    Student? created;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final student = Student(
+        name: name,
+        code: _nextCode,
+        groupId: g.id!,
+        price: price,
+        createdAt: DateTime.now(),
+        attendanceStart: _attendanceStart,
+        guardianPhone: phone.isEmpty ? null : phone,
+        guardianWhatsapp: whatsapp.isEmpty ? null : whatsapp,
+        birthDate: _birthDate,
+        siblingsTotal: sibTotal,
+        exemptPercent: _isExempt ? _exemptPercent : 0,
+        exemptReason: finalReason,
+      );
 
-    final created = await widget.controller.addStudent(student);
+      created = await widget.controller.addStudent(student);
+      if (created != null) break;
+
+      final isCodeConflict =
+          (widget.controller.lastAddStudentError ?? '').contains('نفس الكود');
+      if (_codeIsManual || !isCodeConflict) break;
+
+      await _refreshCode();
+      if (!mounted) return;
+    }
 
     // فشلت الإضافة (كود مكرر، تجاوز حد الترخيص، ...). التوست العابر من
     // الكنترولر ممكن ميتلمحش (حصل في الإنتاج)، فبنعرض السبب في حوار

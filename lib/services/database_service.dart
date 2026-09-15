@@ -1471,8 +1471,8 @@ class DatabaseService {
       {int? excludeId}) async {
     final db = await database;
     final where = excludeId != null
-        ? '$COL_STUDENT_SIBLING_GROUP_ID = ? AND $COL_STUDENT_ID != ?'
-        : '$COL_STUDENT_SIBLING_GROUP_ID = ?';
+        ? '$COL_STUDENT_SIBLING_GROUP_ID = ? AND $COL_STUDENT_ID != ? AND $COL_STUDENT_IS_ARCHIVED = 0'
+        : '$COL_STUDENT_SIBLING_GROUP_ID = ? AND $COL_STUDENT_IS_ARCHIVED = 0';
     final whereArgs =
         excludeId != null ? [groupId, excludeId] : [groupId];
     final result =
