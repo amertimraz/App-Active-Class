@@ -217,6 +217,7 @@ class DatabaseService {
         $COL_STUDENT_SIBLINGS_TOTAL REAL,
         $COL_STUDENT_SIBLING_GROUP_ID INTEGER,
         $COL_STUDENT_SIBLING_GROUP_UUID TEXT,
+        $COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT INTEGER,
         $COL_STUDENT_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_STUDENT_ATTENDANCE_START TEXT,
         $COL_STUDENT_GUARDIAN_PHONE TEXT,
@@ -827,6 +828,16 @@ class DatabaseService {
             'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_SIBLING_GROUP_UUID TEXT');
       } catch (_) {}
     }
+
+    if (oldVersion < 33) {
+      // spec 035 — عدد أعضاء مجموعة الإخوة وقت آخر قرار واعي. القيم
+      // القديمة تبقى NULL (يعني "بلا قرار محفوظ") — أول قراءة للحساب
+      // المالي هتعتبرها بلا تنبيه (لا فرق لاكتشافه) لحد أول تعديل جديد.
+      try {
+        await db.execute('ALTER TABLE $TABLE_STUDENTS ADD COLUMN '
+            '$COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT INTEGER');
+      } catch (_) {}
+    }
   }
 
   // ─── إشعار الحفظ التلقائي ──────────────────────────────────────
@@ -1224,6 +1235,9 @@ class DatabaseService {
           ...s.toMap(),
           COL_STUDENT_SIBLING_GROUP_ID: groupId,
           COL_STUDENT_SIBLING_GROUP_UUID: groupUuid,
+          // spec 035 — أي ربط (أولي أو إعادة ربط) قرار واعي بعدد
+          // الأعضاء الحالي؛ بيصفّر أي تنبيه "خروج عضو" معلّق.
+          COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT: members.length,
           COL_SYNC_UPDATED_AT: now,
         };
         maps.add(map);
@@ -1270,6 +1284,42 @@ class DatabaseService {
       COL_STUDENT_SIBLING_GROUP_ID: null,
       COL_SYNC_UPDATED_AT: now,
     });
+  }
+
+  /// spec 035 — قرار المدرّس بعد خروج عضو من مجموعة إخوة (لسه فيها
+  /// عضوين فاصلين، مش انحلال كامل — الحالة دي بيتكفّل بيها
+  /// _unlinkOrphanedSiblingSurvivor فوق). بتحدّث committed_count لكل
+  /// الأعضاء الباقيين معًا (ذريًا) = عددهم الحالي، و[newSiblingsTotal]
+  /// لو المدرّس عدّل المبلغ المشترك (null = نفس المبلغ القديم، تأكيد
+  /// بس). بيقفل تنبيه "قرار معلّق" (راجع PricingHelper.
+  /// siblingGroupDepartureAlert) لحد ما عضو تاني يخرج لاحقًا.
+  Future<void> confirmSiblingGroupDeparture(
+    List<Student> remainingMembers, {
+    double? newSiblingsTotal,
+  }) async {
+    if (remainingMembers.isEmpty) return;
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final maps = <Map<String, dynamic>>[];
+    await db.transaction((txn) async {
+      for (final s in remainingMembers) {
+        final map = {
+          ...s.toMap(),
+          COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT: remainingMembers.length,
+          if (newSiblingsTotal != null)
+            COL_STUDENT_SIBLINGS_TOTAL: newSiblingsTotal,
+          COL_SYNC_UPDATED_AT: now,
+        };
+        maps.add(map);
+        await txn.update(TABLE_STUDENTS, map,
+            where: '$COL_STUDENT_ID = ?', whereArgs: [s.id]);
+      }
+    });
+    _notifyChanged();
+    for (var i = 0; i < remainingMembers.length; i++) {
+      await _queueSync(TABLE_STUDENTS, remainingMembers[i].id!, 'update',
+          payload: maps[i]);
+    }
   }
 
   Future<int> deleteStudent(int id) async {

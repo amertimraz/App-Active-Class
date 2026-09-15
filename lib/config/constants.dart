@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 32;
+const int DATABASE_VERSION = 33;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -143,6 +143,11 @@ const String COL_STUDENT_SIBLING_GROUP_ID = 'sibling_group_id';
 // (راجع sync_engine.dart) عشان وضع الفريق يعرف يربط الإخوة صح عند كل
 // عضو، بدل ما الربط يفضل محلي بس على الجهاز اللي عمله.
 const String COL_STUDENT_SIBLING_GROUP_UUID = 'sibling_group_uuid';
+// عدد أعضاء مجموعة الإخوة وقت آخر قرار واعي (ربط أولي، أو تأكيد/تعديل
+// بعد خروج عضو) — spec 035. القاسم الفعلي في حساب المديونية بيستخدم
+// الرقم ده، مش العدد الحي الحالي، عشان خروج عضو ميقفزش بمديونية
+// الباقيين صامتًا قبل ما المدرّس ياخد قرار واعي.
+const String COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT = 'sibling_group_committed_count';
 const String COL_STUDENT_CREATED_AT = 'created_at';
 const String COL_STUDENT_ATTENDANCE_START = 'attendance_start';
 const String COL_STUDENT_GUARDIAN_PHONE = 'guardian_phone';

@@ -54,6 +54,38 @@ class PricingHelper {
     return count >= 1 ? count : 1;
   }
 
+  /// spec 035 — العدد اللي المبلغ المشترك (siblingsTotal) اتحسب عليه
+  /// آخر مرة المدرّس اتخذ قرار واعي (ربط أولي، أو تأكيد/تعديل بعد خروج
+  /// عضو). ده القاسم الفعلي في [monthlyDue] — مش العدد الحي — عشان
+  /// خروج عضو ميقفزش بمديونية الباقيين قبل قرار واعي (FR-004). لو
+  /// null (بيانات قديمة قبل الميزة دي، أو طالب مش في مجموعة إخوة أصلاً)
+  /// بنرجع للعدد الحي كسلوك افتراضي متوافق مع القديم.
+  static int _committedOrLiveCount(
+      Student student, List<Student>? siblingGroupMembers) {
+    final committed = student.siblingGroupCommittedCount;
+    if (committed != null && committed >= 1) return committed;
+    return siblingGroupMembers != null
+        ? siblingGroupSize(student, siblingGroupMembers)
+        : 2;
+  }
+
+  /// تنبيه "قرار معلّق" — طالب في مجموعة إخوة، وعدد الأعضاء النشطين
+  /// الحالي (siblingGroupSize) أقل من العدد المتفق عليه آخر مرة
+  /// (siblingGroupCommittedCount) — يعني عضو خرج (اتحذف/اتأرشف) ولسه
+  /// محدش أكّد أو عدّل المبلغ المشترك. بيرجع null لو مفيش قرار معلّق
+  /// (بما في ذلك حالة "نزلت لعضو واحد" — دي بتتحل تلقائيًا بفك الربط
+  /// الكامل في DatabaseService._unlinkOrphanedSiblingSurvivor، خارج
+  /// نطاق التنبيه ده — راجع FR-009).
+  static ({int oldCount, int newCount})? siblingGroupDepartureAlert(
+      Student student, List<Student> allStudents) {
+    if (student.siblingGroupId == null) return null;
+    final committed = student.siblingGroupCommittedCount;
+    if (committed == null || committed < 2) return null;
+    final liveCount = siblingGroupSize(student, allStudents);
+    if (liveCount >= committed || liveCount < 2) return null;
+    return (oldCount: committed, newCount: liveCount);
+  }
+
   static double monthlyDue({
     required Student student,
     required Group? group,
@@ -79,9 +111,10 @@ class PricingHelper {
       // (student.price) — وإلا كان بيُحتسب عليه كل شهر سعر كامل رغم إن
       // الدفعات الفعلية (عبر مسار الدفع بالـQR) بتسجَّل بنصيبه بس، فكانت
       // المديونية بتتراكم بلا داعي حتى مع الدفع المنتظم بالخصم.
-      final count = siblingGroupMembers != null
-          ? siblingGroupSize(student, siblingGroupMembers)
-          : 2;
+      // spec 035 — القاسم هو العدد "المتفق عليه" آخر قرار واعي، مش
+      // العدد الحي — وإلا خروج عضو كان هيقفز بمديونية الباقيين صامتًا
+      // قبل ما المدرّس يشوف تنبيه ويقرر.
+      final count = _committedOrLiveCount(student, siblingGroupMembers);
       base = student.siblingsTotal! / count;
     } else if (student.siblingId != null && student.siblingsTotal != null) {
       // بيانات قديمة لسه ما اتحوّلتش لـsiblingGroupId (نادر جدًا بعد

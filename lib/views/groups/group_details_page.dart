@@ -12,6 +12,7 @@ import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/sibling_departure_check.dart';
 import 'package:active_class/utils/billing_period.dart';
 import 'package:active_class/utils/group_price_helper.dart';
 import 'package:active_class/utils/student_sort_helper.dart';
@@ -148,6 +149,13 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
           ..addAll(fullyPaid);
         _allPayments = allPayments;
       });
+      // spec 035 — تنبيه "خروج عضو من مجموعة إخوة" لو موجود، لطلاب
+      // المجموعة دي تحديدًا.
+      unawaited(checkAndShowSiblingDepartureAlert(
+          context,
+          studentController.students
+              .where((s) => s.groupId == g?.id)
+              .toList()));
     }
   }
 

@@ -526,6 +526,8 @@ class SyncEngine with WidgetsBindingObserver {
           'group_remote_id': groupRemoteId,
           'sibling_remote_id': siblingRemoteId,
           'sibling_group_uuid': payload[COL_STUDENT_SIBLING_GROUP_UUID],
+          'sibling_group_committed_count':
+              payload[COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT],
           'siblings_total': payload[COL_STUDENT_SIBLINGS_TOTAL],
           'name': payload[COL_STUDENT_NAME],
           'code': payload[COL_STUDENT_CODE],
@@ -1471,6 +1473,8 @@ class SyncEngine with WidgetsBindingObserver {
           COL_STUDENT_SIBLING_ID: localSiblingId,
           COL_STUDENT_SIBLING_GROUP_ID: localSiblingGroupId,
           COL_STUDENT_SIBLING_GROUP_UUID: siblingGroupUuid,
+          COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT:
+              remote['sibling_group_committed_count'],
           COL_STUDENT_SIBLINGS_TOTAL: remote['siblings_total'],
           COL_STUDENT_NAME: remote['name'],
           COL_STUDENT_CODE: remote['code'],

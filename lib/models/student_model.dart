@@ -11,6 +11,7 @@ class Student {
   final double? siblingsTotal;
   final int? siblingGroupId; // مشترك بين كل أعضاء مجموعة الإخوة (2-3)، = أصغر id بينهم
   final String? siblingGroupUuid; // نفس المجموعة بس UUID ثابت للمزامنة عبر الأجهزة
+  final int? siblingGroupCommittedCount; // عدد الأعضاء وقت آخر قرار واعي — spec 035
   final DateTime? createdAt;
   final DateTime? attendanceStart;
   final String? guardianPhone;
@@ -32,6 +33,7 @@ class Student {
     this.siblingsTotal,
     this.siblingGroupId,
     this.siblingGroupUuid,
+    this.siblingGroupCommittedCount,
     this.createdAt,
     this.attendanceStart,
     this.guardianPhone,
@@ -64,6 +66,7 @@ class Student {
       'siblings_total': siblingsTotal,
       'sibling_group_id': siblingGroupId,
       'sibling_group_uuid': siblingGroupUuid,
+      'sibling_group_committed_count': siblingGroupCommittedCount,
       'created_at': createdAt?.toIso8601String(),
       'attendance_start': attendanceStart?.toIso8601String(),
       'guardian_phone': guardianPhone,
@@ -88,6 +91,7 @@ class Student {
       siblingsTotal: map['siblings_total'] != null ? (map['siblings_total'] as num).toDouble() : null,
       siblingGroupId: map['sibling_group_id'] as int?,
       siblingGroupUuid: map['sibling_group_uuid'] as String?,
+      siblingGroupCommittedCount: map['sibling_group_committed_count'] as int?,
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,
@@ -121,6 +125,7 @@ class Student {
     double? siblingsTotal,
     int? siblingGroupId,
     String? siblingGroupUuid,
+    int? siblingGroupCommittedCount,
     DateTime? createdAt,
     DateTime? attendanceStart,
     String? guardianPhone,
@@ -137,6 +142,7 @@ class Student {
     bool clearSiblingsTotal = false,
     bool clearSiblingGroupId = false,
     bool clearSiblingGroupUuid = false,
+    bool clearSiblingGroupCommittedCount = false,
   }) {
     return Student(
       id: id ?? this.id,
@@ -154,6 +160,9 @@ class Student {
       siblingGroupUuid: clearSiblingGroupUuid
           ? null
           : (siblingGroupUuid ?? this.siblingGroupUuid),
+      siblingGroupCommittedCount: clearSiblingGroupCommittedCount
+          ? null
+          : (siblingGroupCommittedCount ?? this.siblingGroupCommittedCount),
       createdAt: createdAt ?? this.createdAt,
       attendanceStart: attendanceStart ?? this.attendanceStart,
       guardianPhone: guardianPhone ?? this.guardianPhone,

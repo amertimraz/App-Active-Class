@@ -1,4 +1,5 @@
 // lib/views/students/student_details_page.dart
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -23,6 +24,7 @@ import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/clock_text.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/sibling_departure_check.dart';
 import 'package:active_class/utils/billing_period.dart';
 import 'package:active_class/utils/monthly_report_message.dart';
 import 'package:active_class/services/database_service.dart';
@@ -105,6 +107,12 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
         _group = results[0] as Group?;
         _groups = results[1] as List<Group>;
       });
+      // spec 035 — تنبيه "خروج عضو من مجموعة إخوة" لو الطالب ده متأثر.
+      final studentCtrl = Get.isRegistered<StudentController>()
+          ? Get.find<StudentController>()
+          : Get.put(StudentController());
+      unawaited(
+          checkAndShowSiblingDepartureAlert(context, studentCtrl.students));
     }
   }
 
