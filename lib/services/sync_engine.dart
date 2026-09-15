@@ -295,6 +295,8 @@ class SyncEngine with WidgetsBindingObserver {
               await db.delete(TABLE_SYNC_OUTBOX,
                   where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
               _forgetOutbox(outboxId);
+              debugPrint('SyncEngine: استسلام نهائي (أب مش هيرجع) — '
+                  '$table/$rowId (${_describeRow(payloadStr)})');
             }
           }
         } catch (e) {
@@ -306,15 +308,17 @@ class SyncEngine with WidgetsBindingObserver {
             await db.delete(TABLE_SYNC_OUTBOX,
                 where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
             _forgetOutbox(outboxId);
-            debugPrint(
-                'SyncEngine: صف يتيم (مفتاح أجنبي مفقود) اتشال من الطابور — $table/$rowId');
+            debugPrint('SyncEngine: صف يتيم (مفتاح أجنبي مفقود) اتشال من '
+                'الطابور — $table/$rowId (${_describeRow(payloadStr)}) — '
+                '${e.message}');
             continue;
           }
           // استثناء فعلي (RLS/trigger/شبكة) — ده اللي بيسدّ رأس الطابور.
           // لو تكرر بعد عدد معقول من المحاولات، امسحه بدل ما يفضل عالق
           // للأبد (كان بيتسجّل تحذير بس من غير أي تنظيف فعلي).
           final giveUp = _recordOutboxFail(outboxId, table, rowId, e.toString());
-          debugPrint('SyncEngine: فشل push لـ $table/$rowId — $e');
+          debugPrint('SyncEngine: فشل push لـ $table/$rowId '
+              '(${_describeRow(payloadStr)}) — $e');
           if (giveUp) {
             await db.delete(TABLE_SYNC_OUTBOX,
                 where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
@@ -369,6 +373,20 @@ class SyncEngine with WidgetsBindingObserver {
   /// مسؤول وقتها يمسح الصف فعليًا من الطابور، مش يكتفي بتسجيل تحذير
   /// وسيبه عالق للأبد (حادثة إنتاج فعلية: طلاب بيشيروا لمجموعة اتمسحت
   /// محليًا — الأب عمره ما هيرجع، والانتظار كان أبديًا حرفيًا).
+  /// اسم مقروء للصف من الـpayload المخزّن (لو موجود) — عشان سجلات
+  /// التشخيص تبقى مفيدة فعليًا ("مازن حمادة نادي" بدل "students/53"
+  /// اللي مفيش أي شاشة في التطبيق بتوريها للمستخدم أصلاً).
+  String _describeRow(String? payloadStr) {
+    if (payloadStr == null) return 'بلا اسم';
+    try {
+      final map = jsonDecode(payloadStr) as Map<String, dynamic>;
+      final name = map['name'] as String?;
+      return name ?? 'بلا اسم';
+    } catch (_) {
+      return 'بلا اسم';
+    }
+  }
+
   bool _recordOutboxFail(int id, String table, int rowId, String err,
       {int maxFails = kMaxOutboxFails}) {
     final n = (_outboxFails[id] ?? 0) + 1;
@@ -427,12 +445,38 @@ class SyncEngine with WidgetsBindingObserver {
     final remoteRow = await _buildRemoteRow(table, rowId, payload);
     if (remoteRow == null) return false; // الأب لسه ملوش remote_id
 
-    final res = await client
-        .from(table)
-        .upsert(remoteRow, onConflict: 'team_id,origin_device_id,local_id')
-        .select('id')
-        .single()
-        .timeout(_kNetworkTimeout);
+    Map<String, dynamic> res;
+    try {
+      res = await client
+          .from(table)
+          .upsert(remoteRow, onConflict: 'team_id,origin_device_id,local_id')
+          .select('id')
+          .single()
+          .timeout(_kNetworkTimeout);
+    } on PostgrestException catch (e) {
+      // حادثة إنتاج فعلية: حقل sibling_remote_id القديم (نظام الإخوة
+      // الثنائي المهجور، قبل sibling_group_uuid) بيحمل مرجع تالف عند
+      // عشرات الطلاب من قديم — بيمنع الطالب كله من الوصول للأبد رغم
+      // إن بياناته الحقيقية (اسم، مجموعة، سعر...) سليمة تمامًا. بدل ما
+      // نرمي الطالب كله، نعيد المحاولة بلا الحقل القديم ده تحديدًا —
+      // الربط الحديث (sibling_group_uuid) مش متأثر خالص، هو حقل منفصل.
+      if (table == TABLE_STUDENTS &&
+          e.code == '23503' &&
+          (e.message.contains('sibling_remote_id') == true) &&
+          remoteRow['sibling_remote_id'] != null) {
+        debugPrint('SyncEngine: تجاهل sibling_remote_id قديم تالف '
+            'وإعادة المحاولة — $table/$rowId');
+        final retryRow = {...remoteRow, 'sibling_remote_id': null};
+        res = await client
+            .from(table)
+            .upsert(retryRow, onConflict: 'team_id,origin_device_id,local_id')
+            .select('id')
+            .single()
+            .timeout(_kNetworkTimeout);
+      } else {
+        rethrow;
+      }
+    }
     final remoteId = res['id'] as String;
     final db = await _dbService.database;
     await db.update(table, {COL_SYNC_REMOTE_ID: remoteId},
