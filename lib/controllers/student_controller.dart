@@ -261,11 +261,12 @@ class StudentController extends GetxController {
       // النسخة في الذاكرة كمان، وإلا العضو الجديد يفضل siblingGroupId
       // بتاعته null محليًا فحساب المديونية بيقسم الإجمالي /2 بدل /3
       // (مديونية وهمية). راجع specs/007-three-sibling-support.
-      final groupId = await _dbService.linkSiblingGroup(members);
+      final (groupId, groupUuid) = await _dbService.linkSiblingGroup(members);
       for (final s in members) {
         final index = students.indexWhere((x) => x.id == s.id);
         if (index != -1) {
-          students[index] = s.copyWith(siblingGroupId: groupId);
+          students[index] = s.copyWith(
+              siblingGroupId: groupId, siblingGroupUuid: groupUuid);
         }
       }
       filterStudents();

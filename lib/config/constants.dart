@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 31;
+const int DATABASE_VERSION = 32;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -138,6 +138,11 @@ const String COL_STUDENT_QR_PATH = 'qr_path';
 const String COL_STUDENT_SIBLING_ID = 'sibling_id'; // قديم — راجع specs/007-three-sibling-support
 const String COL_STUDENT_SIBLINGS_TOTAL = 'siblings_total';
 const String COL_STUDENT_SIBLING_GROUP_ID = 'sibling_group_id';
+// UUID ثابت مشترك بين كل أعضاء مجموعة الإخوة — مش زي sibling_group_id
+// (رقم محلي = أصغر id، بلا معنى عبر الأجهزة). ده اللي بيتزامن فعليًا
+// (راجع sync_engine.dart) عشان وضع الفريق يعرف يربط الإخوة صح عند كل
+// عضو، بدل ما الربط يفضل محلي بس على الجهاز اللي عمله.
+const String COL_STUDENT_SIBLING_GROUP_UUID = 'sibling_group_uuid';
 const String COL_STUDENT_CREATED_AT = 'created_at';
 const String COL_STUDENT_ATTENDANCE_START = 'attendance_start';
 const String COL_STUDENT_GUARDIAN_PHONE = 'guardian_phone';

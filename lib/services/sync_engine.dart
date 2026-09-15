@@ -481,6 +481,7 @@ class SyncEngine with WidgetsBindingObserver {
           ...base,
           'group_remote_id': groupRemoteId,
           'sibling_remote_id': siblingRemoteId,
+          'sibling_group_uuid': payload[COL_STUDENT_SIBLING_GROUP_UUID],
           'siblings_total': payload[COL_STUDENT_SIBLINGS_TOTAL],
           'name': payload[COL_STUDENT_NAME],
           'code': payload[COL_STUDENT_CODE],
@@ -1110,6 +1111,14 @@ class SyncEngine with WidgetsBindingObserver {
       }
       final localMap = await _toLocalMap(table, remote, executor: executor);
       if (localMap == null) return;
+      // أول عضو من مجموعة إخوة عنده sibling_group_uuid بس مفيش عضو تاني
+      // بنفس الـuuid موجود محليًا لسه — يتبنى رقمه المحلي هو نفسه (نفس
+      // قاعدة "أصغر id" الحالية)، بدل ما يترحّل فاضي.
+      if (table == TABLE_STUDENTS &&
+          localMap[COL_STUDENT_SIBLING_GROUP_UUID] != null &&
+          localMap[COL_STUDENT_SIBLING_GROUP_ID] == null) {
+        localMap[COL_STUDENT_SIBLING_GROUP_ID] = localRow[pkCol];
+      }
       await db.update(table, localMap,
           where: '$pkCol = ?', whereArgs: [localRow[pkCol]]);
       return;
@@ -1249,7 +1258,17 @@ class SyncEngine with WidgetsBindingObserver {
         }
       }
 
-      await _insertWithCodeRetry(db, table, localMap);
+      final newId = await _insertWithCodeRetry(db, table, localMap);
+      // أول عضو من مجموعة إخوة يوصل الجهاز ده (مفيش عضو تاني بنفس الـ
+      // uuid محليًا لسه) — نديه sibling_group_id = معرّفه المحلي هو
+      // (نفس قاعدة "أصغر id" الحالية). أي عضو تاني من نفس المجموعة
+      // يوصل بعد كده هيلاقيه ويتبنى نفس الرقم (راجع _toLocalMap).
+      if (table == TABLE_STUDENTS &&
+          localMap[COL_STUDENT_SIBLING_GROUP_UUID] != null &&
+          localMap[COL_STUDENT_SIBLING_GROUP_ID] == null) {
+        await db.update(TABLE_STUDENTS, {COL_STUDENT_SIBLING_GROUP_ID: newId},
+            where: '$COL_STUDENT_ID = ?', whereArgs: [newId]);
+      }
     } catch (e) {
       // فشل نهائي حتى بعد محاولات تعديل الكود — نتجاهل الصف بدل ما
       // نكسر حلقة المزامنة كلها.
@@ -1306,21 +1325,20 @@ class SyncEngine with WidgetsBindingObserver {
   /// بصمت — والأخطر إن أي طالب/حضور/دفعة تابعة للمجموعة دي كانت
   /// بتضيع هي كمان لأن _toLocalMap بيرجع null لو الأب (المجموعة)
   /// مش موجود محليًا. فبنعمل نفس منطق اللاحقة على الاسم والكود.
-  Future<void> _insertWithCodeRetry(
+  Future<int> _insertWithCodeRetry(
       DatabaseExecutor db, String table, Map<String, dynamic> localMap) async {
     try {
-      await db.insert(table, localMap);
-      return;
+      return await db.insert(table, localMap);
     } catch (e) {
       if (table == TABLE_STUDENTS && localMap[COL_STUDENT_CODE] != null) {
         final baseCode = localMap[COL_STUDENT_CODE] as String;
         for (var suffix = 2; suffix <= 20; suffix++) {
           final map = {...localMap, COL_STUDENT_CODE: '$baseCode-$suffix'};
           try {
-            await db.insert(table, map);
+            final id = await db.insert(table, map);
             debugPrint(
                 'SyncEngine: تعارض كود طالب ($baseCode) — اتسجّل بكود بديل ($baseCode-$suffix)');
-            return;
+            return id;
           } catch (_) {
             continue;
           }
@@ -1338,10 +1356,10 @@ class SyncEngine with WidgetsBindingObserver {
             if (baseCode != null) COL_GROUP_CODE: '$baseCode-$suffix',
           };
           try {
-            await db.insert(table, map);
+            final id = await db.insert(table, map);
             debugPrint(
                 'SyncEngine: تعارض اسم مجموعة ($baseName) — اتسجّلت باسم بديل ($baseName ($suffix))');
-            return;
+            return id;
           } catch (_) {
             continue;
           }
@@ -1385,9 +1403,30 @@ class SyncEngine with WidgetsBindingObserver {
                 TABLE_STUDENTS, COL_STUDENT_ID, siblingRemoteId,
                 executor: executor)
             : null;
+        // sibling_group_id المحلي (رقم = أصغر id) بلا معنى عبر الأجهزة،
+        // فبنستخدم sibling_group_uuid الثابت كمفتاح بحث: لو عضو تاني من
+        // نفس المجموعة وصل الجهاز ده قبل كده، نتبنى نفس رقمه المحلي —
+        // وإلا نسيبه فاضي دلوقتي (هيتحدد بعد الإدراج، راجع _applyRemoteRow).
+        final siblingGroupUuid = remote['sibling_group_uuid'] as String?;
+        int? localSiblingGroupId;
+        if (siblingGroupUuid != null) {
+          final dbForLookup = executor ?? await _dbService.database;
+          final rows = await dbForLookup.query(TABLE_STUDENTS,
+              columns: [COL_STUDENT_SIBLING_GROUP_ID],
+              where: '$COL_STUDENT_SIBLING_GROUP_UUID = ? '
+                  'AND $COL_STUDENT_SIBLING_GROUP_ID IS NOT NULL',
+              whereArgs: [siblingGroupUuid],
+              limit: 1);
+          if (rows.isNotEmpty) {
+            localSiblingGroupId =
+                rows.first[COL_STUDENT_SIBLING_GROUP_ID] as int?;
+          }
+        }
         return {
           COL_STUDENT_GROUP_ID: localGroupId,
           COL_STUDENT_SIBLING_ID: localSiblingId,
+          COL_STUDENT_SIBLING_GROUP_ID: localSiblingGroupId,
+          COL_STUDENT_SIBLING_GROUP_UUID: siblingGroupUuid,
           COL_STUDENT_SIBLINGS_TOTAL: remote['siblings_total'],
           COL_STUDENT_NAME: remote['name'],
           COL_STUDENT_CODE: remote['code'],

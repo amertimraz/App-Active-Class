@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:uuid/uuid.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
@@ -215,6 +216,7 @@ class DatabaseService {
         $COL_STUDENT_SIBLING_ID INTEGER,
         $COL_STUDENT_SIBLINGS_TOTAL REAL,
         $COL_STUDENT_SIBLING_GROUP_ID INTEGER,
+        $COL_STUDENT_SIBLING_GROUP_UUID TEXT,
         $COL_STUDENT_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_STUDENT_ATTENDANCE_START TEXT,
         $COL_STUDENT_GUARDIAN_PHONE TEXT,
@@ -815,6 +817,16 @@ class DatabaseService {
             'ALTER TABLE $TABLE_SESSION_OVERRIDES ADD COLUMN $COL_SO_SESSION_TIME TEXT');
       } catch (_) {}
     }
+
+    if (oldVersion < 32) {
+      // UUID ثابت لمجموعة الإخوة — sibling_group_id المحلي (رقم = أصغر
+      // id) عمره ما كان بيتزامن (بلا معنى عبر الأجهزة أصلاً)، فربط
+      // الإخوة كان بيفضل محلي على الجهاز اللي عمله بس. راجع sync_engine.
+      try {
+        await db.execute(
+            'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_SIBLING_GROUP_UUID TEXT');
+      } catch (_) {}
+    }
   }
 
   // ─── إشعار الحفظ التلقائي ──────────────────────────────────────
@@ -1186,9 +1198,10 @@ class DatabaseService {
   /// في عملية واحدة ذرية — إما يتحدّثوا كلهم مع بعض أو ولا واحد. راجع
   /// specs/007-three-sibling-support (بديل linkSiblings الثنائي القديم).
   /// بيرفض (يرمي ArgumentError) لو العدد أقل من 2 أو أكتر من 3 (FR-007).
-  /// يربط 2-3 إخوة بنفس `sibling_group_id` (= أصغر id بينهم) ويرجّعه —
-  /// المستدعي محتاجه عشان يحدّث النسخة في الذاكرة بنفس القيمة.
-  Future<int> linkSiblingGroup(List<Student> members) async {
+  /// يربط 2-3 إخوة بنفس `sibling_group_id` (= أصغر id بينهم) و`sibling_
+  /// group_uuid` (ثابت، للمزامنة) ويرجّعهم — المستدعي محتاجهم عشان
+  /// يحدّث النسخة في الذاكرة بنفس القيمتين.
+  Future<(int, String)> linkSiblingGroup(List<Student> members) async {
     if (members.length < 2 || members.length > 3) {
       throw ArgumentError(
           'عدد أعضاء مجموعة الإخوة لازم يكون 2 أو 3 (الحالي: ${members.length})');
@@ -1196,6 +1209,13 @@ class DatabaseService {
     final db = await database;
     final groupId =
         members.map((s) => s.id!).reduce((a, b) => a < b ? a : b);
+    // UUID ثابت للمجموعة — لو أي عضو موجود عنده واحد بالفعل (نادر: طالب
+    // جه أصلاً من جهاز تاني وهو في مجموعة إخوة) بنعيد استخدامه بدل ما
+    // نولّد واحد جديد ونكسر الربط الموجود على الجهاز التاني.
+    final groupUuid = members
+            .map((s) => s.siblingGroupUuid)
+            .firstWhere((u) => u != null, orElse: () => null) ??
+        const Uuid().v4();
     final now = DateTime.now().toIso8601String();
     final maps = <Map<String, dynamic>>[];
     await db.transaction((txn) async {
@@ -1203,6 +1223,7 @@ class DatabaseService {
         final map = {
           ...s.toMap(),
           COL_STUDENT_SIBLING_GROUP_ID: groupId,
+          COL_STUDENT_SIBLING_GROUP_UUID: groupUuid,
           COL_SYNC_UPDATED_AT: now,
         };
         maps.add(map);
@@ -1217,7 +1238,7 @@ class DatabaseService {
       await _queueSync(TABLE_STUDENTS, members[i].id!, 'update',
           payload: maps[i]);
     }
-    return groupId;
+    return (groupId, groupUuid);
   }
 
   /// لو مجموعة إخوة نزلت لعضو واحد نشط (الباقي اتأرشف/اتحذف)، بيفكّ
