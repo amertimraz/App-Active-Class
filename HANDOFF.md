@@ -1,11 +1,85 @@
 # Active Class — Handoff (محادثة جديدة)
 
-> آخر تحديث: 2026-09-08 (مساءً). المشروع: `C:\repo\active_class` — تطبيق Flutter عربي/RTL للمدرّسين الخصوصيين.
+> آخر تحديث: 2026-09-16. المشروع: `C:\repo\active_class` — تطبيق Flutter عربي/RTL للمدرّسين الخصوصيين.
 > كلّمني عربي (مصري). Flutter 3.38.1 / Dart 3.5.4، GetX، sqflite، Firebase (بوابة أولياء الأمور + امتحانات أونلاين)، Supabase self-hosted على VPS (مزامنة وضع الفريق).
+> **آخر إصدار منشور: v1.2.62+4080 — DB version = 33.**
 
 ---
 
-## ✅ اللي اتعمل في الجلسة الحالية
+## ✅ جلسة 2026-09-15/16 — spec 035 + دفعة إصلاحات/مزايا صغيرة (منشورة، v1.2.62)
+
+### spec 035 — قرار المدرّس عند خروج أخ من مجموعة إخوة (متنفّذ + **مدفوع ومنشور**، migration مطبّق على الإنتاج)
+
+**البلاغ الأصلي:** مدرّس اشتكى إن لما أخ يمشي من مجموعة ٣ إخوة، بتحصل مشكلة في المدفوعات — القسمة كانت بتتغيّر **صامتة** (من `siblingsTotal ÷ 3` لـ`÷ 2`) وقت أي إعادة حساب، من غير ما المدرّس يوافق أو حتى يلاحظ → قفزة مديونية مفاجئة على الأخوين الباقيين.
+
+**الحل (سبيك كامل: `specs/035-sibling-group-departure/`):**
+- عمود جديد `students.sibling_group_committed_count` (**DB v32→v33**) = "آخر عدد أعضاء اتفق عليه المدرّس فعليًا" — ده اللي بقى **القاسم الفعلي** في `PricingHelper.monthlyDue` (عبر `_committedOrLiveCount`)، **مش** العدد الحي المحسوب من `siblingGroupSize`. لحد ما المدرّس يتخذ قرار واعي، القسمة القديمة (٣) تفضل زي ما هي.
+- `PricingHelper.siblingGroupDepartureAlert(student, allStudents)`: بيكتشف الفرق (committed > live ≥ 2) ويرجّع `(oldCount, newCount)`.
+- `lib/utils/sibling_departure_check.dart` + `lib/widgets/sibling_departure_dialog.dart`: تنبيه تلقائي (حوار) يظهر أول ما يُفتح `group_details_page` أو `student_details_page` لطالب متأثر — بيعرض المبلغ الحالي ونصيب كل واحد قبل/بعد، وبيدّي 3 خيارات: لاحقًا / تأكيد بنفس المبلغ / حفظ مبلغ جديد.
+- `DatabaseService.confirmSiblingGroupDeparture(remainingMembers, {newSiblingsTotal})`: تحديث ذري (`db.transaction`) لكل الأعضاء الباقيين + `_queueSync` لكل واحد.
+- `linkSiblingGroup` بيحط `sibling_group_committed_count = members.length` عند أي ربط/إعادة ربط جديد.
+- `sync_engine.dart`: العمود متزامن (passthrough زي `siblings_total`، بلا ترجمة remote_id).
+- `supabase/migration_sibling_group_committed_count.sql` — **مطبّق عبر SSH (`-U supabase_admin`، جدول students).**
+- **8 اختبارات وحدة جديدة** (`test/pricing_helper_departure_test.dart`) — كلها تعدّي.
+
+**تحقّق جهازي:** اتعمل مباشرة على جهاز الاختبار (`9aecbc89`) بعد التثبيت — الترقية لـDB v33 نجحت بلا كراش، مفيش أخطاء متعلقة بالمزامنة أو قاعدة البيانات في الـlogcat.
+
+### إصلاح — طالب متأرشف كان لسه بيظهر كـ"أخ" في شاشة تعديل بيانات إخوانه
+
+**بلاغ المستخدم بعد التجربة الجهازية مباشرة:** "لما فتحت بيانات الطالب ظهرلي بردو إن الأخ ده لسه موجود رغم إني أرشفته."
+
+**السبب:** `DatabaseService.getStudentsByGroup​InSiblingGroup` (المُستخدمة في `edit_student_sheet.dart` لعرض/اختيار الإخوة، وكمان في `qr_controller.dart`/`qr_scanner_payment_page.dart`/`add_student_sheet.dart`) ما كانتش بتستبعد الطلاب المؤرشفين من الاستعلام.
+
+**الحل:** إضافة `AND is_archived = 0` لشرط الاستعلام في `getStudentsInSiblingGroup` (سطر واحد، ملف `database_service.dart`) — بيأثر تلقائيًا على كل الأماكن اللي بتستخدمها.
+
+### ميزة — رسائل واتساب للطلاب "المتأخرين" في سجل الحضور
+
+**طلب المستخدم:** مدرّس طلب إن قسم "متأخرون" تحت "غياب اليوم" ييجي بنفس خاصية الواتساب بتاعة الغياب، برسالة مختصرة محترمة (اسم/مجموعة/تاريخ/اسم المدرّس/تخصّصه).
+
+**الحل** (`lib/views/attendance/attendance_page.dart`، `_AbsentTodayTabState`):
+- `_buildLateMessage` — نفس شكل رسالة الغياب بالظبط (⚠️ تنبيه تأخير / اسم / مجموعة / تاريخ / مدرّس / تخصّص) — **طابق نص المستخدم حرفيًا بعد ما شاف المسودة الأولى وطلب تعديل بسيط.**
+- تحديد فردي/جماعي (`_selectedLate`) + "تحديد الكل" لقسم المتأخرين + زرار "إرسال واتساب للمتأخرين المحددين" أسفل الشاشة (لون كهرماني تمييزًا عن الغياب الأحمر/الأخضر).
+
+### ميزة — تصدير PDF لـ"مدفوعات اليوم" + الإجمالي ظاهر في العنوان
+
+**طلب المستخدم:** زرار طباعة PDF منسّق لمدفوعات اليوم من الصفحة الرئيسية، والإجمالي ظاهر جنب العنوان.
+
+**الحل:**
+- `ExportService.exportTodayPaymentsPDF({date, entries})` (جديد، `export_service.dart`) — يستخدم نفس أنماط `_pageHeader`/`_th`/`_td`/`_statBox` القائمة، جدول (اسم/كود/مجموعة/وقت/مبلغ) + صندوق ملخص (عدد الدفعات + الإجمالي).
+- `home_page.dart._showTodayPaymentsSheet`: زرار PDF (📄) جنب العنوان + الإجمالي بقى ظاهر في نص العنوان نفسه.
+
+### ميزة — شهادات المراكز مش محدودة بأول ٣ بقى
+
+**طلب المستخدم:** "عايز أدّي أوبشن للمدرّس إنه يتوسّع في عدد الطلاب مش بس أول ٣ مراكز" — وبعدها طلب توضيح السلايدر + إضافة خيار حسب النسبة.
+
+**الحل** (`leaderboard_page.dart` + `exam_controller.dart`):
+- حوار `_pickRankCount` بـ`SegmentedButton` **بتلات طرق**: (١) عدد ثابت (سلايدر + أزرار +/-)، (٢) نسبة الدرجة (كل طالب نسبته ≥ X%)، (٣) نسبة من إجمالي الطلاب (أعلى X%). كل وضع بيعرض live preview لعدد الطلاب الناتج قبل التأكيد.
+- `ExamController.buildRankCert` قبل `rankNumber` اختياري — لو > 3، بيبني نص "المركز الرابع/الخامس/…" (خريطة `_ordinalWords` لحد ٢٠، وبعدها "رقم N") بدل الاكتفاء بـ"مركز متقدّم".
+- `CertKind` ماتغيّرش (لسه بس rank1/2/3 + appreciation) — الترتيب الرقمي (>٣) بيتبعت `kind: CertKind.appreciation` + `rankNumber` فعلي، والنص بيتبني من `rankNumber` مش من `kind`.
+
+### إصلاح — تصادم كود الطالب التلقائي (بيقول "الكود محجوز" رغم إنه أوتوماتيك)
+
+**بلاغ المستخدم + تشخيصه الصحيح:** "بيقولي الكود ده محجوز مع إنه هو حاطّه أوتوماتيك."
+
+**السبب الأرجح (TOCTOU race في وضع الفريق):** الكود التلقائي بيتحسب لحظة فتح شيت "إضافة طالب" أو تغيير المجموعة (`_refreshCode`)، لكن الحفظ الفعلي بيحصل بعدها بوقت (المدرّس بيملا الاسم/الهاتف/السعر...). في وضع الفريق، ممكن جهاز تاني يزامّن طالب بنفس الكود المحسوب في الفترة دي، فيبقى الكود مش متاح فعليًا وقت الحفظ رغم إنه كان صح وقت التوليد.
+
+**الحل** (`add_student_sheet.dart._submit`): لو فشل الإدخال بتعارض كود **وكان الكود تلقائي مش مكتوب يدويًا** (`!_codeIsManual`)، يعيد توليد الكود (`_refreshCode()`) ويحاول تاني — لحد ٣ محاولات — قبل ما يعرض أي رسالة خطأ للمدرّس. لمسناش مسار الاستيراد الجماعي (`import_students_dialog.dart`) — احتمال التصادم فيه أقل بكتير (حلقة سريعة متتالية، مش فورم مفتوح لدقايق).
+
+### الريليس — v1.2.62+4080 (DB v33) — منشور بالكامل
+
+- **Commits:** `68ea410` (spec 035) + `f69ce68` (كل الإصلاحات/المزايا فوق) على `main`، مدفوعين.
+- **Tag `v1.2.62`** مدفوع.
+- **GitHub Release:** https://github.com/amertimraz/App-Active-Class/releases/tag/v1.2.62 — أصول: `ActiveClass-arm64-v8a.apk` / `-armeabi-v7a.apk` / `-x86_64.apk` (محليًا كمان في `release_assets/v1.2.62/` مع `-play.aab`).
+- **VPS:** `/var/www/active-class.online/downloads/ActiveClass-arm64-v8a.apk` محدّث (backup `.bak-1.2.61`).
+- **تحقّق جهازي مباشر (جهاز `9aecbc89`):** تجربة كل الميزات الجديدة (تنبيه خروج الأخ، فلتر الإخوة المؤرشفين، واتساب المتأخرين، PDF مدفوعات اليوم، سلايدر شهادات المراكز) — **المستخدم أكّد إنها شغالة**.
+- **⏳ متبقّي:** رفع `release_assets/v1.2.62/ActiveClass-play.aab` على Google Play Console يدويًا (لسه ماتعملش).
+- **migration واحدة اتطبّقت على الإنتاج هالجلسة:** `migration_sibling_group_committed_count.sql` (`-U supabase_admin`).
+
+**⚠️ حقيقة مهمة اتأكّدت هالجلسة:** الأوامر اللي بتلمس قاعدة بيانات الإنتاج (زي `psql` عبر SSH) بتتمنع أحيانًا من الـauto-mode classifier حتى لو نفس النمط اشتغل قبل كده في جلسات سابقة — محتاجة تأكيد صريح من المستخدم قبل التنفيذ في كل مرة، مش افتراض إذن دائم.
+
+---
+
+## ✅ اللي اتعمل في جلسة 2026-09-08 (سابقة)
 
 ### spec 033 — تنظيف رقم ولي الأمر + واتساب (متنفّذ + **مدفوع**، migration مطبّق، **تحقّق جهازي لسه**)
 
@@ -248,6 +322,10 @@
 
 ## ⏳ متبقّي / مفتوح
 
+0. **الأحدث (v1.2.62):**
+   - **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/v1.2.62/ActiveClass-play.aab`. لسه ماتعملش.
+   - **spec 035 US2** (بيانات الطالب اللي خرج تفضل زي ما هي) — اتصمّمت بس ماتعملش تحقّق يدوي صريح ليها (quickstart scenario 4)، رغم إن المنطق (خصم الطالب من `remainingMembers` بس، بلا لمس صفوف حضور/دفعات) بيدعمها بالتصميم.
+   - **تصادم كود الطالب التلقائي** — الإصلاح (retry تلقائي) اتعمل بس **السبب الجذري بالظبط لسه مش متأكّد منه 100%** (نظرية الأرجح: TOCTOU race مع مزامنة وضع الفريق — راجع تفاصيل الإصلاح فوق). لو البلاغ اتكرر بعد الإصلاح، محتاج فحص أعمق للـsync outbox ordering وقت الحذف/الإضافة الفورية.
 1. **رفع الـAAB على Play Console** (خطوة يدوية على المستخدم): `release_assets/ActiveClass-v1.2.52-play.aab`.
 2. **ريليس v1.2.51 اتنشر** (`1e4b3ab` + tag) — يضم 028–033. التحقّق الجهازي تحت (اتعمل بعد النشر).
 3. **تحقّق جهازي — كله منشور في v1.2.51، لسه محتاج جهاز/جهازين للتأكيد:**
@@ -269,7 +347,7 @@
 - **git push فقط بإذن صريح.** الـspecs بتتعمل commit على `main` مباشرة (عرف المشروع).
 - **التوقيع:** نفس keystore كل مرة (`android/key.properties` + `RELEASE_SIGNING_INFO.md` — الاتنين gitignored، فيهم باسورد `gG1lrhvSog96kQbwCYtyoRxN`، **متتعملش commit ولا expose**). SHA-256 = `5f74fe10af2da396cbf0a98895af02bb5ffbdc01cdf68a55bea25a841f02ec7b`. مزج debug/release أو إلغاء-وإعادة تثبيت = مسح بيانات محلية (slug بوابة الأهل + الرخصة).
 - **SSH VPS:** `ssh -i ~/.ssh/ovh_key root@active-class.online` — شغّال من الساندبوكس. حاوية Supabase: `active-class-auth-db-1`، compose في `/opt/active-class-auth/docker`. تطبيق migration: `ssh ... 'docker exec -i active-class-auth-db-1 psql -U postgres -d postgres -v ON_ERROR_STOP=1' < supabase/migration_X.sql`. ⚠️ **`ALTER TABLE public.students`** لازم `-U supabase_admin` (الجدول مملوك لـsupabase_admin مش postgres) — spec 033.
-- **DB version = 31** (v29 session_overrides (spec 032) → v30 students.guardian_whatsapp (spec 033) → **v31 session_overrides.session_time (spec 032)**). spec 026/029/030/031 **مازادوش النسخة**.
+- **DB version = 33** (v29 session_overrides (spec 032) → v30 students.guardian_whatsapp (spec 033) → v31 session_overrides.session_time (spec 032) → v32 students.sibling_group_uuid (مزامنة ربط الإخوة عبر الأجهزة) → **v33 students.sibling_group_committed_count (spec 035)**). spec 026/029/030/031 **مازادوش النسخة**.
 - **مزامنة الفريق (`SyncEngine`):** قناتان Realtime — `_channel` (`_coreTables`، وفيها دلوقتي `TABLE_SESSION_OVERRIDES` — spec 032) + `_channelX` (`_extendedTables` = `[TABLE_EXAM_QUESTIONS, TABLE_EXAM_SUBMISSIONS, TABLE_BANK_QUESTIONS]`). CHANNEL_ERROR في واحدة معزول عن التانية (إصلاح دائم لحادثة `student_follow_ups`). تعارض الصف المكرّر → `_reconcileDuplicate` (LWW، spec 031) للجداول ذات مفتاح منطقي: attendance/homework/exam_groups/exam_grades/exam_submissions/**session_overrides**.
 - **وقت الخادم (spec 031):** `trg_set_updated_at` على 12 جدول متزامن (11 + `session_overrides`) يفرض `updated_at = now()` — LWW متسق رغم انحراف ساعات الأجهزة.
 - **`PricingHelper`:** `accumulatedDebt` = مجموع `monthlyDue` من شهر الانضمام لدلوقتي ناقص **كل** الدفعات (رصيد واحد FIFO). per-session: `monthlyDue = student.price * sessionsAttended(month)`. `billingArrears` / `prorateFirstMonth` static flags (per-session بيتجاهلهم). الإخوة: `siblingsTotal / count` عبر `siblingGroupMembers`.
