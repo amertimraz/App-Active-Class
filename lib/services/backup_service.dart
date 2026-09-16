@@ -1,16 +1,26 @@
 // lib/services/backup_service.dart
 // نظام Backup & Restore كامل وموثوق
 
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:archive/archive_io.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/services/database_service.dart';
+
+// نفس مفتاح teacher_avatar_path في SettingsController — البادج ده لازم
+// يفضل متطابق مع _keyTeacherAvatar هناك (القيمة نفسها، مش الاستيراد،
+// عشان نفضل نقدر نقرا/نكتب الإعداد من غير اعتماد BackupService على
+// GetX/SettingsController).
+const String _kTeacherAvatarSettingKey = 'teacher_avatar_path';
 
 // ══════════════════════════════════════════════════════════════════
 //  BackupResult — نتيجة عملية النسخ
@@ -93,6 +103,14 @@ class BackupService {
   //  عملية نسخ ملف محلي سريعة فقط — الحفظ الإضافي في Downloads
   //  منفصل في saveToDownloads() عشان ميجمّدش الواجهة (شوف تعليقها).
   // ──────────────────────────────────────────────────────────────
+  //  النسخة بقت ملف .zip (بدل .db خام) عشان تشمل كمان:
+  //  - shared_prefs.json: كل مفاتيح SharedPreferences (فيها جلسة تسجيل
+  //    دخول وضع الفريق — Supabase بيخزّنها هناك مش في قاعدة البيانات،
+  //    فمن غيرها المستخدم لازم يسجّل دخول تاني بعد أي استعادة).
+  //  - avatar.<ext>: بايتات صورة المعلم الفعلية (مش مجرد مسار — المسار
+  //    القديم كان بيشاور على كاش الجاليري اللي ممكن يتمسح في أي وقت).
+  //  ملفات .db القديمة (من نسخ سابقة قبل التعديل ده) لسه مدعومة في
+  //  restoreBackup تحت — بلا كسر توافق رجعي.
   Future<BackupResult> createBackup() async {
     try {
       final dbPath = await getDatabasesPath();
@@ -110,12 +128,46 @@ class BackupService {
         await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
       } catch (_) {}
 
+      final archive = Archive();
+      final dbBytes = await dbFile.readAsBytes();
+      archive.addFile(ArchiveFile(DATABASE_NAME, dbBytes.length, dbBytes));
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final dump = <String, dynamic>{
+          for (final k in prefs.getKeys()) k: prefs.get(k),
+        };
+        final prefsBytes = utf8.encode(jsonEncode(dump));
+        archive.addFile(
+            ArchiveFile('shared_prefs.json', prefsBytes.length, prefsBytes));
+      } catch (_) {
+        // فشل قراءة SharedPreferences مايوقفش النسخة الاحتياطية بالكامل
+        // — الـDB أهم جزء وهي نجحت بالفعل فوق.
+      }
+
+      try {
+        final avatarPath = await DatabaseService().getSetting(_kTeacherAvatarSettingKey);
+        if (avatarPath != null && avatarPath.isNotEmpty) {
+          final avatarFile = File(avatarPath);
+          if (avatarFile.existsSync()) {
+            final avatarBytes = await avatarFile.readAsBytes();
+            final ext = p.extension(avatarPath);
+            archive.addFile(ArchiveFile('avatar$ext', avatarBytes.length, avatarBytes));
+          }
+        }
+      } catch (_) {}
+
+      final zipBytes = ZipEncoder().encode(archive);
+      if (zipBytes == null) {
+        return BackupResult.failure('فشل ضغط النسخة الاحتياطية');
+      }
+
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final fileName  = 'active_class_backup_$timestamp.db';
+      final fileName  = 'active_class_backup_$timestamp.zip';
 
       final docsDir  = await _backupsDir;
       final localPath = p.join(docsDir.path, fileName);
-      await dbFile.copy(localPath);
+      await File(localPath).writeAsBytes(zipBytes);
 
       final sizeBytes = File(localPath).lengthSync();
       final sizeLabel = _sizeLabel(sizeBytes);
@@ -165,7 +217,7 @@ class BackupService {
       final dir   = await _backupsDir;
       final files = dir.listSync()
           .whereType<File>()
-          .where((f) => f.path.endsWith('.db'))
+          .where((f) => f.path.endsWith('.zip') || f.path.endsWith('.db'))
           .toList()
         ..sort((a, b) =>
             b.statSync().modified.compareTo(a.statSync().modified));
@@ -185,19 +237,21 @@ class BackupService {
   }
 
   // ──────────────────────────────────────────────────────────────
-  //  pickBackupFile — اختيار ملف .db من أي مكان على الجهاز
+  //  pickBackupFile — اختيار ملف نسخة احتياطية (.zip أو .db قديم) من أي مكان
   // ──────────────────────────────────────────────────────────────
   Future<String?> pickBackupFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,           // نوع مخصص
-        dialogTitle: 'اختر ملف النسخة الاحتياطية (.db)',
+        dialogTitle: 'اختر ملف النسخة الاحتياطية (.zip أو .db)',
         allowMultiple: false,
       );
       if (result == null || result.files.isEmpty) return null;
       final file = result.files.first;
-      // تحقق أن الامتداد .db
-      if (file.extension?.toLowerCase() != 'db') return 'INVALID_EXT';
+      final ext = file.extension?.toLowerCase();
+      // .zip = الصيغة الحالية (db + إعدادات + صورة المعلم)، .db = نسخة
+      // قديمة قبل التعديل ده — لسه مقبولة (توافق رجعي، راجع restoreBackup).
+      if (ext != 'zip' && ext != 'db') return 'INVALID_EXT';
       return file.path;
     } catch (_) {
       return null;
@@ -206,7 +260,8 @@ class BackupService {
 
   // ──────────────────────────────────────────────────────────────
   //  restoreBackup — استعادة من مسار ملف
-  //  يُغلق DB → ينسخ الملف → يُعيد فتح DB
+  //  يقبل الصيغتين: .zip (db + shared_prefs.json + avatar.*، الحالية)
+  //  أو .db خام (نسخة قديمة قبل التعديل — توافق رجعي).
   // ──────────────────────────────────────────────────────────────
   Future<bool> restoreBackup(String backupPath) async {
     try {
@@ -215,11 +270,47 @@ class BackupService {
         throw Exception('الملف غير موجود: $backupPath');
       }
 
-      // تحقق بسيط أن الملف SQLite صحيح
       final header = await backupFile.openRead(0, 16).first;
-      final magic  = String.fromCharCodes(header.take(6));
-      if (!magic.startsWith('SQLite')) {
-        throw Exception('الملف ليس قاعدة بيانات SQLite صالحة');
+      final isZip = header.length >= 2 && header[0] == 0x50 && header[1] == 0x4B; // 'PK'
+      final isSqlite = String.fromCharCodes(header.take(6)).startsWith('SQLite');
+      if (!isZip && !isSqlite) {
+        throw Exception('الملف مش نسخة احتياطية صالحة (.zip أو .db)');
+      }
+
+      Uint8List dbBytes;
+      Map<String, dynamic>? prefsDump;
+      MapEntry<String, Uint8List>? avatarEntry; // (اسم الملف بامتداده، البايتات)
+
+      if (isZip) {
+        final archive = ZipDecoder().decodeBytes(await backupFile.readAsBytes());
+        ArchiveFile? dbEntry, prefsFile, avatarFile;
+        for (final f in archive.files) {
+          if (!f.isFile) continue;
+          if (f.name == DATABASE_NAME) {
+            dbEntry = f;
+          } else if (f.name == 'shared_prefs.json') {
+            prefsFile = f;
+          } else if (f.name == 'avatar' || f.name.startsWith('avatar.')) {
+            avatarFile = f;
+          }
+        }
+        if (dbEntry == null) {
+          throw Exception('النسخة الاحتياطية مالهاش قاعدة بيانات صالحة');
+        }
+        dbBytes = dbEntry.content as Uint8List;
+
+        if (prefsFile != null) {
+          try {
+            final jsonStr = utf8.decode(prefsFile.content as List<int>);
+            prefsDump = (jsonDecode(jsonStr) as Map).cast<String, dynamic>();
+          } catch (_) {}
+        }
+
+        if (avatarFile != null) {
+          avatarEntry = MapEntry(avatarFile.name, avatarFile.content as Uint8List);
+        }
+      } else {
+        dbBytes = await backupFile.readAsBytes();
       }
 
       // أغلق الاتصال الحالي
@@ -235,7 +326,7 @@ class BackupService {
       }
 
       // استبدال قاعدة البيانات
-      await backupFile.copy(targetPath);
+      await File(targetPath).writeAsBytes(dbBytes);
 
       // مهم: امسح ملفات SQLite الجانبية (journal/WAL) القديمة — لو فضلت
       // موجودة، SQLite عند إعادة الفتح ممكن يعمل rollback بيها فوق
@@ -245,6 +336,42 @@ class BackupService {
         try {
           final side = File('$targetPath$ext');
           if (side.existsSync()) side.deleteSync();
+        } catch (_) {}
+      }
+
+      // استرجاع SharedPreferences (جلسة تسجيل دخول وضع الفريق أساسًا) —
+      // بيكتب فوق كل المفاتيح الحالية بقيم النسخة الاحتياطية، زي ما
+      // المستخدم يتوقّع من "استعادة" فعلية.
+      if (prefsDump != null) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          for (final entry in prefsDump.entries) {
+            final v = entry.value;
+            if (v is String) {
+              await prefs.setString(entry.key, v);
+            } else if (v is bool) {
+              await prefs.setBool(entry.key, v);
+            } else if (v is int) {
+              await prefs.setInt(entry.key, v);
+            } else if (v is double) {
+              await prefs.setDouble(entry.key, v);
+            } else if (v is List) {
+              await prefs.setStringList(entry.key, v.cast<String>());
+            }
+          }
+        } catch (_) {}
+      }
+
+      // استرجاع صورة المعلم — بيتكتب في نفس المسار المحفوظ في الـDB
+      // اللي رجعناها فوق (avatarPath الجديد/القديم بعد الاستعادة).
+      if (avatarEntry != null) {
+        try {
+          final avatarPath = await DatabaseService().getSetting(_kTeacherAvatarSettingKey);
+          if (avatarPath != null && avatarPath.isNotEmpty) {
+            final f = File(avatarPath);
+            await f.parent.create(recursive: true);
+            await f.writeAsBytes(avatarEntry.value);
+          }
         } catch (_) {}
       }
 

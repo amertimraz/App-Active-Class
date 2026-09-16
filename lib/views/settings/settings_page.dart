@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -1065,7 +1067,23 @@ class SettingsPage extends StatelessWidget {
                       imageQuality: 85,
                     );
                     if (x != null) {
-                      settings.setTeacherAvatarPath(x.path);
+                      // بنسخ بايتات الصورة فعليًا لمسار دائم جوه مجلد
+                      // التطبيق بدل ما نخزّن مسار الجاليري/الكاش الأصلي
+                      // زي ما كان — المسار ده ممكن يتنضّف/يتغيّر من النظام
+                      // في أي وقت (زي ما تأكّد فعليًا بعد استعادة نسخة
+                      // احتياطية: المسار المحفوظ رجع لكن الملف نفسه راح).
+                      try {
+                        final docsDir = await getApplicationDocumentsDirectory();
+                        final ext = p.extension(x.path);
+                        final permanentPath = p.join(docsDir.path,
+                            'teacher_avatar${ext.isNotEmpty ? ext : '.jpg'}');
+                        await File(x.path).copy(permanentPath);
+                        settings.setTeacherAvatarPath(permanentPath);
+                      } catch (_) {
+                        // فشل النسخ (نادر) → احتفظ بالسلوك القديم بدل ما
+                        // نضيّع الاختيار خالص.
+                        settings.setTeacherAvatarPath(x.path);
+                      }
                       await settings.saveTeacherInfo();
                     }
                   },
@@ -1753,7 +1771,7 @@ class SettingsPage extends StatelessWidget {
               icon: Icons.folder_open_rounded,
               color: const Color(0xFF8B5CF6),
               title: 'اختيار ملف من الجهاز',
-              subtitle: 'اختر ملف .db من Downloads أو أي مكان آخر',
+              subtitle: 'اختر ملف .zip (أو .db قديم) من Downloads أو أي مكان آخر',
               onTap: () => Navigator.of(ctx).pop('pick'),
             ),
           ],
@@ -1793,7 +1811,7 @@ class SettingsPage extends StatelessWidget {
       final picked = await svc.pickBackupFile();
       if (picked == 'INVALID_EXT') {
         if (context.mounted) {
-          ToastHelper.error('الملف المختار ليس ملف .db صالح');
+          ToastHelper.error('الملف المختار ليس ملف نسخة احتياطية صالح (.zip أو .db)');
         }
         return;
       }
