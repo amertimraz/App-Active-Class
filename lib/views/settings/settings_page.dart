@@ -35,6 +35,8 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/backup_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/services/auth_service.dart';
+import 'package:active_class/controllers/google_drive_backup_controller.dart';
+import 'package:active_class/services/google_drive_backup_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:active_class/services/auto_backup_service.dart';
@@ -798,6 +800,18 @@ class SettingsPage extends StatelessWidget {
                             title: 'إدارة النسخ الاحتياطية',
                             subtitle: 'عرض وحذف النسخ القديمة',
                             onTap: () => _handleManageBackups(context),
+                          ),
+                          _buildDivider(isDark),
+                          // spec 037 — نسخ احتياطي سحابي (Google Drive شخصي)
+                          _buildNavTile(
+                            context,
+                            isDark,
+                            icon: Icons.cloud_rounded,
+                            iconColor: const Color(0xFF10B981),
+                            title: 'النسخ السحابي (Google Drive)',
+                            subtitle:
+                                'رفع تلقائي لنسخة احتياطية على درايفك الشخصي',
+                            onTap: () => _handleCloudBackup(context),
                           ),
                           _buildDivider(isDark),
                           // spec 028 — حذف انتقائي بمدى تواريخ
@@ -1946,6 +1960,236 @@ class SettingsPage extends StatelessWidget {
           _handleManageBackups(context);
         },
       ),
+    );
+  }
+
+  // spec 037 — شيت النسخ السحابي (Google Drive): ربط/إلغاء ربط + رفع
+  // الآن + قائمة النسخ (استعادة/حذف لكل واحدة).
+  void _handleCloudBackup(BuildContext context) {
+    final controller = Get.isRegistered<GoogleDriveBackupController>()
+        ? Get.find<GoogleDriveBackupController>()
+        : Get.put(GoogleDriveBackupController());
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetCtx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(sheetCtx).size.height * 0.75,
+        ),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF131D31) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Obx(() {
+          final linked = controller.isLinked.value;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 6),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.cloud_rounded,
+                        color: Color(0xFF10B981), size: 20),
+                    const SizedBox(width: 8),
+                    const Text('النسخ السحابي (Google Drive)',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 15)),
+                  ],
+                ),
+              ),
+              const Divider(height: 16),
+              if (!linked)
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      Text(
+                        'اربط حساب Google بتاعك عشان نسخك الاحتياطية ترفع'
+                        ' تلقائيًا على درايفك الشخصي — لو الجهاز ضاع أو'
+                        ' اتعطّل، تقدر تسترجع بياناتك على جهاز جديد بسهولة.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: isDark
+                                ? Colors.white70
+                                : Colors.grey.shade700),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: controller.busy.value
+                            ? null
+                            : () async {
+                                final ok = await controller.linkAccount();
+                                if (!sheetCtx.mounted) return;
+                                if (ok) {
+                                  ToastHelper.success('تم ربط حساب Google بنجاح');
+                                } else {
+                                  ToastHelper.error('لم يتم الربط');
+                                }
+                              },
+                        icon: const Icon(Icons.login_rounded),
+                        label: const Text('تفعيل النسخ السحابي'),
+                      ),
+                    ],
+                  ),
+                )
+              else ...[
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'مربوط: ${controller.linkedEmail.value ?? ""}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: controller.busy.value
+                            ? null
+                            : () async {
+                                await controller.unlinkAccount();
+                                ToastHelper.info('تم إلغاء ربط الحساب');
+                              },
+                        child: const Text('إلغاء الربط',
+                            style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: controller.busy.value
+                          ? null
+                          : () async {
+                              final ok = await controller.uploadNow();
+                              if (!sheetCtx.mounted) return;
+                              if (ok) {
+                                ToastHelper.success('تم رفع نسخة للسحابة');
+                              } else {
+                                ToastHelper.error('فشل الرفع');
+                              }
+                            },
+                      icon: const Icon(Icons.cloud_upload_rounded),
+                      label: const Text('رفع نسخة للسحابة الآن'),
+                    ),
+                  ),
+                ),
+                const Divider(height: 16),
+                Expanded(
+                  child: controller.cloudBackups.isEmpty
+                      ? Center(
+                          child: Text('لا توجد نسخ سحابية بعد',
+                              style: TextStyle(
+                                  color: isDark
+                                      ? Colors.white38
+                                      : Colors.grey.shade600)))
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          itemCount: controller.cloudBackups.length,
+                          itemBuilder: (_, i) {
+                            final entry = controller.cloudBackups[i];
+                            return ListTile(
+                              leading: const Icon(Icons.archive_rounded,
+                                  color: Color(0xFF10B981)),
+                              title: Text(
+                                  '${entry.createdTime.year}-${entry.createdTime.month.toString().padLeft(2, '0')}-${entry.createdTime.day.toString().padLeft(2, '0')}'),
+                              subtitle: Text(entry.sizeLabel),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.restore_rounded,
+                                        color: Color(0xFF06B6D4)),
+                                    onPressed: () => _confirmCloudRestore(
+                                        context, controller, entry),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline,
+                                        color: Colors.red),
+                                    onPressed: () => ConfirmDeleteDialog.show(
+                                      sheetCtx,
+                                      title: 'حذف نسخة سحابية',
+                                      message:
+                                          'هل تريد حذف هذه النسخة من Google Drive؟',
+                                      onConfirm: () async {
+                                        final ok = await controller
+                                            .deleteBackup(entry);
+                                        if (ok) {
+                                          ToastHelper.success('تم الحذف');
+                                        } else {
+                                          ToastHelper.error('فشل الحذف');
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ],
+          );
+        }),
+      ),
+    );
+  }
+
+  // تحذير صريح قبل الاستعادة (FR-012) — يوضّح إن البيانات المحلية
+  // الحالية هتتستبدل، مع تاريخ النسخة.
+  void _confirmCloudRestore(BuildContext context,
+      GoogleDriveBackupController controller, CloudBackupEntry entry) {
+    Get.defaultDialog(
+      title: 'استعادة نسخة سحابية',
+      middleText:
+          'هيتم استبدال كل بياناتك الحالية بنسخة ${entry.createdTime.year}-'
+          '${entry.createdTime.month.toString().padLeft(2, '0')}-'
+          '${entry.createdTime.day.toString().padLeft(2, '0')}. متأكد؟',
+      textConfirm: 'استعادة الآن',
+      confirmTextColor: Colors.white,
+      buttonColor: Colors.red,
+      textCancel: 'إلغاء',
+      onConfirm: () async {
+        Get.back();
+        if (!context.mounted) return;
+        final success = await ProgressDialog.run(
+          context,
+          title: 'جاري الاستعادة من السحابة...',
+          icon: Icons.cloud_download_rounded,
+          color: const Color(0xFF06B6D4),
+          task: () => controller.restore(entry),
+        );
+        if (!context.mounted) return;
+        if (success) {
+          await _reloadAllControllers();
+          if (!context.mounted) return;
+          ToastHelper.success('تم استعادة النسخة السحابية بنجاح');
+          await Future.delayed(const Duration(milliseconds: 400));
+          Get.offAllNamed(ROUTE_HOME);
+        } else {
+          ToastHelper.error('فشل الاستعادة — البيانات الأصلية لا تزال سليمة');
+        }
+      },
     );
   }
 

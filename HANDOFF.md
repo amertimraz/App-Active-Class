@@ -2,7 +2,35 @@
 
 > آخر تحديث: 2026-09-16. المشروع: `C:\repo\active_class` — تطبيق Flutter عربي/RTL للمدرّسين الخصوصيين.
 > كلّمني عربي (مصري). Flutter 3.38.1 / Dart 3.5.4، GetX، sqflite، Firebase (بوابة أولياء الأمور + امتحانات أونلاين)، Supabase self-hosted على VPS (مزامنة وضع الفريق).
-> **آخر إصدار منشور على VPS: v1.2.62+4080 — DB version = 33. نسخة v1.2.63+4081 مبنية ومثبّتة على جهاز الاختبار بس، لسه مش مرفوعة على GitHub/VPS.**
+> **آخر إصدار منشور على VPS: v1.2.62+4080 — DB version = 33. نسخة v1.2.65+4083 مبنية محليًا (فيها كل إصلاحات/ميزات الجلسة دي)، لسه مش مرفوعة على GitHub/VPS ولا متجرّبة على جهاز حقيقي.**
+
+---
+
+## ✅ جلسة 2026-09-16 (مسائية، تكملة) — spec 037: نسخ احتياطي سحابي (Google Drive شخصي) — **متنفّذ بالكود بالكامل، لسه محتاج تحقّق جهازي حقيقي (T026)**
+
+**الطلب:** المستخدم طلب ميزة نسخ احتياطي سحابي. بعد نقاش، الوجهة اتحدّدت: **Google Drive شخصي لكل مدرّس** (حسابه هو، مش سيرفر Supabase المشترك) — مستقلة تمامًا عن وضع الفريق، متاحة لأي مستخدم للتطبيق.
+
+**السبيك الكامل:** `specs/037-cloud-backup/` (spec.md + plan.md + research.md + data-model.md + contracts/ + quickstart.md + tasks.md، T001–T025 ✅).
+
+**إعداد يدوي اتعمل خلال الجلسة (Google Cloud Console، مشروع `app-active-class`):**
+- Google Drive API مفعّلة.
+- OAuth consent screen: External، نطاق `.../auth/drive.file` بس (غير حسّاس — بلا مراجعة أمان طويلة من جوجل).
+- Android OAuth client ID: package `com.amertimraz.activeclass` + SHA-1 لنفس كيستور الـrelease (`FA:37:95:25:3F:48:62:F0:C1:86:97:61:F0:8E:6D:6C:30:65:1A:6D`) → Client ID: `194296515569-34mrb5gs1e06bvodi0jbt6ut9oa67l5o.apps.googleusercontent.com`.
+- **⚠️ لو التطبيق اتنشر على Google Play بـ"Play App Signing" مفعّل، بصمة SHA-1 هتبقى مختلفة لمستخدمي الـPlay — محتاج Android client تاني ببصمة Play (من Play Console → App integrity) وقت النشر هناك.**
+
+**التنفيذ (لب-وضع Google Drive API v3 مباشرة عبر `dio`، بلا مكتبة `googleapis` — راجع research.md #2):**
+- `lib/services/google_drive_backup_service.dart` (جديد): `linkAccount`/`unlinkAccount`/`uploadBackup`/`listCloudBackups`/`restoreFromCloud`/`deleteCloudBackup`. الرفع بخطوتين (`POST files` metadata ثم `PATCH upload?uploadType=media` بايتات) بدل multipart/related يدوي؛ فشل الخطوة التانية بيمسح الملف الفاضي. `restoreFromCloud` بيحمّل الملف مؤقتًا وينادي `BackupService().restoreBackup(...)` **الموجودة بالفعل** (بلا تكرار كود). تنظيف تلقائي لأقدم نسخة عند تجاوز 5 نسخ.
+- `lib/utils/cloud_backup_retry_policy.dart` + `test/cloud_backup_retry_policy_test.dart` (4 اختبارات) — حد 5 محاولات فشل متتالية قبل التوقف لحد النسخة الدورية الجاية.
+- `lib/controllers/google_drive_backup_controller.dart` (جديد، GetX) — حالة الربط + قائمة النسخ.
+- `lib/services/auto_backup_service.dart`: بعد نجاح نسخة محلية دورية، رفع سحابي **fire-and-forget** (`unawaited`) — صفر تأثير على تسلسل النسخ المحلي لو فشل.
+- `lib/views/settings/settings_page.dart`: قسم جديد "النسخ السحابي (Google Drive)" (شيت: ربط/إلغاء ربط + رفع الآن + قائمة نسخ بتاريخ/حجم + استعادة بتحذير صريح + حذف) بجانب قسم النسخ المحلي الموجود.
+- `pubspec.yaml`: تبعية جديدة `google_sign_in: ^6.2.1` (حُلّت 6.3.0) — أول تبعية خدمة خارجية (غير Supabase) في المشروع.
+
+**التحقّق:** `flutter analyze` = 34 (baseline، صفر جديد). `flutter test` = **165/165** ✅ (161 + 4 جديدة). بُنيت v1.2.65+4083 (release، نفس التوقيع `5f74fe10...` تأكّد).
+
+**⚠️ لسه محتاج (T026):** تحقّق جهازي حقيقي بحساب Google حقيقي — **لازم APK release موقّع بنفس الكيستور** (مش debug، وإلا تسجيل الدخول بيفشل `DEVELOPER_ERROR`). سيناريوهات `quickstart.md` 1–7 (ربط، رفع تلقائي، استرجاع على جهاز جديد/حساب مختلف، سحب الصلاحية، انقطاع نت). **بعد الحادثة اللي حصلت أول الجلسة (مسح بيانات بسبب debug build)، مفيش أي تثبيت على جهاز المستخدم الحقيقي من غير إذن صريح كل مرة.**
+
+**متبقّي:** commit + التحقّق الجهازي (T026) + نشر v1.2.65 لاحقًا.
 
 ---
 

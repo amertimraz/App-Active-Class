@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:active_class/services/backup_service.dart';
+import 'package:active_class/services/google_drive_backup_service.dart';
 
 class AutoBackupService {
   static final AutoBackupService _instance = AutoBackupService._internal();
@@ -90,6 +91,11 @@ class AutoBackupService {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(
             _keyLastBackup, lastBackupTime.value!.toIso8601String());
+
+        // spec 037 — رفع سحابي (Google Drive) fire-and-forget: بلا await
+        // يعطّل/يفشّل تسلسل النسخ المحلي، وبلا استثناء يترفع لفوق. لو
+        // الحساب مش مربوط، uploadBackup بترجع false فورًا بلا أي طلب شبكة.
+        unawaited(GoogleDriveBackupService().uploadBackup(isAutomatic: true));
       }
     } catch (_) {
       // فشل صامت — لا نزعج المستخدم بـ toast في الخلفية

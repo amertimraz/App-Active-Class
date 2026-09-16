@@ -275,6 +275,11 @@ const String ROUTE_QUESTION_BANK       = '/question_bank';
 // Standalone login system (self-hosted Supabase) — app_settings keys
 const String SETTING_HAS_LOGGED_IN_BEFORE = 'auth_has_logged_in_before';
 
+// spec 037 — نسخ احتياطي سحابي (Google Drive شخصي لكل مدرّس)
+const String SETTING_CLOUD_BACKUP_LINKED_EMAIL = 'cloud_backup_linked_email';
+const String SETTING_CLOUD_BACKUP_LAST_ATTEMPT_AT = 'cloud_backup_last_attempt_at';
+const String SETTING_CLOUD_BACKUP_PENDING_RETRIES = 'cloud_backup_pending_retries';
+
 // "وضع الفريق" — أعمدة المزامنة المضافة على groups/students/attendance/payments،
 // وجدول الطابور المحلي (sync_outbox) اللي بيتفرّغ لسيرفر Supabase.
 const String COL_SYNC_UPDATED_AT = 'updated_at';
