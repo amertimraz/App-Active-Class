@@ -1969,6 +1969,10 @@ class SettingsPage extends StatelessWidget {
     final controller = Get.isRegistered<GoogleDriveBackupController>()
         ? Get.find<GoogleDriveBackupController>()
         : Get.put(GoogleDriveBackupController());
+    // controller.onInit() بيجيب القائمة مرة واحدة بس (أول ما يتعمله put) —
+    // من غير الاستدعاء ده، فتح الشيت تاني بعد قفله كان بيعرض بيانات قديمة
+    // (مثلاً لو نسخة اتضافت/اتمسحت من جهاز تاني في الوقت ده).
+    unawaited(controller.refreshLinkStatus());
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showModalBottomSheet(

@@ -138,7 +138,7 @@ class GoogleDriveBackupService {
 
     debugPrint('[CloudBackup] getting access token...');
     final token = await _accessToken();
-    debugPrint('[CloudBackup] token=${token == null ? "null" : "${token.substring(0, 12)}..."}');
+    debugPrint('[CloudBackup] token acquired=${token != null}');
     if (token == null) {
       await _recordFailure(pendingRetries);
       debugPrint('[CloudBackup] no token — abort');
