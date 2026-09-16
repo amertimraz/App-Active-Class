@@ -117,11 +117,17 @@ class OverdueWarningFor extends StatelessWidget {
       if (!payCtrl.loadedOnce.value) return const SizedBox.shrink();
       final group =
           groups.firstWhereOrNull((g) => g.id == student.groupId);
+      // PricingHelper بيجمع كل عنصر في payments بلا فلترة بالطالب —
+      // المستدعي لازم يبعت مدفوعات الطالب ده بس (زي qr_controller
+      // وgroup_details_page)، وإلا totalPaid هيبقى إجمالي كل المدرسة
+      // فيتغلّب على أي مديونية فردية والبادج ميظهرش خالص لأي حد.
+      final studentPayments =
+          payCtrl.payments.where((p) => p.studentId == student.id).toList();
       final show = PricingHelper.showsAttendanceOverdueWarning(
         student: student,
         group: group,
         allAttendance: attCtrl.attendance,
-        payments: payCtrl.payments,
+        payments: studentPayments,
         graceDays: settings.paymentGraceDays.value,
         siblingGroupMembers: students,
       );
@@ -130,7 +136,7 @@ class OverdueWarningFor extends StatelessWidget {
         student: student,
         group: group,
         allAttendance: attCtrl.attendance,
-        payments: payCtrl.payments,
+        payments: studentPayments,
         siblingGroupMembers: students,
       );
       return OverdueWarningBadge(debtAmount: debt, compact: compact);
