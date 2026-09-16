@@ -2080,7 +2080,9 @@ class SettingsPage extends StatelessWidget {
                       onPressed: controller.busy.value
                           ? null
                           : () async {
+                              debugPrint('[CloudBackup] upload-now button tapped');
                               final ok = await controller.uploadNow();
+                              debugPrint('[CloudBackup] uploadNow returned $ok');
                               if (!sheetCtx.mounted) return;
                               if (ok) {
                                 ToastHelper.success('تم رفع نسخة للسحابة');

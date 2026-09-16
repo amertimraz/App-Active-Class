@@ -7,6 +7,7 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -46,7 +47,11 @@ class GoogleDriveBackupService {
 
   static const _scopes = <String>['https://www.googleapis.com/auth/drive.file'];
   final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: _scopes);
-  final Dio _dio = Dio();
+  final Dio _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 20),
+    sendTimeout: const Duration(seconds: 30),
+    receiveTimeout: const Duration(seconds: 30),
+  ));
 
   static const _filesUrl = 'https://www.googleapis.com/drive/v3/files';
   static const _uploadUrl =
@@ -88,27 +93,42 @@ class GoogleDriveBackupService {
   Future<String?> _accessToken() async {
     try {
       var account = _googleSignIn.currentUser;
+      debugPrint('[CloudBackup] currentUser=${account?.email}');
       account ??= await _googleSignIn.signInSilently();
+      debugPrint('[CloudBackup] after signInSilently: ${account?.email}');
       if (account == null) return null;
       final auth = await account.authentication;
+      debugPrint('[CloudBackup] got auth, accessToken null=${auth.accessToken == null}');
       return auth.accessToken;
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[CloudBackup] _accessToken FAILED: $e\n$st');
       return null;
     }
   }
 
   // ── US2: رفع نسخة سحابية ────────────────────────────────────────────
   /// بيبني نسخة محلية جديدة عبر BackupService().createBackup() ويرفعها.
-  /// isAutomatic بس لتمييز اللوج/السبب — مفيش فرق في المنطق.
+  /// isAutomatic بيفرّق فعليًا هنا: حد إعادة المحاولة (research.md #4)
+  /// الهدف منه إنه يمنع محاولات تلقائية لا نهائية في الخلفية تستهلك
+  /// بطارية/بيانات لو الحساب مفصول فعليًا؛ ضغطة "رفع الآن" يدوية صريحة
+  /// من المستخدم لازم تفضل تحاول دايمًا — وإلا فشل تلقائي قديم (حتى لو
+  /// السبب اتصلّح، زي جلسة Google رجعت تاني) بيقفل الرفع اليدوي للأبد
+  /// بصمت من غير أي طريقة يرجّعه المستخدم غير إلغاء الربط وإعادته.
   Future<bool> uploadBackup({required bool isAutomatic}) async {
-    if (!await isLinked()) return false; // FR-005: بلا أي طلب دخول مفاجئ
+    debugPrint('[CloudBackup] uploadBackup start (isAutomatic=$isAutomatic)');
+    if (!await isLinked()) {
+      debugPrint('[CloudBackup] not linked — abort');
+      return false; // FR-005: بلا أي طلب دخول مفاجئ
+    }
 
     final pendingRetries = int.tryParse(
             await DatabaseService()
                     .getSetting(SETTING_CLOUD_BACKUP_PENDING_RETRIES) ??
                 '0') ??
         0;
-    if (!shouldAttemptCloudUpload(pendingRetries: pendingRetries)) {
+    debugPrint('[CloudBackup] pendingRetries=$pendingRetries');
+    if (isAutomatic && !shouldAttemptCloudUpload(pendingRetries: pendingRetries)) {
+      debugPrint('[CloudBackup] retry limit reached — abort (automatic only)');
       return false; // تجاوزنا حد المحاولات — نستنى النسخة الدورية الجاية
     }
 
@@ -116,13 +136,18 @@ class GoogleDriveBackupService {
         SETTING_CLOUD_BACKUP_LAST_ATTEMPT_AT,
         DateTime.now().toIso8601String());
 
+    debugPrint('[CloudBackup] getting access token...');
     final token = await _accessToken();
+    debugPrint('[CloudBackup] token=${token == null ? "null" : "${token.substring(0, 12)}..."}');
     if (token == null) {
       await _recordFailure(pendingRetries);
+      debugPrint('[CloudBackup] no token — abort');
       return false;
     }
 
+    debugPrint('[CloudBackup] creating local backup file...');
     final backupResult = await BackupService().createBackup();
+    debugPrint('[CloudBackup] createBackup success=${backupResult.success} path=${backupResult.localPath}');
     if (!backupResult.success || backupResult.localPath == null) {
       await _recordFailure(pendingRetries);
       return false;
@@ -132,6 +157,7 @@ class GoogleDriveBackupService {
     try {
       final file = File(backupResult.localPath!);
       final bytes = await file.readAsBytes();
+      debugPrint('[CloudBackup] read ${bytes.length} bytes, posting metadata...');
 
       // خطوتين بسيطتين (metadata ثم محتوى) بدل multipart/related يدوي —
       // راجع research.md/plan.md. فشل الخطوة الثانية بيمسح الملف الفاضي
@@ -144,10 +170,12 @@ class GoogleDriveBackupService {
           'Content-Type': 'application/json',
         }),
       );
+      debugPrint('[CloudBackup] metadata response: ${createResp.statusCode} ${createResp.data}');
       createdFileId = createResp.data['id'] as String?;
       if (createdFileId == null) throw Exception('مفيش id في رد إنشاء الملف');
+      debugPrint('[CloudBackup] created file id=$createdFileId, uploading content...');
 
-      await _dio.patch(
+      final uploadResp = await _dio.patch(
         '$_uploadUrl/$createdFileId',
         queryParameters: {'uploadType': 'media'},
         data: Stream.fromIterable([bytes]),
@@ -157,12 +185,19 @@ class GoogleDriveBackupService {
           Headers.contentLengthHeader: bytes.length,
         }),
       );
+      debugPrint('[CloudBackup] upload content response: ${uploadResp.statusCode}');
 
       await DatabaseService()
           .setSetting(SETTING_CLOUD_BACKUP_PENDING_RETRIES, '0');
       await _cleanupOldCloudBackups(token);
+      debugPrint('[CloudBackup] upload SUCCESS');
       return true;
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[CloudBackup] upload FAILED: $e');
+      if (e is DioException) {
+        debugPrint('[CloudBackup] DioException type=${e.type} response=${e.response?.statusCode} ${e.response?.data}');
+      }
+      debugPrint('[CloudBackup] stack: $st');
       if (createdFileId != null) {
         try {
           await _dio.delete('$_filesUrl/$createdFileId',

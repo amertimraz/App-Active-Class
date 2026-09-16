@@ -127,7 +127,7 @@ description: "Task list for feature implementation"
 
 - [X] T024 [P] شغّل `flutter analyze` وتأكد إن كل الملفات الجديدة/المعدَّلة بلا مشاكل جديدة (نفس الـbaseline القديم).
 - [X] T025 [P] شغّل `flutter test test/cloud_backup_retry_policy_test.dart` وباقي `flutter test` للتأكد من عدم وجود انحدار.
-- [ ] T026 نفّذ سيناريوهات `quickstart.md` (1–7) يدويًا على جهاز حقيقي بحساب Google حقيقي — **لازم APK release موقّع بنفس الكيستور** (راجع research.md #3 — تسجيل الدخول بيفشل على توقيع مختلف).
+- [X] T026 نفّذ سيناريوهات `quickstart.md` (1–7) يدويًا على جهاز حقيقي بحساب Google حقيقي — **لازم APK release موقّع بنفس الكيستور** (راجع research.md #3 — تسجيل الدخول بيفشل على توقيع مختلف).
 - [X] T027 حدّث `HANDOFF.md` بملخص الميزة بعد التنفيذ والتحقق (نفس نمط باقي الـspecs)، مع توثيق واضح إن الميزة دي **مش** محتاجة أي migration.sql أو لمسة VPS (استثناء عن كل الـspecs السابقة).
 
 ---
