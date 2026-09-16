@@ -8,6 +8,7 @@
 // لبريد صناعي (synthetic email) بدون أي إرسال SMS فعلي — المستخدم
 // بيشوف "رقم تليفون + باسورد" بس من وجهة نظره.
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:active_class/config/supabase_config.dart';
@@ -73,6 +74,30 @@ class AuthService {
   /// ما يكون فيه جلسة دخول شغالة بالفعل. لسه كسول (بينادي نفس
   /// _ensureClient) عشان مفيش تهيئة إضافية.
   Future<SupabaseClient?> ensureClient() => _ensureClient();
+
+  /// بعد استعادة نسخة احتياطية بتحتوي على جلسة وضع الفريق —
+  /// supabase_flutter بيقرا الجلسة المحفوظة من SharedPreferences مرة
+  /// واحدة بس وقت Supabase.initialize()، فمجرد كتابة الجلسة الجديدة في
+  /// SharedPreferences (استعادة النسخة الاحتياطية) مش كافي لو الـclient
+  /// كان أصلاً اتعمله init (أو حتى تسجيل خروج) في نفس تشغيلة التطبيق —
+  /// لازم نعيد حقنها يدويًا في GoTrue عبر recoverSession. بترجع true
+  /// لو فيه جلسة اتسترجعت فعليًا (currentUser بقى غير null).
+  Future<bool> recoverPersistedSession() async {
+    try {
+      final client = await _ensureClient();
+      if (client == null) return false;
+      final prefs = await SharedPreferences.getInstance();
+      final key =
+          'sb-${Uri.parse(SupabaseConfig.url).host.split('.').first}-auth-token';
+      final sessionJson = prefs.getString(key);
+      if (sessionJson == null) return false;
+      await client.auth.recoverSession(sessionJson);
+      return client.auth.currentUser != null;
+    } catch (e) {
+      debugPrint('AuthService: فشل استرجاع الجلسة بعد استعادة النسخة — $e');
+      return false;
+    }
+  }
 
   String _phoneToSyntheticEmail(String phone) {
     final digits = PhoneHelper.toLatinDigits(phone).replaceAll(RegExp(r'[^0-9]'), '');

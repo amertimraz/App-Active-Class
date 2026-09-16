@@ -34,6 +34,7 @@ import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/backup_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
+import 'package:active_class/services/auth_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:active_class/services/auto_backup_service.dart';
@@ -1890,6 +1891,18 @@ class SettingsPage extends StatelessWidget {
         await fn();
       } catch (_) {}
     }
+
+    // جلسة وضع الفريق (Supabase auth) متخزّنة في SharedPreferences —
+    // النسخة الاحتياطية بترجّعها هناك، لكن أي عميل Supabase كان شغّال
+    // بالفعل في التشغيلة دي (أو اتعمله تسجيل خروج) مش بيلاحظ التغيير
+    // تلقائيًا؛ لازم نعيد حقنها يدويًا ثم نعيد تشغيل TeamModeService
+    // من الأول عشان صلاحيات الفريق ومحرك المزامنة يرجعوا صح.
+    try {
+      final recovered = await AuthService().recoverPersistedSession();
+      if (recovered) {
+        await TeamModeService().init();
+      }
+    } catch (_) {}
 
     await tryReload(Get.isRegistered<SettingsController>(),
         () => Get.find<SettingsController>().reloadFromDatabase());
