@@ -2,7 +2,14 @@
 
 > آخر تحديث: 2026-09-16. المشروع: `C:\repo\active_class` — تطبيق Flutter عربي/RTL للمدرّسين الخصوصيين.
 > كلّمني عربي (مصري). Flutter 3.38.1 / Dart 3.5.4، GetX، sqflite، Firebase (بوابة أولياء الأمور + امتحانات أونلاين)، Supabase self-hosted على VPS (مزامنة وضع الفريق).
-> **آخر إصدار منشور على VPS: v1.2.62+4080 — DB version = 33. نسخة v1.2.65+4083 مبنية محليًا (فيها كل إصلاحات/ميزات الجلسة دي) ومتحقَّقة على جهاز حقيقي بنجاح — لسه مش مرفوعة على GitHub/VPS.**
+> **آخر إصدار منشور رسميًا: v1.2.65+4083 — DB version = 33. منشور على GitHub Release (3 APKs: arm64/armeabi-v7a/x86_64) + مرفوع على VPS (arm64) + `.aab` مبني وجاهز لرفعه يدويًا على Google Play Console (لسه ماترفعش).**
+
+### 📦 إصدار v1.2.65+4083 — منشور بالكامل (2026-09-16 مسائية)
+- **GitHub Release**: https://github.com/amertimraz/App-Active-Class/releases/tag/v1.2.65 — 3 APKs (arm64-v8a, armeabi-v7a, x86_64)، توقيع متحقَّق (`5f74fe10af2da396cbf0a98895af02bb5ffbdc01cdf68a55bea25a841f02ec7b`).
+- **VPS**: `/var/www/active-class.online/downloads/ActiveClass-arm64-v8a.apk` مُحدَّث (النسخة القديمة v1.2.62 اتحفظت `.bak-1.2.62`).
+- **Google Play**: `.aab` مبني في `release_assets/v1.2.65/ActiveClass-play.aab` (66.4MB) — **لسه محتاج رفع يدوي من المستخدم على Play Console** (ده بره صلاحيات الأتمتة).
+- **Git tag**: `v1.2.65` (annotated) مدفوع على `origin`.
+- بناء الـAAB وقع بـOOM مرتين متتاليتين حتى بعد قفل تطبيقات تقيلة (الذاكرة كانت بترجع لـ~4 جيجا وتنزل تاني بسرعة بسبب عمليات `dartaotruntime`/`java` عالقة من المحاولة الفاشلة السابقة) — الحل اللي نجح: `Stop-Process -Force` على `dartaotruntime` و`java` العالقين قبل إعادة المحاولة الثالثة.
 
 ---
 
