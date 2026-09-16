@@ -6,6 +6,7 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/attendance_model.dart';
+import 'package:active_class/models/group_model.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
@@ -19,6 +20,133 @@ class UnpaidStudentEntry {
   final Student student;
   final double amountDue; // المديونية المتراكمة الفعلية، مش سعر حصة/شهر واحد بس
   const UnpaidStudentEntry({required this.student, required this.amountDue});
+}
+
+// spec 036 — صف مجموعة واحدة في شيت "ملخص دفعات الشهر" (تفصيل حسب
+// المجموعة). محسوب من نفس حلقة _computePaymentCardBody — مش مصدر بيانات
+// مستقل — عشان مجموع remaining لكل المجموعات يطابق paymentCardRemaining
+// الإجمالي بالضبط (SC-002).
+class GroupPaymentSummaryEntry {
+  final int? groupId; // null = طلاب بلا مجموعة
+  final String groupName;
+  final double expected;
+  final double collected;
+  final int unpaidStudentsCount;
+
+  const GroupPaymentSummaryEntry({
+    required this.groupId,
+    required this.groupName,
+    required this.expected,
+    required this.collected,
+    required this.unpaidStudentsCount,
+  });
+
+  double get remaining =>
+      (expected - collected).clamp(0.0, double.infinity).toDouble();
+}
+
+// spec 036 — نتيجة computeMonthlyBreakdown (راجع أسفل).
+class MonthlyPaymentBreakdown {
+  final double expected;
+  final double collected;
+  final List<UnpaidStudentEntry> unpaidEntries;
+  final List<GroupPaymentSummaryEntry> groupBreakdown;
+
+  const MonthlyPaymentBreakdown({
+    required this.expected,
+    required this.collected,
+    required this.unpaidEntries,
+    required this.groupBreakdown,
+  });
+}
+
+// spec 036 — دالة صرفة (بلا DB/GetX) مستخرَجة من _computePaymentCardBody
+// عشان تفضل مصدر حقيقة واحد لحساب "مستحق/محصّل/متأخرين" للشهر المختار،
+// سواء إجمالي أو مجمَّع حسب المجموعة — وقابلة للاختبار المباشر (راجع
+// research.md #1 وdata-model.md).
+MonthlyPaymentBreakdown computeMonthlyBreakdown({
+  required List<Student> students,
+  required Map<int, List<Payment>> paymentsByStudent,
+  required Map<int?, Group> groupById,
+  required List<Attendance> allAttendance,
+  required DateTime month,
+  required DateTime prevMonth,
+}) {
+  double expected = 0;
+  double collected = 0;
+  final unpaidEntries = <UnpaidStudentEntry>[];
+  final groupTotals = <int?, GroupPaymentSummaryEntry>{};
+
+  for (final s in students.where((s) => !s.isFullyExempt)) {
+    final group = groupById[s.groupId];
+    final studentPayments = paymentsByStudent[s.id] ?? const <Payment>[];
+
+    // اتسجّل بعد الشهر ده؟ → مايتحسبش فيه.
+    final start = s.attendanceStart ?? s.createdAt;
+    if (start == null) continue;
+    if (DateTime(start.year, start.month, 1).isAfter(month)) continue;
+
+    // مستحق الشهر ده = سعره لهذا الشهر (كامل، أو نسبي لشهر الانضمام،
+    // أو بعدد الحصص للمجموعات بالحصة). أول ما الشهر يبدأ بيتحسب كامل
+    // — مش مرتبط بوضع "التحصيل المؤخّر" اللي بيخص تنبيه "متأخر" بس.
+    final dueThisMonth = PricingHelper.monthlyDue(
+      student: s,
+      group: group,
+      month: month,
+      allAttendance: allAttendance,
+      siblingGroupMembers: students,
+    );
+    if (dueThisMonth <= 0) continue;
+
+    // كام من دفعات الطالب راح للشهور اللي قبل ده (FIFO) — الباقي هو
+    // اللي اتحسب للشهر ده.
+    final dueBefore = PricingHelper.totalDueThrough(
+      student: s,
+      group: group,
+      allAttendance: allAttendance,
+      month: prevMonth,
+      siblingGroupMembers: students,
+    );
+    final totalPaid =
+        studentPayments.fold<double>(0, (sum, p) => sum + p.amount);
+    final paidThisMonth = (totalPaid - dueBefore).clamp(0.0, dueThisMonth);
+    expected += dueThisMonth;
+    collected += paidThisMonth;
+
+    // "لم يدفع [الشهر]" = ما غطّاش مستحق الشهر ده تحديدًا (بيختلف من
+    // شهر لشهر — الشهر الجاري بدري بيبقى الرقم شبه كامل). مفيش مهلة
+    // سماح هنا: الكارت بيعرض واقع، مش تنبيه "متأخر".
+    final shortfall = dueThisMonth - paidThisMonth;
+    final isUnpaid = shortfall > 0.5;
+    if (isUnpaid) {
+      unpaidEntries.add(UnpaidStudentEntry(student: s, amountDue: shortfall));
+    }
+
+    // spec 036 — تجميع نفس dueThisMonth/paidThisMonth على مستوى المجموعة.
+    final gKey = s.groupId;
+    final existing = groupTotals[gKey];
+    groupTotals[gKey] = GroupPaymentSummaryEntry(
+      groupId: gKey,
+      groupName: group?.name ?? 'بلا مجموعة',
+      expected: (existing?.expected ?? 0) + dueThisMonth,
+      collected: (existing?.collected ?? 0) + paidThisMonth,
+      unpaidStudentsCount:
+          (existing?.unpaidStudentsCount ?? 0) + (isUnpaid ? 1 : 0),
+    );
+  }
+  unpaidEntries.sort((a, b) => b.amountDue.compareTo(a.amountDue));
+
+  // FR-006: استبعد أي مجموعة مستحقها صفر (كلهم معفيين/لسه ما انضموش).
+  // FR-005: رتّب تنازليًا حسب الباقي.
+  final groupBreakdown = groupTotals.values.where((e) => e.expected > 0).toList()
+    ..sort((a, b) => b.remaining.compareTo(a.remaining));
+
+  return MonthlyPaymentBreakdown(
+    expected: expected,
+    collected: collected,
+    unpaidEntries: unpaidEntries,
+    groupBreakdown: groupBreakdown,
+  );
 }
 
 class TodayPaymentEntry {
@@ -70,6 +198,10 @@ class DashboardController extends GetxController {
   // الناقص على الشهر ده تحديدًا، مرتّبين تنازليًا.
   final RxList<UnpaidStudentEntry> paymentCardUnpaidList =
       <UnpaidStudentEntry>[].obs;
+  // spec 036 — تفصيل نفس المستحق/المحصّل فوق مجمَّع حسب المجموعة، مرتّب
+  // تنازليًا حسب الباقي. مجموعات بلا مستحق (expected<=0) مُستبعدة.
+  final RxList<GroupPaymentSummaryEntry> paymentCardGroupBreakdown =
+      <GroupPaymentSummaryEntry>[].obs;
 
   // ── إحصائيات اليوم ───────────────────────────────────────────────────────
   final RxInt todayPresent = 0.obs;
@@ -326,54 +458,16 @@ class DashboardController extends GetxController {
       paymentsByStudent.putIfAbsent(p.studentId, () => []).add(p);
     }
 
-    double expected = 0;
-    double collected = 0;
-    final unpaidEntries = <UnpaidStudentEntry>[];
-    for (final s in students.where((s) => !s.isFullyExempt)) {
-      final group = groupById[s.groupId];
-      final studentPayments = paymentsByStudent[s.id] ?? const <Payment>[];
-
-      // اتسجّل بعد الشهر ده؟ → مايتحسبش فيه.
-      final start = s.attendanceStart ?? s.createdAt;
-      if (start == null) continue;
-      if (DateTime(start.year, start.month, 1).isAfter(month)) continue;
-
-      // مستحق الشهر ده = سعره لهذا الشهر (كامل، أو نسبي لشهر الانضمام،
-      // أو بعدد الحصص للمجموعات بالحصة). أول ما الشهر يبدأ بيتحسب كامل
-      // — مش مرتبط بوضع "التحصيل المؤخّر" اللي بيخص تنبيه "متأخر" بس.
-      final dueThisMonth = PricingHelper.monthlyDue(
-        student: s,
-        group: group,
-        month: month,
-        allAttendance: att.attendance,
-        siblingGroupMembers: students,
-      );
-      if (dueThisMonth <= 0) continue;
-
-      // كام من دفعات الطالب راح للشهور اللي قبل ده (FIFO) — الباقي هو
-      // اللي اتحسب للشهر ده.
-      final dueBefore = PricingHelper.totalDueThrough(
-        student: s,
-        group: group,
-        allAttendance: att.attendance,
-        month: prevMonth,
-        siblingGroupMembers: students,
-      );
-      final totalPaid =
-          studentPayments.fold<double>(0, (sum, p) => sum + p.amount);
-      final paidThisMonth = (totalPaid - dueBefore).clamp(0.0, dueThisMonth);
-      expected += dueThisMonth;
-      collected += paidThisMonth;
-
-      // "لم يدفع [الشهر]" = ما غطّاش مستحق الشهر ده تحديدًا (بيختلف من
-      // شهر لشهر — الشهر الجاري بدري بيبقى الرقم شبه كامل). مفيش مهلة
-      // سماح هنا: الكارت بيعرض واقع، مش تنبيه "متأخر".
-      final shortfall = dueThisMonth - paidThisMonth;
-      if (shortfall > 0.5) {
-        unpaidEntries.add(UnpaidStudentEntry(student: s, amountDue: shortfall));
-      }
-    }
-    unpaidEntries.sort((a, b) => b.amountDue.compareTo(a.amountDue));
+    final breakdown = computeMonthlyBreakdown(
+      students: students,
+      paymentsByStudent: paymentsByStudent,
+      groupById: groupById,
+      allAttendance: att.attendance,
+      month: month,
+      prevMonth: prevMonth,
+    );
+    final expected = breakdown.expected;
+    final collected = breakdown.collected;
 
     // سحبة أحدث سبقتنا → مانكتبش نتيجة قديمة
     if (token != _payCardToken) return;
@@ -382,13 +476,14 @@ class DashboardController extends GetxController {
         (expected - collected).clamp(0.0, double.infinity).toDouble();
     paymentCardMinMonth.value = minMonth;
     if (month != paymentCardMonth.value) paymentCardMonth.value = month;
-    paymentCardUnpaidList.assignAll(unpaidEntries);
+    paymentCardUnpaidList.assignAll(breakdown.unpaidEntries);
+    paymentCardGroupBreakdown.assignAll(breakdown.groupBreakdown);
     paymentCardExpected.value = expected;
     paymentCardCollected.value = collected;
     paymentCardRemaining.value = remaining;
     paymentCardRate.value =
         expected > 0 ? (collected / expected).clamp(0.0, 1.0).toDouble() : 0.0;
-    paymentCardUnpaid.value = unpaidEntries.length;
+    paymentCardUnpaid.value = breakdown.unpaidEntries.length;
   }
 
   // ── تحميل إحصائيات اليوم ────────────────────────────────────────────────
