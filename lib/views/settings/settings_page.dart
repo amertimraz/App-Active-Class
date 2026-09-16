@@ -2112,8 +2112,7 @@ class SettingsPage extends StatelessWidget {
                             return ListTile(
                               leading: const Icon(Icons.archive_rounded,
                                   color: Color(0xFF10B981)),
-                              title: Text(
-                                  '${entry.createdTime.year}-${entry.createdTime.month.toString().padLeft(2, '0')}-${entry.createdTime.day.toString().padLeft(2, '0')}'),
+                              title: Text(_fmtCloudBackupTime(entry.createdTime)),
                               subtitle: Text(entry.sizeLabel),
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -2157,6 +2156,18 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  // تاريخ + وقت محلي مقروء للنسخة السحابية — createdTime من Google بيرجع
+  // UTC، لازم .toLocal() وإلا الوقت المعروض يفرق بساعتين/تلاتة عن وقت
+  // المستخدم الفعلي.
+  String _fmtCloudBackupTime(DateTime utc) {
+    final t = utc.toLocal();
+    final date =
+        '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+    final time =
+        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    return '$date • $time';
+  }
+
   // تحذير صريح قبل الاستعادة (FR-012) — يوضّح إن البيانات المحلية
   // الحالية هتتستبدل، مع تاريخ النسخة.
   void _confirmCloudRestore(BuildContext context,
@@ -2164,9 +2175,7 @@ class SettingsPage extends StatelessWidget {
     Get.defaultDialog(
       title: 'استعادة نسخة سحابية',
       middleText:
-          'هيتم استبدال كل بياناتك الحالية بنسخة ${entry.createdTime.year}-'
-          '${entry.createdTime.month.toString().padLeft(2, '0')}-'
-          '${entry.createdTime.day.toString().padLeft(2, '0')}. متأكد؟',
+          'هيتم استبدال كل بياناتك الحالية بنسخة ${_fmtCloudBackupTime(entry.createdTime)}. متأكد؟',
       textConfirm: 'استعادة الآن',
       confirmTextColor: Colors.white,
       buttonColor: Colors.red,
