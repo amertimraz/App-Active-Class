@@ -79,8 +79,11 @@ class ReportController extends GetxController {
         .toList();
   }
 
-  double get monthTotalCollected =>
-      monthPayments.fold(0.0, (s, p) => s + p.amount);
+  // spec 038 — "المحصَّل" هنا رقم مالي حقيقي (فلوس دخلت فعليًا)، فلازم
+  // يستبعد صفوف إسقاط المديونية (راجع research.md § تفصيل تقني مهم).
+  double get monthTotalCollected => monthPayments
+      .where((p) => p.note != kDebtWriteOffNote)
+      .fold(0.0, (s, p) => s + p.amount);
 
   // "متأخر" يُحتسب حضورًا (spec 011)
   int get monthPresentCount =>
@@ -124,8 +127,12 @@ class ReportController extends GetxController {
       studentsByGroup.putIfAbsent(s.groupId, () => []).add(s);
     }
 
+    // spec 038 — collectedIncome (تحت) رقم مالي حقيقي لكل مجموعة، فلازم
+    // يستبعد صفوف إسقاط المديونية. isFullyPaid تحت بتحسب "الحالة" من
+    // accumulatedDebtThrough على allPayments كاملة (بدون فلترة) — مقصود.
     final paidByStudent = <int, double>{};
-    for (final p in monthPayments) {
+    for (final p
+        in monthPayments.where((p) => p.note != kDebtWriteOffNote)) {
       paidByStudent.update(p.studentId, (v) => v + p.amount,
           ifAbsent: () => p.amount);
     }

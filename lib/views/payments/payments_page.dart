@@ -131,6 +131,12 @@ class _PaymentsPageState extends State<PaymentsPage> {
             final studentPayments = paymentsByStudent[s.id] ?? const [];
             final paid =
                 studentPayments.fold<double>(0.0, (sum, p) => sum + p.amount);
+            // spec 038 — نسخة مستبعدة منها إسقاط المديونية، تُستخدَم فقط
+            // في إجمالي "المحصّل" المعروض أعلى الشاشة (راجع research.md
+            // § تفصيل تقني مهم في specs/038-debt-write-off).
+            final realPaid = studentPayments
+                .where((p) => p.note != kDebtWriteOffNote)
+                .fold<double>(0.0, (sum, p) => sum + p.amount);
             final due = PricingHelper.totalDueThrough(
               student: s,
               group: group,
@@ -157,13 +163,17 @@ class _PaymentsPageState extends State<PaymentsPage> {
               month: month,
               due: due,
               paid: paid,
+              realPaid: realPaid,
               remaining: remaining,
               status: status,
             ));
           }
 
+          // spec 038 — "إجمالي المحصّل" رقم مالي حقيقي، فيستبعد صفوف
+          // إسقاط المديونية (بعكس row.paid لكل طالب المستخدَم في حساب
+          // "المتبقي"/الحالة، واللي يفضل شاملها عمدًا).
           final totalPaidInScope =
-              rows.fold<double>(0.0, (sum, r) => sum + r.paid);
+              rows.fold<double>(0.0, (sum, r) => sum + r.realPaid);
           final fullyPaidCount =
               rows.where((r) => r.status == 'مدفوع بالكامل').length;
           final partialCount = rows.where((r) => r.status == 'جزئي').length;
@@ -1238,6 +1248,7 @@ class _StudentMonthRow {
   final DateTime month;
   final double due;
   final double paid;
+  final double realPaid;
   final double remaining;
   final String status;
 
@@ -1247,6 +1258,7 @@ class _StudentMonthRow {
     required this.month,
     required this.due,
     required this.paid,
+    required this.realPaid,
     required this.remaining,
     required this.status,
   });

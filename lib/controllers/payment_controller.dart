@@ -4,13 +4,54 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/session_log_controller.dart';
+import 'package:active_class/models/attendance_model.dart';
+import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/payment_model.dart';
+import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/pricing_helper.dart';
+
+// spec 038 — دالة صرفة (بلا DB/GetX) بتحضّر عملية إسقاط مديونية: بتعيد
+// حساب accumulatedDebt لحظة الاستدعاء وتقرر هل ممكن ينفّذ الإسقاط ولا
+// لأ. مستخرَجة عشان تتاختبر مباشرة بدون لمس قاعدة البيانات (زي
+// computeMonthlyBreakdown في dashboard_controller.dart).
+class DebtWriteOffResult {
+  final double amount;
+  final String? errorMessage;
+
+  const DebtWriteOffResult({required this.amount, this.errorMessage});
+
+  bool get canProceed => errorMessage == null;
+}
+
+DebtWriteOffResult prepareDebtWriteOff({
+  required Student student,
+  required Group? group,
+  required List<Attendance> allAttendance,
+  required List<Payment> payments,
+  List<Student>? siblingGroupMembers,
+}) {
+  final debt = PricingHelper.accumulatedDebt(
+    student: student,
+    group: group,
+    allAttendance: allAttendance,
+    payments: payments,
+    siblingGroupMembers: siblingGroupMembers,
+  );
+  if (debt <= 0) {
+    return const DebtWriteOffResult(
+      amount: 0,
+      errorMessage: 'لا توجد مديونية متبقية على هذا الطالب حاليًا',
+    );
+  }
+  return DebtWriteOffResult(amount: debt);
+}
 
 class PaymentController extends GetxController {
   final DatabaseService _dbService = DatabaseService();
@@ -25,6 +66,9 @@ class PaymentController extends GetxController {
   // (تنبيه المتأخر spec 029) متعرضش أرقام غلط قبل ما الدفعات تتحمّل.
   final RxBool loadedOnce = false.obs;
   final RxDouble totalPayments = 0.0.obs;
+  // spec 038 — يمنع تنفيذ إسقاط مديونية متكرر لنفس الطالب بضغطة
+  // متكررة سريعة على الزرار قبل ما العملية الأولى تخلص (FR-009).
+  final RxBool writeOffBusy = false.obs;
 
   // Filters & Sorting
   final Rx<DateTimeRange?> dateRange = Rx<DateTimeRange?>(null);
@@ -171,6 +215,51 @@ class PaymentController extends GetxController {
       ToastHelper.success('تم حذف الدفع بنجاح');
     } catch (e) {
       ToastHelper.error('حدث خطأ في حذف الدفع');
+    }
+  }
+
+  /// spec 038 — يسجّل عملية "إسقاط مديونية" للطالب المُعطى: دفعة بمبلغ
+  /// يساوي accumulatedDebt الحالية (مُعادة الحساب هنا لحظة الاستدعاء
+  /// نفسها، مش قيمة جاهزة مُمرَّرة من الشاشة — راجع research.md #2)،
+  /// موسومة بـ kDebtWriteOffNote عشان تتفرق عن دفعة نقدية فعلية.
+  /// بترجع null لو نجحت، أو رسالة خطأ بالعربي لو اتلغت (مديونية صفر
+  /// أو أقل وقت التنفيذ — FR-010).
+  Future<String?> writeOffDebt({
+    required Student student,
+    required Group? group,
+    required List<Attendance> allAttendance,
+    required List<Payment> payments,
+    List<Student>? siblingGroupMembers,
+  }) async {
+    if (writeOffBusy.value) return 'في عملية إسقاط جارية بالفعل';
+    writeOffBusy.value = true;
+    try {
+      final prepared = prepareDebtWriteOff(
+        student: student,
+        group: group,
+        allAttendance: allAttendance,
+        payments: payments,
+        siblingGroupMembers: siblingGroupMembers,
+      );
+      if (!prepared.canProceed) {
+        return prepared.errorMessage;
+      }
+      final payment = Payment(
+        studentId: student.id!,
+        date: DateTime.now(),
+        amount: prepared.amount,
+        note: kDebtWriteOffNote,
+      );
+      await _dbService.insertPayment(payment);
+      await loadPayments();
+      _refreshDashboard();
+      unawaited(ParentPortalService().pushStudentSummary(student.id!));
+      unawaited(NotificationService().scheduleLatePaymentReminder());
+      return null;
+    } catch (e) {
+      return 'حدث خطأ أثناء إسقاط المديونية';
+    } finally {
+      writeOffBusy.value = false;
     }
   }
 

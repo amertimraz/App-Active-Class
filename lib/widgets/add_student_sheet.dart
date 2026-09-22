@@ -16,6 +16,9 @@ import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/widgets/import_students_dialog.dart';
+import 'package:active_class/widgets/student_form/student_date_button.dart';
+import 'package:active_class/widgets/student_form/sibling_picker.dart';
+import 'package:active_class/widgets/student_form/student_code_field.dart';
 
 /// يفتح bottom sheet لإضافة طالب.
 /// [preselectedGroup] : لو جاي من صفحة تفاصيل المجموعة — المجموعة محددة مسبقاً.
@@ -207,103 +210,12 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   }
 
   Future<void> _pickSibling() async {
-    if (_siblings.length >= 2) {
-      _toast('الحد الأقصى لمجموعة الإخوة 3 أعضاء', isError: true);
-      return;
-    }
-    final all = await DatabaseService().getAllStudents();
-    final pickedIds = _siblings.map((s) => s.id).toSet();
-    // معنيش نربط أخ/أخت مؤرشف بطالب جديد، ولا نعرض طالب متضاف بالفعل.
-    final list = all
-        .where((s) =>
-            s.id != null && !s.isArchived && !pickedIds.contains(s.id))
-        .toList();
-    if (!mounted) return;
-    await showDialog(
-      context: context,
-      builder: (ctx) {
-        final _sc = TextEditingController();
-        List<Student> filtered = list;
-        return StatefulBuilder(
-            builder: (ctx, setSt) => AlertDialog(
-                  title: const Text('اختر الطالب الأخ'),
-                  content: SizedBox(
-                    width: 400,
-                    height: 360,
-                    child: Column(children: [
-                      TextField(
-                        controller: _sc,
-                        decoration: const InputDecoration(
-                          hintText: 'ابحث بالاسم أو الكود...',
-                          prefixIcon: Icon(Icons.search_rounded),
-                          isDense: true,
-                        ),
-                        onChanged: (v) => setSt(() {
-                          filtered = list
-                              .where((s) =>
-                                  s.name.contains(v) || s.code.contains(v))
-                              .toList();
-                        }),
-                      ),
-                      const SizedBox(height: 8),
-                      Expanded(
-                        child: filtered.isEmpty
-                            ? const Center(child: Text('لا يوجد نتائج'))
-                            : ListView.builder(
-                                itemCount: filtered.length,
-                                itemBuilder: (_, i) {
-                                  final s = filtered[i];
-                                  return ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor:
-                                          _primary.withValues(alpha: 0.15),
-                                      child: Text(s.name[0],
-                                          style: TextStyle(
-                                              color: _primary,
-                                              fontWeight: FontWeight.w700)),
-                                    ),
-                                    title: Text(s.name),
-                                    subtitle: Text('الكود: ${s.code}'),
-                                    onTap: () async {
-                                      Navigator.of(ctx).pop();
-                                      await _addSiblingCandidate(s);
-                                    },
-                                  );
-                                },
-                              ),
-                      ),
-                    ]),
-                  ),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        child: const Text('إلغاء')),
-                  ],
-                ));
-      },
+    final merged = await showSiblingPicker(
+      context,
+      currentSiblings: _siblings,
+      accentColor: _primary,
     );
-  }
-
-  /// يضيف طالب مختار كعضو في مجموعة الإخوة الجديدة — لو الطالب المختار
-  /// عضو أصلاً في مجموعة إخوة موجودة، بنضيف باقي أعضاء مجموعته كمان
-  /// (عشان الربط الجديد ميكسرش رابطهم القديم)، مع فرض الحد الأقصى 3.
-  Future<void> _addSiblingCandidate(Student picked) async {
-    var toAdd = [picked];
-    if (picked.siblingGroupId != null) {
-      toAdd = await DatabaseService()
-          .getStudentsInSiblingGroup(picked.siblingGroupId!);
-    }
-    final existingIds = _siblings.map((s) => s.id).toSet();
-    final merged = [
-      ..._siblings,
-      ...toAdd.where((s) => !existingIds.contains(s.id)),
-    ];
-    if (merged.length > 2) {
-      _toast('الحد الأقصى لمجموعة الإخوة 3 أعضاء', isError: true);
-      return;
-    }
-    if (!mounted) return;
-    setState(() => _siblings = merged);
+    if (merged != null && mounted) setState(() => _siblings = merged);
   }
 
   void _toast(String msg, {bool isError = false}) {
@@ -567,78 +479,25 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // ── كود تلقائي ──────────────────────────────────────
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: _nextCode.isEmpty
-                              ? Colors.orange.withValues(alpha: 0.08)
-                              : (_codeIsManual ? Colors.purple : primary)
-                                  .withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _nextCode.isEmpty
-                                ? Colors.orange.withValues(alpha: 0.3)
-                                : (_codeIsManual ? Colors.purple : primary)
-                                    .withValues(alpha: 0.25),
-                          ),
-                        ),
-                        child: Row(children: [
-                          Icon(
-                            _nextCode.isEmpty
-                                ? Icons.warning_amber_rounded
-                                : (_codeIsManual
-                                    ? Icons.qr_code_2_rounded
-                                    : Icons.qr_code_rounded),
-                            color: _nextCode.isEmpty
-                                ? Colors.orange
-                                : (_codeIsManual ? Colors.purple : primary),
-                            size: 18,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _codeIsManual
-                                ? TextField(
-                                    controller: _codeCtrl,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13),
-                                    decoration: const InputDecoration(
-                                      isDense: true,
-                                      isCollapsed: true,
-                                      border: InputBorder.none,
-                                      hintText: 'اكتب كود الطالب يدوياً',
-                                    ),
-                                    onChanged: (v) =>
-                                        setState(() => _nextCode = v.trim()),
-                                  )
-                                : Text(
-                                    _nextCode.isEmpty
-                                        ? 'اختر مجموعة لتوليد الكود تلقائياً'
-                                        : 'الكود التلقائي: $_nextCode',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13,
-                                      color: _nextCode.isEmpty
-                                          ? Colors.orange
-                                          : primary,
-                                    ),
-                                  ),
-                          ),
-                          Switch.adaptive(
-                            value: _codeIsManual,
-                            activeThumbColor: Colors.purple,
-                            onChanged: _onManualSwitchChanged,
-                          ),
-                          IconButton(
-                            tooltip: 'مسح QR من كرت مطبوع مسبقاً',
-                            icon: Icon(Icons.qr_code_scanner_rounded,
-                                size: 20,
-                                color: _codeIsManual ? Colors.purple : primary),
-                            onPressed: _scanPrintedCode,
-                          ),
-                        ]),
+                      StudentCodeField(
+                        codeController: _codeCtrl,
+                        isManual: _codeIsManual,
+                        boxColor: _nextCode.isEmpty
+                            ? Colors.orange
+                            : (_codeIsManual ? Colors.purple : primary),
+                        icon: _nextCode.isEmpty
+                            ? Icons.warning_amber_rounded
+                            : (_codeIsManual
+                                ? Icons.qr_code_2_rounded
+                                : Icons.qr_code_rounded),
+                        displayText: _nextCode.isEmpty
+                            ? 'اختر مجموعة لتوليد الكود تلقائياً'
+                            : 'الكود التلقائي: $_nextCode',
+                        manualHint: 'اكتب كود الطالب يدوياً',
+                        onManualChanged: _onManualSwitchChanged,
+                        onCodeChanged: (v) =>
+                            setState(() => _nextCode = v.trim()),
+                        onScanQr: _scanPrintedCode,
                       ),
 
                       const SizedBox(height: 16),
@@ -820,7 +679,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                       // ── التواريخ ──────────────────────────────────────────
                       Row(children: [
                         Expanded(
-                            child: _DatePickerBtn(
+                            child: StudentDateButton(
                           icon: Icons.cake_rounded,
                           label: _birthDate != null
                               ? '${_birthDate!.day}/${_birthDate!.month}/${_birthDate!.year}'
@@ -839,7 +698,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                         )),
                         const SizedBox(width: 10),
                         Expanded(
-                            child: _DatePickerBtn(
+                            child: StudentDateButton(
                           icon: Icons.date_range_rounded,
                           label: _attendanceStart != null
                               ? '${_attendanceStart!.day}/${_attendanceStart!.month}/${_attendanceStart!.year}'
@@ -1026,51 +885,3 @@ class _Label extends StatelessWidget {
       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13));
 }
 
-class _DatePickerBtn extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool hasValue;
-  final Color color;
-  final VoidCallback onTap;
-  const _DatePickerBtn({
-    required this.icon,
-    required this.label,
-    required this.hasValue,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
-        decoration: BoxDecoration(
-          color: hasValue
-              ? color.withValues(alpha: 0.07)
-              : Colors.grey.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color:
-                hasValue ? color.withValues(alpha: 0.3) : Colors.grey.shade300,
-          ),
-        ),
-        child: Row(children: [
-          Icon(icon, size: 15, color: hasValue ? color : Colors.grey.shade500),
-          const SizedBox(width: 5),
-          Expanded(
-            child: Text(label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: hasValue ? color : Colors.grey.shade500,
-                  fontWeight: hasValue ? FontWeight.w600 : FontWeight.normal,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-          ),
-        ]),
-      ),
-    );
-  }
-}

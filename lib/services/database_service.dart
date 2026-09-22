@@ -241,6 +241,7 @@ class DatabaseService {
         $COL_ATTENDANCE_DATE TEXT NOT NULL,
         $COL_ATTENDANCE_STATUS TEXT NOT NULL CHECK($COL_ATTENDANCE_STATUS IN ('$ATTENDANCE_PRESENT', '$ATTENDANCE_ABSENT', '$ATTENDANCE_LATE')),
         $COL_ATTENDANCE_NOTES TEXT,
+        $COL_ATTENDANCE_INTERACTION TEXT,
         $COL_ATTENDANCE_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_SYNC_UPDATED_AT TEXT,
         $COL_SYNC_REMOTE_ID TEXT,
@@ -836,6 +837,14 @@ class DatabaseService {
       try {
         await db.execute('ALTER TABLE $TABLE_STUDENTS ADD COLUMN '
             '$COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT INTEGER');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 34) {
+      // spec 040 — تفاعل الطالب (إيموجي بسيط) على سجل الحضور. القديم = NULL.
+      try {
+        await db.execute(
+            'ALTER TABLE $TABLE_ATTENDANCE ADD COLUMN $COL_ATTENDANCE_INTERACTION TEXT');
       } catch (_) {}
     }
   }
@@ -2498,6 +2507,7 @@ class DatabaseService {
         AND eg.$COL_GRADE_EXAM_ID   = ?
       INNER JOIN $TABLE_EXAMS e ON e.$COL_EXAM_ID = ?
       WHERE s.$COL_STUDENT_GROUP_ID = ?
+        AND (s.$COL_STUDENT_IS_ARCHIVED = 0 OR eg.$COL_GRADE_ID IS NOT NULL)
       ORDER BY s.$COL_STUDENT_NAME ASC
     ''', [examId, examId, groupId]);
 

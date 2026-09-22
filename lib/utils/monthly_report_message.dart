@@ -59,6 +59,24 @@ String buildMonthlyReportMessage({
       .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_NOT_DONE)
       .length;
 
+  // spec 040 — ملخّص عدد أيام كل مستوى تفاعل (يستبعد أي مستوى عدده صفر،
+  // ويختفي السطر بالكامل لو مفيش أي يوم تفاعل مسجَّل خلال الفترة).
+  final activeCount = monthAtt
+      .where((a) => normalizeInteraction(a.interaction) == STUDENT_INTERACTION_ACTIVE)
+      .length;
+  final neutralCount = monthAtt
+      .where((a) => normalizeInteraction(a.interaction) == STUDENT_INTERACTION_NEUTRAL)
+      .length;
+  final disengagedCount = monthAtt
+      .where((a) =>
+          normalizeInteraction(a.interaction) == STUDENT_INTERACTION_DISENGAGED)
+      .length;
+  final interactionParts = <String>[
+    if (activeCount > 0) '😃 $activeCount يوم',
+    if (neutralCount > 0) '😐 $neutralCount يوم',
+    if (disengagedCount > 0) '😴 $disengagedCount يوم',
+  ];
+
   final totalPaid = monthPays.fold<double>(0.0, (s, p) => s + p.amount);
 
   final attsSorted = List.of(monthAtt)..sort((a, b) => b.date.compareTo(a.date));
@@ -79,11 +97,18 @@ String buildMonthlyReportMessage({
         ? '📊 الحضور: ✅ حاضر $present (منهم ⏰ متأخر $late) • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%'
         : '📊 الحضور: ✅ حاضر $present • ❌ غياب $absent • نسبة ${percent.toStringAsFixed(1)}%');
 
+  if (interactionParts.isNotEmpty) {
+    buffer.writeln('🙋 التفاعل: ${interactionParts.join(' • ')}');
+  }
+
   if (attsSorted.isNotEmpty) {
     buffer.writeln('\n📅 سجلات الحضور:');
     for (final a in attsSorted.take(10)) {
+      // spec 040 — إيموجي التفاعل جنب سطر نفس اليوم (لو مسجَّل).
+      final emoji = interactionEmoji(a.interaction);
+      final suffix = emoji.isNotEmpty ? ' $emoji' : '';
       buffer.writeln(
-          '• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${attendanceStatusLabel(a.status)}');
+          '• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${attendanceStatusLabel(a.status)}$suffix');
     }
     if (attsSorted.length > 10) {
       buffer.writeln('• … ${attsSorted.length - 10} سجلات إضافية');

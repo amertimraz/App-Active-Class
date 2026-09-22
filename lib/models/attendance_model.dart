@@ -50,12 +50,47 @@ Color attendanceStatusColor(String? raw) {
   }
 }
 
+/// يطبّع قيمة التفاعل المخزَّنة لواحدة من الثلاث الثابتة، أو null (spec 040).
+String? normalizeInteraction(String? raw) {
+  final v = raw?.trim();
+  if (v == null || v.isEmpty) return null;
+  if (v == STUDENT_INTERACTION_ACTIVE) return STUDENT_INTERACTION_ACTIVE;
+  if (v == STUDENT_INTERACTION_NEUTRAL) return STUDENT_INTERACTION_NEUTRAL;
+  if (v == STUDENT_INTERACTION_DISENGAGED) return STUDENT_INTERACTION_DISENGAGED;
+  return null;
+}
+
+/// هل يمكن تسجيل تفاعل لسجل حضور بهذه الحالة؟ حاضر/متأخر بس — غائب أو
+/// بلا حضور مسجَّل لا يسمحان بتسجيل تفاعل (FR-002).
+bool canRecordInteraction(String? attendanceStatus) {
+  final s = normalizeAttendanceStatus(attendanceStatus);
+  return s == ATTENDANCE_PRESENT || s == ATTENDANCE_LATE;
+}
+
+/// إيموجي التفاعل للعرض — فاضي لو مفيش تفاعل مسجَّل.
+String interactionEmoji(String? raw) {
+  switch (normalizeInteraction(raw)) {
+    case STUDENT_INTERACTION_ACTIVE:
+      return '😃';
+    case STUDENT_INTERACTION_NEUTRAL:
+      return '😐';
+    case STUDENT_INTERACTION_DISENGAGED:
+      return '😴';
+    default:
+      return '';
+  }
+}
+
+/// تسمية التفاعل للعرض — فاضية لو مفيش تفاعل مسجَّل.
+String interactionLabel(String? raw) => normalizeInteraction(raw) ?? '';
+
 class Attendance {
   final int? id;
   final int studentId;
   final DateTime date;
   final String status; // 'حاضر' or 'غائب'
   final String? notes;
+  final String? interaction; // spec 040 — نشيط/عادي/غير متفاعل، أو null
   final DateTime? createdAt;
 
   Attendance({
@@ -64,6 +99,7 @@ class Attendance {
     required this.date,
     required this.status,
     this.notes,
+    this.interaction,
     this.createdAt,
   });
 
@@ -74,6 +110,7 @@ class Attendance {
       'date': date.toIso8601String(),
       'status': status,
       'notes': notes,
+      'interaction': interaction,
       'created_at': createdAt?.toIso8601String(),
     };
   }
@@ -85,7 +122,8 @@ class Attendance {
       date: DateTime.parse(map['date']),
       status: map['status'],
       notes: map['notes'],
-      createdAt: map['created_at'] != null 
+      interaction: map['interaction'],
+      createdAt: map['created_at'] != null
         ? DateTime.parse(map['created_at'])
         : null,
     );
@@ -97,6 +135,8 @@ class Attendance {
     DateTime? date,
     String? status,
     String? notes,
+    String? interaction,
+    bool clearInteraction = false,
     DateTime? createdAt,
   }) {
     return Attendance(
@@ -105,6 +145,7 @@ class Attendance {
       date: date ?? this.date,
       status: status ?? this.status,
       notes: notes ?? this.notes,
+      interaction: clearInteraction ? null : (interaction ?? this.interaction),
       createdAt: createdAt ?? this.createdAt,
     );
   }

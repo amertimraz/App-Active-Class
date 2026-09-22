@@ -163,7 +163,14 @@ class _ExamGradesPageState extends State<ExamGradesPage> {
     setState(() => _loading = true);
     final grades =
         await _ec.getGradesForExamGroup(widget.exam.id!, widget.groupId);
-    final students = await DatabaseService().getStudentsByGroup(widget.groupId);
+    final gradedStudentIds = grades.map((g) => g.studentId).toSet();
+    final allStudents =
+        await DatabaseService().getStudentsByGroup(widget.groupId);
+    // طالب مؤرشف مش هيظهر لتصحيح جديد — إلا لو أصلاً عنده درجة مسجّلة
+    // للامتحان ده (أُرشِف بعد ما اتصحّح، فالدرجة تفضل ظاهرة لسجل تاريخي).
+    final students = allStudents
+        .where((s) => !s.isArchived || gradedStudentIds.contains(s.id))
+        .toList();
     _studentsById = {for (final s in students) if (s.id != null) s.id!: s};
 
     for (final g in grades) {

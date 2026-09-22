@@ -485,8 +485,13 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
         final attRate = studentAtts.isEmpty
             ? 0.0
             : (presentCount / studentAtts.length) * 100;
-        final totalPaid =
-            studentPays.fold<double>(0.0, (sum, p) => sum + p.amount);
+        // spec 038 — "إجمالي المدفوعات" رقم مالي حقيقي (فلوس دخلت
+        // فعليًا من ولي الأمر)، فيستبعد صفوف إسقاط المديونية. المديونية
+        // المتبقية تحت (accumulatedDebt) تفضل تاخد studentPays الكاملة
+        // عشان الإسقاط يصفّرها فعليًا (راجع research.md § تفصيل تقني مهم).
+        final totalPaid = studentPays
+            .where((p) => p.note != kDebtWriteOffNote)
+            .fold<double>(0.0, (sum, p) => sum + p.amount);
         final accumulatedDebt = PricingHelper.accumulatedDebt(
           student: s,
           group: _group,
@@ -529,6 +534,12 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
               _HomeworkTab(homework: studentHomework, accentColor: primary),
               _canSeeFinancials
                   ? _PaymentsTab(
+                      student: s,
+                      group: _group,
+                      allAttendance: studentAtts,
+                      siblingGroupMembers: Get.isRegistered<StudentController>()
+                          ? Get.find<StudentController>().students
+                          : null,
                       payments: studentPays,
                       totalPaid: totalPaid,
                       accumulatedDebt: accumulatedDebt,
@@ -1233,6 +1244,12 @@ class _AttendanceTab extends StatelessWidget {
                         ),
                         title: Text(FormatHelper.formatFullDate(a.date),
                             style: const TextStyle(fontSize: 13)),
+                        // spec 040 — إيموجي التفاعل لنفس اليوم لو مسجَّل.
+                        subtitle: interactionEmoji(a.interaction).isNotEmpty
+                            ? Text(
+                                '${interactionEmoji(a.interaction)} ${interactionLabel(a.interaction)}',
+                                style: const TextStyle(fontSize: 11))
+                            : null,
                         trailing: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 4),
@@ -1538,17 +1555,80 @@ class _MiniStat extends StatelessWidget {
 // Payments tab
 // ─────────────────────────────────────────────────────────────────────────────
 class _PaymentsTab extends StatelessWidget {
+  final Student student;
+  final Group? group;
+  final List<Attendance> allAttendance;
+  final List<Student>? siblingGroupMembers;
   final List<Payment> payments;
   final double totalPaid;
   final double accumulatedDebt;
   final Color accentColor;
 
   const _PaymentsTab({
+    required this.student,
+    required this.group,
+    required this.allAttendance,
+    required this.siblingGroupMembers,
     required this.payments,
     required this.totalPaid,
     required this.accumulatedDebt,
     required this.accentColor,
   });
+
+  // spec 038 — نافذة تأكيد صريحة قبل إسقاط المديونية (FR-002/FR-003).
+  Future<void> _confirmWriteOff(BuildContext context) async {
+    final paymentController = Get.find<PaymentController>();
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Obx(() {
+        final busy = paymentController.writeOffBusy.value;
+        return AlertDialog(
+          title: const Text('إسقاط المديونية'),
+          content: Text(
+            'هيتم تسجيل إسقاط بمبلغ ${accumulatedDebt.toStringAsFixed(0)} ج '
+            'وتصفير مديونية الطالب بالكامل.\n\n'
+            'الإجراء ده مش بيترجع فيه تلقائيًا — لو حصل غلط، الحل الوحيد '
+            'هو حذف عملية "إسقاط مديونية" يدويًا من سجل المدفوعات.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      final error = await paymentController.writeOffDebt(
+                        student: student,
+                        group: group,
+                        allAttendance: allAttendance,
+                        payments: payments,
+                        siblingGroupMembers: siblingGroupMembers,
+                      );
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      if (error != null) {
+                        ToastHelper.error(error);
+                      } else {
+                        ToastHelper.success('تم إسقاط المديونية');
+                      }
+                    },
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('تأكيد'),
+            ),
+          ],
+        );
+      }),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1575,11 +1655,11 @@ class _PaymentsTab extends StatelessWidget {
 
     // تواريخ الدفعات بتتحدّث تلقائيًا مع تغيير نظام الساعة عن طريق
     // ClockPaymentDateText (تفاعلية داخليًا) — مفيش داعي للفّ الشاشة كلها.
-    return _buildList(isDark, months, byMonth);
+    return _buildList(context, isDark, months, byMonth);
   }
 
-  Widget _buildList(
-      bool isDark, List<String> months, Map<String, List<Payment>> byMonth) {
+  Widget _buildList(BuildContext context, bool isDark, List<String> months,
+      Map<String, List<Payment>> byMonth) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
@@ -1619,11 +1699,20 @@ class _PaymentsTab extends StatelessWidget {
                               color: Colors.red)),
                     ]),
               ),
-              // زر تعديل المديونية مخفي مؤقتًا لحد ما يتظبط (بيفتح شيت
-              // تعديل الطالب الكامل بدل ما يعدّل الرقم نفسه).
             ]),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _confirmWriteOff(context),
+              icon: const Icon(Icons.remove_circle_outline_rounded,
+                  color: Colors.red, size: 18),
+              label: const Text('إسقاط المديونية',
+                  style: TextStyle(color: Colors.red)),
+            ),
+          ),
+          const SizedBox(height: 8),
         ],
         // إجمالي
         Container(
@@ -1709,28 +1798,43 @@ class _PaymentsTab extends StatelessWidget {
                         const Divider(height: 0, indent: 56),
                     itemBuilder: (_, i) {
                       final p = list[i];
+                      // spec 038 — سطر إسقاط مديونية له شكل مميز (أيقونة/لون
+                      // مختلفين) عشان يتفرق فورًا عن دفعة نقدية فعلية.
+                      final isWriteOff = p.note == kDebtWriteOffNote;
+                      final rowColor =
+                          isWriteOff ? Colors.orange : Colors.green;
                       return ListTile(
                         leading: Container(
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.1),
+                            color: rowColor.withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.check_rounded,
-                              color: Colors.green, size: 18),
+                          child: Icon(
+                              isWriteOff
+                                  ? Icons.remove_circle_outline_rounded
+                                  : Icons.check_rounded,
+                              color: rowColor,
+                              size: 18),
                         ),
                         title: ClockPaymentDateText(p.date,
                             style: const TextStyle(fontSize: 13)),
                         subtitle: p.note != null && p.note!.isNotEmpty
                             ? Text(p.note!,
                                 style: TextStyle(
-                                    fontSize: 11, color: Colors.grey.shade500))
+                                    fontSize: 11,
+                                    fontWeight: isWriteOff
+                                        ? FontWeight.w700
+                                        : FontWeight.normal,
+                                    color: isWriteOff
+                                        ? Colors.orange.shade700
+                                        : Colors.grey.shade500))
                             : null,
                         trailing: CurrencyText(p.amount,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontWeight: FontWeight.w700,
-                                color: Colors.green,
+                                color: rowColor,
                                 fontSize: 14)),
                       );
                     },

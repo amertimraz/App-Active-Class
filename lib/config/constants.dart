@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 33;
+const int DATABASE_VERSION = 34;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -175,6 +175,11 @@ const String COL_ATTENDANCE_DATE = 'date';
 const String COL_ATTENDANCE_STATUS = 'status';
 const String COL_ATTENDANCE_NOTES = 'notes';
 const String COL_ATTENDANCE_CREATED_AT = 'created_at';
+// spec 040 — تفاعل الطالب (إيموجي بسيط) على نفس سجل الحضور.
+const String COL_ATTENDANCE_INTERACTION = 'interaction';
+const String STUDENT_INTERACTION_ACTIVE = 'نشيط';
+const String STUDENT_INTERACTION_NEUTRAL = 'عادي';
+const String STUDENT_INTERACTION_DISENGAGED = 'غير متفاعل';
 
 // Column Names - Homework (تسجيل حالة الواجب بس — النص نفسه بيفضل في
 // الكشكول الورقي، هنا بس بنسجّل عمل/محضرش لكل طالب في كل تاريخ)
@@ -279,6 +284,11 @@ const String SETTING_HAS_LOGGED_IN_BEFORE = 'auth_has_logged_in_before';
 const String SETTING_CLOUD_BACKUP_LINKED_EMAIL = 'cloud_backup_linked_email';
 const String SETTING_CLOUD_BACKUP_LAST_ATTEMPT_AT = 'cloud_backup_last_attempt_at';
 const String SETTING_CLOUD_BACKUP_PENDING_RETRIES = 'cloud_backup_pending_retries';
+
+// spec 038 — إسقاط المديونية المتراكمة: ملاحظة ثابتة تُميّز صف الدفعة
+// كإسقاط دفتري (مش تحصيل فعلي) — التطابق النصي التام هو المصدر الوحيد
+// للتمييز، بدون عمود جديد في جدول payments (راجع research.md #1).
+const String kDebtWriteOffNote = 'إسقاط مديونية';
 
 // "وضع الفريق" — أعمدة المزامنة المضافة على groups/students/attendance/payments،
 // وجدول الطابور المحلي (sync_outbox) اللي بيتفرّغ لسيرفر Supabase.

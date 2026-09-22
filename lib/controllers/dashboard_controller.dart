@@ -99,7 +99,9 @@ MonthlyPaymentBreakdown computeMonthlyBreakdown({
     if (dueThisMonth <= 0) continue;
 
     // كام من دفعات الطالب راح للشهور اللي قبل ده (FIFO) — الباقي هو
-    // اللي اتحسب للشهر ده.
+    // اللي اتحسب للشهر ده. القائمة الكاملة (شاملة إسقاط المديونية لو
+    // فيه) هي اللي بتحدد "لم يدفع/متأخرين"، عشان الإسقاط يصفّر المتبقي
+    // فعليًا زي أي دفعة عادية (راجع research.md § تفصيل تقني مهم، spec 038).
     final dueBefore = PricingHelper.totalDueThrough(
       student: s,
       group: group,
@@ -110,12 +112,27 @@ MonthlyPaymentBreakdown computeMonthlyBreakdown({
     final totalPaid =
         studentPayments.fold<double>(0, (sum, p) => sum + p.amount);
     final paidThisMonth = (totalPaid - dueBefore).clamp(0.0, dueThisMonth);
+
+    // spec 038 — "محصَّل" المعروض في الكارت لازم يستبعد صفوف إسقاط
+    // المديونية (مش فلوس حقيقية دخلت) — بيُحسب من نسخة مفلترة منفصلة
+    // بنفس منطق FIFO، عشان الرقمين (الحقيقي مقابل "لم يدفع") يفضلوا
+    // متسقين مع بعض لنفس الطالب.
+    final realPayments = studentPayments
+        .where((p) => p.note != kDebtWriteOffNote)
+        .toList();
+    final realTotalPaid =
+        realPayments.fold<double>(0, (sum, p) => sum + p.amount);
+    final realPaidThisMonth =
+        (realTotalPaid - dueBefore).clamp(0.0, dueThisMonth);
+
     expected += dueThisMonth;
-    collected += paidThisMonth;
+    collected += realPaidThisMonth;
 
     // "لم يدفع [الشهر]" = ما غطّاش مستحق الشهر ده تحديدًا (بيختلف من
     // شهر لشهر — الشهر الجاري بدري بيبقى الرقم شبه كامل). مفيش مهلة
-    // سماح هنا: الكارت بيعرض واقع، مش تنبيه "متأخر".
+    // سماح هنا: الكارت بيعرض واقع، مش تنبيه "متأخر". هنا بنستخدم
+    // paidThisMonth الكامل (شامل الإسقاط) عشان طالب اتسقطت مديونيته
+    // ميفضلش ظاهر كـ"متأخر".
     final shortfall = dueThisMonth - paidThisMonth;
     final isUnpaid = shortfall > 0.5;
     if (isUnpaid) {
@@ -129,7 +146,7 @@ MonthlyPaymentBreakdown computeMonthlyBreakdown({
       groupId: gKey,
       groupName: group?.name ?? 'بلا مجموعة',
       expected: (existing?.expected ?? 0) + dueThisMonth,
-      collected: (existing?.collected ?? 0) + paidThisMonth,
+      collected: (existing?.collected ?? 0) + realPaidThisMonth,
       unpaidStudentsCount:
           (existing?.unpaidStudentsCount ?? 0) + (isUnpaid ? 1 : 0),
     );
@@ -529,10 +546,15 @@ class DashboardController extends GetxController {
     todayAttendanceRate.value = total > 0 ? present / total : 0;
 
     // مدفوعات اليوم — كل الدفعات المسجَّلة النهاردة بصرف النظر عن نوع
-    // تسعير مجموعة الطالب (شهري أو بالحصة).
+    // تسعير مجموعة الطالب (شهري أو بالحصة). عمليات إسقاط المديونية
+    // (spec 038) مُستبعدة بالكامل هنا — مش فلوس دخلت فعليًا، فمالهاش
+    // مكان في قائمة/عدّاد/إجمالي "دفعوا اليوم".
     final payments = await _db.getAllPayments();
     final todayPayments = payments
-        .where((p) => !p.date.isBefore(todayStart) && !p.date.isAfter(todayEnd))
+        .where((p) =>
+            !p.date.isBefore(todayStart) &&
+            !p.date.isAfter(todayEnd) &&
+            p.note != kDebtWriteOffNote)
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
 

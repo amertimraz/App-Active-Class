@@ -12,6 +12,9 @@ import 'package:active_class/widgets/phone_field.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
 import 'package:active_class/widgets/code_scanner_page.dart';
+import 'package:active_class/widgets/student_form/student_date_button.dart';
+import 'package:active_class/widgets/student_form/sibling_picker.dart';
+import 'package:active_class/widgets/student_form/student_code_field.dart';
 
 /// يفتح bottom sheet لتعديل بيانات طالب.
 /// يرجع الطالب المُحدَّث عند الحفظ، أو null لو اتلغى.
@@ -200,116 +203,13 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   }
 
   Future<void> _pickSibling() async {
-    if (_siblings.length >= 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الحد الأقصى لمجموعة الإخوة 3 أعضاء')),
-      );
-      return;
-    }
-    final all = await DatabaseService().getAllStudents();
-    if (!mounted) return;
-    final pickedIds = _siblings.map((s) => s.id).toSet();
-    // معنيش نربط أخ/أخت مؤرشف — الأرشفة أصلاً بتفكّ أي ربط أخوي قائم
-    // (راجع DatabaseService.archiveStudent)، فمينفعش نسمح بربط جديد له.
-    final list = all
-        .where((s) =>
-            s.id != widget.student.id &&
-            !s.isArchived &&
-            !pickedIds.contains(s.id))
-        .toList();
-
-    final picked = await showDialog<Student>(
-      context: context,
-      builder: (ctx) {
-        final searchCtrl = TextEditingController();
-        return StatefulBuilder(builder: (ctx, setSt) {
-          final filtered = list
-              .where((s) =>
-                  searchCtrl.text.isEmpty ||
-                  s.name.contains(searchCtrl.text) ||
-                  s.code.contains(searchCtrl.text))
-              .toList();
-          return AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text('اختر الأخ / الأخت'),
-            content: SizedBox(
-              width: 360,
-              height: 350,
-              child: Column(
-                children: [
-                  TextField(
-                    controller: searchCtrl,
-                    decoration: InputDecoration(
-                      hintText: 'بحث...',
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                    ),
-                    onChanged: (_) => setSt(() {}),
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: filtered.length,
-                      itemBuilder: (_, i) {
-                        final s = filtered[i];
-                        return ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor:
-                                widget.accentColor.withValues(alpha: 0.1),
-                            child: Text(s.name[0],
-                                style: TextStyle(
-                                    color: widget.accentColor,
-                                    fontWeight: FontWeight.bold)),
-                          ),
-                          title: Text(s.name),
-                          subtitle: Text(s.code),
-                          onTap: () => Navigator.of(ctx).pop(s),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        });
-      },
+    final merged = await showSiblingPicker(
+      context,
+      currentSiblings: _siblings,
+      excludeStudentId: widget.student.id,
+      accentColor: widget.accentColor,
     );
-    if (picked != null && mounted) {
-      await _addSiblingCandidate(picked);
-    }
-  }
-
-  /// يضيف طالب مختار كعضو في مجموعة الإخوة — لو كان عضو أصلاً في
-  /// مجموعة إخوة موجودة، بنضيف باقي أعضاء مجموعته كمان عشان الربط
-  /// الجديد ميكسرش رابطهم القديم، مع فرض الحد الأقصى 3 (شامل الطالب
-  /// الحالي نفسه).
-  Future<void> _addSiblingCandidate(Student picked) async {
-    var toAdd = [picked];
-    if (picked.siblingGroupId != null) {
-      toAdd = await DatabaseService()
-          .getStudentsInSiblingGroup(picked.siblingGroupId!);
-    }
-    final existingIds = _siblings.map((s) => s.id).toSet();
-    final merged = [
-      ..._siblings,
-      ...toAdd.where(
-          (s) => s.id != widget.student.id && !existingIds.contains(s.id)),
-    ];
-    if (merged.length > 2) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الحد الأقصى لمجموعة الإخوة 3 أعضاء')),
-      );
-      return;
-    }
-    if (!mounted) return;
-    setState(() => _siblings = merged);
+    if (merged != null && mounted) setState(() => _siblings = merged);
   }
 
   // ── مسح QR من كرت مطبوع مسبقاً واستبدال كود الطالب بيه ───────────
@@ -505,69 +405,18 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
             Builder(builder: (context) {
               final changed = _code != widget.student.code;
               final boxColor = changed ? Colors.purple : primary;
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: boxColor.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: boxColor.withValues(alpha: 0.25)),
-                ),
-                child: Row(children: [
-                  Icon(
-                    changed ? Icons.qr_code_2_rounded : Icons.qr_code_rounded,
-                    color: boxColor,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _codeIsManual
-                        ? TextField(
-                            controller: _codeCtrl,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                              color: boxColor,
-                            ),
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              isCollapsed: true,
-                              border: InputBorder.none,
-                              hintText: 'اكتب كود الطالب',
-                            ),
-                            onChanged: (v) => setState(() => _code = v.trim()),
-                          )
-                        : Text(
-                            changed
-                                ? 'كود من كرت مطبوع: $_code'
-                                : 'الكود: $_code',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                              color: boxColor,
-                            ),
-                          ),
-                  ),
-                  if (changed)
-                    IconButton(
-                      tooltip: 'رجوع للكود الأصلي',
-                      icon: const Icon(Icons.refresh_rounded,
-                          size: 20, color: Colors.purple),
-                      onPressed: _resetCode,
-                    ),
-                  Switch.adaptive(
-                    value: _codeIsManual,
-                    activeThumbColor: Colors.purple,
-                    onChanged: _onManualSwitchChanged,
-                  ),
-                  IconButton(
-                    tooltip: 'مسح QR من كرت مطبوع مسبقاً',
-                    icon: Icon(Icons.qr_code_scanner_rounded,
-                        size: 20, color: boxColor),
-                    onPressed: _scanPrintedCode,
-                  ),
-                ]),
+              return StudentCodeField(
+                codeController: _codeCtrl,
+                isManual: _codeIsManual,
+                boxColor: boxColor,
+                icon: changed ? Icons.qr_code_2_rounded : Icons.qr_code_rounded,
+                displayText:
+                    changed ? 'كود من كرت مطبوع: $_code' : 'الكود: $_code',
+                manualHint: 'اكتب كود الطالب',
+                onManualChanged: _onManualSwitchChanged,
+                onCodeChanged: (v) => setState(() => _code = v.trim()),
+                onScanQr: _scanPrintedCode,
+                onReset: changed ? _resetCode : null,
               );
             }),
 
@@ -646,7 +495,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
             // التواريخ
             Row(children: [
               Expanded(
-                child: _DateBtn(
+                child: StudentDateButton(
                   icon: Icons.cake_rounded,
                   label: _birthDate != null
                       ? '${_birthDate!.day}/${_birthDate!.month}/${_birthDate!.year}'
@@ -666,7 +515,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _DateBtn(
+                child: StudentDateButton(
                   icon: Icons.date_range_rounded,
                   label: _attendanceStart != null
                       ? '${_attendanceStart!.day}/${_attendanceStart!.month}/${_attendanceStart!.year}'
@@ -797,52 +646,3 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   }
 }
 
-// زر اختيار التاريخ
-class _DateBtn extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool hasValue;
-  final Color color;
-  final VoidCallback onTap;
-  const _DateBtn({
-    required this.icon,
-    required this.label,
-    required this.hasValue,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-        decoration: BoxDecoration(
-          color: hasValue
-              ? color.withValues(alpha: 0.07)
-              : Colors.grey.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color:
-                hasValue ? color.withValues(alpha: 0.3) : Colors.grey.shade300,
-          ),
-        ),
-        child: Row(children: [
-          Icon(icon, size: 16, color: hasValue ? color : Colors.grey.shade500),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: hasValue ? color : Colors.grey.shade500,
-                  fontWeight: hasValue ? FontWeight.w600 : FontWeight.normal,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-          ),
-        ]),
-      ),
-    );
-  }
-}

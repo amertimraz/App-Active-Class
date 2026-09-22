@@ -19,6 +19,8 @@ import 'package:active_class/utils/student_sort_helper.dart';
 import 'package:active_class/widgets/student_sort_bar.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/views/groups/group_form/group_form_sheet.dart';
+import 'package:active_class/views/groups/group_details_widgets.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
@@ -28,7 +30,6 @@ import 'package:active_class/utils/monthly_report_message.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
-import 'package:active_class/widgets/locked_feature.dart';
 import 'package:intl/intl.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
@@ -388,7 +389,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
           byDay.putIfAbsent(day, () => []).add(a);
         }
         final sessionDays = byDay.entries
-            .map((e) => _GDSessionDay(
+            .map((e) => GDSessionDay(
                   date: e.key,
                   presentCount: e.value
                       .where((a) => attendanceCountsAsPresent(a.status))
@@ -486,7 +487,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       final student = sortedStudents[index];
-                      return _StudentCard(
+                      return StudentCard(
                         student: student,
                         groupColor: primary,
                         hasPaid: _paidStudentIds.contains(student.id),
@@ -529,7 +530,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       Group g,
       List<Student> students,
       double totalFees,
-      List<_GDSessionDay> sessionDays,
+      List<GDSessionDay> sessionDays,
       Color primary,
       bool isDark) {
     return Container(
@@ -623,12 +624,12 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
               child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _HeaderStat(
+                HeaderStat(
                     label: 'الطلاب',
                     value: '${students.length}',
                     icon: Icons.people_rounded),
                 const SizedBox(width: 10),
-                _HeaderStat(
+                HeaderStat(
                     // بدون اسم العملة هنا — الأيقونة والتسمية تحت الرقم
                     // ("إجمالي الرسوم") بتوضّح إنه مبلغ مالي أصلاً، فمفيش
                     // داعي نكرر "جنيه"/"ريال"/... جنب كل رقم في مساحة ضيقة.
@@ -643,7 +644,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                         : () =>
                             _gdShowFeesBreakdownDialog(context, students, g)),
                 const SizedBox(width: 10),
-                _HeaderStat(
+                HeaderStat(
                     label: 'اشتراك',
                     value: !_canSeeFinancials
                         ? '🔒'
@@ -653,7 +654,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                     icon: Icons.monetization_on_rounded,
                     locked: !_canSeeFinancials),
                 const SizedBox(width: 10),
-                _HeaderStat(
+                HeaderStat(
                     label: 'حصص مسجلة',
                     value: '${sessionDays.length}',
                     icon: Icons.event_available_rounded,
@@ -684,7 +685,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
               return const SizedBox.shrink();
             }
             final reached = settings.isWhatsappDayReached;
-            return _ActionChip(
+            return GroupActionChip(
               icon: Icons.chat_rounded,
               label: 'واتساب',
               color: reached ? Colors.green : Colors.grey,
@@ -695,7 +696,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             );
           }),
           const SizedBox(width: 8),
-          _ActionChip(
+          GroupActionChip(
             icon: Icons.picture_as_pdf_rounded,
             label: 'تصدير PDF',
             color: const Color(0xFF8B5CF6),
@@ -704,14 +705,14 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                 : () => _exportGroupRosterPdf(g, students),
           ),
           const SizedBox(width: 8),
-          _ActionChip(
+          GroupActionChip(
             icon: Icons.clear_all_rounded,
             label: 'تصفير الطلاب',
             color: Colors.orange,
             onTap: () => _confirmResetStudents(g),
           ),
           const SizedBox(width: 8),
-          _ActionChip(
+          GroupActionChip(
             icon: Icons.delete_rounded,
             label: 'حذف',
             color: Colors.red,
@@ -851,7 +852,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _GroupEditSheet(
+      builder: (_) => GroupFormSheet(
         group: g,
         existingGroups: groupController.groups,
         onSave: (updated) async {
@@ -895,816 +896,6 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     );
     _loadPaidStudents();
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Header stat card
-// ─────────────────────────────────────────────────────────────────────────────
-class _HeaderStat extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final VoidCallback? onTap;
-  final bool locked;
-
-  const _HeaderStat(
-      {required this.label,
-      required this.value,
-      required this.icon,
-      this.onTap,
-      this.locked = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: LockBadge(
-        locked: locked,
-        child: GestureDetector(
-        onTap: locked ? showLockedPermissionHint : onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: Colors.white, size: 17),
-              const SizedBox(height: 4),
-              // القيم بقت من غير اسم العملة (راجع formatCurrencyCompact)
-              // فبقت قصيرة كفاية تفضل في صف واحد بخط مقروء عادي —
-              // maxLines:2 يبقى شبكة أمان بس لأرقام كبيرة جدًا مستقبلاً.
-              Text(value,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 12),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
-              Text(label,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.8), fontSize: 10),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
-            ],
-          ),
-        ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Action chip
-// ─────────────────────────────────────────────────────────────────────────────
-class _ActionChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _ActionChip(
-      {required this.icon,
-      required this.label,
-      required this.color,
-      required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.25)),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(height: 3),
-              // maxLines:2 بدل 1 — تسميات زي "تصفير الطلاب" أطول من باقي
-              // الأزرار جنبها ("حذف"، "واتساب") في نفس المساحة المتساوية،
-              // فبتلف سطرين بدل ما تتقص.
-              Text(label,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: color, fontSize: 11, fontWeight: FontWeight.w700),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Student card
-// ─────────────────────────────────────────────────────────────────────────────
-class _StudentCard extends StatelessWidget {
-  final Student student;
-  final Color groupColor;
-  final bool hasPaid;
-  final bool canSeeFinancials;
-  final bool isSelectionMode;
-  final bool isSelected;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
-  final VoidCallback onQr;
-  final VoidCallback onEdit;
-  final VoidCallback onArchive;
-
-  const _StudentCard({
-    required this.student,
-    required this.groupColor,
-    required this.hasPaid,
-    required this.canSeeFinancials,
-    required this.isSelectionMode,
-    required this.isSelected,
-    required this.onTap,
-    required this.onLongPress,
-    required this.onQr,
-    required this.onEdit,
-    required this.onArchive,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final initials =
-        student.name.trim().isNotEmpty ? student.name.trim()[0] : '؟';
-
-    return GestureDetector(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? groupColor.withValues(alpha: 0.12)
-              : (isDark ? const Color(0xFF1A2540) : Colors.white),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? groupColor : Colors.transparent,
-            width: 1.5,
-          ),
-          boxShadow: [
-            if (!isDark)
-              BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2)),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              // Checkbox or Avatar
-              if (isSelectionMode)
-                Padding(
-                  padding: const EdgeInsets.only(left: 10),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: isSelected ? groupColor : Colors.transparent,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: isSelected ? groupColor : Colors.grey.shade400,
-                          width: 2),
-                    ),
-                    child: isSelected
-                        ? const Icon(Icons.check_rounded,
-                            color: Colors.white, size: 14)
-                        : null,
-                  ),
-                )
-              else
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: groupColor.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(initials,
-                        style: TextStyle(
-                            color: groupColor,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 18)),
-                  ),
-                ),
-
-              const SizedBox(width: 12),
-
-              // Info
-              // الاسم على سطره الخاص كامل دايمًا (بدون قص) — الكود وشارة
-              // الدفع نزلوا سطر منفصل تحته بدل ما يزنقوا الاسم جنب أيقونتَي
-              // الـQR والقائمة على يمين الصف.
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(student.name,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 14),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 3),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(student.code,
-                            style: TextStyle(
-                                color: Colors.grey.shade500, fontSize: 12)),
-                        if (!canSeeFinancials)
-                          // مبنفرقش هنا بين دفع/مادفعش — عرض الشارة بس
-                          // لما "لم يدفع" كانت هتبقى هي نفسها تسريب
-                          // لحالة الدفع (وجودها/غيابها كان هيوضح الحالة
-                          // حتى تحت قفل).
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Icon(Icons.lock_rounded,
-                                size: 10, color: Colors.grey.shade600),
-                          )
-                        else if (!hasPaid)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text('لم يدفع',
-                                style: TextStyle(
-                                    color: Colors.red,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700)),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              // Actions
-              if (!isSelectionMode)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _IconBtn(
-                        icon: Icons.qr_code_rounded,
-                        color: groupColor,
-                        onTap: onQr),
-                    const SizedBox(width: 4),
-                    PopupMenuButton<String>(
-                      icon: Icon(Icons.more_vert_rounded,
-                          color: Colors.grey.shade500, size: 20),
-                      onSelected: (v) {
-                        if (v == 'edit') onEdit();
-                        if (v == 'archive') onArchive();
-                      },
-                      itemBuilder: (_) => [
-                        const PopupMenuItem(
-                            value: 'edit',
-                            child: Row(children: [
-                              Icon(Icons.edit_rounded, size: 18),
-                              SizedBox(width: 8),
-                              Text('تعديل')
-                            ])),
-                        const PopupMenuItem(
-                            value: 'archive',
-                            child: Row(children: [
-                              Icon(Icons.delete_outline_rounded,
-                                  size: 18, color: Colors.red),
-                              SizedBox(width: 8),
-                              Text('حذف', style: TextStyle(color: Colors.red))
-                            ])),
-                      ],
-                    ),
-                  ],
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _IconBtn extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-  const _IconBtn(
-      {required this.icon, required this.color, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(icon, color: color, size: 18),
-      ),
-    );
-  }
-}
-
-/// يتحقق من: (أ) وجود يوم بدون وقت كامل، (ب) تداخل مواعيد في نفس اليوم.
-/// بيرجّع رسالة الخطأ أو null لو الجدول سليم أو فاضي.
-String? _validateScheduleText(String raw) {
-  final byDay = <String, List<(int, int)>>{};
-  for (final part in raw.split(',')) {
-    final s = part.trim();
-    if (s.isEmpty) continue;
-    final sp = s.split(' ');
-    final day = sp.first;
-    if (sp.length < 2)
-      return 'اليوم "$day" بدون وقت — حدد وقت البداية والنهاية';
-    final range = s.substring(day.length).trim().split('-');
-    TimeOfDay? parseT(String v) {
-      final p = v.trim().split(':');
-      if (p.length != 2) return null;
-      final h = int.tryParse(p[0]), m = int.tryParse(p[1]);
-      if (h == null || m == null) return null;
-      return TimeOfDay(hour: h, minute: m);
-    }
-
-    final from = range.length == 2 ? parseT(range[0]) : null;
-    final to = range.length == 2 ? parseT(range[1]) : null;
-    if (from == null || to == null) {
-      return 'اليوم "$day" بدون وقت كامل — حدد وقت البداية والنهاية';
-    }
-    byDay
-        .putIfAbsent(day, () => [])
-        .add((from.hour * 60 + from.minute, to.hour * 60 + to.minute));
-  }
-  for (final ranges in byDay.values) {
-    ranges.sort((a, b) => a.$1.compareTo(b.$1));
-    for (var i = 1; i < ranges.length; i++) {
-      if (ranges[i].$1 < ranges[i - 1].$2)
-        return 'فيه موعدين متداخلين في نفس اليوم';
-    }
-  }
-  return null;
-}
-
-Map<String, List<(int, int)>> _parseDaySlotsGD(String raw) {
-  final byDay = <String, List<(int, int)>>{};
-  for (final part in raw.split(',')) {
-    final s = part.trim();
-    if (s.isEmpty) continue;
-    final sp = s.split(' ');
-    if (sp.length < 2) continue;
-    final day = sp.first;
-    final range = s.substring(day.length).trim().split('-');
-    if (range.length != 2) continue;
-    TimeOfDay? parseT(String v) {
-      final p = v.trim().split(':');
-      if (p.length != 2) return null;
-      final h = int.tryParse(p[0]), m = int.tryParse(p[1]);
-      if (h == null || m == null) return null;
-      return TimeOfDay(hour: h, minute: m);
-    }
-    final from = parseT(range[0]);
-    final to = parseT(range[1]);
-    if (from == null || to == null) continue;
-    byDay
-        .putIfAbsent(day, () => [])
-        .add((from.hour * 60 + from.minute, to.hour * 60 + to.minute));
-  }
-  return byDay;
-}
-
-/// يبحث عن مجموعة تانية بيتعارض ميعادها مع [raw] (نفس اليوم ونطاق وقت
-/// متداخل)، ويرجّع أول مجموعة متعارضة أو null.
-Group? _findConflictingGroupGD(String raw, List<Group> others) {
-  final mySlots = _parseDaySlotsGD(raw);
-  for (final other in others) {
-    final otherRaw = other.schedule;
-    if (otherRaw == null || otherRaw.trim().isEmpty) continue;
-    final otherSlots = _parseDaySlotsGD(otherRaw);
-    for (final entry in mySlots.entries) {
-      final otherRanges = otherSlots[entry.key];
-      if (otherRanges == null) continue;
-      for (final mine in entry.value) {
-        for (final theirs in otherRanges) {
-          if (mine.$1 < theirs.$2 && theirs.$1 < mine.$2) return other;
-        }
-      }
-    }
-  }
-  return null;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// تعديل المجموعة (bottom sheet بسيط — يعيد استخدام _GroupFormSheet من groups_page)
-// ─────────────────────────────────────────────────────────────────────────────
-class _GroupEditSheet extends StatefulWidget {
-  final Group group;
-  final List<Group> existingGroups;
-  final Future<bool> Function(Group) onSave;
-  const _GroupEditSheet({
-    required this.group,
-    required this.existingGroups,
-    required this.onSave,
-  });
-
-  @override
-  State<_GroupEditSheet> createState() => _GroupEditSheetState();
-}
-
-class _GroupEditSheetState extends State<_GroupEditSheet> {
-  late final TextEditingController _nameCtrl;
-  late final TextEditingController _codeCtrl;
-  late final TextEditingController _priceCtrl;
-  late final TextEditingController _scheduleCtrl;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final g = widget.group;
-    _nameCtrl = TextEditingController(text: g.name);
-    _codeCtrl = TextEditingController(text: g.code ?? '');
-    _priceCtrl = TextEditingController(text: g.price?.toString() ?? '');
-    _scheduleCtrl = TextEditingController(text: g.schedule ?? '');
-  }
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _codeCtrl.dispose();
-    _priceCtrl.dispose();
-    _scheduleCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final name = _nameCtrl.text.trim();
-    final code = _codeCtrl.text.trim();
-    final price = double.tryParse(_priceCtrl.text.trim());
-    if (name.isEmpty) {
-      ToastHelper.info('أدخل اسم المجموعة');
-      return;
-    }
-    if (code.isEmpty) {
-      ToastHelper.info('أدخل بادئة الكود');
-      return;
-    }
-    if (price == null) {
-      ToastHelper.info('السعر غير صالح');
-      return;
-    }
-    final scheduleErr = _validateScheduleText(_scheduleCtrl.text);
-    if (scheduleErr != null) {
-      ToastHelper.error(scheduleErr);
-      return;
-    }
-    final others = widget.existingGroups
-        .where((g) => g.id != widget.group.id)
-        .toList();
-    final conflictingGroup =
-        _findConflictingGroupGD(_scheduleCtrl.text, others);
-    if (conflictingGroup != null) {
-      ToastHelper.error(
-          'الميعاد ده متعارض مع ميعاد مجموعة "${conflictingGroup.name}"');
-      return;
-    }
-
-    setState(() => _saving = true);
-    try {
-      final ok = await widget.onSave(widget.group.copyWith(
-        name: name,
-        code: code,
-        price: price,
-        schedule: _scheduleCtrl.text.trim().isEmpty
-            ? null
-            : _scheduleCtrl.text.trim(),
-      ));
-      if (mounted && ok) Navigator.of(context).pop();
-      // لو فشل: رسالة الخطأ اتعرضت بالفعل من الـcontroller، خلّي الشيت مفتوح
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = widget.group.color != null
-        ? Color(widget.group.color!)
-        : AppTheme.primaryColor;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF131D31) : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-          20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-              child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: Colors.grey.shade400,
-                      borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 14),
-          Text('تعديل المجموعة',
-              style:
-                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 16),
-          CustomTextField(controller: _nameCtrl, label: 'اسم المجموعة'),
-          const SizedBox(height: 12),
-          Row(children: [
-            Expanded(
-                child: CustomTextField(
-                    controller: _codeCtrl, label: 'بادئة الكود')),
-            const SizedBox(width: 12),
-            Expanded(
-                child: CustomTextField(
-                    controller: _priceCtrl,
-                    label: 'السعر',
-                    keyboardType: TextInputType.number)),
-          ]),
-          const SizedBox(height: 12),
-          _GDScheduleLabel(),
-          const SizedBox(height: 8),
-          _GDScheduleEditor(controller: _scheduleCtrl),
-          const SizedBox(height: 20),
-          FilledButton.icon(
-            onPressed: _saving ? null : _submit,
-            style: FilledButton.styleFrom(
-              backgroundColor: primary,
-              minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
-            ),
-            icon: _saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.save_rounded),
-            label: const Text('حفظ التعديلات',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GDScheduleLabel extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) => const Text('المواعيد الأسبوعية',
-      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13));
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Schedule editor (minimal, reused from groups_page logic)
-// ─────────────────────────────────────────────────────────────────────────────
-class _GDScheduleEditor extends StatefulWidget {
-  final TextEditingController controller;
-  const _GDScheduleEditor({required this.controller});
-
-  @override
-  State<_GDScheduleEditor> createState() => _GDScheduleEditorState();
-}
-
-class _GDScheduleEditorState extends State<_GDScheduleEditor> {
-  static const _days = [
-    'السبت',
-    'الأحد',
-    'الاثنين',
-    'الثلاثاء',
-    'الأربعاء',
-    'الخميس',
-    'الجمعة'
-  ];
-  List<_Slot> _slots = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _slots = _parse(widget.controller.text);
-    if (_slots.isEmpty) _slots = [_Slot(), _Slot()];
-  }
-
-  List<_Slot> _parse(String raw) {
-    final parts = raw.split(',').where((e) => e.trim().isNotEmpty).toList();
-    return parts.map((p) {
-      final t = p.trim();
-      final sp = t.split(' ');
-      if (sp.length < 2) return _Slot(day: t);
-      final day = sp.first;
-      final range = t.substring(day.length).trim().split('-');
-      TimeOfDay? from, to;
-      TimeOfDay? parse(String v) {
-        final pp = v.split(':');
-        if (pp.length != 2) return null;
-        final h = int.tryParse(pp[0].trim()), m = int.tryParse(pp[1].trim());
-        if (h == null || m == null) return null;
-        return TimeOfDay(hour: h, minute: m);
-      }
-
-      if (range.length == 2) {
-        from = parse(range[0]);
-        to = parse(range[1]);
-      }
-      return _Slot(day: day, from: from, to: to);
-    }).toList();
-  }
-
-  void _sync() {
-    final parts = _slots
-        .map((s) {
-          if (s.day == null) return '';
-          if (s.from == null || s.to == null) return s.day!;
-          String fmt(TimeOfDay t) =>
-              '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-          return '${s.day} ${fmt(s.from!)}-${fmt(s.to!)}';
-        })
-        .where((e) => e.isNotEmpty)
-        .join(',');
-    widget.controller.text = parts;
-  }
-
-  Future<void> _pickTime(int i, bool isFrom) async {
-    // نظام 12/24 ساعة للـpicker متضبوط على مستوى التطبيق كله في main.dart
-    // (MediaQuery.alwaysUse24HourFormat) وفق إعداد المستخدم.
-    final t = await showTimePicker(
-      context: context,
-      initialTime: (isFrom ? _slots[i].from : _slots[i].to) ?? TimeOfDay.now(),
-    );
-    if (t == null) return;
-    setState(() {
-      if (isFrom) {
-        // حساب مدة الحصة الحالية والحفاظ عليها عند تغيير البداية
-        final oldFrom = _slots[i].from;
-        final oldTo = _slots[i].to;
-        int durMins = 60; // افتراضي ساعة
-        if (oldFrom != null && oldTo != null) {
-          final d = oldTo.hour * 60 +
-              oldTo.minute -
-              (oldFrom.hour * 60 + oldFrom.minute);
-          if (d > 0) durMins = d;
-        }
-        _slots[i].from = t;
-        final endTotal = (t.hour * 60 + t.minute + durMins) % (24 * 60);
-        _slots[i].to = TimeOfDay(hour: endTotal ~/ 60, minute: endTotal % 60);
-      } else {
-        // تعديل النهاية فقط — البداية لا تتغير
-        _slots[i].to = t;
-      }
-      _sync();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        ..._slots.asMap().entries.map((e) {
-          final i = e.key;
-          final s = e.value;
-          String fmtT(TimeOfDay? t) =>
-              t == null ? '--:--' : FormatHelper.formatClock(t);
-          // يوم متحدد بدون وقت كامل = الموعد ده مش هيظهر في جدول الحصص
-          final incomplete = s.day != null && (s.from == null || s.to == null);
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _days.contains(s.day) ? s.day : null,
-                    decoration: InputDecoration(
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                      isDense: true,
-                    ),
-                    hint: const Text('اليوم', style: TextStyle(fontSize: 13)),
-                    items: _days
-                        .map((d) => DropdownMenuItem(
-                            value: d,
-                            child:
-                                Text(d, style: const TextStyle(fontSize: 13))))
-                        .toList(),
-                    onChanged: (v) => setState(() {
-                      _slots[i].day = v;
-                      _sync();
-                    }),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                GestureDetector(
-                  onTap: () => _pickTime(i, true),
-                  child: _TimeBox(label: fmtT(s.from), warning: incomplete),
-                ),
-                const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Text('-')),
-                GestureDetector(
-                  onTap: () => _pickTime(i, false),
-                  child: _TimeBox(label: fmtT(s.to), warning: incomplete),
-                ),
-                const SizedBox(width: 4),
-                GestureDetector(
-                  onTap: _slots.length > 1
-                      ? () => setState(() {
-                            _slots.removeAt(i);
-                            _sync();
-                          })
-                      : null,
-                  child: Icon(Icons.remove_circle_rounded,
-                      color: _slots.length > 1
-                          ? Colors.red.shade300
-                          : Colors.grey.shade300,
-                      size: 20),
-                ),
-              ]),
-              if (incomplete)
-                const Padding(
-                  padding: EdgeInsets.only(top: 2, right: 4),
-                  child: Text(
-                      '⚠️ حدد وقت البداية والنهاية وإلا الموعد ده مش هيظهر في جدول الحصص',
-                      style: TextStyle(fontSize: 11, color: Colors.orange)),
-                ),
-            ]),
-          );
-        }),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: () => setState(() => _slots.add(_Slot())),
-            icon: const Icon(Icons.add_rounded, size: 16),
-            label: const Text('إضافة موعد', style: TextStyle(fontSize: 13)),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TimeBox extends StatelessWidget {
-  final String label;
-  final bool warning;
-  const _TimeBox({required this.label, this.warning = false});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: BoxDecoration(
-        border:
-            Border.all(color: warning ? Colors.orange : Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              fontSize: 12, color: warning ? Colors.orange.shade800 : null)),
-    );
-  }
-}
-
-class _Slot {
-  String? day;
-  TimeOfDay? from;
-  TimeOfDay? to;
-  _Slot({this.day, this.from, this.to});
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2000,8 +1191,9 @@ Future<void> _startGroupWhatsappBatchSend(
   final students = await db.getStudentsByGroup(groupId);
   final valid = students
       .where((s) =>
-          (s.guardianPhone ?? '').trim().isNotEmpty ||
-          (s.guardianWhatsapp ?? '').trim().isNotEmpty)
+          !s.isArchived &&
+          ((s.guardianPhone ?? '').trim().isNotEmpty ||
+              (s.guardianWhatsapp ?? '').trim().isNotEmpty))
       .toList()
     ..sort((a, b) => a.name.compareTo(b.name));
   if (valid.isEmpty) {
@@ -2066,13 +1258,13 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
                 const Text('إرسال تقرير واتساب'),
                 const SizedBox(height: 6),
                 Row(children: [
-                  _SendStatBadge(
+                  SendStatBadge(
                       label: 'تم الإرسال',
                       count: sentCount,
                       color: const Color(0xFF10B981),
                       icon: Icons.check_circle_rounded),
                   const SizedBox(width: 8),
-                  _SendStatBadge(
+                  SendStatBadge(
                       label: 'لم يُرسل',
                       count: remainingCount,
                       color: const Color(0xFFF59E0B),
@@ -2283,55 +1475,10 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
   );
 }
 
-// شارة إحصائية صغيرة في عنوان نافذة الإرسال
-class _SendStatBadge extends StatelessWidget {
-  final String label;
-  final int count;
-  final Color color;
-  final IconData icon;
-  const _SendStatBadge({
-    required this.label,
-    required this.count,
-    required this.color,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 5),
-          Text('$label: $count',
-              style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: color)),
-        ]),
-      );
-}
-
 // ─── يوم حصة مسجّلة (لكارت "حصص مسجلة" في هيدر تفاصيل المجموعة) ───────────────
-class _GDSessionDay {
-  final DateTime date;
-  final int presentCount;
-  final int totalMarked;
-  final List<int> recordIds;
-  const _GDSessionDay(
-      {required this.date,
-      required this.presentCount,
-      required this.totalMarked,
-      required this.recordIds});
-}
 
 void _gdShowSessionsDialog(
-    BuildContext context, String groupName, List<_GDSessionDay> sessionDays) {
+    BuildContext context, String groupName, List<GDSessionDay> sessionDays) {
   showDialog(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -2405,19 +1552,11 @@ void _gdShowSessionsDialog(
   );
 }
 
-class _GDResumeObserver extends WidgetsBindingObserver {
-  final void Function() onResume;
-  _GDResumeObserver(this.onResume);
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) onResume();
-  }
-}
 
 Future<void> _gdWaitForResume() {
   final c = Completer<void>();
-  late _GDResumeObserver obs;
-  obs = _GDResumeObserver(() {
+  late GDResumeObserver obs;
+  obs = GDResumeObserver(() {
     WidgetsBinding.instance.removeObserver(obs);
     if (!c.isCompleted) c.complete();
   });
@@ -2495,9 +1634,13 @@ void _gdShowFeesBreakdownDialog(
           applicableCount++;
           final list = await db.getPaymentsByStudent(id);
 
+          // spec 038 — استبعاد صفوف إسقاط المديونية من الكاش المحصَّل
+          // فعليًا (مش فلوس حقيقية دخلت).
           paidAmount += list
               .where((p) =>
-                  !p.date.isBefore(monthStart) && !p.date.isAfter(monthEnd))
+                  !p.date.isBefore(monthStart) &&
+                  !p.date.isAfter(monthEnd) &&
+                  p.note != kDebtWriteOffNote)
               .fold<double>(0, (sum, p) => sum + p.amount);
 
           // "مين لسه عليه فلوس لحد الشهر ده" لازم يعتمد على المديونية

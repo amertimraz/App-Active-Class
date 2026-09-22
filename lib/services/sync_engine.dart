@@ -557,6 +557,7 @@ class SyncEngine with WidgetsBindingObserver {
           'date': payload[COL_ATTENDANCE_DATE],
           'status': payload[COL_ATTENDANCE_STATUS],
           'notes': payload[COL_ATTENDANCE_NOTES],
+          'interaction': payload[COL_ATTENDANCE_INTERACTION],
         };
       case TABLE_PAYMENTS:
         final studentLocalId = payload[COL_PAYMENT_STUDENT_ID] as int?;
@@ -1505,6 +1506,7 @@ class SyncEngine with WidgetsBindingObserver {
           COL_ATTENDANCE_DATE: remote['date'],
           COL_ATTENDANCE_STATUS: remote['status'],
           COL_ATTENDANCE_NOTES: remote['notes'],
+          COL_ATTENDANCE_INTERACTION: remote['interaction'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };

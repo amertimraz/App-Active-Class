@@ -242,11 +242,66 @@ class AttendanceController extends GetxController {
         status: status,
       ));
     } else {
-      await _dbService.updateAttendance(existing.copyWith(status: status));
+      // spec 040 — التحوّل لـ"غائب" يمسح أي تفاعل مسجَّل لنفس السجل
+      // (FR-006)؛ ده مركزي هنا (مش في الشاشة) عشان يشتغل مهما كان
+      // مصدر الاستدعاء (شاشة الحضور، تحضير الكل، أي مكان مستقبلي).
+      final clearsInteraction = status == ATTENDANCE_ABSENT;
+      await _dbService.updateAttendance(existing.copyWith(
+        status: status,
+        clearInteraction: clearsInteraction,
+      ));
     }
     await loadAttendance();
     unawaited(ParentPortalService().pushStudentSummary(studentId));
     unawaited(NotificationService().scheduleLatePaymentReminder());
+  }
+
+  /// يسجّل/يلغي/يغيّر تفاعل طالب لسجل حضور يوم معيّن (spec 040). بيتجاهل
+  /// الاستدعاء بهدوء لو السجل غير موجود أو حالته لا تسمح بتفاعل (دفاع
+  /// إضافي — الواجهة أصلاً بتمنع الاستدعاء في الحالة دي).
+  Future<void> setInteraction(
+      int studentId, DateTime day, String? interaction) async {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
+    final existing = attendance.firstWhereOrNull((a) =>
+        a.studentId == studentId &&
+        !a.date.isBefore(dayStart) &&
+        !a.date.isAfter(dayEnd));
+    if (existing == null || !canRecordInteraction(existing.status)) return;
+
+    await _dbService.updateAttendance(existing.copyWith(
+      interaction: interaction,
+      clearInteraction: interaction == null,
+    ));
+    await loadAttendance();
+  }
+
+  /// يطبّق مستوى تفاعل واحد على كل الطلاب المؤهَّلين (حاضر/متأخر) في
+  /// [studentIds] ليوم [day] — الطلاب الغائبون أو بلا سجل حضور يُتخطّون
+  /// بلا خطأ (spec 040). يرجّع عدد الطلاب اللي فعلاً اتسجّل لهم تفاعل.
+  Future<int> markGroupInteraction(
+      List<int> studentIds, DateTime day, String interaction) async {
+    if (studentIds.isEmpty) return 0;
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
+    final recordsByStudent = <int, Attendance>{
+      for (final a in attendance)
+        if (!a.date.isBefore(dayStart) && !a.date.isAfter(dayEnd))
+          a.studentId: a,
+    };
+
+    var applied = 0;
+    for (final id in studentIds) {
+      final record = recordsByStudent[id];
+      if (record == null || !canRecordInteraction(record.status)) continue;
+      try {
+        await _dbService
+            .updateAttendance(record.copyWith(interaction: interaction));
+        applied++;
+      } catch (_) {}
+    }
+    if (applied > 0) await loadAttendance();
+    return applied;
   }
 
   // تحضير جميع طلاب المجموعة الغير مسجلين في يوم معين — بيتابع كل

@@ -902,6 +902,10 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       final Map<int, String> statusMap = {
         for (final a in dayRecords) a.studentId: a.status,
       };
+      // spec 040 — تفاعل الطالب لنفس اليوم.
+      final Map<int, String?> interactionMap = {
+        for (final a in dayRecords) a.studentId: a.interaction,
+      };
 
       final presentCount = groupStudents
           .where((s) => attendanceCountsAsPresent(statusMap[s.id]))
@@ -1207,6 +1211,56 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                             fontFamily: 'Cairo')),
                                   );
                                 }),
+                                // spec 040 — تطبيق تفاعل واحد على كل
+                                // الطلاب المؤهَّلين (حاضر/متأخر) دفعة واحدة.
+                                PopupMenuButton<String>(
+                                  tooltip: 'تطبيق تفاعل على الكل',
+                                  onSelected: (value) async {
+                                    final applied = await controller
+                                        .markGroupInteraction(
+                                      groupStudents
+                                          .map((s) => s.id!)
+                                          .toList(),
+                                      selectedDay,
+                                      value,
+                                    );
+                                    if (applied == 0) {
+                                      ToastHelper.error(
+                                          'لا يوجد طلاب حاضرين لتطبيق التفاعل عليهم');
+                                    }
+                                  },
+                                  itemBuilder: (_) => [
+                                    STUDENT_INTERACTION_ACTIVE,
+                                    STUDENT_INTERACTION_NEUTRAL,
+                                    STUDENT_INTERACTION_DISENGAGED,
+                                  ]
+                                      .map((v) => PopupMenuItem(
+                                            value: v,
+                                            child: Text(
+                                                '${interactionEmoji(v)}  $v'),
+                                          ))
+                                      .toList(),
+                                  child: IgnorePointer(
+                                    child: TextButton.icon(
+                                      onPressed: null,
+                                      style: ButtonStyle(
+                                          padding: WidgetStatePropertyAll(
+                                              EdgeInsets.symmetric(
+                                                  horizontal: 8)),
+                                          minimumSize: WidgetStatePropertyAll(
+                                              Size(0, 32)),
+                                          tapTargetSize: MaterialTapTargetSize
+                                              .shrinkWrap),
+                                      icon: Icon(Icons.emoji_emotions_rounded,
+                                          size: 18, color: Colors.deepPurple),
+                                      label: Text('تطبيق تفاعل',
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              fontFamily: 'Cairo',
+                                              color: Colors.deepPurple)),
+                                    ),
+                                  ),
+                                ),
                                 const Spacer(),
                               ]),
                             ),
@@ -1256,6 +1310,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                       child: _StudentAttendanceChip(
                                         student: s,
                                         status: status,
+                                        interaction: interactionMap[s.id],
                                         onSelect: (newStatus) async {
                                           try {
                                             await controller
@@ -1273,6 +1328,9 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                                 s.id!, selectedDay);
                                           }
                                         },
+                                        onInteractionSelect: (newInteraction) =>
+                                            controller.setInteraction(s.id!,
+                                                selectedDay, newInteraction),
                                       ),
                                     );
                                   }).toList(),
@@ -1648,11 +1706,17 @@ class _StudentAttendanceChip extends StatelessWidget {
   final String? status;
   // onSelect(status) → يسجّل الحالة؛ onSelect(null) → يمسح السجل (spec 011).
   final ValueChanged<String?> onSelect;
+  // spec 040 — تفاعل الطالب (نشيط/عادي/غير متفاعل). null لو مفيش تفاعل
+  // أو الحالة غير مؤهَّلة (canRecordInteraction == false).
+  final String? interaction;
+  final ValueChanged<String?> onInteractionSelect;
 
   const _StudentAttendanceChip({
     required this.student,
     required this.status,
     required this.onSelect,
+    required this.interaction,
+    required this.onInteractionSelect,
   });
 
   @override
@@ -1724,9 +1788,60 @@ class _StudentAttendanceChip extends StatelessWidget {
           ]),
           const SizedBox(height: 8),
           _AttendanceStatusSegmented(status: norm, onSelect: onSelect),
+          if (canRecordInteraction(norm)) ...[
+            const SizedBox(height: 8),
+            _InteractionRow(
+                interaction: normalizeInteraction(interaction),
+                onSelect: onInteractionSelect),
+          ],
         ],
       ),
     );
+  }
+}
+
+// صف تفاعل الطالب (spec 040) — 3 إيموجي، toggle زي حالة الحضور: ضغط
+// المختار يمسحه، ضغط مختلف يستبدله.
+class _InteractionRow extends StatelessWidget {
+  final String? interaction;
+  final ValueChanged<String?> onSelect;
+
+  const _InteractionRow({required this.interaction, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget btn(String value) {
+      final selected = interaction == value;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => onSelect(selected ? null : value),
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            height: 30,
+            alignment: Alignment.center,
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            decoration: BoxDecoration(
+              color: selected
+                  ? Colors.deepPurple.withValues(alpha: 0.12)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: selected
+                    ? Colors.deepPurple.withValues(alpha: 0.4)
+                    : Colors.grey.withValues(alpha: 0.25),
+              ),
+            ),
+            child: Text(interactionEmoji(value), style: const TextStyle(fontSize: 15)),
+          ),
+        ),
+      );
+    }
+
+    return Row(children: [
+      btn(STUDENT_INTERACTION_ACTIVE),
+      btn(STUDENT_INTERACTION_NEUTRAL),
+      btn(STUDENT_INTERACTION_DISENGAGED),
+    ]);
   }
 }
 

@@ -106,6 +106,15 @@ class ExportService {
         paidMap.update(p.studentId, (v) => v + p.amount,
             ifAbsent: () => p.amount);
       }
+      // spec 038 — نسخة مفلترة تستبعد إسقاط المديونية، تُستخدم فقط
+      // لحساب totalPaid (رقم مالي حقيقي) تحت — paidMap الأصلية تفضل
+      // شاملة الإسقاط لأن عمود "الحالة" لكل طالب لازم يعكس إن مديونيته
+      // اتصفّرت فعليًا (راجع research.md § تفصيل تقني مهم).
+      final realPaidMap = <int, double>{};
+      for (final p in payments.where((p) => p.note != kDebtWriteOffNote)) {
+        realPaidMap.update(p.studentId, (v) => v + p.amount,
+            ifAbsent: () => p.amount);
+      }
       final groupById = {for (final g in groups) g.id: g};
 
       // ترتيب: المجموعة ثم الاسم
@@ -126,7 +135,7 @@ class ExportService {
             allAttendance: attendance,
             siblingGroupMembers: students,
           );
-          totalPaid += paidMap[s.id] ?? 0;
+          totalPaid += realPaidMap[s.id] ?? 0;
         }
       }
 
@@ -279,11 +288,12 @@ class ExportService {
           .where((a) => !a.date.isBefore(start) && !a.date.isAfter(end))
           .toList();
 
-      // Map: studentId → Map<تاريخ اليوم, status>
-      final attMap = <int, Map<DateTime, String>>{};
+      // Map: studentId → Map<تاريخ اليوم, Attendance> — السجل الكامل
+      // (مش status بس) عشان عمود التفاعل (spec 040) يقدر يوصله.
+      final attMap = <int, Map<DateTime, Attendance>>{};
       for (final a in rangeAtt) {
         final d = DateTime(a.date.year, a.date.month, a.date.day);
-        attMap.putIfAbsent(a.studentId, () => {})[d] = a.status;
+        attMap.putIfAbsent(a.studentId, () => {})[d] = a;
       }
       final groupById = {for (final g in groups) g.id: g};
 
@@ -647,7 +657,7 @@ class ExportService {
 
   // ── جدول الحضور ──────────────────────────────────────────────────
   pw.Widget _attendanceTable(List<Student> students,
-      Map<int, Map<DateTime, String>> attMap, DateTime start, DateTime end,
+      Map<int, Map<DateTime, Attendance>> attMap, DateTime start, DateTime end,
       bool isRange) {
     // أعمدة الأيام = التواريخ اللي فيها تسجيل حصص فعلي فقط (spec 013 US5).
     // في وضع الفترة (spec 014) الترويسة تعرض يوم/شهر عشان الفترة اللي
@@ -697,13 +707,15 @@ class ExportService {
         _td(s.name, isEven: isEven, bold: true, size: 8),
       ];
       for (final d in sortedDates) {
-        final norm = normalizeAttendanceStatus(sAtt[d]);
+        final record = sAtt[d];
+        final norm = normalizeAttendanceStatus(record?.status);
         if (norm == ATTENDANCE_LATE) {
           presentCount++; // "متأخر" حضور (spec 011)
-          cells.add(_attCell(true, isEven, late: true));
+          cells.add(_attCell(true, isEven,
+              late: true, interaction: record?.interaction));
         } else if (norm == ATTENDANCE_PRESENT) {
           presentCount++;
-          cells.add(_attCell(true, isEven));
+          cells.add(_attCell(true, isEven, interaction: record?.interaction));
         } else if (norm == ATTENDANCE_ABSENT) {
           absentCount++;
           cells.add(_attCell(false, isEven));
@@ -720,47 +732,68 @@ class ExportService {
   }
 
   pw.Widget _attendanceSummary(
-      List<Student> students, Map<int, Map<DateTime, String>> attMap) {
+      List<Student> students, Map<int, Map<DateTime, Attendance>> attMap) {
     int totalPresent = 0;
     int totalAbsent = 0;
     int totalLate = 0;
+    var hasAnyInteraction = false;
     for (final s in students) {
       final sAtt = attMap[s.id] ?? {};
-      totalPresent +=
-          sAtt.values.where((v) => attendanceCountsAsPresent(v)).length;
+      totalPresent += sAtt.values
+          .where((v) => attendanceCountsAsPresent(v.status))
+          .length;
       totalLate += sAtt.values
-          .where((v) => normalizeAttendanceStatus(v) == ATTENDANCE_LATE)
+          .where((v) => normalizeAttendanceStatus(v.status) == ATTENDANCE_LATE)
           .length;
       totalAbsent += sAtt.values
-          .where((v) => normalizeAttendanceStatus(v) == ATTENDANCE_ABSENT)
+          .where((v) =>
+              normalizeAttendanceStatus(v.status) == ATTENDANCE_ABSENT)
           .length;
+      if (!hasAnyInteraction &&
+          sAtt.values.any((v) => normalizeInteraction(v.interaction) != null)) {
+        hasAnyInteraction = true;
+      }
     }
     final total = totalPresent + totalAbsent;
     final rate = total > 0 ? (totalPresent / total * 100) : 0.0;
 
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(10),
-      decoration: pw.BoxDecoration(
-        color: _lightGrey,
-        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
-      ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
-        children: [
-          _statBox('إجمالي الحضور', '$totalPresent جلسة', _success),
-          if (totalLate > 0)
-            _statBox('منها متأخر', '$totalLate جلسة', _warning),
-          _statBox('إجمالي الغياب', '$totalAbsent جلسة', _error),
-          _statBox(
-              'نسبة الحضور',
-              '${rate.toStringAsFixed(1)}%',
-              rate >= 80
-                  ? _success
-                  : rate >= 60
-                      ? _warning
-                      : _error),
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Container(
+          padding: const pw.EdgeInsets.all(10),
+          decoration: pw.BoxDecoration(
+            color: _lightGrey,
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+          ),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+            children: [
+              _statBox('إجمالي الحضور', '$totalPresent جلسة', _success),
+              if (totalLate > 0)
+                _statBox('منها متأخر', '$totalLate جلسة', _warning),
+              _statBox('إجمالي الغياب', '$totalAbsent جلسة', _error),
+              _statBox(
+                  'نسبة الحضور',
+                  '${rate.toStringAsFixed(1)}%',
+                  rate >= 80
+                      ? _success
+                      : rate >= 60
+                          ? _warning
+                          : _error),
+            ],
+          ),
+        ),
+        // spec 040 — مفتاح ألوان التفاعل، يظهر بس لو فيه أي تفاعل مسجَّل
+        // في نطاق التقرير ده (تفادي إرباك تقرير مفيهوش أي تفاعل خالص).
+        if (hasAnyInteraction) ...[
+          pw.SizedBox(height: 6),
+          pw.Text(
+            'لون النقطة يدل على التفاعل: بنفسجي = نشيط، أزرق = عادي، رمادي = غير متفاعل',
+            style: _style(size: 8, color: _grey),
+          ),
         ],
-      ),
+      ],
     );
   }
 
@@ -1049,25 +1082,45 @@ class ExportService {
 
   // نرسم علامة الحضور/الغياب كشكل هندسي بدل رموز يونيكود (✓/●) — دي
   // مش مضمونة موجودة في خط Cairo المرفق، وبتطلع مربعات فاضية في الـPDF.
-  pw.Widget _attCell(bool? present, bool isEven, {bool late = false}) =>
-      pw.Container(
-        color: isEven ? _white : _lightGrey,
-        alignment: pw.Alignment.center,
-        padding: const pw.EdgeInsets.all(1),
-        child: present == null
-            ? pw.SizedBox()
-            : pw.Container(
-                width: 7,
-                height: 7,
-                decoration: pw.BoxDecoration(
-                  shape: pw.BoxShape.circle,
-                  color: late ? _warning : (present ? _success : null),
-                  border: (present || late)
-                      ? null
-                      : pw.Border.all(color: _error, width: 1),
-                ),
+  // spec 040 — [interaction] لو مسجَّل (يوم حاضر/متأخر بس) بيغيّر لون
+  // النقطة لواحد من 3 ألوان مميّزة للتفاعل بدل لون الحضور العادي.
+  // **ملاحظة تصحيح تنفيذ**: الخطة الأصلية كانت عرض الإيموجي نفسه، لكن
+  // الخط المحمَّل في التصدير (Cairo TTF فقط) ومكتبة pdf عمومًا لا يدعمان
+  // رسم إيموجي ملوّن — النص كان هيظهر فارغ/رمز مفقود. الحل البديل: نقطة
+  // ملوّنة بلون مخصَّص لكل مستوى تفاعل (تفرّق بصريًا زي الحضور بالظبط).
+  pw.Widget _attCell(bool? present, bool isEven,
+      {bool late = false, String? interaction}) {
+    final norm = normalizeInteraction(interaction);
+    PdfColor? dotColor;
+    if (norm != null) {
+      switch (norm) {
+        case STUDENT_INTERACTION_ACTIVE:
+          dotColor = PdfColor.fromInt(0xFF7C3AED); // بنفسجي
+        case STUDENT_INTERACTION_NEUTRAL:
+          dotColor = PdfColor.fromInt(0xFF2563EB); // أزرق
+        case STUDENT_INTERACTION_DISENGAGED:
+          dotColor = PdfColor.fromInt(0xFF6B7280); // رمادي غامق
+      }
+    }
+    return pw.Container(
+      color: isEven ? _white : _lightGrey,
+      alignment: pw.Alignment.center,
+      padding: const pw.EdgeInsets.all(1),
+      child: present == null
+          ? pw.SizedBox()
+          : pw.Container(
+              width: 7,
+              height: 7,
+              decoration: pw.BoxDecoration(
+                shape: pw.BoxShape.circle,
+                color: dotColor ?? (late ? _warning : (present ? _success : null)),
+                border: (present || late)
+                    ? null
+                    : pw.Border.all(color: _error, width: 1),
               ),
-      );
+            ),
+    );
+  }
 
   // ══════════════════════════════════════════════════════════════════
   //  Helpers
