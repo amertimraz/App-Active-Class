@@ -83,6 +83,13 @@
 
 ---
 
+### 📦 إصدار v1.2.73+4091 — منشور (2026-09-26)
+- **GitHub Release**: https://github.com/amertimraz/App-Active-Class/releases/tag/v1.2.73 — 3 APKs، توقيع متحقَّق (`5f74fe10…ec7b`). commit `f48202d`، tag `v1.2.73` مدفوع.
+- **VPS**: `ActiveClass-arm64-v8a.apk` مُحدَّث والـSHA مطابق (النسخة القديمة `.bak-1.2.72`).
+- **Google Play**: `release_assets/v1.2.73/ActiveClass-play.aab` (69.8MB) — **لسه محتاج رفع يدوي من المستخدم على Play Console** (نسخة v1.2.72 كمان ممكن ما اترفعتش).
+- يضم: الملازم (DB v35 + migration_booklets مُطبَّقة)، الإخوة، توقيع المعلم، تسريع الحضور/التفاعل.
+- **لسه**: تجربة مزامنة الملازم مدرس↔مساعد بجهازين (T035).
+
 ### 📦 إصدار v1.2.72+4090 — منشور بالكامل (2026-09-23)
 - **GitHub Release**: https://github.com/amertimraz/App-Active-Class/releases/tag/v1.2.72 — 3 APKs (arm64-v8a, armeabi-v7a, x86_64)، توقيع متحقَّق (`5f74fe10af2da396cbf0a98895af02bb5ffbdc01cdf68a55bea25a841f02ec7b`).
 - **VPS**: `/var/www/active-class.online/downloads/ActiveClass-arm64-v8a.apk` مُحدَّث (النسخة القديمة v1.2.65 اتحفظت `.bak-1.2.65`).
