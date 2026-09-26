@@ -134,6 +134,11 @@ class _StudentsPageState extends State<StudentsPage>
             onPressed: () => Get.toNamed(ROUTE_QR_GALLERY),
           ),
           IconButton(
+            tooltip: 'الإخوة',
+            icon: const Icon(Icons.family_restroom_rounded),
+            onPressed: () => Get.toNamed(ROUTE_SIBLINGS),
+          ),
+          IconButton(
             tooltip: 'الأرشيف',
             icon: const Icon(Icons.archive_rounded),
             onPressed: () => Get.toNamed(ROUTE_ARCHIVED_STUDENTS),

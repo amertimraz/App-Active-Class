@@ -18,6 +18,7 @@ import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
 import 'package:active_class/models/bank_question_model.dart';
 import 'package:active_class/models/session_override_model.dart';
+import 'package:active_class/models/booklet_model.dart';
 import 'package:active_class/utils/phone_helper.dart';
 import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/services/auto_backup_service.dart';
@@ -158,6 +159,76 @@ const String _sessionOverridesTableSql = '''
 const String _sessionOverridesIndexSql =
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_SESSION_OVERRIDES}_group_date '
     'ON $TABLE_SESSION_OVERRIDES($COL_SO_GROUP_ID, $COL_SO_DATE)';
+
+// spec 041 — الملازم/الكتب: 4 جداول متزامنة (القناة الممتدة). مستقلة تمامًا
+// عن payments/accumulatedDebt.
+const String _bookletsTableSql = '''
+  CREATE TABLE IF NOT EXISTS $TABLE_BOOKLETS (
+    $COL_BK_ID         INTEGER PRIMARY KEY AUTOINCREMENT,
+    $COL_BK_NAME       TEXT NOT NULL,
+    $COL_BK_PRICE      REAL NOT NULL DEFAULT 0,
+    $COL_BK_CREATED_AT TEXT,
+    $COL_SYNC_UPDATED_AT TEXT,
+    $COL_SYNC_REMOTE_ID  TEXT
+  )
+''';
+
+const String _bookletGroupsTableSql = '''
+  CREATE TABLE IF NOT EXISTS $TABLE_BOOKLET_GROUPS (
+    $COL_BG_ID          INTEGER PRIMARY KEY AUTOINCREMENT,
+    $COL_BG_BOOKLET_ID  INTEGER NOT NULL,
+    $COL_BG_GROUP_ID    INTEGER NOT NULL,
+    $COL_SYNC_UPDATED_AT TEXT,
+    $COL_SYNC_REMOTE_ID  TEXT,
+    FOREIGN KEY($COL_BG_BOOKLET_ID) REFERENCES $TABLE_BOOKLETS($COL_BK_ID) ON DELETE CASCADE,
+    FOREIGN KEY($COL_BG_GROUP_ID) REFERENCES $TABLE_GROUPS($COL_GROUP_ID) ON DELETE CASCADE
+  )
+''';
+
+const String _bookletRecordsTableSql = '''
+  CREATE TABLE IF NOT EXISTS $TABLE_BOOKLET_RECORDS (
+    $COL_BR_ID           INTEGER PRIMARY KEY AUTOINCREMENT,
+    $COL_BR_BOOKLET_ID   INTEGER NOT NULL,
+    $COL_BR_STUDENT_ID   INTEGER NOT NULL,
+    $COL_BR_DELIVERED    INTEGER NOT NULL DEFAULT 0,
+    $COL_BR_DELIVERED_AT TEXT,
+    $COL_BR_EXCLUDED     INTEGER NOT NULL DEFAULT 0,
+    $COL_SYNC_UPDATED_AT TEXT,
+    $COL_SYNC_REMOTE_ID  TEXT,
+    FOREIGN KEY($COL_BR_BOOKLET_ID) REFERENCES $TABLE_BOOKLETS($COL_BK_ID) ON DELETE CASCADE,
+    FOREIGN KEY($COL_BR_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
+  )
+''';
+
+const String _bookletPaymentsTableSql = '''
+  CREATE TABLE IF NOT EXISTS $TABLE_BOOKLET_PAYMENTS (
+    $COL_BP_ID          INTEGER PRIMARY KEY AUTOINCREMENT,
+    $COL_BP_BOOKLET_ID  INTEGER NOT NULL,
+    $COL_BP_STUDENT_ID  INTEGER NOT NULL,
+    $COL_BP_AMOUNT      REAL NOT NULL,
+    $COL_BP_DATE        TEXT NOT NULL,
+    $COL_SYNC_UPDATED_AT TEXT,
+    $COL_SYNC_REMOTE_ID  TEXT,
+    FOREIGN KEY($COL_BP_BOOKLET_ID) REFERENCES $TABLE_BOOKLETS($COL_BK_ID) ON DELETE CASCADE,
+    FOREIGN KEY($COL_BP_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
+  )
+''';
+
+const List<String> _bookletIndexSqls = [
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_BOOKLET_GROUPS}_bg '
+      'ON $TABLE_BOOKLET_GROUPS($COL_BG_BOOKLET_ID, $COL_BG_GROUP_ID)',
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_BOOKLET_RECORDS}_bs '
+      'ON $TABLE_BOOKLET_RECORDS($COL_BR_BOOKLET_ID, $COL_BR_STUDENT_ID)',
+  'CREATE INDEX IF NOT EXISTS idx_${TABLE_BOOKLET_PAYMENTS}_bs '
+      'ON $TABLE_BOOKLET_PAYMENTS($COL_BP_BOOKLET_ID, $COL_BP_STUDENT_ID)',
+];
+
+const List<String> _bookletTableSqls = [
+  _bookletsTableSql,
+  _bookletGroupsTableSql,
+  _bookletRecordsTableSql,
+  _bookletPaymentsTableSql,
+];
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -367,6 +438,14 @@ class DatabaseService {
     // Session Overrides (spec 032) — إلغاء/تعويض الحصة، متزامن عبر الفريق.
     await db.execute(_sessionOverridesTableSql);
     await db.execute(_sessionOverridesIndexSql);
+
+    // Booklets (spec 041) — الملازم/الكتب، متزامنة عبر الفريق.
+    for (final sql in _bookletTableSqls) {
+      await db.execute(sql);
+    }
+    for (final sql in _bookletIndexSqls) {
+      await db.execute(sql);
+    }
 
     // App settings (key/value) — اسم المعلم، العملة، تفضيلات الواجهة...
     await db.execute('''
@@ -820,6 +899,15 @@ class DatabaseService {
       } catch (_) {}
     }
 
+    if (oldVersion < 35) {
+      // spec 041 — الملازم/الكتب (4 جداول جديدة، صفر تأثير على الموجود).
+      for (final sql in [..._bookletTableSqls, ..._bookletIndexSqls]) {
+        try {
+          await db.execute(sql);
+        } catch (_) {}
+      }
+    }
+
     if (oldVersion < 32) {
       // UUID ثابت لمجموعة الإخوة — sibling_group_id المحلي (رقم = أصغر
       // id) عمره ما كان بيتزامن (بلا معنى عبر الأجهزة أصلاً)، فربط
@@ -958,12 +1046,23 @@ class DatabaseService {
     // تفضل معروضة للأبد بعد ما يتمسحوا مع المجموعة.
     final studentRows =
         await db.query(TABLE_STUDENTS, where: '$COL_STUDENT_GROUP_ID = ?', whereArgs: [id]);
+    final bkStudentRows = await _collectBookletStudentRows(
+        db,
+        'SELECT $COL_STUDENT_ID FROM $TABLE_STUDENTS WHERE $COL_STUDENT_GROUP_ID = ?',
+        [id]);
+    final bkGroupRows = await _bookletRows(
+        db, TABLE_BOOKLET_GROUPS, COL_BG_ID, '$COL_BG_GROUP_ID = ?', [id]);
     final n = await db.delete(
       TABLE_GROUPS,
       where: '$COL_GROUP_ID = ?',
       whereArgs: [id],
     );
     _notifyChanged();
+    await _queueBookletRowDeletes(
+        TABLE_BOOKLET_PAYMENTS, COL_BP_ID, bkStudentRows.payments);
+    await _queueBookletRowDeletes(
+        TABLE_BOOKLET_RECORDS, COL_BR_ID, bkStudentRows.records);
+    await _queueBookletRowDeletes(TABLE_BOOKLET_GROUPS, COL_BG_ID, bkGroupRows);
     for (final entry in cascade.attendanceIds.entries) {
       await _queueDelete(TABLE_ATTENDANCE, entry.key, entry.value);
     }
@@ -1042,6 +1141,10 @@ class DatabaseService {
     Map<int, String?> studentIds = {};
     Map<int, String?> attendanceIds = {};
     Map<int, String?> paymentIds = {};
+    final bkRows = await _collectBookletStudentRows(
+        db,
+        'SELECT $COL_STUDENT_ID FROM $TABLE_STUDENTS WHERE $COL_STUDENT_GROUP_ID = ?',
+        [groupId]);
     await db.transaction((txn) async {
       final students = await txn.query(
         TABLE_STUDENTS,
@@ -1100,6 +1203,10 @@ class DatabaseService {
     // هتفضل نسخ يتيمة (orphaned) من الطلاب/الحضور/المدفوعات دي على
     // جهاز المدرس نفسه (لو اتزامنت الطلاب قبل كده) وعلى أجهزة زمايله،
     // لأن الحذف الجماعي ده كان بيتم مباشرة من غير المرور بـ _queueSync.
+    await _queueBookletRowDeletes(
+        TABLE_BOOKLET_PAYMENTS, COL_BP_ID, bkRows.payments);
+    await _queueBookletRowDeletes(
+        TABLE_BOOKLET_RECORDS, COL_BR_ID, bkRows.records);
     for (final entry in attendanceIds.entries) {
       await _queueDelete(TABLE_ATTENDANCE, entry.key, entry.value);
     }
@@ -1354,6 +1461,7 @@ class DatabaseService {
         columns: [COL_PAYMENT_ID, COL_SYNC_REMOTE_ID],
         where: '$COL_PAYMENT_STUDENT_ID = ?',
         whereArgs: [id]);
+    final bkRows = await _collectBookletStudentRows(db, '?', [id]);
     final studentRemoteId =
         await _remoteIdOf(db, TABLE_STUDENTS, COL_STUDENT_ID, id);
     final n = await db.delete(
@@ -1370,6 +1478,10 @@ class DatabaseService {
       await _queueDelete(TABLE_PAYMENTS, row[COL_PAYMENT_ID] as int,
           row[COL_SYNC_REMOTE_ID] as String?);
     }
+    await _queueBookletRowDeletes(
+        TABLE_BOOKLET_PAYMENTS, COL_BP_ID, bkRows.payments);
+    await _queueBookletRowDeletes(
+        TABLE_BOOKLET_RECORDS, COL_BR_ID, bkRows.records);
     await _queueDelete(TABLE_STUDENTS, id, studentRemoteId);
     if (orphanGroupId != null) {
       await _unlinkOrphanedSiblingSurvivor(orphanGroupId);
@@ -1698,6 +1810,207 @@ class DatabaseService {
     await _queueSync(TABLE_SESSION_OVERRIDES, id, 'insert',
         payload: {...map, COL_SO_ID: id});
     return id;
+  }
+
+  // ========== BOOKLETS (spec 041) ==========
+  // كل الكتابات: _notifyChanged + _queueSync/_queueDelete (القناة الممتدة).
+  Future<List<Booklet>> getAllBooklets() async {
+    final db = await database;
+    final rows = await db.query(TABLE_BOOKLETS, orderBy: '$COL_BK_ID DESC');
+    return rows.map(Booklet.fromMap).toList();
+  }
+
+  Future<List<BookletGroupLink>> getAllBookletGroups() async {
+    final db = await database;
+    final rows = await db.query(TABLE_BOOKLET_GROUPS);
+    return rows.map(BookletGroupLink.fromMap).toList();
+  }
+
+  Future<List<BookletRecord>> getAllBookletRecords() async {
+    final db = await database;
+    final rows = await db.query(TABLE_BOOKLET_RECORDS);
+    return rows.map(BookletRecord.fromMap).toList();
+  }
+
+  Future<List<BookletPayment>> getAllBookletPayments() async {
+    final db = await database;
+    final rows = await db.query(TABLE_BOOKLET_PAYMENTS,
+        orderBy: '$COL_BP_DATE DESC, $COL_BP_ID DESC');
+    return rows.map(BookletPayment.fromMap).toList();
+  }
+
+  Future<int> insertBooklet(Booklet b) async {
+    final db = await database;
+    final map = {
+      ...b.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    }..remove(COL_BK_ID);
+    final id = await db.insert(TABLE_BOOKLETS, map);
+    _notifyChanged();
+    await _queueSync(TABLE_BOOKLETS, id, 'insert',
+        payload: {...map, COL_BK_ID: id});
+    return id;
+  }
+
+  Future<void> updateBooklet(Booklet b) async {
+    final db = await database;
+    final map = {
+      ...b.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
+    await db.update(TABLE_BOOKLETS, map,
+        where: '$COL_BK_ID = ?', whereArgs: [b.id]);
+    _notifyChanged();
+    await _queueSync(TABLE_BOOKLETS, b.id!, 'update', payload: map);
+  }
+
+  Future<int> insertBookletGroup(int bookletId, int groupId) async {
+    final db = await database;
+    final map = {
+      COL_BG_BOOKLET_ID: bookletId,
+      COL_BG_GROUP_ID: groupId,
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    };
+    final id = await db.insert(TABLE_BOOKLET_GROUPS, map,
+        conflictAlgorithm: ConflictAlgorithm.ignore);
+    if (id <= 0) return 0;
+    _notifyChanged();
+    await _queueSync(TABLE_BOOKLET_GROUPS, id, 'insert',
+        payload: {...map, COL_BG_ID: id});
+    return id;
+  }
+
+  Future<void> deleteBookletGroup(int id) async {
+    final db = await database;
+    final remoteId =
+        await _remoteIdOf(db, TABLE_BOOKLET_GROUPS, COL_BG_ID, id);
+    await db.delete(TABLE_BOOKLET_GROUPS,
+        where: '$COL_BG_ID = ?', whereArgs: [id]);
+    _notifyChanged();
+    await _queueDelete(TABLE_BOOKLET_GROUPS, id, remoteId);
+  }
+
+  /// upsert كسول لسجل (ملزمة، طالب): التسليم/الاستثناء. الحقول null = بلا تغيير.
+  Future<void> upsertBookletRecord(int bookletId, int studentId,
+      {bool? delivered, bool? excluded}) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final rows = await db.query(TABLE_BOOKLET_RECORDS,
+        where: '$COL_BR_BOOKLET_ID = ? AND $COL_BR_STUDENT_ID = ?',
+        whereArgs: [bookletId, studentId],
+        limit: 1);
+    if (rows.isEmpty) {
+      final map = {
+        COL_BR_BOOKLET_ID: bookletId,
+        COL_BR_STUDENT_ID: studentId,
+        COL_BR_DELIVERED: (delivered ?? false) ? 1 : 0,
+        COL_BR_DELIVERED_AT: (delivered ?? false) ? now : null,
+        COL_BR_EXCLUDED: (excluded ?? false) ? 1 : 0,
+        COL_SYNC_UPDATED_AT: now,
+      };
+      final id = await db.insert(TABLE_BOOKLET_RECORDS, map);
+      _notifyChanged();
+      await _queueSync(TABLE_BOOKLET_RECORDS, id, 'insert',
+          payload: {...map, COL_BR_ID: id});
+      return;
+    }
+    final id = rows.first[COL_BR_ID] as int;
+    final map = <String, dynamic>{COL_SYNC_UPDATED_AT: now};
+    if (delivered != null) {
+      map[COL_BR_DELIVERED] = delivered ? 1 : 0;
+      map[COL_BR_DELIVERED_AT] = delivered ? now : null;
+    }
+    if (excluded != null) map[COL_BR_EXCLUDED] = excluded ? 1 : 0;
+    await db.update(TABLE_BOOKLET_RECORDS, map,
+        where: '$COL_BR_ID = ?', whereArgs: [id]);
+    _notifyChanged();
+    await _queueRowUpsert(TABLE_BOOKLET_RECORDS, COL_BR_ID, id);
+  }
+
+  Future<int> insertBookletPayment(BookletPayment p) async {
+    final db = await database;
+    final map = {
+      ...p.toMap(),
+      COL_SYNC_UPDATED_AT: DateTime.now().toIso8601String(),
+    }..remove(COL_BP_ID);
+    final id = await db.insert(TABLE_BOOKLET_PAYMENTS, map);
+    _notifyChanged();
+    await _queueSync(TABLE_BOOKLET_PAYMENTS, id, 'insert',
+        payload: {...map, COL_BP_ID: id});
+    return id;
+  }
+
+  Future<void> deleteBookletPayment(int id) async {
+    final db = await database;
+    final remoteId =
+        await _remoteIdOf(db, TABLE_BOOKLET_PAYMENTS, COL_BP_ID, id);
+    await db.delete(TABLE_BOOKLET_PAYMENTS,
+        where: '$COL_BP_ID = ?', whereArgs: [id]);
+    _notifyChanged();
+    await _queueDelete(TABLE_BOOKLET_PAYMENTS, id, remoteId);
+  }
+
+  /// (عدد التسليمات، إجمالي المدفوع) — لرسالة تأكيد حذف الملزمة.
+  Future<({int delivered, double paid})> getBookletDeleteImpact(int id) async {
+    final db = await database;
+    final d = await db.rawQuery(
+        'SELECT COUNT(*) c FROM $TABLE_BOOKLET_RECORDS '
+        'WHERE $COL_BR_BOOKLET_ID = ? AND $COL_BR_DELIVERED = 1',
+        [id]);
+    final p = await db.rawQuery(
+        'SELECT COALESCE(SUM($COL_BP_AMOUNT),0) t FROM $TABLE_BOOKLET_PAYMENTS '
+        'WHERE $COL_BP_BOOKLET_ID = ?',
+        [id]);
+    return (
+      delivered: (d.first['c'] as num?)?.toInt() ?? 0,
+      paid: (p.first['t'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  /// يلقط (id، remote_id) لصفوف جدول قبل حذفها بالـCASCADE.
+  Future<List<Map<String, Object?>>> _bookletRows(
+      DatabaseExecutor db, String table, String pk, String where,
+      [List<Object?>? args]) {
+    return db.query(table,
+        columns: [pk, COL_SYNC_REMOTE_ID], where: where, whereArgs: args);
+  }
+
+  Future<void> _queueBookletRowDeletes(
+      String table, String pk, List<Map<String, Object?>> rows) async {
+    for (final r in rows) {
+      await _queueDelete(
+          table, r[pk] as int, r[COL_SYNC_REMOTE_ID] as String?);
+    }
+  }
+
+  /// أبناء الملازم المرتبطة بطالب/طلاب (سجلات + دفعات) — للـcascade.
+  Future<({
+    List<Map<String, Object?>> records,
+    List<Map<String, Object?>> payments,
+  })> _collectBookletStudentRows(
+      DatabaseExecutor db, String studentWhere, List<Object?> args) async {
+    final rec = await _bookletRows(db, TABLE_BOOKLET_RECORDS, COL_BR_ID,
+        '$COL_BR_STUDENT_ID IN ($studentWhere)', args);
+    final pay = await _bookletRows(db, TABLE_BOOKLET_PAYMENTS, COL_BP_ID,
+        '$COL_BP_STUDENT_ID IN ($studentWhere)', args);
+    return (records: rec, payments: pay);
+  }
+
+  Future<void> deleteBooklet(int id) async {
+    final db = await database;
+    final remoteId = await _remoteIdOf(db, TABLE_BOOKLETS, COL_BK_ID, id);
+    final groups = await _bookletRows(
+        db, TABLE_BOOKLET_GROUPS, COL_BG_ID, '$COL_BG_BOOKLET_ID = ?', [id]);
+    final records = await _bookletRows(db, TABLE_BOOKLET_RECORDS, COL_BR_ID,
+        '$COL_BR_BOOKLET_ID = ?', [id]);
+    final payments = await _bookletRows(db, TABLE_BOOKLET_PAYMENTS, COL_BP_ID,
+        '$COL_BP_BOOKLET_ID = ?', [id]);
+    await db.delete(TABLE_BOOKLETS, where: '$COL_BK_ID = ?', whereArgs: [id]);
+    _notifyChanged();
+    await _queueBookletRowDeletes(TABLE_BOOKLET_PAYMENTS, COL_BP_ID, payments);
+    await _queueBookletRowDeletes(TABLE_BOOKLET_RECORDS, COL_BR_ID, records);
+    await _queueBookletRowDeletes(TABLE_BOOKLET_GROUPS, COL_BG_ID, groups);
+    await _queueDelete(TABLE_BOOKLETS, id, remoteId);
   }
 
   Future<int> deleteSessionOverride(int id) async {

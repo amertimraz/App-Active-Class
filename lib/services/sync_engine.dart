@@ -27,6 +27,7 @@ import 'package:active_class/controllers/homework_controller.dart';
 import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/question_bank_controller.dart';
 import 'package:active_class/controllers/session_override_controller.dart';
+import 'package:active_class/controllers/booklet_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/sync_retry_policy.dart';
@@ -91,6 +92,11 @@ class SyncEngine with WidgetsBindingObserver {
     TABLE_EXAM_GROUPS,
     TABLE_EXAM_GRADES,
     TABLE_EXAM_SUBMISSIONS, // spec 024 — آخر القائمة (محتاج exams + students)
+    // spec 041 — الملازم: بعد groups/students، الأب booklets أولًا
+    TABLE_BOOKLETS,
+    TABLE_BOOKLET_GROUPS,
+    TABLE_BOOKLET_RECORDS,
+    TABLE_BOOKLET_PAYMENTS,
     // ملحوظة: spec 021 أضاف TABLE_STUDENT_FOLLOW_UPS هنا، لكن جدول
     // student_follow_ups على Supabase (migration_student_follow_ups.sql)
     // لسه مش مُطبَّق على كل الـ backends — نرجّعه للمزامنة في إصدار لاحق
@@ -116,6 +122,10 @@ class SyncEngine with WidgetsBindingObserver {
     TABLE_EXAM_QUESTIONS,
     TABLE_EXAM_SUBMISSIONS,
     TABLE_BANK_QUESTIONS, // spec 025
+    TABLE_BOOKLETS, // spec 041
+    TABLE_BOOKLET_GROUPS,
+    TABLE_BOOKLET_RECORDS,
+    TABLE_BOOKLET_PAYMENTS,
   ];
 
   final DatabaseService _dbService = DatabaseService();
@@ -148,6 +158,10 @@ class SyncEngine with WidgetsBindingObserver {
         TABLE_EXAMS => COL_EXAM_ID,
         TABLE_EXAM_QUESTIONS => COL_EQ_ID,
         TABLE_BANK_QUESTIONS => COL_BQ_ID,
+        TABLE_BOOKLETS => COL_BK_ID,
+        TABLE_BOOKLET_GROUPS => COL_BG_ID,
+        TABLE_BOOKLET_RECORDS => COL_BR_ID,
+        TABLE_BOOKLET_PAYMENTS => COL_BP_ID,
         TABLE_EXAM_GROUPS => COL_EG_ID,
         TABLE_EXAM_GRADES => COL_GRADE_ID,
         TABLE_EXAM_SUBMISSIONS => COL_ES_ID,
@@ -604,6 +618,66 @@ class SyncEngine with WidgetsBindingObserver {
           'compensates_date': payload[COL_SO_COMPENSATES_DATE],
           'note': payload[COL_SO_NOTE],
           'session_time': payload[COL_SO_SESSION_TIME],
+        };
+      case TABLE_BOOKLETS: // spec 041
+        return {
+          ...base,
+          'name': payload[COL_BK_NAME],
+          'price': payload[COL_BK_PRICE],
+        };
+      case TABLE_BOOKLET_GROUPS: // spec 041
+        final bkLocal = payload[COL_BG_BOOKLET_ID] as int?;
+        final grpLocal = payload[COL_BG_GROUP_ID] as int?;
+        String? bkRemote, grpRemote;
+        if (bkLocal != null) {
+          bkRemote =
+              await _localRemoteId(TABLE_BOOKLETS, COL_BK_ID, bkLocal);
+          if (bkRemote == null) return null;
+        }
+        if (grpLocal != null) {
+          grpRemote =
+              await _localRemoteId(TABLE_GROUPS, COL_GROUP_ID, grpLocal);
+          if (grpRemote == null) return null;
+        }
+        return {
+          ...base,
+          'booklet_remote_id': bkRemote,
+          'group_remote_id': grpRemote,
+        };
+      case TABLE_BOOKLET_RECORDS: // spec 041
+      case TABLE_BOOKLET_PAYMENTS:
+        final isRec = table == TABLE_BOOKLET_RECORDS;
+        final bkLocal =
+            payload[isRec ? COL_BR_BOOKLET_ID : COL_BP_BOOKLET_ID] as int?;
+        final stLocal =
+            payload[isRec ? COL_BR_STUDENT_ID : COL_BP_STUDENT_ID] as int?;
+        String? bkRemote, stRemote;
+        if (bkLocal != null) {
+          bkRemote =
+              await _localRemoteId(TABLE_BOOKLETS, COL_BK_ID, bkLocal);
+          if (bkRemote == null) return null;
+        }
+        if (stLocal != null) {
+          stRemote = await _localRemoteId(
+              TABLE_STUDENTS, COL_STUDENT_ID, stLocal);
+          if (stRemote == null) return null;
+        }
+        if (isRec) {
+          return {
+            ...base,
+            'booklet_remote_id': bkRemote,
+            'student_remote_id': stRemote,
+            'delivered': (payload[COL_BR_DELIVERED] as int? ?? 0) == 1,
+            'delivered_at': payload[COL_BR_DELIVERED_AT],
+            'excluded': (payload[COL_BR_EXCLUDED] as int? ?? 0) == 1,
+          };
+        }
+        return {
+          ...base,
+          'booklet_remote_id': bkRemote,
+          'student_remote_id': stRemote,
+          'amount': payload[COL_BP_AMOUNT],
+          'date': payload[COL_BP_DATE],
         };
       case TABLE_EXAMS:
         return {
@@ -1066,6 +1140,14 @@ class SyncEngine with WidgetsBindingObserver {
           Get.find<QuestionBankController>().refresh();
         }
         break;
+      case TABLE_BOOKLETS: // spec 041
+      case TABLE_BOOKLET_GROUPS:
+      case TABLE_BOOKLET_RECORDS:
+      case TABLE_BOOKLET_PAYMENTS:
+        if (Get.isRegistered<BookletController>()) {
+          Get.find<BookletController>().load();
+        }
+        break;
       case TABLE_STUDENT_FOLLOW_UPS:
         if (Get.isRegistered<AtRiskController>()) {
           Get.find<AtRiskController>().refresh();
@@ -1297,6 +1379,37 @@ class SyncEngine with WidgetsBindingObserver {
           final dup = await db.query(table,
               where: '$COL_SO_GROUP_ID = ? AND $COL_SO_DATE = ?',
               whereArgs: [groupId, dayPrefix], limit: 1);
+          if (dup.isNotEmpty) {
+            await _reconcileDuplicate(
+                db, table, pkCol, dup.first, remote, localMap);
+            return;
+          }
+        }
+      }
+
+      // spec 041 — نفس المنطق للملازم: سجل (ملزمة، طالب) وربط (ملزمة، مجموعة)
+      // فريدين محليًا، ممكن يتعملوا على جهازين قبل تبادل المزامنة.
+      if (table == TABLE_BOOKLET_RECORDS) {
+        final bk = localMap[COL_BR_BOOKLET_ID];
+        final st = localMap[COL_BR_STUDENT_ID];
+        if (bk != null && st != null) {
+          final dup = await db.query(table,
+              where: '$COL_BR_BOOKLET_ID = ? AND $COL_BR_STUDENT_ID = ?',
+              whereArgs: [bk, st], limit: 1);
+          if (dup.isNotEmpty) {
+            await _reconcileDuplicate(
+                db, table, pkCol, dup.first, remote, localMap);
+            return;
+          }
+        }
+      }
+      if (table == TABLE_BOOKLET_GROUPS) {
+        final bk = localMap[COL_BG_BOOKLET_ID];
+        final gr = localMap[COL_BG_GROUP_ID];
+        if (bk != null && gr != null) {
+          final dup = await db.query(table,
+              where: '$COL_BG_BOOKLET_ID = ? AND $COL_BG_GROUP_ID = ?',
+              whereArgs: [bk, gr], limit: 1);
           if (dup.isNotEmpty) {
             await _reconcileDuplicate(
                 db, table, pkCol, dup.first, remote, localMap);
@@ -1558,6 +1671,71 @@ class SyncEngine with WidgetsBindingObserver {
           // created_at مش عمود على الخادم — نستخدم updated_at كتقريب بدل null
           // (عشان مايتصفّرش عند التوفيق LWW).
           COL_SO_CREATED_AT: updatedAt,
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_BOOKLETS: // spec 041
+        return {
+          COL_BK_NAME: remote['name'],
+          COL_BK_PRICE: remote['price'],
+          COL_BK_CREATED_AT: updatedAt,
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_BOOKLET_GROUPS: // spec 041
+        final bkRemote = remote['booklet_remote_id'] as String?;
+        final grpRemote = remote['group_remote_id'] as String?;
+        final localBk = bkRemote != null
+            ? await _localIdForRemote(TABLE_BOOKLETS, COL_BK_ID, bkRemote,
+                executor: executor)
+            : null;
+        final localGrp = grpRemote != null
+            ? await _localIdForRemote(TABLE_GROUPS, COL_GROUP_ID, grpRemote,
+                executor: executor)
+            : null;
+        if ((bkRemote != null && localBk == null) ||
+            (grpRemote != null && localGrp == null)) {
+          return null;
+        }
+        return {
+          COL_BG_BOOKLET_ID: localBk,
+          COL_BG_GROUP_ID: localGrp,
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_BOOKLET_RECORDS: // spec 041
+      case TABLE_BOOKLET_PAYMENTS:
+        final bkRemote = remote['booklet_remote_id'] as String?;
+        final stRemote = remote['student_remote_id'] as String?;
+        final localBk = bkRemote != null
+            ? await _localIdForRemote(TABLE_BOOKLETS, COL_BK_ID, bkRemote,
+                executor: executor)
+            : null;
+        final localSt = stRemote != null
+            ? await _localIdForRemote(
+                TABLE_STUDENTS, COL_STUDENT_ID, stRemote,
+                executor: executor)
+            : null;
+        if ((bkRemote != null && localBk == null) ||
+            (stRemote != null && localSt == null)) {
+          return null;
+        }
+        if (table == TABLE_BOOKLET_RECORDS) {
+          return {
+            COL_BR_BOOKLET_ID: localBk,
+            COL_BR_STUDENT_ID: localSt,
+            COL_BR_DELIVERED: (remote['delivered'] as bool? ?? false) ? 1 : 0,
+            COL_BR_DELIVERED_AT: remote['delivered_at'],
+            COL_BR_EXCLUDED: (remote['excluded'] as bool? ?? false) ? 1 : 0,
+            COL_SYNC_UPDATED_AT: updatedAt,
+            COL_SYNC_REMOTE_ID: remote['id'],
+          };
+        }
+        return {
+          COL_BP_BOOKLET_ID: localBk,
+          COL_BP_STUDENT_ID: localSt,
+          COL_BP_AMOUNT: remote['amount'],
+          COL_BP_DATE: remote['date'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };

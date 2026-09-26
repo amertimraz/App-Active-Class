@@ -6,10 +6,28 @@
 //   3) اسم مستخدم → يفتح واتساب + ينسخ الرسالة + تنبيه.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/utils/phone_helper.dart';
 import 'package:active_class/widgets/app_toast.dart';
+
+/// يضيف توقيع المعلم (الاسم + التخصص) لآخر أي رسالة لولي الأمر — بنفس
+/// شكل تقرير الطالب الشهري. لو الرسالة فيها التوقيع أصلًا (👨‍🏫) ما بيتكرّرش،
+/// ولو الاسم والتخصص فاضيين في الإعدادات ما بيتضافش حاجة.
+String withTeacherSignature(String message) {
+  if (message.contains('👨‍🏫')) return message;
+  if (!Get.isRegistered<SettingsController>()) return message;
+  final st = Get.find<SettingsController>();
+  final name = st.teacherFullName.value.trim();
+  final spec = st.teacherSpecialization.value.trim();
+  if (name.isEmpty && spec.isEmpty) return message;
+  final b = StringBuffer(message.trimRight())..writeln();
+  b.writeln('👨‍🏫 المعلم: ${name.isNotEmpty ? name : '-'}');
+  b.write('📘 التخصص: ${spec.isNotEmpty ? spec : '-'}');
+  return b.toString();
+}
 
 /// يرجّع true لو فتح واتساب (أو نسخ رسالة username)، false لو مفيش وجهة.
 Future<bool> launchGuardianWhatsapp({
@@ -19,6 +37,7 @@ Future<bool> launchGuardianWhatsapp({
   required String message,
   required String dialCode,
 }) async {
+  message = withTeacherSignature(message);
   final encoded = Uri.encodeComponent(message);
   final handle = PhoneHelper.parseWhatsappHandle(whatsapp ?? '');
 

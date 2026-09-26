@@ -25,6 +25,7 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/clock_text.dart';
+import 'package:active_class/utils/booklet_message.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/monthly_report_message.dart';
 import 'package:active_class/services/database_service.dart';
@@ -1440,6 +1441,7 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
                             canSeeFinancials:
                                 TeamModeService().canSeeFinancials,
                             canSeeAcademics: TeamModeService().canSeeAcademics,
+                            bookletLines: bookletReportLines(s.id),
                           );
 
                           if (!context.mounted) break;

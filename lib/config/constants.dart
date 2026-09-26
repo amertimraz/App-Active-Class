@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 34;
+const int DATABASE_VERSION = 35;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -276,6 +276,9 @@ const String ROUTE_TEAM_MEMBERS        = '/team_members';
 // على الإشعار الأسبوعي من غير مرجع لـwidget builder.
 const String ROUTE_AT_RISK_STUDENTS    = '/at_risk_students';
 const String ROUTE_QUESTION_BANK       = '/question_bank';
+const String ROUTE_BOOKLETS            = '/booklets';
+const String ROUTE_SIBLINGS            = '/siblings';
+const String ROUTE_BOOKLET_DETAILS     = '/booklet_details';
 
 // Standalone login system (self-hosted Supabase) — app_settings keys
 const String SETTING_HAS_LOGGED_IN_BEFORE = 'auth_has_logged_in_before';
@@ -393,3 +396,30 @@ const String COL_SO_COMPENSATES_DATE  = 'compensates_date'; // 'YYYY-MM-DD' — 
 const String COL_SO_NOTE              = 'note';             // اختياري
 const String COL_SO_SESSION_TIME      = 'session_time';     // 'HH:mm' اختياري (v31)
 const String COL_SO_CREATED_AT        = 'created_at';       // ISO-8601
+
+// spec 041 — الملازم/الكتب (4 جداول متزامنة، القناة الممتدة)
+const String TABLE_BOOKLETS           = 'booklets';
+const String COL_BK_ID                = 'id';
+const String COL_BK_NAME              = 'name';
+const String COL_BK_PRICE             = 'price';
+const String COL_BK_CREATED_AT        = 'created_at';
+
+const String TABLE_BOOKLET_GROUPS     = 'booklet_groups';
+const String COL_BG_ID                = 'id';
+const String COL_BG_BOOKLET_ID        = 'booklet_id';
+const String COL_BG_GROUP_ID          = 'group_id';
+
+const String TABLE_BOOKLET_RECORDS    = 'booklet_records';
+const String COL_BR_ID                = 'id';
+const String COL_BR_BOOKLET_ID        = 'booklet_id';
+const String COL_BR_STUDENT_ID        = 'student_id';
+const String COL_BR_DELIVERED         = 'delivered';
+const String COL_BR_DELIVERED_AT      = 'delivered_at';
+const String COL_BR_EXCLUDED          = 'excluded';
+
+const String TABLE_BOOKLET_PAYMENTS   = 'booklet_payments';
+const String COL_BP_ID                = 'id';
+const String COL_BP_BOOKLET_ID        = 'booklet_id';
+const String COL_BP_STUDENT_ID        = 'student_id';
+const String COL_BP_AMOUNT            = 'amount';
+const String COL_BP_DATE              = 'date';

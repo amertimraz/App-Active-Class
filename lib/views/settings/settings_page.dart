@@ -30,6 +30,7 @@ import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/views/settings/account_team_screen.dart';
 import 'package:active_class/widgets/custom_dialogs.dart';
 import 'package:active_class/widgets/progress_dialog.dart';
+import 'package:active_class/utils/booklet_message.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/backup_service.dart';
@@ -2329,6 +2330,7 @@ class SettingsPage extends StatelessWidget {
           teacherSpecialization: settings.teacherSpecialization.value,
           canSeeFinancials: TeamModeService().canSeeFinancials,
           canSeeAcademics: TeamModeService().canSeeAcademics,
+          bookletLines: bookletReportLines(s.id),
         );
 
         if (!context.mounted) break;

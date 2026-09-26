@@ -246,14 +246,29 @@ class AttendanceController extends GetxController {
       // (FR-006)؛ ده مركزي هنا (مش في الشاشة) عشان يشتغل مهما كان
       // مصدر الاستدعاء (شاشة الحضور، تحضير الكل، أي مكان مستقبلي).
       final clearsInteraction = status == ATTENDANCE_ABSENT;
-      await _dbService.updateAttendance(existing.copyWith(
+      final updated = existing.copyWith(
         status: status,
         clearInteraction: clearsInteraction,
-      ));
+      );
+      await _dbService.updateAttendance(updated);
+      _replaceLocal(updated);
+      _applyFilter();
+      unawaited(ParentPortalService().pushStudentSummary(studentId));
+      unawaited(NotificationService().scheduleLatePaymentReminder());
+      return;
     }
     await loadAttendance();
     unawaited(ParentPortalService().pushStudentSummary(studentId));
     unawaited(NotificationService().scheduleLatePaymentReminder());
+  }
+
+  /// تحديث سجل واحد في الذاكرة بدل إعادة قراءة كل جدول الحضور من الـDB —
+  /// على مدرس عنده سنين حضور كل ضغطة كانت بتقرأ وتبني آلاف الصفوف فتعلّق
+  /// الشاشة (خصوصًا مع ضغطات التفاعل المتتالية).
+  void _replaceLocal(Attendance updated) {
+    final i = attendance.indexWhere((a) => a.id == updated.id);
+    if (i < 0) return;
+    attendance[i] = updated;
   }
 
   /// يسجّل/يلغي/يغيّر تفاعل طالب لسجل حضور يوم معيّن (spec 040). بيتجاهل
@@ -269,11 +284,13 @@ class AttendanceController extends GetxController {
         !a.date.isAfter(dayEnd));
     if (existing == null || !canRecordInteraction(existing.status)) return;
 
-    await _dbService.updateAttendance(existing.copyWith(
+    final updated = existing.copyWith(
       interaction: interaction,
       clearInteraction: interaction == null,
-    ));
-    await loadAttendance();
+    );
+    await _dbService.updateAttendance(updated);
+    _replaceLocal(updated);
+    _applyFilter();
   }
 
   /// يطبّق مستوى تفاعل واحد على كل الطلاب المؤهَّلين (حاضر/متأخر) في
@@ -295,12 +312,13 @@ class AttendanceController extends GetxController {
       final record = recordsByStudent[id];
       if (record == null || !canRecordInteraction(record.status)) continue;
       try {
-        await _dbService
-            .updateAttendance(record.copyWith(interaction: interaction));
+        final updated = record.copyWith(interaction: interaction);
+        await _dbService.updateAttendance(updated);
+        _replaceLocal(updated);
         applied++;
       } catch (_) {}
     }
-    if (applied > 0) await loadAttendance();
+    if (applied > 0) _applyFilter();
     return applied;
   }
 

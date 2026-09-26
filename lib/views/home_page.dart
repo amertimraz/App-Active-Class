@@ -115,6 +115,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             : showLockedPermissionHint(),
       ),
       _DashboardMenuItem(
+        icon: Icons.menu_book_rounded,
+        label: 'الملازم',
+        color: const Color(0xFFF97316),
+        onTap: () => Get.toNamed(ROUTE_BOOKLETS),
+      ),
+      _DashboardMenuItem(
         icon: Icons.receipt_long_rounded,
         label: 'التقارير',
         color: const Color(0xFF8B5CF6),
@@ -1260,6 +1266,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     onTap: () {
                       Navigator.pop(context);
                       Get.toNamed(ROUTE_QUESTION_BANK);
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.menu_book_rounded,
+                    title: 'الملازم والكتب',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_BOOKLETS);
                     },
                   ),
                   const Padding(

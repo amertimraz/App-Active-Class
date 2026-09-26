@@ -31,6 +31,8 @@ String buildMonthlyReportMessage({
   required String teacherSpecialization,
   required bool canSeeFinancials,
   required bool canSeeAcademics,
+  // spec 041 — أسطر الملازم (تظهر مع القسم المالي، شهري بس)
+  List<String> bookletLines = const [],
 }) {
   final isPeriod = periodStart != null && periodEnd != null;
   final dFmt = DateFormat('d MMMM yyyy', 'ar');
@@ -135,6 +137,13 @@ String buildMonthlyReportMessage({
     for (final p in paysSorted) {
       buffer.writeln(
           '• ${DateFormat('yyyy-MM-dd HH:mm').format(p.date)} — ${FormatHelper.formatCurrency(p.amount)}');
+    }
+  }
+
+  if (canSeeFinancials && !isPeriod && bookletLines.isNotEmpty) {
+    buffer.writeln('\n📚 الملازم والكتب:');
+    for (final l in bookletLines) {
+      buffer.writeln(l);
     }
   }
 

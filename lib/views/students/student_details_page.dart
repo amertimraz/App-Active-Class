@@ -22,6 +22,7 @@ import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/clock_text.dart';
+import 'package:active_class/utils/booklet_message.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/sibling_departure_check.dart';
@@ -34,6 +35,7 @@ import 'package:active_class/widgets/remove_student_dialog.dart';
 import 'package:active_class/widgets/locked_feature.dart';
 import 'package:active_class/views/exams/student_exam_history_page.dart';
 import 'package:active_class/views/exams/certificates_sheet.dart';
+import 'package:active_class/views/booklets/student_booklets_section.dart';
 import 'package:active_class/models/certificate_model.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:intl/intl.dart';
@@ -220,6 +222,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
         teacherSpecialization: settings.teacherSpecialization.value,
         canSeeFinancials: _canSeeFinancials,
         canSeeAcademics: _canSeeAcademics,
+        bookletLines: bookletReportLines(s.id),
       );
     } else {
       // تقرير فترة مخصصة — منتقيي "من" و"إلى"، فلترة بالتاريخ الفعلي
@@ -1643,7 +1646,9 @@ class _PaymentsTab extends StatelessWidget {
     }
     final months = byMonth.keys.toList();
 
-    if (sorted.isEmpty && accumulatedDebt <= 0) {
+    if (sorted.isEmpty &&
+        accumulatedDebt <= 0 &&
+        !studentHasBooklets(student.id!)) {
       return const Center(
         child: EmptyState(
           icon: Icons.payments_rounded,
@@ -1714,6 +1719,8 @@ class _PaymentsTab extends StatelessWidget {
           ),
           const SizedBox(height: 8),
         ],
+        // spec 041 — الملازم (منفصلة تمامًا عن مديونية الاشتراك)
+        StudentBookletsSection(studentId: student.id!),
         // إجمالي
         Container(
           padding: const EdgeInsets.all(16),

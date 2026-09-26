@@ -15,6 +15,10 @@ import 'package:active_class/views/students/student_details_page.dart';
 import 'package:active_class/views/students/archived_students_page.dart';
 import 'package:active_class/views/students/at_risk_students_page.dart';
 import 'package:active_class/views/question_bank/question_bank_page.dart';
+import 'package:active_class/views/booklets/booklets_page.dart';
+import 'package:active_class/views/students/siblings_page.dart';
+import 'package:active_class/views/booklets/booklet_details_page.dart';
+import 'package:active_class/controllers/booklet_controller.dart';
 import 'package:active_class/views/attendance/attendance_page.dart';
 import 'package:active_class/views/payments/payments_page.dart';
 import 'package:active_class/views/qr_scanner/qr_scanner_attendance_page.dart';
@@ -162,6 +166,8 @@ void main() async {
   // spec 032 — استثناءات الحصص (إلغاء/تعويض). دايم عشان SyncEngine
   // و AttendanceController يلاقوه جاهز.
   Get.put(SessionOverrideController(), permanent: true);
+  // spec 041 — الملازم/الكتب (دايم عشان SyncEngine يلاقيه)
+  Get.put(BookletController(), permanent: true);
   // نظام تسجيل الدخول المستقل — تهيئته الفعلية (اتصال Supabase) كسولة
   // ومتحصلش إلا لو المستخدم فعلاً فتح شاشة الحساب أو كان مسجّل دخول
   // قبل كده، عشان صفر تأثير على باقي المستخدمين.
@@ -256,6 +262,11 @@ class MyApp extends StatelessWidget {
             GetPage(
                 name: ROUTE_QUESTION_BANK,
                 page: () => const QuestionBankPage()),
+            GetPage(name: ROUTE_BOOKLETS, page: () => const BookletsPage()),
+            GetPage(name: ROUTE_SIBLINGS, page: () => const SiblingsPage()),
+            GetPage(
+                name: ROUTE_BOOKLET_DETAILS,
+                page: () => const BookletDetailsPage()),
             GetPage(name: ROUTE_REPORTS, page: () => const ReportsPage()),
             GetPage(name: ROUTE_SETTINGS, page: () => const SettingsPage()),
             GetPage(

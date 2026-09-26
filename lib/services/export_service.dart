@@ -1294,6 +1294,25 @@ class ExportService {
     );
   }
 
+  /// spec 041 — كشف ملزمة/كتاب (جدول جاهز الصفوف من الشاشة).
+  Future<ExportResult> exportBookletSheet({
+    required String bookletName,
+    required List<String> header,
+    required List<List<String>> rows,
+    required List<String> footer,
+    required ExportFormat format,
+  }) {
+    final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    return _resultsToFile(
+      title: 'كشف ملزمة: $bookletName — $dateStr',
+      fileName: 'ملزمة_${_sanitizeFileName(bookletName)}_$dateStr',
+      header: header,
+      dataRows: rows,
+      footerRow: footer,
+      format: format,
+    );
+  }
+
   /// نتائج امتحان إلكتروني — كل طلاب مجموعات الامتحان.
   Future<ExportResult> exportOnlineExamResults({
     required Exam exam,
