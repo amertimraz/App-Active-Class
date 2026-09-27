@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/qr_controller.dart';
 import 'package:active_class/controllers/session_log_controller.dart';
@@ -119,7 +120,10 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
           .where((p) =>
               p.date.year == now.year &&
               p.date.month == now.month &&
-              p.date.day == now.day)
+              p.date.day == now.day &&
+              // spec 038 — إسقاط المديونية مش دفعة فعلية، فمالوش مكان في
+              // "دفعوا اليوم" ولا إجمالي جلسة الدفع ولا مشاركة واتساب.
+              p.note != kDebtWriteOffNote)
           .toList();
       if (today.isEmpty) {
         _session.hydrateOnce(const []);
