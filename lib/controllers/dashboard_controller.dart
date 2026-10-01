@@ -269,18 +269,29 @@ class DashboardController extends GetxController {
   Future<void> loadDashboardData() async {
     isLoading(true);
     try {
+      // كل قسم مستقل بـ try/catch بتاعه (بدل Future.wait اللي كان بيوقف
+      // عند أول خطأ ويسيب باقي الأقسام من غير تحديث بصمت) — لو قسم واحد
+      // فشل (مثلاً استثناء عابر وقت قراءة DB)، باقي الأقسام (ومنها
+      // "مدفوعات اليوم") لازم تتحدّث بالأرقام الصحيحة برضو. الخطأ بيتسجّل
+      // بـdebugPrint بدل ما يتبلع بصمت تمامًا، عشان أي تشخيص مستقبلي.
       await Future.wait([
-        _loadGeneralStats(),
-        _loadMonthStats(),
-        _computePaymentCard(),
-        _loadTodayStats(),
-        _loadRecentActivities(),
+        _guard('عام', _loadGeneralStats),
+        _guard('الشهر', _loadMonthStats),
+        _guard('كارت الدفعات', _computePaymentCard),
+        _guard('اليوم', _loadTodayStats),
+        _guard('النشاط الأخير', _loadRecentActivities),
       ]);
       lastUpdated.value = DateTime.now();
-    } catch (_) {
-      // لا نكشف الخطأ للمستخدم — الـ UI يبقى يعمل بقيم 0
     } finally {
       isLoading(false);
+    }
+  }
+
+  Future<void> _guard(String label, Future<void> Function() loader) async {
+    try {
+      await loader();
+    } catch (e) {
+      debugPrint('DashboardController: فشل تحميل قسم "$label" — $e');
     }
   }
 
