@@ -12,7 +12,6 @@ import 'package:active_class/views/exams/exam_grades_page.dart';
 import 'package:active_class/views/exams/leaderboard_page.dart';
 import 'package:active_class/views/exams/online_exams_tab.dart';
 import 'package:active_class/views/exams/online_exam_editor_page.dart';
-import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
 
@@ -220,7 +219,7 @@ class _ExamsPageState extends State<ExamsPage>
               backgroundColor: AppTheme.primaryColor,
               foregroundColor: Colors.white,
             )
-          : (LicenseController.to.parentPortalActiveNow
+          : (TeamModeService().onlineExamAccessNow.canCreate
               ? FloatingActionButton.extended(
                   onPressed: () async {
                     await Get.to(() => const OnlineExamEditorPage());

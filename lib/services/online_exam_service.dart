@@ -22,6 +22,7 @@ import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
 import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/services/parent_portal_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
 
 /// تسليم طالب كما يُقرأ من السحابة (قبل الربط بطالب محلي والتصحيح).
 class CloudSubmission {
@@ -40,6 +41,10 @@ class CloudSubmission {
     this.submittedAt,
     this.autoSubmitted = false,
   });
+}
+
+class _SkipSummaries implements Exception {
+  const _SkipSummaries();
 }
 
 class OnlineExamService {
@@ -61,7 +66,54 @@ class OnlineExamService {
     }
   }
 
-  Future<String> _slug() => ParentPortalService().ensureSlug();
+  /// الـslug الفعّال: مساعد في فريق → رابط المدرس صاحب الفريق (اللي وصله من
+  /// السيرفر)، غير كده → مشتق من كود ترخيص الجهاز زي الأول (spec 044).
+  Future<String> _slug() async {
+    final team = TeamModeService();
+    if (team.isAssistant) {
+      final s = team.teamPortalSlug.value;
+      if (s == null || s.isEmpty) {
+        throw StateError('رابط الطلاب بتاع المدرس لسه ما وصلش');
+      }
+      return s;
+    }
+    return ParentPortalService().ensureSlug();
+  }
+
+  /// نسخة عامة من [_slug] للاستخدام في الواجهة (رابط الطلاب، رفع الصور).
+  Future<String> effectiveSlug() => _slug();
+
+  /// Firebase uid لهذا الجهاز (بعد تسجيل دخول مجهول لو لزم)، أو null عند الفشل.
+  /// المساعد يسجّله لدى الفريق عشان المدرس يفوّضه بالكتابة على الامتحانات.
+  Future<String?> currentUid() async {
+    try {
+      await _ensureAuth();
+      return _auth.currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// مالك فقط: يكتب مصفوفة المفوّضين (coOwnerUids) على مستند الجذر
+  /// online_exams/{slug}. قواعد Firestore تعتبرهم مالكين للكتابة تحت
+  /// exams/** فقط (spec 044). يرجّع true عند النجاح.
+  Future<bool> setCoOwners(List<String> uids) async {
+    try {
+      await _ensureAuth();
+      final slug = await _slug();
+      await _db.collection('online_exams').doc(slug).set({
+        // create ممكن يحصل لو المدرس ما نشرش قبل كده: القواعد بتطلب ownerUid.
+        'ownerUid': _auth.currentUser?.uid,
+        'deviceId': LicenseController.to.deviceId.value,
+        'coOwnerUids': uids,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      return true;
+    } catch (e) {
+      debugPrint('OnlineExamService.setCoOwners failed — $e');
+      return false;
+    }
+  }
 
   DocumentReference<Map<String, dynamic>> _examDoc(String slug, int examId) =>
       _db.collection('online_exams').doc(slug).collection('exams').doc('$examId');
@@ -79,23 +131,30 @@ class OnlineExamService {
   ) async {
     await _ensureAuth();
     final slug = await _slug();
+    // spec 044 — مساعد مفوَّض: كتابة الجذر (online_exams/{slug}) وبروفايل
+    // البوابة وملخصات الطلاب مسؤولية جهاز المدرس (مالك المستندات)؛ المساعد
+    // بيكتب مستند الامتحان نفسه تحت exams/** بس.
+    final isAssistant = TeamModeService().isAssistant;
 
-    // يضمن وجود مستند البروفايل العام (online_exams/{slug} + parent_portal).
-    await ParentPortalService().publishProfile();
-    await _db.collection('online_exams').doc(slug).set({
-      'ownerUid': _auth.currentUser?.uid,
-      // deviceId ضروري: بعد تحديث/إعادة تثبيت بيتغيّر uid المجهول، فقاعدة
-      // الأمان بتسمح بإعادة الربط لو الـdeviceId (الثابت) في الكتابة =
-      // المخزّن. من غيره كان النشر بيترفض للأبد بـ permission-denied.
-      'deviceId': LicenseController.to.deviceId.value,
-      'active': true,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    if (!isAssistant) {
+      // يضمن وجود مستند البروفايل العام (online_exams/{slug} + parent_portal).
+      await ParentPortalService().publishProfile();
+      await _db.collection('online_exams').doc(slug).set({
+        'ownerUid': _auth.currentUser?.uid,
+        // deviceId ضروري: بعد تحديث/إعادة تثبيت بيتغيّر uid المجهول، فقاعدة
+        // الأمان بتسمح بإعادة الربط لو الـdeviceId (الثابت) في الكتابة =
+        // المخزّن. من غيره كان النشر بيترفض للأبد بـ permission-denied.
+        'deviceId': LicenseController.to.deviceId.value,
+        'active': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
 
     // فحص الهوية على صفحة الطالب بيقرا
     // parent_portal/{slug}/students/{code}_{last4}. نتأكد إن ملخص كل طالب
     // مسموح موجود، وأي ناقص ننشره (best-effort — ما يفشلش النشر بسببه).
     try {
+      if (isAssistant) throw const _SkipSummaries();
       final studentsCol =
           _db.collection('parent_portal').doc(slug).collection('students');
       for (final st in students) {
@@ -105,6 +164,8 @@ class OnlineExamService {
           await ParentPortalService().pushStudentSummary(st.id);
         }
       }
+    } on _SkipSummaries {
+      // مساعد: ملخصات الطلاب على جهاز المدرس.
     } catch (e) {
       debugPrint('OnlineExamService.publish: ensure summaries failed — $e');
     }
@@ -156,8 +217,16 @@ class OnlineExamService {
                   'earned': r.earned,
                   if (r.imageUrl != null && r.imageUrl!.isNotEmpty)
                     'imageUrl': r.imageUrl,
+                  if (r.optionImageUrls.any((u) => u != null && u.isNotEmpty))
+                    'optionImageUrls': r.optionImageUrls,
                   if (r.explanation != null && r.explanation!.isNotEmpty)
                     'explanation': r.explanation,
+                  // spec 043 — صورة الشرح تتبع نفس قاعدة النص بالظبط: لا
+                  // تُنشر أبدًا إلا هنا (بعد اعتماد الدرجة)، أبدًا في
+                  // toCloudMap العام.
+                  if (r.explanationImageUrl != null &&
+                      r.explanationImageUrl!.isNotEmpty)
+                    'explanationImageUrl': r.explanationImageUrl,
                 })
             .toList(),
         'approvedAt': FieldValue.serverTimestamp(),

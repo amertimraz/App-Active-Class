@@ -27,6 +27,33 @@ extension ExamQuestionTypeX on ExamQuestionType {
 /// والعرض يمشوا بنفس المسار.
 const List<String> kTrueFalseOptions = ['صح', 'خطأ'];
 
+List<String?> _alignOptionImages(List<String?> list, int optionCount) {
+  if (list.length == optionCount) return List<String?>.of(list);
+  final out = List<String?>.of(list);
+  if (out.length > optionCount) {
+    out.removeRange(optionCount, out.length);
+  } else {
+    while (out.length < optionCount) {
+      out.add(null);
+    }
+  }
+  return out;
+}
+
+List<String?> _decodeOptionImages(String? raw, int optionCount) {
+  if (raw == null || raw.isEmpty) {
+    return List<String?>.filled(optionCount, null);
+  }
+  try {
+    final list = (jsonDecode(raw) as List)
+        .map((e) => e == null ? null : e.toString())
+        .toList();
+    return _alignOptionImages(list, optionCount);
+  } catch (_) {
+    return List<String?>.filled(optionCount, null);
+  }
+}
+
 class ExamQuestion {
   final int? id;
   final int examId;
@@ -45,9 +72,20 @@ class ExamQuestion {
   /// correctIndex بالظبط، ما يترفعش في toCloudMap؛ بيوصل الطالب في
   /// مستند مراجعته (results/{attemptKey}) بعد اعتماد المدرس فقط.
   final String? explanation;
+
+  /// spec 043 — صورة اختيارية مرفقة بشرح الإجابة. **محلي فقط** (زي
+  /// explanation بالظبط) — ما تترفعش في toCloudMap، بتوصل الطالب في
+  /// مستند مراجعته بعد الاعتماد بس.
+  final String? explanationImageUrl;
+
+  /// spec 043 — صورة اختيارية لكل اختيار (بنفس طول وترتيب options؛ عنصر
+  /// null = الاختيار ده بلا صورة). **بترفع في toCloudMap** (عكس الشرح)
+  /// عشان الطالب يشوفها وهو بيؤدي الامتحان قبل التسليم.
+  final List<String?> optionImageUrls;
+
   final DateTime? createdAt;
 
-  const ExamQuestion({
+  ExamQuestion({
     this.id,
     required this.examId,
     required this.position,
@@ -58,8 +96,12 @@ class ExamQuestion {
     this.points = 1,
     this.imageUrl,
     this.explanation,
+    this.explanationImageUrl,
+    List<String?>? optionImageUrls,
     this.createdAt,
-  });
+  }) : optionImageUrls = optionImageUrls == null
+            ? List<String?>.filled(options.length, null)
+            : _alignOptionImages(optionImageUrls, options.length);
 
   bool get isValid =>
       text.trim().isNotEmpty &&
@@ -81,6 +123,8 @@ class ExamQuestion {
         COL_EQ_POINTS: points,
         COL_EQ_IMAGE_URL: imageUrl,
         COL_EQ_EXPLANATION: explanation,
+        COL_EQ_EXPLANATION_IMAGE_URL: explanationImageUrl,
+        COL_EQ_OPTION_IMAGE_URLS: jsonEncode(optionImageUrls),
         COL_EQ_CREATED_AT: createdAt?.toIso8601String(),
       };
 
@@ -107,6 +151,12 @@ class ExamQuestion {
       explanation: (m[COL_EQ_EXPLANATION] as String?)?.isNotEmpty == true
           ? m[COL_EQ_EXPLANATION] as String
           : null,
+      explanationImageUrl:
+          (m[COL_EQ_EXPLANATION_IMAGE_URL] as String?)?.isNotEmpty == true
+              ? m[COL_EQ_EXPLANATION_IMAGE_URL] as String
+              : null,
+      optionImageUrls:
+          _decodeOptionImages(m[COL_EQ_OPTION_IMAGE_URLS] as String?, opts.length),
       createdAt: m[COL_EQ_CREATED_AT] != null
           ? DateTime.tryParse(m[COL_EQ_CREATED_AT] as String)
           : null,
@@ -124,6 +174,8 @@ class ExamQuestion {
     double? points,
     Object? imageUrl = _unset,
     Object? explanation = _unset,
+    Object? explanationImageUrl = _unset,
+    List<String?>? optionImageUrls,
   }) =>
       ExamQuestion(
         id: id ?? this.id,
@@ -140,17 +192,24 @@ class ExamQuestion {
         explanation: identical(explanation, _unset)
             ? this.explanation
             : explanation as String?,
+        explanationImageUrl: identical(explanationImageUrl, _unset)
+            ? this.explanationImageUrl
+            : explanationImageUrl as String?,
+        optionImageUrls: optionImageUrls ?? this.optionImageUrls,
         createdAt: createdAt,
       );
 
   /// شكل السؤال المرفوع للسحابة — **بدون** `correctIndex` أو `points`
-  /// (FR-034). الـ id بصيغة "q" + رقم السؤال المحلي، عشان إجابة الطالب
-  /// تربط بالسؤال المحلي وقت التصحيح.
+  /// (FR-034)، وبدون `explanationImageUrl` (محلي زي الشرح نفسه — spec 043).
+  /// الـ id بصيغة "q" + رقم السؤال المحلي، عشان إجابة الطالب تربط بالسؤال
+  /// المحلي وقت التصحيح.
   Map<String, dynamic> toCloudMap() => {
         'id': 'q$id',
         'type': type.dbValue,
         'text': text,
         'options': options,
         if (imageUrl != null && imageUrl!.isNotEmpty) 'imageUrl': imageUrl,
+        if (optionImageUrls.any((u) => u != null && u.isNotEmpty))
+          'optionImageUrls': optionImageUrls,
       };
 }

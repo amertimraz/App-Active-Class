@@ -11,6 +11,7 @@ import 'package:active_class/config/theme.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
+import 'package:active_class/utils/billing_day.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/billing_period.dart';
 
@@ -71,6 +72,9 @@ MonthlyPaymentBreakdown computeMonthlyBreakdown({
   required List<Attendance> allAttendance,
   required DateTime month,
   required DateTime prevMonth,
+  // spec 045 — شهر لسه ما نزلش (الجاري قبل يوم نزول المديونية): المستحق
+  // والمحصّل بيتعرضوا زي الأول، لكن مفيش حد بيتحسب "لم يدفع/متأخر" فيه.
+  bool monthLanded = true,
 }) {
   double expected = 0;
   double collected = 0;
@@ -134,7 +138,7 @@ MonthlyPaymentBreakdown computeMonthlyBreakdown({
     // paidThisMonth الكامل (شامل الإسقاط) عشان طالب اتسقطت مديونيته
     // ميفضلش ظاهر كـ"متأخر".
     final shortfall = dueThisMonth - paidThisMonth;
-    final isUnpaid = shortfall > 0.5;
+    final isUnpaid = monthLanded && shortfall > 0.5;
     if (isUnpaid) {
       unpaidEntries.add(UnpaidStudentEntry(student: s, amountDue: shortfall));
     }
@@ -493,6 +497,14 @@ class DashboardController extends GetxController {
       allAttendance: att.attendance,
       month: month,
       prevMonth: prevMonth,
+      // المؤخّر ما بيغيّرش الكارت (قرار spec 036)، فاليوم بيأثر في المقدّم بس.
+      monthLanded: PricingHelper.billingArrears ||
+          monthHasLanded(
+            month: month,
+            now: DateTime.now(),
+            arrears: false,
+            billingDay: PricingHelper.billingDay,
+          ),
     );
     final expected = breakdown.expected;
     final collected = breakdown.collected;

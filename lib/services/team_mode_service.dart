@@ -15,6 +15,9 @@ import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/services/auth_service.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/online_exam_service.dart';
+import 'package:active_class/services/parent_portal_service.dart';
+import 'package:active_class/utils/online_exam_access.dart';
 import 'package:active_class/services/sync_engine.dart';
 import 'package:active_class/widgets/team_disconnect_dialog.dart';
 
@@ -44,6 +47,12 @@ class TeamModeService {
   DateTime? get lastDrainAt => _engine?.lastDrainAt;
   Worker? _licenseWorker;
   Worker? _profileWorker;
+  Worker? _portalWorker; // spec 044 — مالك: يدفع حالة البوابة للفريق
+  Timer? _assistantRefreshTimer; // spec 044 — مساعد: صلاحية + حالة البوابة
+  Timer? _coOwnerTimer; // spec 044 — مالك: مزامنة coOwnerUids
+  String? _lastPortalPushKey;
+  String? _lastCoOwnersKey;
+  String? _serverFirebaseUid; // آخر uid مسجّل لهذا العضو على السيرفر
 
   final isEnabled = false.obs;
   final teamId = RxnString();
@@ -54,6 +63,14 @@ class TeamModeService {
   final canManageMembers = false.obs;
   final canViewFinancials = true.obs;
   final canViewAcademics = true.obs;
+  /// spec 044 — يسمح للمساعد بإدارة الامتحانات الإلكترونية (مقفولة افتراضيًا).
+  final canManageOnlineExams = false.obs;
+
+  /// spec 044 — حالة إضافة البوابة عند المدرس كما وصلت جهاز المساعد
+  /// (الرابط + مفعّلة + تاريخ الانتهاء). جهاز المدرس بيدفعها، المساعد بيقراها.
+  final teamPortalSlug = RxnString();
+  final teamPortalEnabled = false.obs;
+  final teamPortalExpiresAt = Rxn<DateTime>();
   final loading = false.obs;
   /// جهاز الحساب ده مرتبط بجهاز تاني — مفعّلة بس بعد محاولة دخول
   /// فعلية اكتشفت التعارض، مش تخمين مسبق.
@@ -83,6 +100,10 @@ class TeamModeService {
     DatabaseService.teamModeEnabled = true;
 
     final client = await _auth.ensureClient();
+    // spec 044 — استعادة آخر حالة بوابة/صلاحية معروفة قبل أي طلب شبكة
+    // (الأوفلاين: المساعد يشوف نفس الحالة اللي كانت قبل قطع النت).
+    await _restoreTeamPortalLocal();
+
     if (client == null || client.auth.currentUser == null) {
       DatabaseService.teamModeEnabled = false;
       return;
@@ -90,6 +111,7 @@ class TeamModeService {
 
     teamId.value = storedTeamId;
     await _refreshMyPermissions(client, storedTeamId);
+    await _refreshTeamPortal(client, storedTeamId);
     if (!await _claimDevice(client, storedTeamId)) {
       // مش بس نصفّر teamId.value — لازم نمسح بيانات الفريق القديمة
       // المتزامنة محليًا (لو الجهاز ده مساعد) زي disable() بالظبط،
@@ -267,6 +289,15 @@ class TeamModeService {
     _licenseWorker = null;
     _profileWorker?.dispose();
     _profileWorker = null;
+    _portalWorker?.dispose();
+    _portalWorker = null;
+    _assistantRefreshTimer?.cancel();
+    _assistantRefreshTimer = null;
+    _coOwnerTimer?.cancel();
+    _coOwnerTimer = null;
+    _lastPortalPushKey = null;
+    _lastCoOwnersKey = null;
+    _serverFirebaseUid = null;
 
     if (hadTeam && !wasOwner) {
       await _db.clearTeamSyncedData();
@@ -282,6 +313,10 @@ class TeamModeService {
     ownerTeacherGender.value = null;
     canViewFinancials.value = true;
     canViewAcademics.value = true;
+    canManageOnlineExams.value = false;
+    teamPortalSlug.value = null;
+    teamPortalEnabled.value = false;
+    teamPortalExpiresAt.value = null;
     deviceBlocked.value = false;
   }
 
@@ -412,9 +447,180 @@ class TeamModeService {
     if (isOwner.value) {
       _watchOwnerLicense(client, tId);
       _watchOwnerProfile(client, tId);
+      _watchOwnerPortal(client, tId);
+      _startCoOwnerSync();
       _tagDeviceAsTeamRole('owner', LicenseController.to.licenseCode.value);
     } else {
       _tagAssistantDevice(client, tId);
+      _startAssistantRefresh(client, tId);
+    }
+  }
+
+  // ── spec 044: الامتحانات الإلكترونية في الفريق ─────────────────────────
+
+  bool get isAssistant => isEnabled.value && !isOwner.value;
+
+  /// صلاحية إدارة الامتحانات الإلكترونية (المدرس/خارج الفريق دايمًا true).
+  bool get canManageOnlineExamsNow =>
+      !isEnabled.value || isOwner.value || canManageOnlineExams.value;
+
+  /// اشتراك البوابة عند المدرس صاحب الفريق شغّال دلوقتي (للمساعد).
+  bool get teamPortalActive => teamPortalActiveAt(
+        enabled: teamPortalEnabled.value,
+        expiresAt: teamPortalExpiresAt.value,
+        now: DateTime.now(),
+      );
+
+  /// قرار توافر الامتحانات الإلكترونية على الجهاز ده (مدرس أو مساعد).
+  OnlineExamAccess get onlineExamAccessNow => onlineExamAccess(
+        inTeam: isEnabled.value,
+        isOwner: isOwner.value,
+        canManage: canManageOnlineExams.value,
+        ownPortalActive: LicenseController.to.parentPortalActiveNow,
+        teamPortalActive: teamPortalActive,
+        hasTeamSlug: (teamPortalSlug.value ?? '').isNotEmpty,
+      );
+
+  Future<void> _restoreTeamPortalLocal() async {
+    teamPortalSlug.value = await _db.getSetting(SETTING_TEAM_PORTAL_SLUG);
+    teamPortalEnabled.value =
+        await _db.getSetting(SETTING_TEAM_PORTAL_ENABLED) == 'true';
+    final ms = int.tryParse(
+        await _db.getSetting(SETTING_TEAM_PORTAL_EXPIRES_AT) ?? '');
+    teamPortalExpiresAt.value =
+        ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+    canManageOnlineExams.value =
+        await _db.getSetting(SETTING_TEAM_CAN_MANAGE_ONLINE_EXAMS) == 'true';
+  }
+
+  /// مساعد: يقرا حالة البوابة من صف الفريق (يدفعها جهاز المدرس).
+  Future<void> _refreshTeamPortal(SupabaseClient client, String tId) async {
+    if (isOwner.value) return;
+    try {
+      final row = await client
+          .from('teams')
+          .select('portal_slug, portal_enabled, portal_expires_at')
+          .eq('id', tId)
+          .single()
+          .timeout(kTeamModeNetworkTimeout);
+      teamPortalSlug.value = row['portal_slug'] as String?;
+      teamPortalEnabled.value = row['portal_enabled'] as bool? ?? false;
+      final exp = row['portal_expires_at'] as String?;
+      teamPortalExpiresAt.value =
+          exp == null ? null : DateTime.tryParse(exp)?.toLocal();
+      await _db.setSetting(
+          SETTING_TEAM_PORTAL_SLUG, teamPortalSlug.value ?? '');
+      await _db.setSetting(SETTING_TEAM_PORTAL_ENABLED,
+          teamPortalEnabled.value ? 'true' : 'false');
+      final e = teamPortalExpiresAt.value;
+      await _db.setSetting(SETTING_TEAM_PORTAL_EXPIRES_AT,
+          e == null ? '' : '${e.millisecondsSinceEpoch}');
+    } catch (e) {
+      debugPrint('TeamModeService: فشل تحديث حالة بوابة الفريق — $e');
+    }
+  }
+
+  /// مساعد: تحديث دوري (30ث) للصلاحية وحالة البوابة + تسجيل هوية Firebase
+  /// (عشان المدرس يفوّضه بالكتابة على الامتحانات) لو مسموح له.
+  void _startAssistantRefresh(SupabaseClient client, String tId) {
+    _assistantRefreshTimer?.cancel();
+    Future<void> tick() async {
+      if (!isEnabled.value && teamId.value == null) return;
+      await _refreshMyPermissions(client, tId);
+      await _refreshTeamPortal(client, tId);
+      await _registerMyFirebaseUid(client, tId);
+    }
+
+    unawaited(tick());
+    _assistantRefreshTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) => unawaited(tick()));
+  }
+
+  Future<void> _registerMyFirebaseUid(
+      SupabaseClient client, String tId) async {
+    if (!canManageOnlineExams.value) return;
+    try {
+      final uid = await OnlineExamService().currentUid();
+      if (uid == null || uid == _serverFirebaseUid) return;
+      await client.rpc('set_my_firebase_uid',
+          params: {'_team_id': tId, '_uid': uid});
+      _serverFirebaseUid = uid;
+    } catch (e) {
+      debugPrint('TeamModeService: فشل تسجيل هوية Firebase للعضو — $e');
+    }
+  }
+
+  /// مالك: يدفع الرابط وحالة/انتهاء إضافة البوابة لصف الفريق كل ما تتغير.
+  void _watchOwnerPortal(SupabaseClient client, String tId) {
+    _portalWorker?.dispose();
+    final lic = LicenseController.to;
+    Future<void> push() async {
+      try {
+        final slug = await ParentPortalService().ensureSlug();
+        final exp = lic.parentPortalExpiresAt.value;
+        final enabled = lic.parentPortalEnabled.value;
+        final key = '$slug|$enabled|${exp?.millisecondsSinceEpoch}';
+        if (key == _lastPortalPushKey) return;
+        await client.rpc('set_team_portal', params: {
+          '_team_id': tId,
+          '_slug': slug,
+          '_enabled': enabled,
+          '_expires_at': exp?.toUtc().toIso8601String(),
+        });
+        _lastPortalPushKey = key;
+      } catch (e) {
+        debugPrint('TeamModeService: فشل دفع حالة البوابة للفريق — $e');
+      }
+    }
+
+    _portalWorker = everAll([
+      lic.parentPortalEnabled,
+      lic.parentPortalExpiresAt,
+      lic.licenseCode,
+      lic.licenseVerifiedTick,
+    ], (_) => unawaited(push()));
+    unawaited(push());
+  }
+
+  /// مالك: مزامنة coOwnerUids عند الإقلاع + كل دقيقتين (تغطي تسجيل مساعد
+  /// جديد لـFirebase uid بعد تفعيل الصلاحية).
+  void _startCoOwnerSync() {
+    _coOwnerTimer?.cancel();
+    unawaited(syncCoOwners());
+    _coOwnerTimer = Timer.periodic(
+        const Duration(minutes: 2), (_) => unawaited(syncCoOwners()));
+  }
+
+  /// مالك فقط: يكتب Firebase uids للمساعدين المسموح لهم (والمسجّلين) على
+  /// مستند الامتحانات الإلكترونية، فقواعد Firestore تعتبرهم مفوّضين بالكتابة
+  /// تحت exams/**. [force] يتخطى فحص "ما اتغيّرش".
+  Future<void> syncCoOwners({bool force = false}) async {
+    if (!isEnabled.value || !isOwner.value) return;
+    final tId = teamId.value;
+    if (tId == null) return;
+    try {
+      final client = await _auth.ensureClient();
+      if (client == null) return;
+      final rows = await client
+          .from('team_members')
+          .select('is_owner, can_manage_online_exams, firebase_uid')
+          .eq('team_id', tId)
+          .timeout(kTeamModeNetworkTimeout) as List;
+      final uids = <String>[
+        for (final r in rows)
+          if (r['is_owner'] != true &&
+              r['can_manage_online_exams'] == true &&
+              (r['firebase_uid'] as String?)?.isNotEmpty == true)
+            r['firebase_uid'] as String,
+      ]..sort();
+      final key = uids.join(',');
+      if (!force && key == _lastCoOwnersKey) return;
+      // بوابة مش شغّالة: مفيش داعي نكتب على Firestore (هيتكتب أول ما تشتغل).
+      if (!LicenseController.to.parentPortalActiveNow) return;
+      final ok = await OnlineExamService().setCoOwners(uids);
+      if (ok) _lastCoOwnersKey = key;
+    } catch (e) {
+      debugPrint('TeamModeService: فشل مزامنة المفوّضين للامتحانات — $e');
     }
   }
 
@@ -549,6 +755,11 @@ class TeamModeService {
       canManageMembers.value = m['can_manage_members'] as bool? ?? false;
       canViewFinancials.value = m['can_view_financials'] as bool? ?? true;
       canViewAcademics.value = m['can_view_academics'] as bool? ?? true;
+      canManageOnlineExams.value =
+          m['can_manage_online_exams'] as bool? ?? false;
+      _serverFirebaseUid = m['firebase_uid'] as String?;
+      await _db.setSetting(SETTING_TEAM_CAN_MANAGE_ONLINE_EXAMS,
+          canManageOnlineExams.value ? 'true' : 'false');
     } catch (e) {
       debugPrint('TeamModeService: فشل تحميل الصلاحيات — $e');
     }
@@ -649,6 +860,10 @@ class TeamModeService {
           .select();
       if ((res).isEmpty) {
         return 'تعذر التحديث — تأكد إن عندك صلاحية إدارة الأعضاء';
+      }
+      // spec 044 — تفويض/سحب الكتابة على الامتحانات الإلكترونية فورًا.
+      if (field == 'can_manage_online_exams') {
+        unawaited(syncCoOwners(force: true));
       }
       return null;
     } catch (e) {

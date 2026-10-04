@@ -14,7 +14,8 @@ import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/group_model.dart';
-import 'package:active_class/services/parent_portal_service.dart';
+import 'package:active_class/services/online_exam_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/views/exams/online_exam_editor_page.dart';
 import 'package:active_class/views/exams/online_exam_results_page.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -101,8 +102,22 @@ class _OnlineExamsTabState extends State<OnlineExamsTab> {
       LicenseController.to.parentPortalRecheckTick.value;
       // ignore: unnecessary_statements
       LicenseController.to.licenseVerifiedTick.value;
-      if (!LicenseController.to.parentPortalActiveNow) {
-        return const _LockedState();
+      // spec 044 — قرار التوافر (مدرس/مساعد) من دالة واحدة؛ القراءات
+      // التفاعلية تحت بتخلّي الـObx يتحدّث لما حالة الفريق تتغيّر.
+      final team = TeamModeService();
+      // ignore: unnecessary_statements
+      team.isEnabled.value;
+      // ignore: unnecessary_statements
+      team.canManageOnlineExams.value;
+      // ignore: unnecessary_statements
+      team.teamPortalEnabled.value;
+      // ignore: unnecessary_statements
+      team.teamPortalExpiresAt.value;
+      // ignore: unnecessary_statements
+      team.teamPortalSlug.value;
+      final access = team.onlineExamAccessNow;
+      if (access.locked) {
+        return _LockedState(assistant: team.isAssistant);
       }
       final exams = _ec.onlineExams;
       if (exams.isEmpty) return const _EmptyState();
@@ -135,6 +150,7 @@ class _OnlineExamsTabState extends State<OnlineExamsTab> {
                   groups: _gc.groups.toList(),
                   submissions: _subCounts[e.id] ?? 0,
                   questionCount: _qCounts[e.id] ?? 0,
+                  readOnly: access.readOnly,
                   onChanged: () async {
                     await _ec.loadExams();
                     await _loadCounts();
@@ -218,6 +234,7 @@ class _OnlineExamCard extends StatelessWidget {
   final List<Group> groups;
   final int submissions;
   final int questionCount;
+  final bool readOnly;
   final Future<void> Function() onChanged;
 
   const _OnlineExamCard({
@@ -225,6 +242,7 @@ class _OnlineExamCard extends StatelessWidget {
     required this.groups,
     required this.submissions,
     required this.questionCount,
+    this.readOnly = false,
     required this.onChanged,
   });
 
@@ -480,6 +498,18 @@ class _OnlineExamCard extends StatelessWidget {
 
   List<Widget> _actions(
       BuildContext context, OnlineExamStatus status, Color c) {
+    // spec 044 — مساعد بلا صلاحية: النتايج والرابط بس.
+    if (readOnly) {
+      if (status == OnlineExamStatus.draft) return const [];
+      return [
+        _btn('النتائج', Icons.assignment_turned_in_outlined, () async {
+          await Get.to(() => OnlineExamResultsPage(exam: exam, readOnly: true));
+          await onChanged();
+        }, primary: true),
+        if (status == OnlineExamStatus.published)
+          _btn('رابط الطلاب', Icons.link_rounded, () => _showLink(context)),
+      ];
+    }
     switch (status) {
       case OnlineExamStatus.draft:
         return [
@@ -498,6 +528,14 @@ class _OnlineExamCard extends StatelessWidget {
             await onChanged();
           }, primary: true),
           _btn('رابط الطلاب', Icons.link_rounded, () => _showLink(context)),
+          // spec 022 — تعديل سؤال/أكتر في امتحان منشور بدون إلغاء النشر
+          // (الحفظ الفعلي لكل سؤال عبر زر "حفظ هذا السؤال" جوه المحرّر
+          // نفسه). من غير الزرار ده مفيش طريقة توصل للمحرّر أصلاً بعد
+          // النشر — "تعديل الامتحان" جنبه بيغيّر الميعاد/المدة بس.
+          _btn('تعديل الأسئلة', Icons.edit_note_rounded, () async {
+            await Get.to(() => OnlineExamEditorPage(existing: exam));
+            await onChanged();
+          }),
           _btn('تعديل الامتحان', Icons.tune_rounded, () async {
             final res = await showDialog<_Schedule>(
               context: context,
@@ -594,7 +632,7 @@ class _OnlineExamCard extends StatelessWidget {
   // رابط الطلاب — نفس الرابط لكل امتحانات المدرس الإلكترونية (مشتق من
   // slug المدرس). الطالب يفتحه ويشوف الامتحانات المتاحة لكوده.
   Future<void> _showLink(BuildContext context) async {
-    final slug = await ParentPortalService().ensureSlug();
+    final slug = await OnlineExamService().effectiveSlug();
     final link = 'active-class.online/exam/$slug';
     if (!context.mounted) return;
     await showModalBottomSheet(
@@ -728,7 +766,8 @@ class _InfoChip extends StatelessWidget {
 
 // ─── حالة مقفولة (بدون بوابة أهالي) ─────────────────────────────────────────
 class _LockedState extends StatelessWidget {
-  const _LockedState();
+  final bool assistant;
+  const _LockedState({this.assistant = false});
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -757,7 +796,9 @@ class _LockedState extends StatelessWidget {
                     fontSize: 16)),
             const SizedBox(height: 6),
             Text(
-              'الميزة دي ضمن إضافة بوابة متابعة أولياء الأمور.\nفعّلها عشان الطلاب يحلّوا الامتحان من موبايلهم والتصحيح يتم تلقائي.',
+              assistant
+                  ? 'الميزة دي ضمن إضافة بوابة متابعة أولياء الأمور عند المدرس.\nهتشتغل أول ما يفعّلها أو يجدّد اشتراكها.'
+                  : 'الميزة دي ضمن إضافة بوابة متابعة أولياء الأمور.\nفعّلها عشان الطلاب يحلّوا الامتحان من موبايلهم والتصحيح يتم تلقائي.',
               textAlign: TextAlign.center,
               style: TextStyle(
                   fontFamily: 'Cairo',

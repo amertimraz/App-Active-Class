@@ -169,6 +169,11 @@ class QuestionResult {
   final String? imageUrl;
   final String? explanation; // spec 023 — شرح الإجابة (يُنشر بعد الاعتماد فقط)
 
+  /// spec 043 — صورة شرح (تُنشر بعد الاعتماد فقط زي النص)، وصورة لكل
+  /// اختيار (بنفس طول options؛ null = بلا صورة).
+  final String? explanationImageUrl;
+  final List<String?> optionImageUrls;
+
   const QuestionResult({
     required this.questionId,
     required this.questionText,
@@ -178,6 +183,8 @@ class QuestionResult {
     required this.points,
     this.imageUrl,
     this.explanation,
+    this.explanationImageUrl,
+    this.optionImageUrls = const [],
   });
 
   bool get answered => chosenIndex != null;

@@ -160,6 +160,18 @@
   .q-text{font-weight:800;font-size:13.5px;line-height:1.85;padding-top:2px;}
   .q-img{display:block;max-width:100%;height:auto;border-radius:10px;
     margin:2px 0 12px;border:1px solid var(--line);}
+  .opt-img{width:40px;height:40px;object-fit:cover;border-radius:8px;
+    margin-inline-start:9px;border:1px solid var(--line);flex-shrink:0;}
+  .rexpl-img{width:52px;height:52px;object-fit:cover;border-radius:8px;
+    border:1px solid var(--line);flex-shrink:0;margin-inline-start:8px;}
+  .img-broken{display:inline-flex;align-items:center;justify-content:center;
+    font-size:10.5px;color:var(--muted);background:#F1F2FB;border-radius:8px;
+    padding:6px 8px;flex-shrink:0;}
+  .opt-img,.rexpl-img,.q-img{cursor:zoom-in;}
+  .lightbox{position:fixed;inset:0;background:rgba(15,16,23,.82);z-index:999;
+    display:flex;align-items:center;justify-content:center;padding:24px;}
+  .lightbox img{max-width:100%;max-height:100%;border-radius:10px;}
+  .lightbox.hidden{display:none;}
   .opt{
     display:flex;align-items:center;gap:11px;padding:12px 13px;border-radius:12px;
     border:1.6px solid var(--line);background:#F8F9FD;margin-bottom:8px;cursor:pointer;
@@ -291,6 +303,29 @@
     for (let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
     return h >>> 0;
   }
+  // spec 043 — <img> بـonerror بديل يستبدلها بنص "تعذّر تحميل الصورة" بدل
+  // ما يكسر التخطيط (FR-011/SC-005) — مشتركة لصورة السؤال/الاختيار/الشرح.
+  function imgOrPlaceholder(url, cls){
+    if (!url) return '';
+    const safe = escapeHtml(url);
+    return `<img class="${cls}" src="${safe}" alt="" loading="lazy" onclick="event.preventDefault();event.stopPropagation();openLightbox('${safe}')" onerror="this.outerHTML='<span class=&quot;img-broken&quot;>تعذّر تحميل الصورة</span>'">`;
+  }
+
+  // تكبير أي صورة سؤال/اختيار/شرح بضغطة — الصور بتترفع بدقة أقل من حجم
+  // عرضها الكامل هنا (موفّرة بيانات الطالب)، فالتكبير ضروري لقراءة أي
+  // تفاصيل فيها (خطوات حل مكتوبة بخط اليد مثلاً).
+  let lightboxEl = null;
+  function openLightbox(url){
+    if (!lightboxEl){
+      lightboxEl = document.createElement('div');
+      lightboxEl.className = 'lightbox hidden';
+      lightboxEl.onclick = () => lightboxEl.classList.add('hidden');
+      document.body.appendChild(lightboxEl);
+    }
+    lightboxEl.innerHTML = `<img src="${url}" alt="">`;
+    lightboxEl.classList.remove('hidden');
+  }
+
   function shuffled(arr, rnd){
     const a = arr.map((v,i)=>({v,i}));
     for (let i=a.length-1;i>0;i--){ const j = Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
@@ -463,22 +498,24 @@
       const correct = q.correctIndex;
       const answered = chosen !== null && chosen !== undefined;
       const isCorrect = answered && chosen === correct;
-      const qImg = q.imageUrl
-        ? `<img class="q-img" src="${escapeHtml(q.imageUrl)}" alt="" loading="lazy">`
-        : '';
+      const qImg = imgOrPlaceholder(q.imageUrl, 'q-img');
+      const optImgs = q.optionImageUrls || [];
       const opts = (q.options || []).map((opt, oi) => {
         let cls = 'opt review-opt';
         if (oi === correct) cls += ' correct';
         else if (oi === chosen) cls += ' wrong';
-        return `<div class="${cls}"><span class="mark">${oi === correct ? '✓' : (oi === chosen ? '✕' : '')}</span><span>${escapeHtml(opt)}</span></div>`;
+        const optImg = imgOrPlaceholder(optImgs[oi], 'opt-img');
+        return `<div class="${cls}"><span class="mark">${oi === correct ? '✓' : (oi === chosen ? '✕' : '')}</span><span>${escapeHtml(opt)}</span>${optImg}</div>`;
       }).join('');
       const badge = !answered
         ? '<span class="rbadge rbadge-none">⚪ لم تُجب</span>'
         : (isCorrect
             ? '<span class="rbadge rbadge-ok">✅ صح</span>'
             : '<span class="rbadge rbadge-bad">❌ غلط</span>');
-      const expl = q.explanation
-        ? `<div class="rexpl"><span class="rexpl-i">💡</span><span>${escapeHtml(q.explanation)}</span></div>`
+      // spec 043 — صورة الشرح تظهر هنا بس (بعد الاعتماد)، زي النص بالظبط.
+      const explImg = imgOrPlaceholder(q.explanationImageUrl, 'rexpl-img');
+      const expl = (q.explanation || q.explanationImageUrl)
+        ? `<div class="rexpl"><span class="rexpl-i">💡</span><span>${escapeHtml(q.explanation || '')}</span>${explImg}</div>`
         : '';
       return `<div class="q review-q">
           <div class="q-head"><span class="q-num">${i+1}</span><span class="q-text">${escapeHtml(q.text || '')}</span></div>
@@ -593,14 +630,14 @@
         const qid = q.v.id;
         const wrap = document.createElement('div');
         wrap.className = 'q' + (answers[qid] !== undefined ? ' answered' : '');
-        const qImg = q.v.imageUrl
-          ? `<img class="q-img" src="${escapeHtml(q.v.imageUrl)}" alt="" loading="lazy">`
-          : '';
+        const qImg = imgOrPlaceholder(q.v.imageUrl, 'q-img');
         wrap.innerHTML = `<div class="q-head"><span class="q-num">${qi+1}</span><span class="q-text">${escapeHtml(q.v.text || '')}</span></div>${qImg}`;
+        const optImgs = q.v.optionImageUrls || [];
         optMaps[qi].forEach(op => {
           const row = document.createElement('label');
           row.className = 'opt' + (answers[qid] === op.i ? ' sel' : '');
-          row.innerHTML = `<input type="radio" name="q${qi}" ${answers[qid] === op.i ? 'checked' : ''}><span class="mark"></span><span>${escapeHtml(op.v)}</span>`;
+          const optImg = imgOrPlaceholder(optImgs[op.i], 'opt-img');
+          row.innerHTML = `<input type="radio" name="q${qi}" ${answers[qid] === op.i ? 'checked' : ''}><span class="mark"></span><span>${escapeHtml(op.v)}</span>${optImg}`;
           row.querySelector('input').onchange = () => {
             answers[qid] = op.i;
             persist();

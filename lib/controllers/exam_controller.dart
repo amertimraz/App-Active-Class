@@ -5,7 +5,7 @@ import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
 import 'package:active_class/models/exam_submission_model.dart';
-import 'package:active_class/controllers/license_controller.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/online_exam_service.dart';
 import 'package:active_class/services/booking_service.dart';
@@ -346,7 +346,7 @@ class ExamController extends GetxController {
   Future<String?> uploadQuestionImage(int examId, List<int> bytes) async {
     String slug = '';
     try {
-      slug = await ParentPortalService().ensureSlug();
+      slug = await _online.effectiveSlug();
     } catch (_) {}
     return BookingService().uploadExamImage(bytes, slug: slug);
   }
@@ -397,6 +397,8 @@ class ExamController extends GetxController {
             points: qs[i].points,
             imageUrl: qs[i].imageUrl,
             explanation: qs[i].explanation,
+            explanationImageUrl: qs[i].explanationImageUrl,
+            optionImageUrls: List<String?>.of(qs[i].optionImageUrls),
           ),
       ],
     );
@@ -452,8 +454,15 @@ class ExamController extends GetxController {
 
   /// ينشر امتحانًا إلكترونيًا للسحابة (بدون مفتاح إجابة). يرجّع رسالة خطأ أو null.
   Future<String?> publishOnlineExam(int examId) async {
-    if (!LicenseController.to.parentPortalActiveNow) {
+    final access = TeamModeService().onlineExamAccessNow;
+    if (access.locked) {
       return 'الامتحانات الإلكترونية ضمن إضافة بوابة متابعة أولياء الأمور';
+    }
+    if (!access.canCreate) {
+      return TeamModeService().isAssistant &&
+              !TeamModeService().canManageOnlineExamsNow
+          ? 'المدرس لسه ما سمحلكش بإدارة الامتحانات الإلكترونية'
+          : 'رابط الطلاب بتاع المدرس لسه ما وصلش — حاول بعد دقيقة';
     }
     final exam = exams.firstWhereOrNull((e) => e.id == examId);
     if (exam == null) return 'الامتحان غير موجود';
@@ -717,6 +726,8 @@ class ExamController extends GetxController {
               points: q.points,
               imageUrl: q.imageUrl,
               explanation: q.explanation,
+              explanationImageUrl: q.explanationImageUrl,
+              optionImageUrls: q.optionImageUrls,
             ))
         .toList();
   }

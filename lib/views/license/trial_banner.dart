@@ -10,9 +10,13 @@ import 'package:active_class/views/license/plans_page.dart';
 const String _kSupportPhone = '201096066818';
 
 /// يفتح واتساب مباشرة على رقم الدعم — لطلب تجديد الاشتراك أو أي مساعدة
-Future<void> openRenewalWhatsApp({bool isRenewal = true}) async {
+Future<void> openRenewalWhatsApp(
+    {bool isRenewal = true, bool portalAddon = false}) async {
   final message = StringBuffer();
-  if (isRenewal) {
+  if (portalAddon) {
+    message.writeln(
+        'مرحبًا، أنا مدرس بستخدم تطبيق Active Class وعايز أجدد اشتراك بوابة أولياء الأمور والامتحانات الإلكترونية.');
+  } else if (isRenewal) {
     message.writeln('مرحبًا، أنا مدرس بستخدم تطبيق Active Class وعايز أجدد اشتراكي.');
   } else {
     message.writeln('مرحبًا، أنا مدرس بستخدم تطبيق Active Class وعايز مساعدة/دعم فني.');

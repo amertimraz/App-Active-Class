@@ -70,6 +70,12 @@
              الإطلاق يوصل (مفيش مكوّن مسجّل يستقبل تنبيه AlarmManager)،
              وكمان كانت بتتمسح بالكامل بعد أي إعادة تشغيل للجهاز من غير ما
              ترجع تتجدول تلقائيًا. -->
+        <!-- image_cropper (spec 043) — شاشة القص الأصلية قبل رفع أي صورة سؤال. -->
+        <activity
+            android:name="com.yalantis.ucrop.UCropActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
+
         <receiver android:exported="false"
             android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
         <receiver android:exported="false"

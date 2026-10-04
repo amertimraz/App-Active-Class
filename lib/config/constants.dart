@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 35;
+const int DATABASE_VERSION = 36;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -88,6 +88,8 @@ const String COL_EQ_CORRECT_INDEX = 'correct_index';
 const String COL_EQ_POINTS        = 'points';
 const String COL_EQ_IMAGE_URL     = 'image_url';    // spec 019 — صورة السؤال (اختياري)
 const String COL_EQ_EXPLANATION   = 'explanation'; // spec 023 — شرح الإجابة (اختياري، محلي فقط، مش في toCloudMap)
+const String COL_EQ_EXPLANATION_IMAGE_URL = 'explanation_image_url'; // spec 043 — محلي فقط زي EXPLANATION
+const String COL_EQ_OPTION_IMAGE_URLS     = 'option_image_urls';     // spec 043 — JSON، في toCloudMap
 const String COL_EQ_CREATED_AT    = 'created_at';
 
 // Column Names - Exam Submissions (spec 016)
@@ -236,6 +238,8 @@ const String SETTING_HARDWARE_SCANNER_ENABLED = 'hardware_scanner_enabled';
 // prorate_first_month: false=شهر كامل دايمًا (الافتراضي)،
 //   true=شهر انضمام الطالب يُحسب نسبيًا بأيامه المشمولة.
 const String SETTING_BILLING_ARREARS = 'billing_arrears';
+// spec 045 — يوم نزول المديونية (1..28)، الافتراضي 1 = من أول الشهر.
+const String SETTING_BILLING_DAY = 'billing_day';
 const String SETTING_PRORATE_FIRST_MONTH = 'prorate_first_month';
 
 // Route Names
@@ -316,6 +320,14 @@ const String SETTING_TEAM_ID = 'team_mode_team_id';
 // لو اتنادى قبل ما isOwner/teamId يتملّوا في الذاكرة للجلسة الحالية.
 const String SETTING_TEAM_IS_OWNER = 'team_mode_is_owner';
 
+// spec 044 — حالة إضافة البوابة عند المدرس، كما وصلت جهاز المساعد (استعادة
+// أوفلاين). الكتابة منها بتتم من TeamModeService فقط.
+const String SETTING_TEAM_PORTAL_SLUG = 'team_portal_slug';
+const String SETTING_TEAM_PORTAL_ENABLED = 'team_portal_enabled';
+const String SETTING_TEAM_PORTAL_EXPIRES_AT = 'team_portal_expires_at';
+const String SETTING_TEAM_CAN_MANAGE_ONLINE_EXAMS =
+    'team_can_manage_online_exams';
+
 // app_settings key — تفعيل/تعطيل إرسال تقرير واتساب تلقائي لأولياء
 // الأمور بعد اكتمال تسجيل حضور المجموعة (افتراضيًا معطّل).
 const String SETTING_REPORT_ON_COMPLETION_ENABLED =
@@ -357,6 +369,8 @@ const String COL_BQ_CORRECT_INDEX = 'correct_index';
 const String COL_BQ_POINTS        = 'points';
 const String COL_BQ_IMAGE_URL     = 'image_url';
 const String COL_BQ_EXPLANATION   = 'explanation';
+const String COL_BQ_EXPLANATION_IMAGE_URL = 'explanation_image_url'; // spec 043
+const String COL_BQ_OPTION_IMAGE_URLS     = 'option_image_urls';     // spec 043
 const String COL_BQ_SUBJECT       = 'subject';        // مادة/موضوع (حر)
 const String COL_BQ_TAGS          = 'tags';           // JSON list<String>
 const String COL_BQ_CREATED_AT    = 'created_at';

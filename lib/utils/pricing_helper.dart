@@ -3,6 +3,7 @@ import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/utils/billing_day.dart';
 
 /// حساب المستحق الشهري على طالب، مراعيًا نوع تسعير مجموعته:
 /// - شهري: سعر ثابت (زي ما كان دايمًا).
@@ -15,19 +16,22 @@ class PricingHelper {
   // بالظبط (مقدّم، بدون حساب نسبي).
   static bool billingArrears = false;
   static bool prorateFirstMonth = false;
+  // spec 045 — يوم نزول المديونية (1..28)؛ 1 = السلوك القديم. بيتجاهله
+  // وضع المؤخّر. راجع lib/utils/billing_day.dart.
+  static int billingDay = 1;
 
   static double _roundTo5(double x) => (x / 5).round() * 5.0;
 
   /// آخر شهر مستحق فعليًا لطلب "لحد شهر [requested]". في وضع "مؤخّر"
   /// بيتقيّد بآخر شهر **مكتمل** (الشهر الحالي − 1) — فطالب مديونيته كلها
   /// من الشهر الجاري يظهر بصفر لحد ما الشهر يخلص. idempotent.
-  static DateTime _effectiveLastMonth(DateTime requested) {
-    final req = DateTime(requested.year, requested.month, 1);
-    if (!billingArrears) return req;
-    final now = DateTime.now();
-    final lastComplete = DateTime(now.year, now.month - 1, 1);
-    return req.isBefore(lastComplete) ? req : lastComplete;
-  }
+  static DateTime _effectiveLastMonth(DateTime requested) =>
+      effectiveLastMonthFor(
+        requested: requested,
+        now: DateTime.now(),
+        arrears: billingArrears,
+        billingDay: billingDay,
+      );
 
   static int sessionsAttended({
     required Student student,
@@ -237,7 +241,13 @@ class PricingHelper {
     List<Student>? siblingGroupMembers,
   }) {
     final now = DateTime.now();
-    final withinGrace = graceDays > 0 && now.day <= graceDays;
+    // spec 045 — يوم النزول هو أول يوم مهلة (عند 1 = زي الأول بالظبط).
+    final withinGrace = withinGraceWindow(
+      now: now,
+      graceDays: graceDays,
+      arrears: billingArrears,
+      billingDay: billingDay,
+    );
     final lastMonth = withinGrace
         ? DateTime(now.year, now.month - 1, 1)
         : DateTime(now.year, now.month, 1);

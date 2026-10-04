@@ -479,6 +479,15 @@ class _MemberCard extends StatelessWidget {
               onChanged: (v) => onChangedPermission('can_view_academics', v),
               isDark: isDark,
             ),
+            // spec 044 — إدارة الامتحانات الإلكترونية (إنشاء/نشر/إيقاف/اعتماد)
+            // على رابط المدرس. مقفولة افتراضيًا.
+            _PermSwitch(
+              label: 'إدارة الامتحانات الإلكترونية (إنشاء/نشر/اعتماد)',
+              value: member['can_manage_online_exams'] as bool? ?? false,
+              onChanged: (v) =>
+                  onChangedPermission('can_manage_online_exams', v),
+              isDark: isDark,
+            ),
           ],
         ],
       ),

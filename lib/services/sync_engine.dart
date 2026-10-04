@@ -713,6 +713,8 @@ class SyncEngine with WidgetsBindingObserver {
           'points': payload[COL_EQ_POINTS],
           'image_url': payload[COL_EQ_IMAGE_URL],
           'explanation': payload[COL_EQ_EXPLANATION],
+          'explanation_image_url': payload[COL_EQ_EXPLANATION_IMAGE_URL],
+          'option_image_urls': payload[COL_EQ_OPTION_IMAGE_URLS],
         };
       case TABLE_BANK_QUESTIONS: // spec 025 — مستقل، بلا أب
         return {
@@ -724,6 +726,8 @@ class SyncEngine with WidgetsBindingObserver {
           'points': payload[COL_BQ_POINTS],
           'image_url': payload[COL_BQ_IMAGE_URL],
           'explanation': payload[COL_BQ_EXPLANATION],
+          'explanation_image_url': payload[COL_BQ_EXPLANATION_IMAGE_URL],
+          'option_image_urls': payload[COL_BQ_OPTION_IMAGE_URLS],
           'subject': payload[COL_BQ_SUBJECT],
           'tags': payload[COL_BQ_TAGS],
         };
@@ -1772,6 +1776,8 @@ class SyncEngine with WidgetsBindingObserver {
           COL_EQ_POINTS: remote['points'],
           COL_EQ_IMAGE_URL: remote['image_url'],
           COL_EQ_EXPLANATION: remote['explanation'],
+          COL_EQ_EXPLANATION_IMAGE_URL: remote['explanation_image_url'],
+          COL_EQ_OPTION_IMAGE_URLS: remote['option_image_urls'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };
@@ -1784,6 +1790,8 @@ class SyncEngine with WidgetsBindingObserver {
           COL_BQ_POINTS: remote['points'],
           COL_BQ_IMAGE_URL: remote['image_url'],
           COL_BQ_EXPLANATION: remote['explanation'],
+          COL_BQ_EXPLANATION_IMAGE_URL: remote['explanation_image_url'],
+          COL_BQ_OPTION_IMAGE_URLS: remote['option_image_urls'],
           COL_BQ_SUBJECT: remote['subject'] ?? '',
           COL_BQ_TAGS: remote['tags'],
           COL_SYNC_UPDATED_AT: updatedAt,

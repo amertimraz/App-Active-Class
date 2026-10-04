@@ -390,6 +390,14 @@ class _GroupSummaryCard extends StatelessWidget {
           ),
         ),
         actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Get.find<ReportController>().printDebtors(groupId: summary.group.id);
+            },
+            icon: const Icon(Icons.print_rounded, size: 18),
+            label: const Text('طباعة'),
+          ),
           TextButton(
               onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق')),
         ],
@@ -888,6 +896,57 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+/// نافذة اختيار "كل المجموعات" أو مجموعة فيها طلاب مديونين، ثم الطباعة.
+Future<void> _pickDebtorsGroupAndPrint(
+    BuildContext context, ReportController ctrl) async {
+  final unpaid = ctrl.unpaidStudents;
+  if (unpaid.isEmpty) {
+    ToastHelper.info('مفيش طلاب عليهم مديونية');
+    return;
+  }
+  final counts = <int, int>{};
+  final names = <int, String>{};
+  for (final u in unpaid) {
+    final gid = u.group?.id;
+    if (gid == null) continue;
+    counts[gid] = (counts[gid] ?? 0) + 1;
+    names[gid] = u.group!.name;
+  }
+  // -1 = كل المجموعات، null = إلغاء
+  final choice = await showModalBottomSheet<int>(
+    context: context,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (ctx) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        children: [
+          const Text('طباعة المديونيات',
+              style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15)),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.groups_rounded),
+            title: Text('كل المجموعات (${unpaid.length} طالب)'),
+            onTap: () => Navigator.pop(ctx, -1),
+          ),
+          for (final e in counts.entries)
+            ListTile(
+              leading: const Icon(Icons.group_rounded),
+              title: Text('${names[e.key]} (${e.value} طالب)'),
+              onTap: () => Navigator.pop(ctx, e.key),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (choice == null) return;
+  await ctrl.printDebtors(groupId: choice == -1 ? null : choice);
+}
+
 // ── حالة "الوضع + النطاق" لشيت التصدير — تتذكّر خلال الجلسة، تتصفّر
 //    مع إعادة تشغيل التطبيق (spec 014 US3). لو المدرس غيّر الشهر المعروض
 //    في شاشة التقارير، النطاق يتبع الشهر الجديد بدل ما يفضل قديم.
@@ -1087,6 +1146,19 @@ void _showExportMenu(BuildContext context, ReportController ctrl) {
                     Navigator.pop(ctx);
                     if (!licenceOk()) return;
                     ctrl.exportPaymentsPDF();
+                  },
+                ),
+                const SizedBox(height: 10),
+                _ExportOption(
+                  icon: Icons.print_rounded,
+                  color: const Color(0xFFDC2626),
+                  title: 'طباعة المديونيات',
+                  subtitle:
+                      'الطلاب اللي عليهم مديونية — كل المجموعات أو مجموعة معيّنة',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    if (!licenceOk()) return;
+                    _pickDebtorsGroupAndPrint(context, ctrl);
                   },
                 ),
                 const SizedBox(height: 10),

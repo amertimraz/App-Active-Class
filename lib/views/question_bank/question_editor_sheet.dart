@@ -6,7 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:active_class/widgets/image_crop_picker.dart';
 
 import 'package:active_class/controllers/exam_controller.dart';
 import 'package:active_class/models/bank_question_model.dart';
@@ -54,6 +54,12 @@ class _QuestionEditorSheetState extends State<_QuestionEditorSheet> {
   String? _imageUrl;
   bool _uploading = false;
 
+  // spec 043 — صورة شرح (محلية فقط) + صورة لكل اختيار (بنفس طول _options).
+  String? _explanationImageUrl;
+  bool _uploadingExplanationImage = false;
+  List<String?> _optionImageUrls = [];
+  List<bool> _uploadingOptionImage = [];
+
   @override
   void initState() {
     super.initState();
@@ -66,9 +72,13 @@ class _QuestionEditorSheetState extends State<_QuestionEditorSheet> {
     _correctIndex = q?.correctIndex ?? 0;
     _points = q?.points ?? 1;
     _imageUrl = q?.imageUrl;
+    _explanationImageUrl = q?.explanationImageUrl;
     final opts = q?.options ??
         (_type == ExamQuestionType.trueFalse ? kTrueFalseOptions : const ['', '']);
     _options = opts.map((o) => TextEditingController(text: o)).toList();
+    _optionImageUrls = alignOptionImages(
+        q?.optionImageUrls ?? const [], _options.length);
+    _uploadingOptionImage = List<bool>.filled(_options.length, false);
   }
 
   @override
@@ -93,28 +103,18 @@ class _QuestionEditorSheetState extends State<_QuestionEditorSheet> {
         _options =
             kTrueFalseOptions.map((o) => TextEditingController(text: o)).toList();
         if (_correctIndex > 1) _correctIndex = 0;
+        // spec 043 — الاختيارات القديمة اتمسحت بالكامل، فصورها بقت بلا
+        // معنى (ممكن تتحط بالغلط على "صح/خطأ" لو سبنا الطول القديم).
+        _optionImageUrls = List<String?>.filled(_options.length, null);
+        _uploadingOptionImage = List<bool>.filled(_options.length, false);
       }
     });
   }
 
   Future<void> _pickImage() async {
-    XFile? file;
-    try {
-      file = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 70,
-        maxWidth: 1600,
-        requestFullMetadata: false,
-      );
-    } catch (_) {
-      try {
-        final lost = await ImagePicker().retrieveLostData();
-        if (!lost.isEmpty && lost.file != null) file = lost.file;
-      } catch (_) {}
-    }
-    if (file == null || !mounted) return;
+    final bytes = await pickAndCropImage(context);
+    if (bytes == null || !mounted) return;
     setState(() => _uploading = true);
-    final bytes = await file.readAsBytes();
     final url = await _ec.uploadQuestionImage(0, bytes);
     if (!mounted) return;
     setState(() {
@@ -124,6 +124,55 @@ class _QuestionEditorSheetState extends State<_QuestionEditorSheet> {
       } else {
         ToastHelper.error('تعذّر رفع الصورة — حاول تاني');
       }
+    });
+  }
+
+  Future<void> _pickExplanationImage() async {
+    final bytes = await pickAndCropImage(context, maxDimension: 1000, compressQuality: 78);
+    if (bytes == null || !mounted) return;
+    setState(() => _uploadingExplanationImage = true);
+    final url = await _ec.uploadQuestionImage(0, bytes);
+    if (!mounted) return;
+    setState(() {
+      _uploadingExplanationImage = false;
+      if (url != null) {
+        _explanationImageUrl = url;
+      } else {
+        ToastHelper.error('تعذّر رفع الصورة — حاول تاني');
+      }
+    });
+  }
+
+  Future<void> _pickOptionImage(int idx) async {
+    final bytes = await pickAndCropImage(context, maxDimension: 640, compressQuality: 75);
+    if (bytes == null || !mounted) return;
+    setState(() => _uploadingOptionImage[idx] = true);
+    final url = await _ec.uploadQuestionImage(0, bytes);
+    if (!mounted) return;
+    setState(() {
+      _uploadingOptionImage[idx] = false;
+      if (url != null) {
+        _optionImageUrls[idx] = url;
+      } else {
+        ToastHelper.error('تعذّر رفع الصورة — حاول تاني');
+      }
+    });
+  }
+
+  void _addOption() {
+    setState(() {
+      _options.add(TextEditingController());
+      _optionImageUrls = addOptionImageSlot(_optionImageUrls);
+      _uploadingOptionImage = [..._uploadingOptionImage, false];
+    });
+  }
+
+  void _removeOptionAt(int idx) {
+    setState(() {
+      _options.removeAt(idx).dispose();
+      _optionImageUrls = removeOptionImageSlot(_optionImageUrls, idx);
+      _uploadingOptionImage = [..._uploadingOptionImage]..removeAt(idx);
+      if (_correctIndex >= _options.length) _correctIndex = 0;
     });
   }
 
@@ -143,6 +192,8 @@ class _QuestionEditorSheetState extends State<_QuestionEditorSheet> {
       imageUrl: _imageUrl,
       explanation:
           _explanation.text.trim().isEmpty ? null : _explanation.text.trim(),
+      explanationImageUrl: _explanationImageUrl,
+      optionImageUrls: _optionImageUrls,
       subject: _subject.text.trim(),
       tags: tags,
     );
@@ -268,6 +319,11 @@ class _QuestionEditorSheetState extends State<_QuestionEditorSheet> {
                     child: Column(children: [
                   ..._options.asMap().entries.map((e) {
                     final idx = e.key;
+                    final optImg = idx < _optionImageUrls.length
+                        ? _optionImageUrls[idx]
+                        : null;
+                    final optUploading = idx < _uploadingOptionImage.length &&
+                        _uploadingOptionImage[idx];
                     return Row(children: [
                       Radio<int>(
                         value: idx,
@@ -285,16 +341,49 @@ class _QuestionEditorSheetState extends State<_QuestionEditorSheet> {
                               isDense: true),
                         ),
                       ),
+                      if (optUploading)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: SizedBox(
+                              width: 14,
+                              height: 14,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2)),
+                        )
+                      else if (optImg != null) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.network(optImg,
+                              width: 28,
+                              height: 28,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                  width: 28,
+                                  height: 28,
+                                  color: Colors.grey.withValues(alpha: 0.15),
+                                  child: const Icon(
+                                      Icons.broken_image_outlined,
+                                      size: 14))),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.close, size: 14),
+                          onPressed: () =>
+                              setState(() => _optionImageUrls[idx] = null),
+                        ),
+                      ] else
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          tooltip: 'صورة الاختيار',
+                          icon: const Icon(Icons.add_photo_alternate_outlined,
+                              size: 17),
+                          onPressed: () => _pickOptionImage(idx),
+                        ),
                       if (_type == ExamQuestionType.mcq && _options.length > 2)
                         IconButton(
                           icon: const Icon(Icons.close, size: 15),
                           visualDensity: VisualDensity.compact,
-                          onPressed: () => setState(() {
-                            _options.removeAt(idx).dispose();
-                            if (_correctIndex >= _options.length) {
-                              _correctIndex = 0;
-                            }
-                          }),
+                          onPressed: () => _removeOptionAt(idx),
                         ),
                     ]);
                   }),
@@ -302,8 +391,7 @@ class _QuestionEditorSheetState extends State<_QuestionEditorSheet> {
                   ),
                   if (_type == ExamQuestionType.mcq && _options.length < 6)
                     TextButton.icon(
-                      onPressed: () => setState(
-                          () => _options.add(TextEditingController())),
+                      onPressed: _addOption,
                       icon: const Icon(Icons.add, size: 16),
                       label: const Text('اختيار',
                           style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
@@ -340,6 +428,58 @@ class _QuestionEditorSheetState extends State<_QuestionEditorSheet> {
                         hintStyle: TextStyle(fontFamily: 'Cairo'),
                         isDense: true),
                   ),
+                  if (_uploadingExplanationImage)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: Row(children: [
+                        SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(strokeWidth: 2)),
+                        SizedBox(width: 6),
+                        Text('جاري رفع صورة الشرح...',
+                            style: TextStyle(fontFamily: 'Cairo', fontSize: 11)),
+                      ]),
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(children: [
+                        if (_explanationImageUrl != null) ...[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.network(_explanationImageUrl!,
+                                height: 36,
+                                width: 48,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                    height: 36,
+                                    width: 48,
+                                    color:
+                                        Colors.grey.withValues(alpha: 0.15),
+                                    child: const Icon(
+                                        Icons.broken_image_outlined,
+                                        size: 16))),
+                          ),
+                          const SizedBox(width: 6),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            icon: const Icon(Icons.close, size: 15),
+                            onPressed: () =>
+                                setState(() => _explanationImageUrl = null),
+                          ),
+                        ] else
+                          TextButton.icon(
+                            onPressed: _pickExplanationImage,
+                            icon: const Icon(
+                                Icons.add_photo_alternate_outlined,
+                                size: 15),
+                            label: const Text('صورة للشرح',
+                                style: TextStyle(
+                                    fontFamily: 'Cairo', fontSize: 11.5)),
+                          ),
+                      ]),
+                    ),
                   const SizedBox(height: 6),
                   TextField(
                     controller: _subject,

@@ -12,6 +12,10 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/at_risk_controller.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
+import 'package:active_class/controllers/dashboard_controller.dart';
+import 'package:active_class/controllers/license_controller.dart';
+import 'package:active_class/services/parent_portal_service.dart';
+import 'package:active_class/utils/billing_day.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 
 class CurrencyOption {
@@ -318,6 +322,8 @@ class SettingsController extends GetxController {
   // ما يخلص). حساب نسبي للشهر الأول منفصل، افتراضيًا مطفي.
   final RxBool billingArrears = false.obs;
   final RxBool prorateFirstMonth = false.obs;
+  // spec 045 — يوم نزول المديونية (1..28)، الافتراضي 1 = من أول الشهر.
+  final RxInt billingDay = 1.obs;
 
   Future<void> _loadBillingSettings() async {
     try {
@@ -325,6 +331,8 @@ class SettingsController extends GetxController {
           await _migrateBool(SETTING_BILLING_ARREARS) ?? false;
       prorateFirstMonth.value =
           await _migrateBool(SETTING_PRORATE_FIRST_MONTH) ?? false;
+      billingDay.value = clampBillingDay(
+          int.tryParse(await _dbGet(SETTING_BILLING_DAY) ?? ''));
     } catch (_) {}
     _applyBillingToPricingHelper();
   }
@@ -332,6 +340,23 @@ class SettingsController extends GetxController {
   void _applyBillingToPricingHelper() {
     PricingHelper.billingArrears = billingArrears.value;
     PricingHelper.prorateFirstMonth = prorateFirstMonth.value;
+    PricingHelper.billingDay = billingDay.value;
+  }
+
+  /// تغيير أي إعداد تحصيل بيغيّر أرقام المديونية: نحدّث الداشبورد وتذكير
+  /// المتأخرين وملخصات بوابة أولياء الأمور (لو شغّالة) فورًا بدل ما تفضل
+  /// القيم القديمة لحد أول إعادة تحميل.
+  void _onBillingChanged() {
+    try {
+      if (Get.isRegistered<DashboardController>()) {
+        Get.find<DashboardController>().loadDashboardData();
+      }
+      unawaited(NotificationService().scheduleLatePaymentReminder());
+      if (Get.isRegistered<LicenseController>() &&
+          LicenseController.to.parentPortalActiveNow) {
+        unawaited(ParentPortalService().publishAllStudents().catchError((_) => 0));
+      }
+    } catch (_) {}
   }
 
   Future<void> setBillingArrears(bool v) async {
@@ -340,6 +365,7 @@ class SettingsController extends GetxController {
     try {
       await _dbSet(SETTING_BILLING_ARREARS, v ? '1' : '0');
     } catch (_) {}
+    _onBillingChanged();
   }
 
   Future<void> setProrateFirstMonth(bool v) async {
@@ -348,6 +374,17 @@ class SettingsController extends GetxController {
     try {
       await _dbSet(SETTING_PRORATE_FIRST_MONTH, v ? '1' : '0');
     } catch (_) {}
+    _onBillingChanged();
+  }
+
+  /// spec 045 — يوم نزول المديونية (1..28).
+  Future<void> setBillingDay(int day) async {
+    billingDay.value = clampBillingDay(day);
+    _applyBillingToPricingHelper();
+    try {
+      await _dbSet(SETTING_BILLING_DAY, '${billingDay.value}');
+    } catch (_) {}
+    _onBillingChanged();
   }
 
   Future<void> setWhatsappSendDay(int day) async {

@@ -5,7 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:active_class/widgets/image_crop_picker.dart';
 import 'package:intl/intl.dart';
 
 import 'package:active_class/config/theme.dart';
@@ -16,7 +16,7 @@ import 'package:active_class/models/exam_question_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/bank_question_model.dart';
 import 'package:active_class/controllers/question_bank_controller.dart';
-import 'package:active_class/services/parent_portal_service.dart';
+import 'package:active_class/services/online_exam_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/views/exams/online_exam_preview_page.dart';
 import 'package:active_class/views/question_bank/question_bank_picker_page.dart';
@@ -40,6 +40,14 @@ class _QDraft {
   final TextEditingController explanation; // spec 023
   bool uploadingImage = false;
 
+  // spec 043 — صورة شرح (محلية فقط، زي النص) + صورة لكل اختيار (في
+  // toCloudMap). القائمتان بتتزامنا مع options طول ما الاختيارات بتتضاف
+  // أو تتحذف (راجع _addOption/_removeOption في الشاشة).
+  String? explanationImageUrl;
+  bool uploadingExplanationImage = false;
+  List<String?> optionImageUrls;
+  List<bool> uploadingOptionImage;
+
   _QDraft({
     this.id,
     this.type = ExamQuestionType.mcq,
@@ -49,6 +57,8 @@ class _QDraft {
     this.points = 1,
     this.imageUrl,
     String explanation = '',
+    this.explanationImageUrl,
+    List<String?>? optionImageUrls,
   })  : text = TextEditingController(text: text),
         explanation = TextEditingController(text: explanation),
         options = (options ??
@@ -56,7 +66,21 @@ class _QDraft {
                     ? kTrueFalseOptions
                     : const ['', '']))
             .map((o) => TextEditingController(text: o))
-            .toList();
+            .toList(),
+        optionImageUrls = alignOptionImages(
+            optionImageUrls ?? const [],
+            (options ??
+                    (type == ExamQuestionType.trueFalse
+                        ? kTrueFalseOptions
+                        : const ['', '']))
+                .length),
+        uploadingOptionImage = List<bool>.filled(
+            (options ??
+                    (type == ExamQuestionType.trueFalse
+                        ? kTrueFalseOptions
+                        : const ['', '']))
+                .length,
+            false);
 
   // spec 025 — إضافة سؤال من البنك كنسخة مستقلة (id = null → صف جديد).
   factory _QDraft.fromBankQuestion(BankQuestion bq) => _QDraft(
@@ -67,7 +91,21 @@ class _QDraft {
         points: bq.points,
         imageUrl: bq.imageUrl,
         explanation: bq.explanation ?? '',
+        explanationImageUrl: bq.explanationImageUrl,
+        optionImageUrls: List<String?>.of(bq.optionImageUrls),
       );
+
+  void addOption() {
+    options.add(TextEditingController());
+    optionImageUrls = addOptionImageSlot(optionImageUrls);
+    uploadingOptionImage = [...uploadingOptionImage, false];
+  }
+
+  void removeOptionAt(int k) {
+    options.removeAt(k).dispose();
+    optionImageUrls = removeOptionImageSlot(optionImageUrls, k);
+    uploadingOptionImage = [...uploadingOptionImage]..removeAt(k);
+  }
 
   void dispose() {
     text.dispose();
@@ -89,6 +127,8 @@ class _QDraft {
         imageUrl: imageUrl,
         explanation:
             explanation.text.trim().isEmpty ? null : explanation.text.trim(),
+        explanationImageUrl: explanationImageUrl,
+        optionImageUrls: optionImageUrls,
       );
 }
 
@@ -138,6 +178,8 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
               points: q.points,
               imageUrl: q.imageUrl,
               explanation: q.explanation ?? '',
+              explanationImageUrl: q.explanationImageUrl,
+              optionImageUrls: List<String?>.of(q.optionImageUrls),
             )));
       _loading = false;
     });
@@ -161,43 +203,54 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
     setState(() => _questions.add(_QDraft(type: type)));
   }
 
-  // ── صورة السؤال (spec 019) ──────────────────────────────────────────────
+  // ── صورة السؤال (spec 019) — قص إجباري قبل الرفع (spec 043) ─────────────
   Future<void> _pickQuestionImage(int i) async {
-    XFile? file;
-    try {
-      file = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 70,
-        maxWidth: 1600,
-        // requestFullMetadata: false يتجنّب قراءة الـEXIF/الموقع اللي
-        // بتكراش على بعض أجهزة MIUI/شاومي (NullPointerException في
-        // deliverResultsIfNeeded) — إحنا مش محتاجين الميتاداتا أصلاً.
-        requestFullMetadata: false,
-      );
-    } catch (_) {
-      // بعض أجهزة MIUI بترجّع نتيجة activity ناقصة — نجرّب استرجاع
-      // الصورة الضائعة قبل ما نستسلم.
-      try {
-        final lost = await ImagePicker().retrieveLostData();
-        if (!lost.isEmpty && lost.file != null) {
-          file = lost.file;
-        }
-      } catch (_) {}
-      if (file == null) {
-        if (mounted) ToastHelper.error('تعذّر اختيار الصورة — جرّب تاني');
-        return;
-      }
-    }
-    if (file == null || !mounted) return;
+    final bytes = await pickAndCropImage(context);
+    if (bytes == null || !mounted) return;
 
     setState(() => _questions[i].uploadingImage = true);
-    final bytes = await file.readAsBytes();
     final url = await _ec.uploadQuestionImage(_examId ?? 0, bytes);
     if (!mounted) return;
     setState(() {
       _questions[i].uploadingImage = false;
       if (url != null) {
         _questions[i].imageUrl = url;
+      } else {
+        ToastHelper.error('تعذّر رفع الصورة — حاول تاني');
+      }
+    });
+  }
+
+  // ── صورة الشرح (spec 043) ────────────────────────────────────────────────
+  Future<void> _pickExplanationImage(int i) async {
+    final bytes = await pickAndCropImage(context, maxDimension: 1000, compressQuality: 78);
+    if (bytes == null || !mounted) return;
+
+    setState(() => _questions[i].uploadingExplanationImage = true);
+    final url = await _ec.uploadQuestionImage(_examId ?? 0, bytes);
+    if (!mounted) return;
+    setState(() {
+      _questions[i].uploadingExplanationImage = false;
+      if (url != null) {
+        _questions[i].explanationImageUrl = url;
+      } else {
+        ToastHelper.error('تعذّر رفع الصورة — حاول تاني');
+      }
+    });
+  }
+
+  // ── صورة اختيار (spec 043) ───────────────────────────────────────────────
+  Future<void> _pickOptionImage(int qi, int oi) async {
+    final bytes = await pickAndCropImage(context, maxDimension: 640, compressQuality: 75);
+    if (bytes == null || !mounted) return;
+
+    setState(() => _questions[qi].uploadingOptionImage[oi] = true);
+    final url = await _ec.uploadQuestionImage(_examId ?? 0, bytes);
+    if (!mounted) return;
+    setState(() {
+      _questions[qi].uploadingOptionImage[oi] = false;
+      if (url != null) {
+        _questions[qi].optionImageUrls[oi] = url;
       } else {
         ToastHelper.error('تعذّر رفع الصورة — حاول تاني');
       }
@@ -365,7 +418,7 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
       return;
     }
     if (err == null || err.startsWith('__WARN__')) {
-      final slug = await ParentPortalService().ensureSlug();
+      final slug = await OnlineExamService().effectiveSlug();
       if (!mounted) return;
       if (err != null) {
         await _blockingMsg('تم', err.replaceFirst('__WARN__ ', ''));
@@ -788,6 +841,60 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
 
   // صورة السؤال — مصغّرة صغيرة تحت النص لو موجودة. زر الإضافة نفسه
   // أيقونة في ترويسة الكارت (مش سطر كامل) عشان الكارت ما يطولش.
+  // صورة الشرح (spec 043) — سطر صغير تحت حقل الشرح: زر إضافة/استبدال +
+  // معاينة مصغّرة + زر حذف، بنفس فكرة _questionImageThumb.
+  Widget _explanationImageRow(int i, _QDraft q) {
+    if (q.uploadingExplanationImage) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 4),
+        child: Row(children: [
+          SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(strokeWidth: 2)),
+          SizedBox(width: 6),
+          Text('جاري رفع صورة الشرح...',
+              style: TextStyle(fontFamily: 'Cairo', fontSize: 11)),
+        ]),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(children: [
+        if (q.explanationImageUrl != null) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Image.network(
+              q.explanationImageUrl!,
+              height: 36,
+              width: 48,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                height: 36,
+                width: 48,
+                color: Colors.grey.withValues(alpha: 0.15),
+                child: const Icon(Icons.broken_image_outlined, size: 16),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close, size: 15),
+            onPressed: () =>
+                setState(() => _questions[i].explanationImageUrl = null),
+          ),
+        ] else
+          TextButton.icon(
+            onPressed: () => _pickExplanationImage(i),
+            icon: const Icon(Icons.add_photo_alternate_outlined, size: 15),
+            label: const Text('صورة للشرح',
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 11.5)),
+          ),
+      ]),
+    );
+  }
+
   Widget _questionImageThumb(int i, _QDraft q) {
     if (q.uploadingImage) {
       return const Padding(
@@ -921,7 +1028,14 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
               child: Column(children: [
             ...q.options.asMap().entries.map((e) {
               final idx = e.key;
-              return Row(children: [
+              final optImg = idx < q.optionImageUrls.length
+                  ? q.optionImageUrls[idx]
+                  : null;
+              final optUploading = idx < q.uploadingOptionImage.length &&
+                  q.uploadingOptionImage[idx];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(children: [
                 Radio<int>(value: idx, visualDensity: VisualDensity.compact),
                 Expanded(
                   child: TextField(
@@ -936,26 +1050,62 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                             horizontal: 8, vertical: 8)),
                   ),
                 ),
+                // spec 043 — صورة اختيارية لهذا الاختيار بالذات.
+                if (optUploading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                else if (optImg != null) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.network(optImg,
+                        width: 28,
+                        height: 28,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                            width: 28,
+                            height: 28,
+                            color: Colors.grey.withValues(alpha: 0.15),
+                            child: const Icon(Icons.broken_image_outlined,
+                                size: 14))),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.close, size: 14),
+                    onPressed: () => setState(
+                        () => q.optionImageUrls[idx] = null),
+                  ),
+                ] else
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'صورة الاختيار',
+                    icon: const Icon(Icons.add_photo_alternate_outlined,
+                        size: 17),
+                    onPressed: () => _pickOptionImage(i, idx),
+                  ),
                 if (q.type == ExamQuestionType.mcq && q.options.length > 2)
                   IconButton(
                     visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.close, size: 15),
                     onPressed: () => setState(() {
-                      q.options.removeAt(idx).dispose();
+                      q.removeOptionAt(idx);
                       if (q.correctIndex >= q.options.length) {
                         q.correctIndex = 0;
                       }
                     }),
                   ),
-              ]);
+              ]));
             }),
               ]),
             ),
             Row(children: [
               if (q.type == ExamQuestionType.mcq && q.options.length < 6)
                 TextButton.icon(
-                  onPressed: () => setState(
-                      () => q.options.add(TextEditingController())),
+                  onPressed: () => setState(() => q.addOption()),
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('اختيار',
                       style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
@@ -993,6 +1143,7 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                 isDense: true,
               ),
             ),
+            _explanationImageRow(i, q),
             // spec 022 — تعديل سؤال واحد في امتحان منشور بدون إلغاء
             // النشر. الحقول فوق قابلة للتعديل أصلاً؛ الزرار ده بيحفظ
             // السؤال ده بس ويعيد نشر مصفوفة الأسئلة، والامتحان يفضل شغّال.

@@ -1,4 +1,6 @@
 import 'package:get/get.dart';
+import 'package:printing/printing.dart';
+import 'package:active_class/utils/debtors_report.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/export_service.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -323,6 +325,47 @@ class ReportController extends GetxController {
 
   final RxBool isExporting = false.obs;
   final _exportSvc = ExportService();
+
+  /// طباعة قائمة الطلاب اللي عليهم مديونية (حتى الشهر المختار).
+  /// [groupId] null = كل المجموعات. بتفتح معاينة الطباعة/المشاركة.
+  Future<void> printDebtors({int? groupId}) async {
+    if (isExporting.value) return;
+    final rows = prepareDebtorRows(
+      unpaidStudents.map((u) => DebtorRow(
+            name: u.student.name,
+            code: u.student.code,
+            groupId: u.group?.id,
+            groupName: u.group?.name ?? '—',
+            guardianPhone: (u.student.guardianPhone ?? '').trim(),
+            due: u.due,
+            remaining: u.remaining,
+          )),
+      groupId: groupId,
+    );
+    if (rows.isEmpty) {
+      ToastHelper.info('مفيش طلاب عليهم مديونية');
+      return;
+    }
+    isExporting(true);
+    try {
+      final groupName = groupId == null
+          ? null
+          : allGroups.firstWhereOrNull((g) => g.id == groupId)?.name;
+      final bytes = await _exportSvc.buildDebtorsPdf(
+        month: selectedMonth.value,
+        rows: rows,
+        groupLabel: groupName,
+      );
+      await Printing.layoutPdf(
+        name: 'مديونيات_${groupName ?? 'الكل'}',
+        onLayout: (_) async => bytes,
+      );
+    } catch (e) {
+      ToastHelper.error('خطأ: $e');
+    } finally {
+      isExporting(false);
+    }
+  }
 
   /// تصدير تقرير الدفعات PDF
   Future<void> exportPaymentsPDF() async {

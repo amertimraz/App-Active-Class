@@ -25,7 +25,12 @@ import 'package:active_class/services/export_service.dart';
 
 class OnlineExamResultsPage extends StatefulWidget {
   final Exam exam;
-  const OnlineExamResultsPage({super.key, required this.exam});
+
+  /// spec 044 — مساعد بلا صلاحية إدارة الامتحانات الإلكترونية: يشوف
+  /// النتايج بس، من غير اعتماد/إبطال/سحب/تعديل درجة.
+  final bool readOnly;
+  const OnlineExamResultsPage(
+      {super.key, required this.exam, this.readOnly = false});
 
   @override
   State<OnlineExamResultsPage> createState() => _OnlineExamResultsPageState();
@@ -426,7 +431,7 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
             style: const TextStyle(
                 fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
         actions: [
-          if (pending > 0)
+          if (pending > 0 && !widget.readOnly)
             TextButton(
               onPressed: _approveAll,
               child: const Text('اعتماد الكل',
@@ -466,6 +471,7 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
                 children: [
                   _summaryHeader(),
                   const SizedBox(height: 14),
+                  if (!widget.readOnly)
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
@@ -731,13 +737,13 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
                   ],
                 ),
               ),
-              if (!notSubmitted && !voided)
+              if (!notSubmitted && !voided && !widget.readOnly)
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   icon: const Icon(Icons.edit_outlined, size: 17),
                   onPressed: () => _editGrade(s),
                 ),
-              if (!approved && !voided)
+              if (!approved && !voided && !widget.readOnly)
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   icon: Icon(
@@ -752,7 +758,7 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
               // spec 022 — إجراءات أقل شيوعًا في قائمة ⋮ عشان الصف
               // ميزدحمش. مش بتظهر لـ"لم يسلّم" (مفيش تسليم يتبطّل) ولا
               // "مُبطَل" (اتبطّل بالفعل).
-              if (!notSubmitted && !voided)
+              if (!notSubmitted && !voided && !widget.readOnly)
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert_rounded, size: 18),
                   padding: EdgeInsets.zero,

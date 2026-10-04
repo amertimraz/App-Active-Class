@@ -177,10 +177,16 @@ service cloud.firestore {
     // نفس نمط parent_portal: {slug} مشتق حتميًا من كود الترخيص، الحماية
     // في معرفة الـslug + معرّف المستند {code}_{last4}. الإجابات الصحيحة
     // مش موجودة في أي مستند هنا إطلاقًا (التصحيح داخل تطبيق المدرس).
+    // spec 044 — المالك، أو مساعد فوّضه المالك صراحة (coOwnerUids: مصفوفة
+    // Firebase uids يكتبها المالك وحده على مستند الجذر). التفويض يغطي
+    // الكتابة تحت exams/** بس؛ مستند الجذر نفسه وparent_portal يفضلوا
+    // للمالك فقط (قاعدة update على online_exams/{slug} لم تتغيّر).
     function _oeOwner(slug) {
       return request.auth != null
-        && get(/databases/$(database)/documents/online_exams/$(slug)).data.ownerUid
-           == request.auth.uid;
+        && (get(/databases/$(database)/documents/online_exams/$(slug)).data.ownerUid
+              == request.auth.uid
+            || ('coOwnerUids' in get(/databases/$(database)/documents/online_exams/$(slug)).data
+                && request.auth.uid in get(/databases/$(database)/documents/online_exams/$(slug)).data.coOwnerUids));
     }
 
     match /online_exams/{slug} {

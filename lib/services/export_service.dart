@@ -10,6 +10,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:excel/excel.dart' as xl;
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/payment_model.dart';
@@ -20,6 +21,7 @@ import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/debtors_report.dart';
 
 // ═══════════════════════════════════════════════════════════════════════
 //  ExportFormat — صيغة ملف التصدير (spec 023 — تصدير نتائج الامتحان)
@@ -471,6 +473,95 @@ class ExportService {
     } catch (e) {
       return ExportResult.fail('فشل إنشاء PDF: $e');
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  قائمة الطلاب اللي عليهم مديونية (للطباعة) — بايتات PDF جاهزة
+  //  للمعاينة/الطباعة (Printing.layoutPdf). مرتّبة بالمجموعة ثم الاسم.
+  // ─────────────────────────────────────────────────────────────────
+  Future<Uint8List> buildDebtorsPdf({
+    required DateTime month,
+    required List<DebtorRow> rows,
+    String? groupLabel,
+  }) async {
+    await _loadFonts();
+    final doc = pw.Document();
+    final monthLabel = DateFormat('MMMM yyyy', 'ar').format(month);
+    final printedAt = DateFormat('yyyy/MM/dd HH:mm').format(DateTime.now());
+    final title = groupLabel == null
+        ? 'الطلاب عليهم مديونية — حتى $monthLabel'
+        : 'الطلاب عليهم مديونية — $groupLabel — حتى $monthLabel';
+    final total = debtorsTotal(rows);
+
+    final headers = [
+      '#',
+      'الاسم',
+      'الكود',
+      'المجموعة',
+      'هاتف ولي الأمر',
+      'المطلوب',
+      'المتبقي'
+    ];
+    final tableRows = <pw.TableRow>[
+      pw.TableRow(children: headers.map((h) => _th(h)).toList()),
+      for (var i = 0; i < rows.length; i++)
+        pw.TableRow(children: [
+          _td('${i + 1}', isEven: i.isEven),
+          _td(rows[i].name, isEven: i.isEven, bold: true),
+          _td(rows[i].code, isEven: i.isEven),
+          _td(rows[i].groupName, isEven: i.isEven),
+          _td(rows[i].guardianPhone.isEmpty ? '—' : rows[i].guardianPhone,
+              isEven: i.isEven),
+          _td(_fmt(rows[i].due), isEven: i.isEven),
+          _td(_fmt(rows[i].remaining), isEven: i.isEven, color: _error),
+        ]),
+    ];
+
+    doc.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      textDirection: pw.TextDirection.rtl,
+      margin: const pw.EdgeInsets.all(28),
+      header: (_) => _pageHeader(title),
+      footer: (ctx) => _pageFooter(ctx),
+      build: (ctx) => [
+        pw.Container(
+          padding: const pw.EdgeInsets.all(14),
+          decoration: pw.BoxDecoration(
+            color: _lightGrey,
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+            border: pw.Border.all(color: _accent, width: 0.5),
+          ),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+            children: [
+              _statBox('عدد الطلاب', '${rows.length}', _primary),
+              _statBox('إجمالي المتبقي', _fmt(total), _error),
+              _statBox('تاريخ الطباعة', printedAt, _grey),
+            ],
+          ),
+        ),
+        pw.SizedBox(height: 16),
+        pw.Table(
+          columnWidths: const {
+            0: pw.FixedColumnWidth(25),
+            1: pw.FlexColumnWidth(3),
+            2: pw.FlexColumnWidth(1.5),
+            3: pw.FlexColumnWidth(2),
+            4: pw.FlexColumnWidth(2.2),
+            5: pw.FlexColumnWidth(1.5),
+            6: pw.FlexColumnWidth(1.5),
+          },
+          children: tableRows,
+        ),
+        pw.SizedBox(height: 10),
+        pw.Align(
+          alignment: pw.Alignment.centerLeft,
+          child: pw.Text('الإجمالي: ${_fmt(total)}',
+              style: _style(size: 12, bold: true, color: _error)),
+        ),
+      ],
+    ));
+    return doc.save();
   }
 
   // ─────────────────────────────────────────────────────────────────

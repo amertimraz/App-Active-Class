@@ -543,3 +543,10 @@ specs/026-qr-payment-accumulated-debt/
 ├── quickstart.md    # 6 سيناريوهات تحقّق
 └── tasks.md         # T001–T020
 ```
+
+## Spec 045 — يوم نزول المديونية (implemented, device-tested OK)
+- إعداد عام `billing_day` (1..28، الافتراضي 1 = السلوك القديم) في الإعدادات ← نظام التحصيل؛ معطّل مع التحصيل المؤخّر.
+- المنطق في `lib/utils/billing_day.dart` ويُستهلك عبر `PricingHelper.billingDay` و`billing_period.dart`؛ الداشبورد يمرّر `monthLanded`.
+- الإعداد محلي (مش متزامن) — في وضع الفريق لازم نفس اليوم على جهاز المساعد.
+- QR: مراجَع، الشهر الجاري ما بيتختارش تلقائيًا فمفيش تغيير مطلوب.
+- لا DB/migration. المتبقي: بناء release وتحقق ميداني (quickstart).

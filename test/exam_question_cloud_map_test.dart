@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('toCloudMap لا يحتوي correctIndex / points / explanation', () {
-    const q = ExamQuestion(
+    final q = ExamQuestion(
       id: 7,
       examId: 1,
       position: 0,
@@ -31,7 +31,7 @@ void main() {
   });
 
   test('toCloudMap بدون صورة لا يضيف مفتاح imageUrl', () {
-    const q = ExamQuestion(
+    final q = ExamQuestion(
       id: 3,
       examId: 1,
       position: 0,

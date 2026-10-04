@@ -30,6 +30,7 @@ import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 
 class ParentPortalService {
@@ -81,6 +82,8 @@ class ParentPortalService {
       // false→false ومفيش تغيير)، فأول تحقق ترخيص بعد الفتح بيوفّق الحالة.
       [lic.parentPortalEnabled, lic.parentPortalExpiresAt, lic.licenseVerifiedTick],
       (_) {
+        // تنبيه قرب انتهاء الاشتراك — يتحدّث مع أي تغيّر (تجديد/إلغاء/أول تحقق).
+        unawaited(NotificationService().schedulePortalExpiryReminders());
         final active = lic.parentPortalActiveNow;
         if (active) {
           publishProfile();

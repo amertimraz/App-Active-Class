@@ -8,6 +8,7 @@ import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/theme_controller.dart';
 import 'package:active_class/views/license/trial_banner.dart';
+import 'package:active_class/views/license/portal_expiry_banner.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
@@ -212,6 +213,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             child: Column(
               children: [
                 const TrialBanner(),
+                const PortalExpiryBanner(),
                 _buildAppBar(),
                 _buildQuickActionsPinned(),
                 Expanded(

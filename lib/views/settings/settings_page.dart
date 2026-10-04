@@ -281,6 +281,67 @@ class SettingsPage extends StatelessWidget {
                                 },
                               )),
                           _buildDivider(isDark),
+                          // ── يوم نزول المديونية (spec 045) ──
+                          Obx(() {
+                            final arrears = settings.billingArrears.value;
+                            final d = settings.billingDay.value;
+                            final preview = arrears
+                                ? 'غير مستخدم مع التحصيل المؤخّر — الشهر بينزل بعد ما يخلص'
+                                : d == 1
+                                    ? 'اشتراك الشهر بينزل من أول يوم فيه (الافتراضي)'
+                                    : 'اشتراك الشهر بينزل يوم $d من كل شهر — قبله مابيظهرش كمديونية';
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildDropdownTile<int>(
+                                  context,
+                                  isDark,
+                                  icon: Icons.event_available_rounded,
+                                  iconColor: const Color(0xFF0EA5E9),
+                                  title: 'يوم نزول المديونية',
+                                  value: d,
+                                  items: List.generate(28, (i) => i + 1)
+                                      .map((x) => DropdownMenuItem(
+                                            value: x,
+                                            child: Text(x == 1
+                                                ? 'من أول الشهر'
+                                                : 'يوم $x من كل شهر'),
+                                          ))
+                                      .toList(),
+                                  onChanged: arrears
+                                      ? null
+                                      : (x) async {
+                                          if (x == null) return;
+                                          await settings.setBillingDay(x);
+                                          ToastHelper.success(
+                                            x == 1
+                                                ? 'الاشتراك بينزل من أول الشهر'
+                                                : 'الاشتراك هينزل يوم $x من كل شهر',
+                                            title: 'يوم النزول',
+                                          );
+                                        },
+                                ),
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(68, 0, 16, 10),
+                                  child: Text(
+                                    preview +
+                                        (TeamModeService().isEnabled.value
+                                            ? '\nفي وضع الفريق: اضبط نفس اليوم على جهاز المساعد.'
+                                            : ''),
+                                    style: TextStyle(
+                                        fontFamily: 'Cairo',
+                                        fontSize: 11,
+                                        height: 1.6,
+                                        color: isDark
+                                            ? Colors.grey[400]
+                                            : const Color(0xFF64748B)),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }),
+                          _buildDivider(isDark),
                           // ── حساب نسبي للشهر الأول (spec 012) ──
                           Obx(() => _buildSwitchTile(
                                 context,
@@ -1492,7 +1553,7 @@ class SettingsPage extends StatelessWidget {
     required String title,
     required T value,
     required List<DropdownMenuItem<T>> items,
-    required void Function(T?) onChanged,
+    required void Function(T?)? onChanged,
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),

@@ -63,6 +63,8 @@ const String _examQuestionsTableSql = '''
     $COL_EQ_POINTS        REAL NOT NULL DEFAULT 1,
     $COL_EQ_IMAGE_URL     TEXT,
     $COL_EQ_EXPLANATION   TEXT,
+    $COL_EQ_EXPLANATION_IMAGE_URL TEXT,
+    $COL_EQ_OPTION_IMAGE_URLS     TEXT,
     $COL_EQ_CREATED_AT    TEXT DEFAULT CURRENT_TIMESTAMP,
     $COL_SYNC_UPDATED_AT  TEXT,
     $COL_SYNC_REMOTE_ID   TEXT,
@@ -126,6 +128,8 @@ const String _bankQuestionsTableSql = '''
     $COL_BQ_POINTS        REAL NOT NULL DEFAULT 1,
     $COL_BQ_IMAGE_URL     TEXT,
     $COL_BQ_EXPLANATION   TEXT,
+    $COL_BQ_EXPLANATION_IMAGE_URL TEXT,
+    $COL_BQ_OPTION_IMAGE_URLS     TEXT,
     $COL_BQ_SUBJECT       TEXT NOT NULL DEFAULT '',
     $COL_BQ_TAGS          TEXT,
     $COL_BQ_CREATED_AT    TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -904,6 +908,20 @@ class DatabaseService {
       for (final sql in [..._bookletTableSqls, ..._bookletIndexSqls]) {
         try {
           await db.execute(sql);
+        } catch (_) {}
+      }
+    }
+
+    if (oldVersion < 36) {
+      // spec 043 — صورة شرح + صور اختيارات للسؤال (امتحان وبنك أسئلة).
+      for (final stmt in [
+        'ALTER TABLE $TABLE_EXAM_QUESTIONS ADD COLUMN $COL_EQ_EXPLANATION_IMAGE_URL TEXT',
+        'ALTER TABLE $TABLE_EXAM_QUESTIONS ADD COLUMN $COL_EQ_OPTION_IMAGE_URLS TEXT',
+        'ALTER TABLE $TABLE_BANK_QUESTIONS ADD COLUMN $COL_BQ_EXPLANATION_IMAGE_URL TEXT',
+        'ALTER TABLE $TABLE_BANK_QUESTIONS ADD COLUMN $COL_BQ_OPTION_IMAGE_URLS TEXT',
+      ]) {
+        try {
+          await db.execute(stmt);
         } catch (_) {}
       }
     }

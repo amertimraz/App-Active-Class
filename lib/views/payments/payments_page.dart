@@ -125,7 +125,12 @@ class _PaymentsPageState extends State<PaymentsPage> {
           }
           final nowMonth = DateTime.now();
 
-          final rows = <_StudentMonthRow>[];
+          // allRows = نطاق المجموعة + البحث بالاسم (من غير فلتر الحالة) —
+          // منه بنحسب الأعداد والمحصّل، وrows هي اللي بتتعرض بعد فلتر الحالة.
+          final allRows = <_StudentMonthRow>[];
+          // محصّل الشهر المعروض: دفعات تاريخها في الشهر ده (من غير إسقاط
+          // المديونية) لطلاب النطاق — مش إجمالي كل الدفعات.
+          double monthCollected = 0;
           for (final s in scopedStudents) {
             final group = groupById[s.groupId];
             final studentPayments = paymentsByStudent[s.id] ?? const [];
@@ -153,11 +158,16 @@ class _PaymentsPageState extends State<PaymentsPage> {
                     : paid > 0
                         ? 'جزئي'
                         : 'متأخر';
-            if (selectedStatus != 'الكل' && status != selectedStatus) continue;
             final nameQuery = controller.searchName.value.trim().toLowerCase();
             if (nameQuery.isNotEmpty &&
                 !s.name.toLowerCase().contains(nameQuery)) continue;
-            rows.add(_StudentMonthRow(
+            monthCollected += studentPayments
+                .where((p) =>
+                    p.date.year == month.year &&
+                    p.date.month == month.month &&
+                    p.note != kDebtWriteOffNote)
+                .fold<double>(0.0, (sum, p) => sum + p.amount);
+            allRows.add(_StudentMonthRow(
               student: s,
               group: groupById[s.groupId],
               month: month,
@@ -169,32 +179,36 @@ class _PaymentsPageState extends State<PaymentsPage> {
             ));
           }
 
-          // spec 038 — "إجمالي المحصّل" رقم مالي حقيقي، فيستبعد صفوف
-          // إسقاط المديونية (بعكس row.paid لكل طالب المستخدَم في حساب
-          // "المتبقي"/الحالة، واللي يفضل شاملها عمدًا).
-          final totalPaidInScope =
-              rows.fold<double>(0.0, (sum, r) => sum + r.realPaid);
+          // spec 038 — "محصّل الشهر" رقم مالي حقيقي، فيستبعد صفوف إسقاط
+          // المديونية (monthCollected فوق).
+          final totalPaidInScope = monthCollected;
+          final rows = selectedStatus == 'الكل'
+              ? allRows
+              : allRows.where((r) => r.status == selectedStatus).toList();
+          // أعداد الحالات من النطاق الكامل — مش بتتصفّر لما تختار تاب حالة.
           final fullyPaidCount =
-              rows.where((r) => r.status == 'مدفوع بالكامل').length;
-          final partialCount = rows.where((r) => r.status == 'جزئي').length;
-          final lateCount = rows.where((r) => r.status == 'متأخر').length;
+              allRows.where((r) => r.status == 'مدفوع بالكامل').length;
+          final partialCount = allRows.where((r) => r.status == 'جزئي').length;
+          final lateCount = allRows.where((r) => r.status == 'متأخر').length;
 
           return Column(
             children: [
-              // ─── Header card ───────────────────────────────────────────
+              // ─── Header card (مضغوط: كان بياخد ~ثلثي الشاشة) ──────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(
-                    PADDING_NORMAL, PADDING_NORMAL, PADDING_NORMAL, 0),
+                    PADDING_NORMAL, 10, PADDING_NORMAL, 0),
                 child: buildSoftPanel(
                   context: context,
-                  radius: 24,
+                  radius: 20,
+                  padding: const EdgeInsets.fromLTRB(6, 4, 6, 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Month row
+                      // الشهر: تنقّل + اختيار + أيقونة شرح (بدل البانر الطويل)
                       Row(
                         children: [
                           IconButton(
+                            visualDensity: VisualDensity.compact,
                             icon: const Icon(Icons.chevron_right_rounded),
                             tooltip: 'الشهر السابق',
                             onPressed: () {
@@ -205,6 +219,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                           ),
                           Expanded(
                             child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
                               onTap: () async {
                                 final picked = await showDatePicker(
                                   context: context,
@@ -219,32 +234,27 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                       DateTime(picked.year, picked.month, 1));
                                 }
                               },
-                              child: Column(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Text(
                                     dateFmt.format(month),
-                                    textAlign: TextAlign.center,
                                     style: Theme.of(context)
                                         .textTheme
                                         .titleMedium
                                         ?.copyWith(fontWeight: FontWeight.w800),
                                   ),
-                                  Text(
-                                    'اضغط لتغيير الشهر',
-                                    textAlign: TextAlign.center,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelSmall
-                                        ?.copyWith(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(Icons.expand_more_rounded,
+                                      size: 18,
+                                      color:
+                                          Theme.of(context).colorScheme.primary),
                                 ],
                               ),
                             ),
                           ),
                           IconButton(
+                            visualDensity: VisualDensity.compact,
                             icon: const Icon(Icons.chevron_left_rounded),
                             tooltip: 'الشهر التالي',
                             onPressed: () {
@@ -253,87 +263,44 @@ class _PaymentsPageState extends State<PaymentsPage> {
                               controller.setMonth(next);
                             },
                           ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            icon: Icon(Icons.info_outline_rounded,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.primary),
+                            tooltip: 'إزاي بتتعرض الدفعات؟',
+                            onPressed: () => _showMonthInfo(context, month),
+                          ),
                         ],
                       ),
-                      const Divider(height: 1),
-                      const SizedBox(height: 10),
-                      // ── توضيح: القائمة مفلترة بشهر تاريخ الدفعة ──
-                      // الدفعة مالهاش "شهر" مخزّن — بس تاريخ. لو المدرس
-                      // بيحصّل شهر فات وهو في أوائل الشهر الجديد، الدفعة
-                      // اللي بيسجّلها النهارده تظهر في الشهر الحالي مش
-                      // اللي هو شايفه — بس المديونية الكلية بتتظبط FIFO
-                      // مهما كان الشهر المعروض.
-                      Builder(builder: (_) {
-                        final n = DateTime.now();
-                        final isCurrent =
-                            month.year == n.year && month.month == n.month;
-                        final cs = Theme.of(context).colorScheme;
-                        final txt = isCurrent
-                            ? 'بتشوف دفعات ${dateFmt.format(month)} — أي دفعة تسجّلها بتاريخ الشهر ده بتظهر هنا فورًا.'
-                            : 'بتشوف ${dateFmt.format(month)}. الدفعة اللي تسجّلها النهارده بتظهر في ${dateFmt.format(DateTime(n.year, n.month, 1))} — بس مديونية الطالب الكلية بتتحسب صح مهما كان الشهر المعروض.';
-                        return Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: (isCurrent
-                                    ? cs.primary
-                                    : Colors.orange)
-                                .withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(10),
+                      // إجمالي المحصّل في سطر واحد
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            'محصّل الشهر',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: Colors.grey.shade600),
                           ),
-                          child: Row(children: [
-                            Icon(
-                                isCurrent
-                                    ? Icons.info_outline_rounded
-                                    : Icons.history_rounded,
-                                size: 15,
-                                color: isCurrent
-                                    ? cs.primary
-                                    : Colors.orange.shade800),
-                            const SizedBox(width: 7),
-                            Expanded(
-                              child: Text(txt,
-                                  style: TextStyle(
-                                      fontFamily: 'Cairo',
-                                      fontSize: 10.5,
-                                      height: 1.6,
-                                      fontWeight: FontWeight.w600,
-                                      color: isCurrent
-                                          ? cs.primary
-                                          : Colors.orange.shade900)),
-                            ),
-                          ]),
-                        );
-                      }),
-                      // Total amount
-                      Center(
-                        child: Column(
-                          children: [
-                            Text(
-                              'إجمالي المحصّل',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(color: Colors.grey.shade600),
-                            ),
-                            const SizedBox(height: 2),
-                            CurrencyText(
-                              totalPaidInScope,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineSmall
-                                  ?.copyWith(
-                                    color: Colors.green.shade700,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                            ),
-                          ],
-                        ),
+                          const SizedBox(width: 8),
+                          CurrencyText(
+                            totalPaidInScope,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  color: Colors.green.shade700,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                      // Status summary pills
+                      const SizedBox(height: 8),
+                      // Status summary pills (مصغّرة)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
@@ -357,7 +324,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                           ),
                           _SummaryPill(
                             label: 'الكل',
-                            value: rows.length,
+                            value: allRows.length,
                             color: Theme.of(context).colorScheme.primary,
                             icon: Icons.people_outline,
                           ),
@@ -371,7 +338,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
               // ─── Filters ───────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(
-                    PADDING_NORMAL, 10, PADDING_NORMAL, 0),
+                    PADDING_NORMAL, 8, PADDING_NORMAL, 0),
                 child: Row(
                   children: [
                     Expanded(
@@ -402,7 +369,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
               // ─── Status filter tabs ────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: PADDING_NORMAL, vertical: 8),
+                    horizontal: PADDING_NORMAL, vertical: 6),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -492,6 +459,30 @@ class _PaymentsPageState extends State<PaymentsPage> {
             ],
           );
         }),
+      ),
+    );
+  }
+
+  /// الشرح اللي كان بانر طويل في الهيدر — دلوقتي في نافذة بتتفتح بأيقونة ⓘ.
+  void _showMonthInfo(BuildContext context, DateTime month) {
+    final dateFmt = DateFormat('MMMM yyyy', 'ar');
+    final n = DateTime.now();
+    final isCurrent = month.year == n.year && month.month == n.month;
+    final txt = isCurrent
+        ? 'بتشوف دفعات ${dateFmt.format(month)} — أي دفعة تسجّلها بتاريخ الشهر ده بتظهر هنا فورًا.'
+        : 'بتشوف ${dateFmt.format(month)}. الدفعة اللي تسجّلها النهارده بتظهر في ${dateFmt.format(DateTime(n.year, n.month, 1))} — بس مديونية الطالب الكلية بتتحسب صح مهما كان الشهر المعروض.';
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('إزاي بتتعرض الدفعات؟',
+            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+        content: Text(txt,
+            style: const TextStyle(fontFamily: 'Cairo', height: 1.7)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('تمام', style: TextStyle(fontFamily: 'Cairo'))),
+        ],
       ),
     );
   }
@@ -1135,8 +1126,8 @@ class _SummaryPill extends StatelessWidget {
     return Column(
       children: [
         Container(
-          width: 44,
-          height: 44,
+          width: 34,
+          height: 34,
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.1),
             shape: BoxShape.circle,
@@ -1146,13 +1137,13 @@ class _SummaryPill extends StatelessWidget {
             child: Text(
               value.toString(),
               style: TextStyle(
-                  color: color, fontWeight: FontWeight.w900, fontSize: 16),
+                  color: color, fontWeight: FontWeight.w900, fontSize: 13),
             ),
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         Text(label,
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
       ],
     );
   }

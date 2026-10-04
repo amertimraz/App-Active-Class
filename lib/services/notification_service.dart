@@ -11,6 +11,9 @@ import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/services/at_risk_service.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/controllers/license_controller.dart';
+import 'package:active_class/services/team_mode_service.dart';
+import 'package:active_class/utils/portal_expiry.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/utils/pricing_helper.dart';
@@ -36,6 +39,9 @@ class NotificationService {
   static const int _latePaymentNotificationId = 990000000;
   // spec 021 — إشعار أسبوعي ملخّص بعدد "محتاجين متابعة".
   static const int _atRiskNotificationId = 991000000;
+  // تنبيه قرب انتهاء اشتراك بوابة أولياء الأمور + الامتحانات الإلكترونية —
+  // 4 إشعارات ثابتة (7/3/1 يوم قبل + لحظة الانتهاء).
+  static const int _portalExpiryNotificationIdBase = 992000000;
 
   // مفاتيح app_settings للتحكم في تفعيل/تعطيل كل نوع إشعار — نفس
   // نمط setting/getSetting الموجود بالفعل (زي payment_grace_days).
@@ -277,6 +283,14 @@ class NotificationService {
       } catch (e) {
         debugPrint('NotificationService: فشلت جدولة إشعار محتاجين متابعة — $e');
       }
+
+      // cancelAllNotifications فوق مسح إشعارات انتهاء الاشتراك كمان —
+      // لازم نرجّعها هنا (بتتحقق من الترخيص بنفسها).
+      try {
+        await schedulePortalExpiryReminders();
+      } catch (e) {
+        debugPrint('NotificationService: فشلت جدولة تنبيه انتهاء الاشتراك — $e');
+      }
     } catch (e) {
       debugPrint('NotificationService: فشلت مزامنة الإشعارات — $e');
     }
@@ -350,6 +364,55 @@ class NotificationService {
       channelDescription: 'تذكير يومي بعدد الطلاب المتأخرين في الدفع',
       matchDateTimeComponents: DateTimeComponents.time,
     );
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  تنبيه قرب انتهاء اشتراك بوابة أولياء الأمور + الامتحانات الإلكترونية.
+  //  مستقلة (مبتعملش cancelAll) — بتتنادى من ParentPortalService عند أي
+  //  تغيّر في التفعيل/تاريخ الانتهاء (تجديد، إلغاء، أول تحقق ترخيص) ومن
+  //  syncAllScheduledNotifications بعد cancelAll. للمدرس فقط (مش المساعد).
+  // ─────────────────────────────────────────────────────────────────
+  Future<void> schedulePortalExpiryReminders() async {
+    Future<void> cancelAll() async {
+      for (var i = 0; i < kPortalReminderDaysBefore.length + 1; i++) {
+        await cancelNotification(_portalExpiryNotificationIdBase + i);
+      }
+    }
+
+    if (!Get.isRegistered<LicenseController>()) return;
+    final team = TeamModeService();
+    if (team.isEnabled.value && !team.isOwner.value) {
+      await cancelAll();
+      return;
+    }
+    final lc = LicenseController.to;
+    final exp = lc.parentPortalExpiresAt.value;
+    if (!lc.parentPortalEnabled.value || exp == null) {
+      await cancelAll();
+      return;
+    }
+
+    // نمسح القديم الأول (تجديد بتاريخ جديد لازم يلغي مواعيد التاريخ القديم).
+    await cancelAll();
+    final reminders = portalReminders(exp, DateTime.now());
+    for (var i = 0; i < reminders.length; i++) {
+      final r = reminders[i];
+      try {
+        await _scheduleById(
+          id: _portalExpiryNotificationIdBase + i,
+          title: r.title,
+          body: r.body,
+          scheduledTime: r.at,
+          payload: 'portal_expiry',
+          channelId: 'portal_expiry_channel',
+          channelName: 'انتهاء الاشتراك',
+          channelDescription:
+              'تنبيه قبل انتهاء اشتراك بوابة أولياء الأمور والامتحانات الإلكترونية',
+        );
+      } catch (e) {
+        debugPrint('NotificationService: فشل جدولة تنبيه انتهاء الاشتراك — $e');
+      }
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────

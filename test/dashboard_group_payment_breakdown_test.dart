@@ -126,4 +126,31 @@ void main() {
     expect(result.groupBreakdown.length, 1);
     expect(result.groupBreakdown.first.groupName, 'بلا مجموعة');
   });
+
+  // spec 045 — شهر لم ينزل بعد: المستحق والمحصّل ظاهرين، بلا متأخرين.
+  test('monthLanded=false: expected يتحسب لكن unpaid فاضية', () {
+    final students = [student(1, 1, 200), student(2, 2, 100)];
+    final landed = computeMonthlyBreakdown(
+      students: students,
+      paymentsByStudent: const {},
+      groupById: groupById,
+      allAttendance: const [],
+      month: month,
+      prevMonth: prevMonth,
+    );
+    final notLanded = computeMonthlyBreakdown(
+      students: students,
+      paymentsByStudent: const {},
+      groupById: groupById,
+      allAttendance: const [],
+      month: month,
+      prevMonth: prevMonth,
+      monthLanded: false,
+    );
+    expect(landed.unpaidEntries, isNotEmpty);
+    expect(notLanded.unpaidEntries, isEmpty);
+    expect(notLanded.expected, landed.expected);
+    expect(notLanded.groupBreakdown.every((g) => g.unpaidStudentsCount == 0),
+        true);
+  });
 }

@@ -12,6 +12,33 @@ import 'package:active_class/models/exam_question_model.dart';
 
 const Object _unset = Object();
 
+List<String?> _alignOptionImages(List<String?> list, int optionCount) {
+  if (list.length == optionCount) return List<String?>.of(list);
+  final out = List<String?>.of(list);
+  if (out.length > optionCount) {
+    out.removeRange(optionCount, out.length);
+  } else {
+    while (out.length < optionCount) {
+      out.add(null);
+    }
+  }
+  return out;
+}
+
+List<String?> _decodeOptionImages(String? raw, int optionCount) {
+  if (raw == null || raw.isEmpty) {
+    return List<String?>.filled(optionCount, null);
+  }
+  try {
+    final list = (jsonDecode(raw) as List)
+        .map((e) => e == null ? null : e.toString())
+        .toList();
+    return _alignOptionImages(list, optionCount);
+  } catch (_) {
+    return List<String?>.filled(optionCount, null);
+  }
+}
+
 class BankQuestion {
   final int? id;
   final ExamQuestionType type;
@@ -21,11 +48,18 @@ class BankQuestion {
   final double points;
   final String? imageUrl;
   final String? explanation;
+
+  /// spec 043 — نفس القاعدة بالظبط بتاعة ExamQuestion: صورة شرح محلية
+  /// (بتتزامن بين أجهزة الفريق، بس مش جزء من أي نشر سحابي عام)، وصورة
+  /// لكل اختيار بنفس طول/ترتيب options.
+  final String? explanationImageUrl;
+  final List<String?> optionImageUrls;
+
   final String subject;
   final List<String> tags;
   final DateTime? createdAt;
 
-  const BankQuestion({
+  BankQuestion({
     this.id,
     required this.type,
     required this.text,
@@ -34,10 +68,14 @@ class BankQuestion {
     this.points = 1,
     this.imageUrl,
     this.explanation,
+    this.explanationImageUrl,
+    List<String?>? optionImageUrls,
     this.subject = '',
     this.tags = const [],
     this.createdAt,
-  });
+  }) : optionImageUrls = optionImageUrls == null
+            ? List<String?>.filled(options.length, null)
+            : _alignOptionImages(optionImageUrls, options.length);
 
   /// نفس قواعد ExamQuestion.isValid — المادة **مش** شرط (تُطلب وقت الحفظ).
   bool get isValid =>
@@ -58,6 +96,8 @@ class BankQuestion {
         COL_BQ_POINTS: points,
         COL_BQ_IMAGE_URL: imageUrl,
         COL_BQ_EXPLANATION: explanation,
+        COL_BQ_EXPLANATION_IMAGE_URL: explanationImageUrl,
+        COL_BQ_OPTION_IMAGE_URLS: jsonEncode(optionImageUrls),
         COL_BQ_SUBJECT: subject,
         COL_BQ_TAGS: jsonEncode(tags),
         COL_BQ_CREATED_AT: createdAt?.toIso8601String(),
@@ -85,6 +125,12 @@ class BankQuestion {
       explanation: (m[COL_BQ_EXPLANATION] as String?)?.isNotEmpty == true
           ? m[COL_BQ_EXPLANATION] as String
           : null,
+      explanationImageUrl:
+          (m[COL_BQ_EXPLANATION_IMAGE_URL] as String?)?.isNotEmpty == true
+              ? m[COL_BQ_EXPLANATION_IMAGE_URL] as String
+              : null,
+      optionImageUrls:
+          _decodeOptionImages(m[COL_BQ_OPTION_IMAGE_URLS] as String?, opts.length),
       subject: m[COL_BQ_SUBJECT] as String? ?? '',
       tags: tags,
       createdAt: m[COL_BQ_CREATED_AT] != null
@@ -102,6 +148,8 @@ class BankQuestion {
     double? points,
     Object? imageUrl = _unset,
     Object? explanation = _unset,
+    Object? explanationImageUrl = _unset,
+    List<String?>? optionImageUrls,
     String? subject,
     List<String>? tags,
   }) =>
@@ -117,6 +165,10 @@ class BankQuestion {
         explanation: identical(explanation, _unset)
             ? this.explanation
             : explanation as String?,
+        explanationImageUrl: identical(explanationImageUrl, _unset)
+            ? this.explanationImageUrl
+            : explanationImageUrl as String?,
+        optionImageUrls: optionImageUrls ?? this.optionImageUrls,
         subject: subject ?? this.subject,
         tags: tags ?? this.tags,
         createdAt: createdAt,
@@ -134,6 +186,8 @@ class BankQuestion {
         points: points,
         imageUrl: imageUrl,
         explanation: explanation,
+        explanationImageUrl: explanationImageUrl,
+        optionImageUrls: List<String?>.of(optionImageUrls),
       );
 
   factory BankQuestion.fromExamQuestion(
@@ -149,6 +203,8 @@ class BankQuestion {
         points: q.points,
         imageUrl: q.imageUrl,
         explanation: q.explanation,
+        explanationImageUrl: q.explanationImageUrl,
+        optionImageUrls: List<String?>.of(q.optionImageUrls),
         subject: subject,
         tags: tags,
       );

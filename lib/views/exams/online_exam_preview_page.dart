@@ -195,31 +195,96 @@ class OnlineExamPreviewPage extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 10),
-            ...q.options.map((opt) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        margin: const EdgeInsets.only(top: 6),
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: cs.onSurface.withValues(alpha: 0.35),
-                        ),
+            ...q.options.asMap().entries.map((e) {
+              final idx = e.key;
+              final optImg = idx < q.optionImageUrls.length
+                  ? q.optionImageUrls[idx]
+                  : null;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 6),
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: cs.onSurface.withValues(alpha: 0.35),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(opt,
-                            style: const TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 13,
-                                height: 1.4)),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(e.value,
+                          style: const TextStyle(
+                              fontFamily: 'Cairo', fontSize: 13, height: 1.4)),
+                    ),
+                    // spec 043 — صورة الاختيار (لو موجودة) لمعاينة المدرّس.
+                    if (optImg != null && optImg.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.network(optImg,
+                            width: 40,
+                            height: 40,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                                width: 40,
+                                height: 40,
+                                color: cs.onSurface.withValues(alpha: 0.08),
+                                child: const Icon(Icons.broken_image_outlined,
+                                    size: 16))),
                       ),
                     ],
-                  ),
-                )),
+                  ],
+                ),
+              );
+            }),
+            // spec 043 — شرح الإجابة (نص + صورة)، لمعاينة المدرّس قبل النشر.
+            if ((q.explanation != null && q.explanation!.isNotEmpty) ||
+                (q.explanationImageUrl != null &&
+                    q.explanationImageUrl!.isNotEmpty)) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('💡 ', style: TextStyle(fontSize: 13)),
+                    if (q.explanation != null && q.explanation!.isNotEmpty)
+                      Expanded(
+                        child: Text(q.explanation!,
+                            style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 12,
+                                height: 1.4)),
+                      ),
+                    if (q.explanationImageUrl != null &&
+                        q.explanationImageUrl!.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.network(q.explanationImageUrl!,
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                                width: 48,
+                                height: 48,
+                                color: cs.onSurface.withValues(alpha: 0.08),
+                                child: const Icon(Icons.broken_image_outlined,
+                                    size: 16))),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       );
