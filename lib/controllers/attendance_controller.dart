@@ -394,7 +394,23 @@ class AttendanceController extends GetxController {
     var succeeded = 0;
     var failed = 0;
     for (final id in studentIds) {
-      if (recordsByStudent.containsKey(id)) continue;
+      final existing = recordsByStudent[id];
+      if (existing != null) {
+        // spec 046 — "غياب تلقائي" مش قرار يدوي من المدرس: تحضير الكل
+        // يحوّله لحاضر. أي سجل تاني (حاضر/متأخر/غائب يدوي) يتخطّى زي الأول.
+        if (!isAutoAbsent(existing)) continue;
+        try {
+          await _dbService.updateAttendance(existing.copyWith(
+            status: ATTENDANCE_PRESENT,
+            notes: '',
+            clearInteraction: true,
+          ));
+          succeeded++;
+        } catch (e) {
+          failed++;
+        }
+        continue;
+      }
       try {
         await _dbService.insertAttendance(Attendance(
           studentId: id,
