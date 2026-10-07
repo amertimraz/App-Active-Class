@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:uuid/uuid.dart';
@@ -23,6 +24,7 @@ import 'package:active_class/utils/phone_helper.dart';
 import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
+import 'package:active_class/utils/archive_history.dart';
 
 /// ملخص أعداد البيانات (مجموعات، طلاب، إلخ) في لحظة معيّنة.
 class DataSummary {
@@ -159,6 +161,23 @@ const String _sessionOverridesTableSql = '''
     FOREIGN KEY($COL_SO_GROUP_ID) REFERENCES $TABLE_GROUPS($COL_GROUP_ID) ON DELETE CASCADE
   )
 ''';
+
+// spec 047 — سجل أرشفة/استعادة الطالب. متزامن (القناة الممتدة)، للقراءة فقط.
+const String _studentArchiveEventsTableSql = '''
+  CREATE TABLE IF NOT EXISTS $TABLE_STUDENT_ARCHIVE_EVENTS (
+    $COL_SAE_ID          INTEGER PRIMARY KEY AUTOINCREMENT,
+    $COL_SAE_STUDENT_ID  INTEGER NOT NULL,
+    $COL_SAE_TYPE        TEXT NOT NULL,
+    $COL_SAE_EVENT_AT    TEXT NOT NULL,
+    $COL_SYNC_UPDATED_AT TEXT,
+    $COL_SYNC_REMOTE_ID  TEXT,
+    FOREIGN KEY($COL_SAE_STUDENT_ID) REFERENCES $TABLE_STUDENTS($COL_STUDENT_ID) ON DELETE CASCADE
+  )
+''';
+
+const String _studentArchiveEventsIndexSql =
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_STUDENT_ARCHIVE_EVENTS}_key '
+    'ON $TABLE_STUDENT_ARCHIVE_EVENTS($COL_SAE_STUDENT_ID, $COL_SAE_TYPE, $COL_SAE_EVENT_AT)';
 
 const String _sessionOverridesIndexSql =
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_SESSION_OVERRIDES}_group_date '
@@ -442,6 +461,8 @@ class DatabaseService {
     // Session Overrides (spec 032) — إلغاء/تعويض الحصة، متزامن عبر الفريق.
     await db.execute(_sessionOverridesTableSql);
     await db.execute(_sessionOverridesIndexSql);
+    await db.execute(_studentArchiveEventsTableSql);
+    await db.execute(_studentArchiveEventsIndexSql);
 
     // Booklets (spec 041) — الملازم/الكتب، متزامنة عبر الفريق.
     for (final sql in _bookletTableSqls) {
@@ -951,6 +972,22 @@ class DatabaseService {
       try {
         await db.execute(
             'ALTER TABLE $TABLE_ATTENDANCE ADD COLUMN $COL_ATTENDANCE_INTERACTION TEXT');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 37) {
+      // spec 047 — سجل أرشفة الطالب + backfill: كل طالب مؤرشف حاليًا وعنده
+      // تاريخ أرشفة يبقى له حدث أرشفة واحد بنفس التاريخ (بلا _queueSync —
+      // كل جهاز بيعمل نفس الشيء والمفتاح الفريد بيمنع التكرار وقت المزامنة).
+      try {
+        await db.execute(_studentArchiveEventsTableSql);
+        await db.execute(_studentArchiveEventsIndexSql);
+        await db.execute(
+            'INSERT OR IGNORE INTO $TABLE_STUDENT_ARCHIVE_EVENTS '
+            '($COL_SAE_STUDENT_ID, $COL_SAE_TYPE, $COL_SAE_EVENT_AT) '
+            "SELECT $COL_STUDENT_ID, 'archived', $COL_STUDENT_ARCHIVED_AT "
+            'FROM $TABLE_STUDENTS '
+            'WHERE $COL_STUDENT_IS_ARCHIVED = 1 AND $COL_STUDENT_ARCHIVED_AT IS NOT NULL');
       } catch (_) {}
     }
   }
@@ -1521,6 +1558,7 @@ class DatabaseService {
         where: '$COL_STUDENT_ID = ?', whereArgs: [studentId], limit: 1);
     if (rows.isEmpty) return;
     final student = Student.fromMap(rows.first);
+    final wasArchived = student.isArchived;
 
     await db.transaction((txn) async {
       await txn.update(
@@ -1570,6 +1608,50 @@ class DatabaseService {
       COL_STUDENT_SIBLING_GROUP_ID: null,
       COL_SYNC_UPDATED_AT: now,
     });
+    await _recordArchiveEvent(studentId, kArchiveEventArchived,
+        wasArchived: wasArchived);
+  }
+
+  /// spec 047 — يسجّل حدث أرشفة/استعادة (للقراءة فقط). فشله مايفشلش
+  /// الأرشفة نفسها، ولا يتسجّل حدث لو الحالة ما اتغيّرتش.
+  Future<void> _recordArchiveEvent(int studentId, String type,
+      {required bool wasArchived}) async {
+    try {
+      if (!shouldRecordArchiveEvent(wasArchived: wasArchived, type: type)) {
+        return;
+      }
+      final db = await database;
+      final now = DateTime.now().toIso8601String();
+      final map = {
+        COL_SAE_STUDENT_ID: studentId,
+        COL_SAE_TYPE: type,
+        COL_SAE_EVENT_AT: now,
+        COL_SYNC_UPDATED_AT: now,
+      };
+      final id = await db.insert(TABLE_STUDENT_ARCHIVE_EVENTS, map,
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+      if (id <= 0) return;
+      await _queueSync(TABLE_STUDENT_ARCHIVE_EVENTS, id, 'insert',
+          payload: {...map, COL_SAE_ID: id});
+    } catch (e) {
+      debugPrint('archive event failed: $e');
+    }
+  }
+
+  Future<List<ArchiveEvent>> getArchiveEventsByStudent(int studentId) async {
+    final db = await database;
+    final rows = await db.query(TABLE_STUDENT_ARCHIVE_EVENTS,
+        where: '$COL_SAE_STUDENT_ID = ?',
+        whereArgs: [studentId],
+        orderBy: '$COL_SAE_EVENT_AT DESC');
+    return rows.map(ArchiveEvent.fromMap).toList();
+  }
+
+  Future<List<ArchiveEvent>> getAllArchiveEvents() async {
+    final db = await database;
+    final rows = await db.query(TABLE_STUDENT_ARCHIVE_EVENTS,
+        orderBy: '$COL_SAE_EVENT_AT DESC');
+    return rows.map(ArchiveEvent.fromMap).toList();
   }
 
   /// استعادة طالب مؤرشف — يرجع نشط بسجله القديم كامل زي ما كان (عرض
@@ -1578,6 +1660,13 @@ class DatabaseService {
   Future<void> unarchiveStudent(int studentId) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
+    final before = await db.query(TABLE_STUDENTS,
+        columns: [COL_STUDENT_IS_ARCHIVED],
+        where: '$COL_STUDENT_ID = ?',
+        whereArgs: [studentId],
+        limit: 1);
+    final wasArchived =
+        before.isNotEmpty && (before.first[COL_STUDENT_IS_ARCHIVED] == 1);
     final map = {
       COL_STUDENT_IS_ARCHIVED: 0,
       COL_STUDENT_ARCHIVED_AT: null,
@@ -1594,6 +1683,8 @@ class DatabaseService {
           payload: Student.fromMap(rows.first).toMap()
             ..[COL_SYNC_UPDATED_AT] = now);
     }
+    await _recordArchiveEvent(studentId, kArchiveEventRestored,
+        wasArchived: wasArchived);
   }
 
   Future<List<Student>> getActiveStudents() async {

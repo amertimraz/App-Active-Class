@@ -16,6 +16,7 @@ import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/auto_absent.dart';
 
 enum QRMode { attendance, payment }
 
@@ -132,6 +133,35 @@ class QRController extends GetxController {
       status: status,
       notes: 'تم عبر QR',
     );
+
+    // spec 046 — لو الطالب اتعلّم "غياب تلقائي" النهاردة (الحصة قفلت قبل
+    // ما يتمسح)، المسح يحوّل السجل لحاضر/متأخر بدل ما يترفض كتكرار. أي سجل
+    // تاني (يدوي) يكمّل في المسار الحالي بلا تغيير.
+    try {
+      final todays = await _dbService.getAttendanceByStudent(student.id!);
+      final auto = todays.firstWhereOrNull((a) =>
+          isAutoAbsent(a) &&
+          a.date.year == now.year &&
+          a.date.month == now.month &&
+          a.date.day == now.day);
+      if (auto != null) {
+        await _dbService.updateAttendance(auto.copyWith(
+          status: status,
+          notes: 'تم عبر QR',
+          clearInteraction: true,
+        ));
+        if (Get.isRegistered<AttendanceController>()) {
+          await Get.find<AttendanceController>().loadAttendance();
+        }
+        unawaited(ParentPortalService().pushStudentSummary(student.id!));
+        unawaited(NotificationService().scheduleLatePaymentReminder());
+        ToastHelper.success('تم تسجيل الحضور بنجاح');
+        return;
+      }
+    } catch (_) {
+      // أي فشل في الفحص ده → نكمّل بالمسار العادي.
+    }
+
     try {
       final att = Get.find<AttendanceController>();
       await att.addAttendance(attendance);

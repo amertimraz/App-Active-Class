@@ -15,6 +15,7 @@ import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/services/parent_portal_service.dart';
+import 'package:active_class/utils/auto_absent.dart';
 import 'package:active_class/utils/billing_day.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 
@@ -292,6 +293,50 @@ class SettingsController extends GetxController {
           await _migrateBool(SETTING_QR_AUTO_LATE_ENABLED) ?? true;
       attendanceOverdueWarning.value =
           await _migrateBool(SETTING_ATTENDANCE_OVERDUE_WARNING) ?? true;
+      autoAbsentEnabled.value = (await _dbGet(SETTING_AUTO_ABSENT_ENABLED)) == '1';
+      autoAbsentGraceMinutes.value = clampAutoAbsentGrace(
+          int.tryParse(await _dbGet(SETTING_AUTO_ABSENT_GRACE_MINUTES) ?? ''));
+    } catch (_) {}
+  }
+
+  // ── الغياب التلقائي بعد انتهاء الحصة (spec 046) — محلي، مطفي افتراضيًا ──
+  final RxBool autoAbsentEnabled = false.obs;
+  final RxInt autoAbsentGraceMinutes = 15.obs;
+
+  /// عند التفعيل بنسجّل لحظته: الغياب التلقائي يخص الحصص اللي بتقفل بعدها
+  /// بس (مفيش أثر رجعي على أيام فاتت قبل التفعيل).
+  Future<void> setAutoAbsentEnabled(bool v) async {
+    autoAbsentEnabled.value = v;
+    try {
+      if (v) {
+        await _dbSet(
+            SETTING_AUTO_ABSENT_ENABLED_AT, DateTime.now().toIso8601String());
+      }
+      await _dbSet(SETTING_AUTO_ABSENT_ENABLED, v ? '1' : '0');
+    } catch (_) {}
+  }
+
+  Future<void> setAutoAbsentGraceMinutes(int minutes) async {
+    final m = clampAutoAbsentGrace(minutes);
+    autoAbsentGraceMinutes.value = m;
+    try {
+      await _dbSet(SETTING_AUTO_ABSENT_GRACE_MINUTES, m.toString());
+    } catch (_) {}
+  }
+
+  Future<DateTime?> autoAbsentEnabledAt() async {
+    final raw = await _dbGet(SETTING_AUTO_ABSENT_ENABLED_AT);
+    return raw == null ? null : DateTime.tryParse(raw);
+  }
+
+  Future<Set<String>> loadAutoAbsentProcessed() async {
+    final raw = await _dbGet(SETTING_AUTO_ABSENT_PROCESSED) ?? '';
+    return raw.split(',').where((e) => e.isNotEmpty).toSet();
+  }
+
+  Future<void> saveAutoAbsentProcessed(Set<String> keys) async {
+    try {
+      await _dbSet(SETTING_AUTO_ABSENT_PROCESSED, keys.join(','));
     } catch (_) {}
   }
 

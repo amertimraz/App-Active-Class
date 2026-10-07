@@ -86,6 +86,7 @@ class SyncEngine with WidgetsBindingObserver {
     TABLE_PAYMENTS,
     TABLE_HOMEWORK,
     TABLE_SESSION_OVERRIDES, // spec 032 — أبوه المجموعة (موجود فوق)
+    TABLE_STUDENT_ARCHIVE_EVENTS, // spec 047 — أبوه الطالب (موجود فوق)
     TABLE_EXAMS,
     TABLE_EXAM_QUESTIONS, // spec 024
     TABLE_BANK_QUESTIONS, // spec 025 — مستقل (بلا أب)
@@ -121,6 +122,7 @@ class SyncEngine with WidgetsBindingObserver {
   static const _extendedTables = [
     TABLE_EXAM_QUESTIONS,
     TABLE_EXAM_SUBMISSIONS,
+    TABLE_STUDENT_ARCHIVE_EVENTS, // spec 047
     TABLE_BANK_QUESTIONS, // spec 025
     TABLE_BOOKLETS, // spec 041
     TABLE_BOOKLET_GROUPS,
@@ -155,6 +157,7 @@ class SyncEngine with WidgetsBindingObserver {
         TABLE_PAYMENTS => COL_PAYMENT_ID,
         TABLE_HOMEWORK => COL_HOMEWORK_ID,
         TABLE_SESSION_OVERRIDES => COL_SO_ID,
+        TABLE_STUDENT_ARCHIVE_EVENTS => COL_SAE_ID,
         TABLE_EXAMS => COL_EXAM_ID,
         TABLE_EXAM_QUESTIONS => COL_EQ_ID,
         TABLE_BANK_QUESTIONS => COL_BQ_ID,
@@ -601,6 +604,20 @@ class SyncEngine with WidgetsBindingObserver {
           'student_remote_id': studentRemoteId,
           'date': payload[COL_HOMEWORK_DATE],
           'status': payload[COL_HOMEWORK_STATUS],
+        };
+      case TABLE_STUDENT_ARCHIVE_EVENTS: // spec 047 — أبوه الطالب
+        final saeStudentLocal = payload[COL_SAE_STUDENT_ID] as int?;
+        String? saeStudentRemote;
+        if (saeStudentLocal != null) {
+          saeStudentRemote = await _localRemoteId(
+              TABLE_STUDENTS, COL_STUDENT_ID, saeStudentLocal);
+          if (saeStudentRemote == null) return null;
+        }
+        return {
+          ...base,
+          'student_remote_id': saeStudentRemote,
+          'type': payload[COL_SAE_TYPE],
+          'event_at': payload[COL_SAE_EVENT_AT],
         };
       case TABLE_SESSION_OVERRIDES: // spec 032 — أبوه المجموعة
         final groupLocalId = payload[COL_SO_GROUP_ID] as int?;
@@ -1157,6 +1174,11 @@ class SyncEngine with WidgetsBindingObserver {
           Get.find<AtRiskController>().refresh();
         }
         break;
+      case TABLE_STUDENT_ARCHIVE_EVENTS: // spec 047
+        if (Get.isRegistered<AttendanceController>()) {
+          Get.find<AttendanceController>().loadArchiveEvents();
+        }
+        break;
       case TABLE_SESSION_OVERRIDES: // spec 032
         if (Get.isRegistered<SessionOverrideController>()) {
           Get.find<SessionOverrideController>().load();
@@ -1383,6 +1405,25 @@ class SyncEngine with WidgetsBindingObserver {
           final dup = await db.query(table,
               where: '$COL_SO_GROUP_ID = ? AND $COL_SO_DATE = ?',
               whereArgs: [groupId, dayPrefix], limit: 1);
+          if (dup.isNotEmpty) {
+            await _reconcileDuplicate(
+                db, table, pkCol, dup.first, remote, localMap);
+            return;
+          }
+        }
+      }
+
+      // spec 047 — حدث أرشفة نفس (الطالب، النوع، الوقت) اتسجّل على جهازين
+      // (مثلًا backfill الترقية) — يتوفّق بدل ما يتكرر.
+      if (table == TABLE_STUDENT_ARCHIVE_EVENTS) {
+        final st = localMap[COL_SAE_STUDENT_ID];
+        final ty = localMap[COL_SAE_TYPE];
+        final at = localMap[COL_SAE_EVENT_AT];
+        if (st != null && ty != null && at != null) {
+          final dup = await db.query(table,
+              where:
+                  '$COL_SAE_STUDENT_ID = ? AND $COL_SAE_TYPE = ? AND $COL_SAE_EVENT_AT = ?',
+              whereArgs: [st, ty, at], limit: 1);
           if (dup.isNotEmpty) {
             await _reconcileDuplicate(
                 db, table, pkCol, dup.first, remote, localMap);
@@ -1655,6 +1696,21 @@ class SyncEngine with WidgetsBindingObserver {
           COL_HOMEWORK_STUDENT_ID: localStudentId,
           COL_HOMEWORK_DATE: remote['date'],
           COL_HOMEWORK_STATUS: remote['status'],
+          COL_SYNC_UPDATED_AT: updatedAt,
+          COL_SYNC_REMOTE_ID: remote['id'],
+        };
+      case TABLE_STUDENT_ARCHIVE_EVENTS: // spec 047
+        final saeStudentRemote = remote['student_remote_id'] as String?;
+        final saeLocalStudent = saeStudentRemote != null
+            ? await _localIdForRemote(
+                TABLE_STUDENTS, COL_STUDENT_ID, saeStudentRemote,
+                executor: executor)
+            : null;
+        if (saeStudentRemote == null || saeLocalStudent == null) return null;
+        return {
+          COL_SAE_STUDENT_ID: saeLocalStudent,
+          COL_SAE_TYPE: remote['type'],
+          COL_SAE_EVENT_AT: remote['event_at'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };

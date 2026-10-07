@@ -550,3 +550,14 @@ specs/026-qr-payment-accumulated-debt/
 - الإعداد محلي (مش متزامن) — في وضع الفريق لازم نفس اليوم على جهاز المساعد.
 - QR: مراجَع، الشهر الجاري ما بيتختارش تلقائيًا فمفيش تغيير مطلوب.
 - لا DB/migration. المتبقي: بناء release وتحقق ميداني (quickstart).
+
+## Spec 046 — الغياب التلقائي بعد انتهاء الحصة (implemented, device test pending)
+- مفتاح محلي مطفي افتراضيًا (الإعدادات ← الحضور) + مهلة بعد نهاية الحصة (افتراضي 15).
+- `AutoAbsentService` (HomePage: start/stop + resumed) كل دقيقة؛ دوال صرفة في `lib/utils/auto_absent.dart`؛ تعويض لحد 3 أيام وبعد لحظة التفعيل فقط؛ كل (مجموعة+يوم) مرة واحدة (processed محلي).
+- مسح QR لطالب "غياب تلقائي" يحوّله حاضر/متأخر (`QRController._recordAttendance`)؛ تعديل المدرس اليدوي بيشيل العلامة.
+- لا DB/migration/رسائل لأولياء الأمور.
+
+## Spec 047 — سجل أرشفة الطالب داخل سجل الحضور (implemented, device test pending)
+- جدول `student_archive_events` (DB v37، متزامن على القناة الممتدة) + backfill للمؤرشفين من archived_at؛ التسجيل في `DatabaseService.archiveStudent/unarchiveStudent`.
+- العرض: تفاصيل الطالب ← سجل الحضور، وتبويب السجلات في شاشة الحضور (فلتر "الكل" فقط)؛ دوال صرفة في `lib/utils/archive_history.dart`؛ الأحداث خارج أي حساب.
+- `supabase/migration_student_archive_events.sql` **اتطبّق على الـVPS** (2026-10-07، جدول بـ9 أعمدة + realtime).

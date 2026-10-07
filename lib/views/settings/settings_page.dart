@@ -783,6 +783,52 @@ class SettingsPage extends StatelessWidget {
                                   ),
                                 ])
                               : const SizedBox.shrink()),
+                          _buildDivider(isDark),
+                          // ── الغياب التلقائي بعد انتهاء الحصة (spec 046) ──
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.event_busy_rounded,
+                                iconColor: const Color(0xFFEF4444),
+                                title: 'تسجيل الغياب تلقائيًا بعد انتهاء الحصة',
+                                subtitle: settings.autoAbsentEnabled.value
+                                    ? 'الطلاب اللي ما اتمسحوش ومالهمش سجل بعد نهاية الحصة + المهلة يتسجّلوا "غائب" (للمجموعات اللي جدولها فيه وقت نهاية)'
+                                    : 'معطّل — الغياب بيتسجّل يدويًا',
+                                rxValue: settings.autoAbsentEnabled,
+                                onChanged: (v) async =>
+                                    await settings.setAutoAbsentEnabled(v),
+                              )),
+                          Obx(() => settings.autoAbsentEnabled.value
+                              ? Column(children: [
+                                  _buildDivider(isDark),
+                                  _buildDropdownTile<int>(
+                                    context,
+                                    isDark,
+                                    icon: Icons.hourglass_bottom_rounded,
+                                    iconColor: const Color(0xFFEF4444),
+                                    title: 'مهلة بعد نهاية الحصة',
+                                    value: settings.autoAbsentGraceMinutes.value,
+                                    items: const [
+                                      0, 5, 10, 15, 20, 30, 45, 60, 90, 120, 180
+                                    ]
+                                        .map((m) => DropdownMenuItem(
+                                              value: m,
+                                              child: Text(m == 0
+                                                  ? 'فورًا بعد النهاية'
+                                                  : '$m دقيقة'),
+                                            ))
+                                        .toList(),
+                                    onChanged: (m) async {
+                                      if (m != null) {
+                                        await settings
+                                            .setAutoAbsentGraceMinutes(m);
+                                        ToastHelper.success('تم التغيير',
+                                            title: 'مهلة الغياب التلقائي');
+                                      }
+                                    },
+                                  ),
+                                ])
+                              : const SizedBox.shrink()),
                         ],
                       ),
                       const SizedBox(height: 14),

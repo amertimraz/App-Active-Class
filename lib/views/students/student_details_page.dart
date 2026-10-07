@@ -33,6 +33,8 @@ import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
 import 'package:active_class/widgets/remove_student_dialog.dart';
 import 'package:active_class/widgets/locked_feature.dart';
+import 'package:active_class/widgets/archive_event_tile.dart';
+import 'package:active_class/utils/archive_history.dart';
 import 'package:active_class/views/exams/student_exam_history_page.dart';
 import 'package:active_class/views/exams/certificates_sheet.dart';
 import 'package:active_class/views/booklets/student_booklets_section.dart';
@@ -532,6 +534,12 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                       ? Get.find<SessionOverrideController>()
                           .overrides
                           .where((o) => o.groupId == s.groupId)
+                          .toList()
+                      : const [],
+                  archiveEvents: Get.isRegistered<AttendanceController>()
+                      ? Get.find<AttendanceController>()
+                          .archiveEvents
+                          .where((e) => e.studentId == s.id)
                           .toList()
                       : const []),
               _HomeworkTab(homework: studentHomework, accentColor: primary),
@@ -1083,6 +1091,8 @@ class _AttendanceTab extends StatelessWidget {
   final double attRate;
   final Color accentColor;
   final List<SessionOverride> groupOverrides;
+  // spec 047 — أحداث أرشفة/استعادة الطالب (عرض فقط بين السجلات).
+  final List<ArchiveEvent> archiveEvents;
 
   const _AttendanceTab({
     required this.attendance,
@@ -1091,18 +1101,20 @@ class _AttendanceTab extends StatelessWidget {
     required this.attRate,
     required this.accentColor,
     this.groupOverrides = const [],
+    this.archiveEvents = const [],
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sorted = List.of(attendance)
-      ..sort((a, b) => b.date.compareTo(a.date));
+    // spec 047 — سجلات الحضور + أحداث الأرشفة مرتّبة بالتاريخ. الأحداث
+    // للعرض فقط: العدّادات تحت (حاضر/المجموع) تحسب سجلات الحضور بس.
+    final sorted = mergeAttendanceAndArchive(attendance, archiveEvents);
 
     // تجميع بالشهر
-    final Map<String, List<Attendance>> byMonth = {};
+    final Map<String, List<TimelineItem>> byMonth = {};
     for (final a in sorted) {
-      final label = DateFormat('MMMM yyyy', 'ar').format(a.date);
+      final label = DateFormat('MMMM yyyy', 'ar').format(a.at);
       (byMonth[label] ??= []).add(a);
     }
     final months = byMonth.keys.toList();
@@ -1176,8 +1188,11 @@ class _AttendanceTab extends StatelessWidget {
         // قائمة بالشهر
         ...months.map((month) {
           final list = byMonth[month]!;
-          final mPresent =
-              list.where((a) => attendanceCountsAsPresent(a.status)).length;
+          final recordsOnly =
+              list.whereType<AttendanceItem>().map((e) => e.record).toList();
+          final mPresent = recordsOnly
+              .where((a) => attendanceCountsAsPresent(a.status))
+              .length;
           return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1195,7 +1210,7 @@ class _AttendanceTab extends StatelessWidget {
                         color: Colors.green.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text('$mPresent/${list.length}',
+                      child: Text('$mPresent/${recordsOnly.length}',
                           style: const TextStyle(
                               color: Colors.green,
                               fontSize: 11,
@@ -1222,7 +1237,11 @@ class _AttendanceTab extends StatelessWidget {
                     separatorBuilder: (_, __) =>
                         const Divider(height: 0, indent: 56),
                     itemBuilder: (_, i) {
-                      final a = list[i];
+                      final item = list[i];
+                      if (item is ArchiveItem) {
+                        return ArchiveEventTile(event: item.event);
+                      }
+                      final a = (item as AttendanceItem).record;
                       final norm = normalizeAttendanceStatus(a.status);
                       final isLate = norm == ATTENDANCE_LATE;
                       final counts = attendanceCountsAsPresent(a.status);

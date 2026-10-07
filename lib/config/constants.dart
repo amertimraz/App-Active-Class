@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 36;
+const int DATABASE_VERSION = 37;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -224,6 +224,11 @@ const String SETTING_LATE_GRACE_MINUTES = 'late_grace_minutes';
 // app_settings key — تفعيل/تعطيل حساب "متأخر" تلقائيًا عند مسح الـQR.
 // افتراضيًا مفعّل؛ لو معطّل الـQR يسجّل "حاضر" دايمًا. (spec 011)
 const String SETTING_QR_AUTO_LATE_ENABLED = 'qr_auto_late_enabled';
+// spec 046 — الغياب التلقائي بعد انتهاء الحصة (كلها محلية، غير مُزامنة).
+const String SETTING_AUTO_ABSENT_ENABLED = 'auto_absent_enabled';
+const String SETTING_AUTO_ABSENT_GRACE_MINUTES = 'auto_absent_grace_minutes';
+const String SETTING_AUTO_ABSENT_ENABLED_AT = 'auto_absent_enabled_at';
+const String SETTING_AUTO_ABSENT_PROCESSED = 'auto_absent_processed';
 // app_settings key — إظهار تنبيه "متأخر في الدفع" جنب اسم الطالب في
 // شاشات الحضور. افتراضيًا مفعّل. محلي، غير مُزامن. (spec 029)
 const String SETTING_ATTENDANCE_OVERDUE_WARNING = 'attendance_overdue_warning';
@@ -401,6 +406,13 @@ const String SETTING_ATRISK_NOTIF_MINUTE  = 'atrisk_weekly_notif_minute';     //
 //  cancelled = مفيش حصة، makeup/extra = فيه حصة زيادة. الفوترة من
 //  صفوف الحضور زي ما هي — صفر تغيير في PricingHelper.
 // ─────────────────────────────────────────────────────────────────
+// spec 047 — سجل أرشفة/استعادة الطالب (جدول متزامن، للقراءة فقط).
+const String TABLE_STUDENT_ARCHIVE_EVENTS = 'student_archive_events';
+const String COL_SAE_ID         = 'id';
+const String COL_SAE_STUDENT_ID = 'student_id';
+const String COL_SAE_TYPE       = 'type';       // archived | restored
+const String COL_SAE_EVENT_AT   = 'event_at';   // ISO-8601
+
 const String TABLE_SESSION_OVERRIDES  = 'session_overrides';
 const String COL_SO_ID                = 'id';
 const String COL_SO_GROUP_ID          = 'group_id';

@@ -31,6 +31,8 @@ import 'package:active_class/widgets/clock_text.dart';
 import 'package:active_class/widgets/custom_dialogs.dart' as custom_dialogs;
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/archive_history.dart';
+import 'package:active_class/widgets/archive_event_tile.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:intl/intl.dart';
 
@@ -2386,6 +2388,21 @@ class _RecordsTabState extends State<_RecordsTab> {
       }).toList()
         ..sort((a, b) => b.date.compareTo(a.date));
 
+      // spec 047 — أحداث أرشفة/استعادة الطلاب بين السجلات (عرض فقط، مع
+      // فلتر "الكل" بس، ومش داخلة في عدّاد السجلات).
+      final events = widget.controller.archiveEvents.where((e) {
+        final st = students.firstWhereOrNull((x) => x.id == e.studentId);
+        if (st == null) return false;
+        return archiveEventVisible(
+          statusFilter: _statusFilter,
+          query: q,
+          studentName: st.name,
+          groupFilter: _groupFilter,
+          studentGroupId: st.groupId,
+        );
+      }).toList();
+      final items = mergeAttendanceAndArchive(list, events);
+
       return Column(children: [
         // Filters
         Padding(
@@ -2442,7 +2459,7 @@ class _RecordsTabState extends State<_RecordsTab> {
         ),
         // List
         Expanded(
-          child: list.isEmpty
+          child: items.isEmpty
               ? const EmptyState(
                   icon: Icons.event_note,
                   title: 'لا توجد سجلات',
@@ -2450,10 +2467,25 @@ class _RecordsTabState extends State<_RecordsTab> {
                 )
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
-                  itemCount: list.length,
+                  itemCount: items.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
                   itemBuilder: (ctx, i) {
-                    final att       = list[i];
+                    final item = items[i];
+                    if (item is ArchiveItem) {
+                      final st = students.firstWhereOrNull(
+                          (x) => x.id == item.event.studentId);
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? const Color(0xFF131D31)
+                              : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: ArchiveEventTile(
+                            event: item.event, studentName: st?.name),
+                      );
+                    }
+                    final att = (item as AttendanceItem).record;
                     final s         = students.firstWhereOrNull((st) => st.id == att.studentId);
                     final norm      = normalizeAttendanceStatus(att.status);
                     final isLate    = norm == ATTENDANCE_LATE;

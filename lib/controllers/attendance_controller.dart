@@ -3,6 +3,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:get/get.dart';
+import 'package:active_class/utils/archive_history.dart';
+import 'package:active_class/utils/auto_absent.dart';
 import 'package:flutter/material.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/homework_model.dart';
@@ -41,9 +43,20 @@ class AttendanceController extends GetxController {
   final Map<int, int> _studentGroupMap = {};
   final Map<int, String> _studentNameMap = {};
 
+  // spec 047 — أحداث أرشفة/استعادة الطلاب (للعرض بين سجلات الحضور فقط؛
+  // مش جزء من `attendance` عشان مايدخلش أي حساب).
+  final RxList<ArchiveEvent> archiveEvents = <ArchiveEvent>[].obs;
+
+  Future<void> loadArchiveEvents() async {
+    try {
+      archiveEvents.assignAll(await _dbService.getAllArchiveEvents());
+    } catch (_) {}
+  }
+
   // تحميل كل السجلات
   Future<void> loadAttendance() async {
     isLoading(true);
+    unawaited(loadArchiveEvents());
     try {
       final loadedAttendance = await _dbService.getAllAttendance();
       attendance.assignAll(loadedAttendance);
@@ -249,6 +262,9 @@ class AttendanceController extends GetxController {
       final updated = existing.copyWith(
         status: status,
         clearInteraction: clearsInteraction,
+        // spec 046 — تعديل المدرس اليدوي لسجل "غياب تلقائي" يشيل العلامة
+        // (بقى قرار يدوي، فالمسح بعد كده ما يستبدلوش).
+        notes: isAutoAbsent(existing) ? '' : null,
       );
       await _dbService.updateAttendance(updated);
       _replaceLocal(updated);

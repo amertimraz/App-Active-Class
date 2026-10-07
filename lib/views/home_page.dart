@@ -22,6 +22,7 @@ import 'package:active_class/widgets/add_student_sheet.dart';
 import 'package:active_class/widgets/update_dialog.dart';
 import 'package:active_class/services/in_app_update_service.dart';
 import 'package:active_class/controllers/student_controller.dart';
+import 'package:active_class/services/auto_absent_service.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -53,6 +54,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // (زي مسح بيانات الفريق عند تعطيله) هتفضل مش ظاهرة في الأرقام لحد
     // ما حد يضغط زرار التحديث يدويًا.
     _dashboardController.loadDashboardData();
+    // spec 046 — الغياب التلقائي بعد انتهاء الحصة (بيرجع فورًا لو الإعداد مطفي).
+    AutoAbsentService.instance.start();
     // فحص التحديث بهدوء بعد ما الداشبورد يخلص رسم — ميتقفلش استخدام
     // التطبيق ولا يظهر أي حاجة لو مفيش تحديث أو لو الفحص فشل.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -67,6 +70,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    AutoAbsentService.instance.stop();
     super.dispose();
   }
 
@@ -76,6 +80,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _dashboardController.loadDashboardData();
       _atRiskController.refresh();
+      unawaited(AutoAbsentService.instance.runOnce());
     }
   }
 
