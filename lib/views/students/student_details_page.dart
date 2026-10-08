@@ -85,9 +85,12 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
   late TabController _tabController;
   // إعداد "الواجب في حضور اليوم": لو مخفي ما يظهرش تبويب الواجب هنا كمان
   // (بيتقرا مرة وقت فتح الشاشة زي صلاحيات الفريق).
-  late final bool _showHomeworkTab =
-      !Get.isRegistered<SettingsController>() ||
-          Get.find<SettingsController>().showHomework.value;
+  late final bool _showHw = !Get.isRegistered<SettingsController>() ||
+      Get.find<SettingsController>().showHomework.value;
+  late final bool _showRec = !Get.isRegistered<SettingsController>() ||
+      Get.find<SettingsController>().showRecitation.value;
+  // التسميع بقى جوه تبويب الواجب (spec 048) → التبويب يظهر لو أي منهم مفعّل.
+  late final bool _showHomeworkTab = _showHw || _showRec;
   // بيتقرا مرة واحدة بس وقت فتح الشاشة — متطابق مع باقي أماكن فحص
   // صلاحيات وضع الفريق في التطبيق (بتتحدّث بس عند إعادة الاتصال/فتح
   // التطبيق تاني، مش لحظيًا وسط الاستخدام).
@@ -558,7 +561,12 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                       groupName: _group?.name)
                   : const LockedSectionPlaceholder(),
               if (_showHomeworkTab)
-                _HomeworkTab(homework: studentHomework, accentColor: primary),
+                _HomeworkTab(
+                    homework: studentHomework,
+                    attendance: studentAtts,
+                    showHomework: _showHw,
+                    showRecitation: _showRec,
+                    accentColor: primary),
               _canSeeFinancials
                   ? _PaymentsTab(
                       student: s,
@@ -770,7 +778,11 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
           tabs: [
             const Tab(text: 'سجل الحضور'),
             const Tab(text: 'الأداء'),
-            if (_showHomeworkTab) const Tab(text: 'الواجب'),
+            if (_showHomeworkTab)
+              Tab(
+                  text: _showHw
+                      ? (_showRec ? 'واجب وتسميع' : 'الواجب')
+                      : 'التسميع'),
             Tab(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1127,7 +1139,6 @@ class _AttendanceTab extends StatelessWidget {
     // إعدادات إظهار التفاعل/التسميع (لو المدرس أخفاهم ما يظهروش هنا كمان).
     final cfg = Get.find<SettingsController>();
     final showInteraction = cfg.showInteraction.value;
-    final showRecitation = cfg.showRecitation.value;
     // spec 047 — سجلات الحضور + أحداث الأرشفة مرتّبة بالتاريخ. الأحداث
     // للعرض فقط: العدّادات تحت (حاضر/المجموع) تحسب سجلات الحضور بس.
     final sorted = mergeAttendanceAndArchive(attendance, archiveEvents);
@@ -1197,12 +1208,6 @@ class _AttendanceTab extends StatelessWidget {
             ),
           ]),
         ),
-
-        // spec 048 — متوسط التسميع (بيظهر بس لو فيه درجة واحدة على الأقل)
-        if (showRecitation && recitationCount(attendance) > 0) ...[
-          const SizedBox(height: 12),
-          _RecitationSummary(attendance: attendance, isDark: isDark),
-        ],
 
         const SizedBox(height: 16),
 
@@ -1294,23 +1299,10 @@ class _AttendanceTab extends StatelessWidget {
                         title: Text(FormatHelper.formatFullDate(a.date),
                             style: const TextStyle(fontSize: 13)),
                         // spec 040 — إيموجي التفاعل لنفس اليوم لو مسجَّل.
-                        subtitle: ((showInteraction &&
-                                    interactionEmoji(a.interaction)
-                                        .isNotEmpty) ||
-                                (showRecitation &&
-                                    normalizeRecitation(a.recitation) != null))
+                        subtitle: (showInteraction &&
+                                interactionEmoji(a.interaction).isNotEmpty)
                             ? Text(
-                                [
-                                  if (showInteraction &&
-                                      interactionEmoji(a.interaction)
-                                          .isNotEmpty)
-                                    '${interactionEmoji(a.interaction)} ${interactionLabel(a.interaction)}',
-                                  // spec 048 — درجة التسميع
-                                  if (showRecitation &&
-                                      normalizeRecitation(a.recitation) !=
-                                          null)
-                                    '📖 تسميع ${a.recitation}/10',
-                                ].join('  •  '),
+                                '${interactionEmoji(a.interaction)} ${interactionLabel(a.interaction)}',
                                 style: const TextStyle(fontSize: 11))
                             : null,
                         trailing: Container(
@@ -1443,103 +1435,163 @@ class _SessionOverridesSection extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Homework tab
 // ─────────────────────────────────────────────────────────────────────────────
+class _DayEntry {
+  Homework? hw;
+  int? rec;
+  _DayEntry();
+}
+
+Color _recColor(int g) => g >= 8
+    ? const Color(0xFF10B981)
+    : g >= 5
+        ? const Color(0xFFF59E0B)
+        : const Color(0xFFEF4444);
+
 class _HomeworkTab extends StatelessWidget {
   final List<Homework> homework;
+  final List<Attendance> attendance; // لدرجات التسميع (spec 048)
+  final bool showHomework;
+  final bool showRecitation;
   final Color accentColor;
 
   const _HomeworkTab({
     required this.homework,
+    this.attendance = const [],
+    this.showHomework = true,
+    this.showRecitation = true,
     required this.accentColor,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sorted = List.of(homework)..sort((a, b) => b.date.compareTo(a.date));
 
-    final doneCount = sorted
+    // يوم واحد = واجب و/أو درجة تسميع
+    final days = <DateTime, _DayEntry>{};
+    if (showHomework) {
+      for (final h in homework) {
+        final d = DateTime(h.date.year, h.date.month, h.date.day);
+        (days[d] ??= _DayEntry()).hw = h;
+      }
+    }
+    if (showRecitation) {
+      for (final a in attendance) {
+        final g = normalizeRecitation(a.recitation);
+        if (g == null) continue;
+        final d = DateTime(a.date.year, a.date.month, a.date.day);
+        (days[d] ??= _DayEntry()).rec = g;
+      }
+    }
+    final sortedDays = days.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    final hwList = showHomework ? homework : const <Homework>[];
+    final doneCount = hwList
         .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_DONE)
         .length;
-    final partialCount = sorted
+    final partialCount = hwList
         .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_PARTIAL)
         .length;
-    final notDoneCount = sorted
+    final notDoneCount = hwList
         .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_NOT_DONE)
         .length;
     final total = doneCount + partialCount + notDoneCount;
     // الناقص = نص درجة في نسبة الالتزام
-    final rate = total == 0 ? 0.0 : ((doneCount + partialCount * 0.5) / total) * 100;
+    final rate =
+        total == 0 ? 0.0 : ((doneCount + partialCount * 0.5) / total) * 100;
+    final hasRec = showRecitation && recitationCount(attendance) > 0;
 
-    final Map<String, List<Homework>> byMonth = {};
-    for (final h in sorted) {
-      final label = DateFormat('MMMM yyyy', 'ar').format(h.date);
-      (byMonth[label] ??= []).add(h);
+    final Map<String, List<DateTime>> byMonth = {};
+    for (final d in sortedDays) {
+      final label = DateFormat('MMMM yyyy', 'ar').format(d);
+      (byMonth[label] ??= []).add(d);
     }
     final months = byMonth.keys.toList();
 
-    if (sorted.isEmpty) {
-      return const Center(
+    if (sortedDays.isEmpty) {
+      return Center(
         child: EmptyState(
           icon: Icons.menu_book_outlined,
-          title: 'لا توجد سجلات واجب',
-          subtitle: 'سيظهر هنا سجل الواجب عند التسجيل',
+          title: showHomework && showRecitation
+              ? 'لا توجد سجلات واجب أو تسميع'
+              : showRecitation
+                  ? 'لا توجد درجات تسميع'
+                  : 'لا توجد سجلات واجب',
+          subtitle: 'سيظهر هنا السجل عند التسجيل',
         ),
       );
     }
 
+    BoxDecoration cardDeco() => BoxDecoration(
+          color: isDark ? const Color(0xFF1A2540) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: isDark
+              ? []
+              : [
+                  BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 8)
+                ],
+        );
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1A2540) : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: isDark
-                ? []
-                : [
-                    BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 8)
-                  ],
-          ),
-          child: Column(children: [
-            Row(children: [
-              Expanded(child: _MiniStat('عمل', '$doneCount', Colors.blue)),
-              Expanded(
-                  child: _MiniStat('لم يعمل', '$notDoneCount', Colors.orange)),
-              Expanded(
-                  child: _MiniStat(
-                      'النسبة',
-                      '${rate.toStringAsFixed(0)}%',
-                      rate >= 75
-                          ? Colors.green
-                          : rate >= 50
-                              ? Colors.orange
-                              : Colors.red)),
-            ]),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: total == 0 ? 0 : rate / 100,
-                minHeight: 8,
-                backgroundColor: Colors.orange.withValues(alpha: 0.15),
-                valueColor: AlwaysStoppedAnimation(rate >= 75
-                    ? Colors.green
-                    : rate >= 50
-                        ? Colors.orange
-                        : Colors.red),
+        if (total > 0)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: cardDeco(),
+            child: Column(children: [
+              Row(children: [
+                Expanded(child: _MiniStat('عمل', '$doneCount', Colors.blue)),
+                Expanded(
+                    child:
+                        _MiniStat('لم يعمل', '$notDoneCount', Colors.orange)),
+                Expanded(
+                    child: _MiniStat(
+                        'النسبة',
+                        '${rate.toStringAsFixed(0)}%',
+                        rate >= 75
+                            ? Colors.green
+                            : rate >= 50
+                                ? Colors.orange
+                                : Colors.red)),
+              ]),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: total == 0 ? 0 : rate / 100,
+                  minHeight: 8,
+                  backgroundColor: Colors.orange.withValues(alpha: 0.15),
+                  valueColor: AlwaysStoppedAnimation(rate >= 75
+                      ? Colors.green
+                      : rate >= 50
+                          ? Colors.orange
+                          : Colors.red),
+                ),
               ),
-            ),
-          ]),
-        ),
+            ]),
+          ),
+        if (hasRec) ...[
+          if (total > 0) const SizedBox(height: 12),
+          _RecitationSummary(attendance: attendance, isDark: isDark),
+        ],
         const SizedBox(height: 16),
         ...months.map((month) {
           final list = byMonth[month]!;
-          final mDone = list
-              .where((h) => normalizeHomeworkStatus(h.status) != HOMEWORK_NOT_DONE)
+          final mHw = list.where((d) => days[d]!.hw != null).toList();
+          final mDone = mHw
+              .where((d) =>
+                  normalizeHomeworkStatus(days[d]!.hw!.status) !=
+                  HOMEWORK_NOT_DONE)
               .length;
+          final mRecs = [
+            for (final d in list)
+              if (days[d]!.rec != null) days[d]!.rec!
+          ];
+          final mRecAvg = mRecs.isEmpty
+              ? null
+              : mRecs.reduce((a, b) => a + b) / mRecs.length;
           return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1549,34 +1601,44 @@ class _HomeworkTab extends StatelessWidget {
                     Text(month,
                         style: const TextStyle(
                             fontWeight: FontWeight.w800, fontSize: 14)),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
+                    if (mHw.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text('واجب $mDone/${mHw.length}',
+                            style: const TextStyle(
+                                color: Colors.blue,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700)),
                       ),
-                      child: Text('$mDone/${list.length}',
-                          style: const TextStyle(
-                              color: Colors.blue,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700)),
-                    ),
+                    ],
+                    if (mRecAvg != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color:
+                              const Color(0xFF0EA5E9).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                            '🎤 تسميع ${recitationAverageLabel(double.parse(mRecAvg.toStringAsFixed(1)))}',
+                            style: const TextStyle(
+                                color: Color(0xFF0EA5E9),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700)),
+                      ),
+                    ],
                   ]),
                 ),
                 Container(
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1A2540) : Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: isDark
-                        ? []
-                        : [
-                            BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.05),
-                                blurRadius: 8)
-                          ],
-                  ),
+                  decoration: cardDeco(),
                   child: ListView.separated(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -1584,13 +1646,18 @@ class _HomeworkTab extends StatelessWidget {
                     separatorBuilder: (_, __) =>
                         const Divider(height: 0, indent: 56),
                     itemBuilder: (_, i) {
-                      final h = list[i];
-                      final norm = normalizeHomeworkStatus(h.status);
-                      final c = norm == HOMEWORK_DONE
-                          ? const Color(0xFF10B981)
-                          : norm == HOMEWORK_PARTIAL
-                              ? const Color(0xFFF59E0B)
-                              : const Color(0xFFEF4444);
+                      final day = list[i];
+                      final e = days[day]!;
+                      final h = e.hw;
+                      final norm =
+                          h == null ? null : normalizeHomeworkStatus(h.status);
+                      final c = h == null
+                          ? const Color(0xFF0EA5E9)
+                          : norm == HOMEWORK_DONE
+                              ? const Color(0xFF10B981)
+                              : norm == HOMEWORK_PARTIAL
+                                  ? const Color(0xFFF59E0B)
+                                  : const Color(0xFFEF4444);
                       return ListTile(
                         leading: Container(
                           width: 36,
@@ -1600,27 +1667,51 @@ class _HomeworkTab extends StatelessWidget {
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            norm == HOMEWORK_DONE
-                                ? Icons.menu_book_rounded
-                                : Icons.menu_book_outlined,
+                            h == null
+                                ? Icons.record_voice_over_rounded
+                                : norm == HOMEWORK_DONE
+                                    ? Icons.menu_book_rounded
+                                    : Icons.menu_book_outlined,
                             color: c,
                             size: 18,
                           ),
                         ),
-                        title: Text(FormatHelper.formatFullDate(h.date),
+                        title: Text(FormatHelper.formatFullDate(day),
                             style: const TextStyle(fontSize: 13)),
-                        trailing: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: c.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(homeworkStatusLabel(h.status),
-                              style: TextStyle(
-                                  color: c,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700)),
+                        trailing: Wrap(
+                          spacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (h != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: c.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(homeworkStatusLabel(h.status),
+                                    style: TextStyle(
+                                        color: c,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700)),
+                              ),
+                            if (e.rec != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color:
+                                      _recColor(e.rec!).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text('🎤 ${e.rec}/10',
+                                    style: TextStyle(
+                                        color: _recColor(e.rec!),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800)),
+                              ),
+                          ],
                         ),
                       );
                     },
