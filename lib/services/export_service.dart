@@ -23,6 +23,7 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/debtors_report.dart';
 import 'package:active_class/utils/recitation.dart';
+import 'package:active_class/utils/performance.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:get/get.dart';
 
@@ -420,6 +421,134 @@ class ExportService {
           isRange
               ? 'homework_${_fileRange(start, periodEnd)}'
               : 'homework_${_fileMonth(month)}');
+    } catch (e) {
+      return ExportResult.fail('فشل إنشاء PDF: $e');
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  spec 050 — تقرير مستوى الطالب (صفحة A4 واحدة، بلا بيانات مالية)
+  // ─────────────────────────────────────────────────────────────────
+  Future<ExportResult> exportStudentPerformancePDF(
+    StudentPerformance p, {
+    String teacherName = '',
+    String teacherSpecialization = '',
+  }) async {
+    try {
+      await _loadFonts();
+      final doc = pw.Document();
+      final monthLabel = DateFormat('MMMM yyyy', 'ar').format(p.month);
+
+      PdfColor trendColor(PerfTrend t) {
+        switch (t) {
+          case PerfTrend.up:
+            return _success;
+          case PerfTrend.down:
+            return _error;
+          default:
+            return _grey;
+        }
+      }
+
+      String pct(double? v) => v == null
+          ? '—'
+          : (v == v.roundToDouble()
+              ? '${v.toInt()}%'
+              : '${v.toStringAsFixed(1)}%');
+
+      String trendText(PerfIndicator i) {
+        if (i.trend == PerfTrend.none || i.delta == null) return '—';
+        final d = i.delta!;
+        final r = d.abs() == d.abs().roundToDouble()
+            ? d.abs().toInt().toString()
+            : d.abs().toStringAsFixed(1);
+        return '${trendWord(i.trend)} (${d >= 0 ? '+' : '-'}$r)';
+      }
+
+      final rows = <pw.TableRow>[
+        pw.TableRow(children: [
+          _th('المؤشر'),
+          _th('نسبة الشهر'),
+          _th('الشهر السابق'),
+          _th('الاتجاه'),
+          _th('التقييم'),
+          _th('عدد العينات'),
+        ]),
+      ];
+      for (var i = 0; i < p.indicators.length; i++) {
+        final ind = p.indicators[i];
+        final even = i % 2 == 0;
+        rows.add(pw.TableRow(children: [
+          _td(ind.kind.label, isEven: even, bold: true),
+          _td(pct(ind.current), isEven: even, bold: true),
+          _td(pct(ind.previous), isEven: even),
+          _td(trendText(ind), isEven: even, color: trendColor(ind.trend)),
+          _td(ind.level.isEmpty ? '—' : ind.level, isEven: even),
+          _td(ind.current == null ? '—' : ind.kind.samplesLabel(ind.currentSamples),
+              isEven: even, size: 9),
+        ]));
+      }
+
+      final histRows = <pw.TableRow>[
+        pw.TableRow(children: [
+          _th('الشهر'),
+          for (final ind in p.indicators) _th(ind.kind.label),
+        ]),
+      ];
+      for (var m = 0; m < p.months.length; m++) {
+        final even = m % 2 == 0;
+        histRows.add(pw.TableRow(children: [
+          _td(DateFormat('MMMM yyyy', 'ar').format(p.months[m]),
+              isEven: even, bold: true, size: 9),
+          for (final ind in p.indicators)
+            _td(pct(ind.series[m]), isEven: even, size: 9),
+        ]));
+      }
+
+      doc.addPage(pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        textDirection: pw.TextDirection.rtl,
+        margin: const pw.EdgeInsets.all(28),
+        build: (ctx) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            _pageHeader('تقرير مستوى الطالب — $monthLabel'),
+            pw.SizedBox(height: 12),
+            pw.Text('الطالب: ${p.name}', style: _style(size: 15, bold: true)),
+            pw.SizedBox(height: 2),
+            pw.Text('المجموعة: ${p.groupName}',
+                style: _style(size: 11, color: _grey)),
+            pw.SizedBox(height: 14),
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              children: rows,
+            ),
+            pw.SizedBox(height: 18),
+            pw.Text('اتجاه آخر ${p.months.length} شهور',
+                style: _style(size: 12, bold: true, color: _primary)),
+            pw.SizedBox(height: 6),
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              children: histRows,
+            ),
+            pw.Spacer(),
+            if (teacherName.trim().isNotEmpty ||
+                teacherSpecialization.trim().isNotEmpty) ...[
+              pw.Text(
+                  'المعلم: ${teacherName.trim().isEmpty ? '-' : teacherName.trim()}'
+                  '    التخصص: ${teacherSpecialization.trim().isEmpty ? '-' : teacherSpecialization.trim()}',
+                  style: _style(size: 10)),
+              pw.SizedBox(height: 4),
+            ],
+            pw.Text(
+                'تم الإنشاء: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())} — Active Class',
+                style: _style(size: 9, color: _grey)),
+          ],
+        ),
+      ));
+
+      return _savePdf(
+          doc, 'performance_${p.studentId}_${DateFormat('yyyyMM').format(p.month)}');
     } catch (e) {
       return ExportResult.fail('فشل إنشاء PDF: $e');
     }

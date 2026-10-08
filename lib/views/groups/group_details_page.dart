@@ -1,5 +1,6 @@
 // lib/views/groups/group_details_page.dart
 import 'package:flutter/material.dart';
+import 'package:active_class/views/groups/group_performance_page.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'dart:ui' as ui;
 import 'dart:io';
@@ -302,6 +303,15 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         actions: _isSelectionMode
             ? null
             : [
+                // spec 050 — أداء طلاب المجموعة (ترتيب + إرسال جماعي)
+                if (TeamModeService().canSeeAcademics)
+                  IconButton(
+                    tooltip: 'أداء الطلاب',
+                    icon: const Icon(Icons.insights_rounded),
+                    onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) => GroupPerformancePage(group: g))),
+                  ),
                 IconButton(
                   tooltip: 'تعديل المجموعة',
                   icon: const Icon(Icons.edit_rounded),

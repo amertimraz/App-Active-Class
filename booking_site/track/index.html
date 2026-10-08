@@ -347,6 +347,41 @@
 
     const hasHomework = (d.homeworkDone ?? 0) > 0 || (d.homeworkPartial ?? 0) > 0 || (d.homeworkNotDone ?? 0) > 0 || homeworkHistory.length > 0;
 
+    // ── مستوى الطالب (spec 050) ──────────────────────────────────
+    const perf = d.performance && Array.isArray(d.performance.indicators) ? d.performance : null;
+    const perfColors = { exams: '#4F46E5', attendance: '#10B981', homework: '#F59E0B', recitation: '#0EA5E9' };
+    const trendTxt = (t) => t === 'up' ? '↑ تحسّن' : t === 'down' ? '↓ تراجع' : t === 'steady' ? '➖ ثابت' : '';
+    const trendCol = (t) => t === 'up' ? '#10B981' : t === 'down' ? '#EF4444' : '#6B7280';
+    const fmtPct = (v) => (v == null ? '—' : (Number.isInteger(Number(v)) ? Number(v) : Number(v).toFixed(1)) + '%');
+    const spark = (vals, color) => {
+      const w = 260, h = 34, n = vals.length;
+      if (n < 2) return '';
+      const x = (i) => (i * (w / (n - 1))).toFixed(1);
+      const y = (v) => (h - 4 - (Math.max(0, Math.min(100, v)) / 100) * (h - 8)).toFixed(1);
+      let paths = '', dots = '', seg = [];
+      const flush = () => { if (seg.length > 1) paths += `<polyline fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" points="${seg.join(' ')}"/>`; seg = []; };
+      vals.forEach((v, i) => { if (v == null) { flush(); return; } seg.push(`${x(i)},${y(v)}`); dots += `<circle cx="${x(i)}" cy="${y(v)}" r="${i === n - 1 ? 3.4 : 2.4}" fill="${color}"/>`; });
+      flush();
+      return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">${paths}${dots}</svg>`;
+    };
+    const perfRows = perf ? perf.indicators.map(i => {
+      const c = perfColors[i.kind] || '#4F46E5';
+      const series = (perf.series && perf.series[i.kind]) || [];
+      return `
+        <div class="history-row" style="display:block;padding:10px 12px;border-radius:12px;background:${c}10;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <b style="color:${c}">${escapeHtml(i.label || '')}</b>
+            <span style="font-size:20px;font-weight:900;">${fmtPct(i.percent)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin:2px 0 4px;">
+            <span style="color:${trendCol(i.trend)};font-weight:800;">${trendTxt(i.trend)}${i.prev != null ? ` (السابق ${fmtPct(i.prev)})` : ''}</span>
+            <span style="color:${c};font-weight:700;">${escapeHtml(i.level || '')}</span>
+          </div>
+          ${spark(series, c)}
+        </div>`;
+    }).join('') : '';
+    const hasPerf = !!(perf && perf.indicators.length);
+
     // ── الامتحانات ──────────────────────────────────────────────
     const examHistory = Array.isArray(d.examHistory) ? d.examHistory : [];
     const fmtGrade = (n) => {
@@ -412,6 +447,11 @@
 
       <div class="section-title">📖 آخر الواجبات</div>
       <div class="history-list">${homeworkRows}</div>
+      ` : ''}
+
+      ${hasPerf ? `
+      <div class="section-title">📊 مستوى الطالب</div>
+      <div class="history-list">${perfRows}</div>
       ` : ''}
 
       ${hasRecitation ? `

@@ -33,6 +33,8 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/recitation.dart';
+import 'package:active_class/utils/performance.dart';
+import 'package:active_class/services/performance_service.dart';
 
 class ParentPortalService {
   static final ParentPortalService _instance = ParentPortalService._internal();
@@ -328,6 +330,46 @@ class ParentPortalService {
   /// بيبعت آخر 20 سجل حضور وآخر 15 دفعة بس (مش التاريخ كله) — عشان
   /// المستند يفضل خفيف حتى لطالب قديم عنده سنين من السجلات، ولأن
   /// ولي الأمر أصلاً مهتم بالأحدث مش بأرشيف كامل.
+  /// spec 050 — حقل `performance` في ملخص الطالب. الشهر الحالي لو فيه
+  /// بيانات وإلا السابق. فاضي لو مفيش بيانات أو كل المؤشرات مخفية.
+  Map<String, dynamic> _performanceForPortal(
+    Student student,
+    String groupName,
+    List<Attendance> attendance,
+    List<Homework> homework,
+    List<StudentExamRecord> exams,
+  ) {
+    try {
+      final enabled = PerformanceService.enabledKinds();
+      final now = DateTime.now();
+      var perf = buildPerformance(
+        student: student,
+        groupName: groupName,
+        month: now,
+        attendance: attendance,
+        homework: homework,
+        exams: exams,
+        enabled: enabled,
+      );
+      if (!perf.hasData) {
+        perf = buildPerformance(
+          student: student,
+          groupName: groupName,
+          month: DateTime(now.year, now.month - 1, 1),
+          attendance: attendance,
+          homework: homework,
+          exams: exams,
+          enabled: enabled,
+        );
+      }
+      final f = performancePortalFields(perf);
+      return f == null ? const {} : {'performance': f};
+    } catch (e) {
+      debugPrint('portal performance failed: $e');
+      return const {};
+    }
+  }
+
   Map<String, dynamic>? _buildSummaryData(
     Student student, {
     required List<Attendance> attendance,
@@ -417,6 +459,8 @@ class ParentPortalService {
             'status': normalizeHomeworkStatus(h.status) ?? h.status,
             'statusLabel': homeworkStatusLabel(h.status),
           }).toList(),
+      // spec 050 — مستوى الطالب (مؤشرات + اتجاه + رسم 6 شهور)
+      ..._performanceForPortal(student, groupName, attendance, homework, exams),
       // spec 048 — التسميع (لو الإعداد مفعّل وفيه درجات)
       ...recitationPortalFields(attendance,
           enabled: !Get.isRegistered<SettingsController>() ||

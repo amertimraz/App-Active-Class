@@ -35,6 +35,7 @@ import 'package:active_class/widgets/remove_student_dialog.dart';
 import 'package:active_class/widgets/locked_feature.dart';
 import 'package:active_class/widgets/archive_event_tile.dart';
 import 'package:active_class/utils/archive_history.dart';
+import 'package:active_class/views/students/student_performance_tab.dart';
 import 'package:active_class/utils/recitation.dart';
 import 'package:active_class/views/exams/student_exam_history_page.dart';
 import 'package:active_class/views/exams/certificates_sheet.dart';
@@ -98,7 +99,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
     super.initState();
     student = Get.arguments as Student?;
     _tabController =
-        TabController(length: _showHomeworkTab ? 3 : 2, vsync: this);
+        TabController(length: _showHomeworkTab ? 4 : 3, vsync: this);
     if (attendanceController.attendance.isEmpty)
       attendanceController.loadAttendance();
     if (paymentController.payments.isEmpty) paymentController.loadPayments();
@@ -549,6 +550,13 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                           .where((e) => e.studentId == s.id)
                           .toList()
                       : const []),
+              // spec 050 — الأداء: مؤشرات + اتجاه + إرسال لولي الأمر
+              _canSeeAcademics
+                  ? StudentPerformanceTab(
+                      key: ValueKey('perf_${s.id}'),
+                      student: s,
+                      groupName: _group?.name)
+                  : const LockedSectionPlaceholder(),
               if (_showHomeworkTab)
                 _HomeworkTab(homework: studentHomework, accentColor: primary),
               _canSeeFinancials
@@ -758,9 +766,10 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
           labelColor: Colors.white,
           unselectedLabelColor: Colors.grey,
           labelStyle:
-              const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
           tabs: [
             const Tab(text: 'سجل الحضور'),
+            const Tab(text: 'الأداء'),
             if (_showHomeworkTab) const Tab(text: 'الواجب'),
             Tab(
               child: Row(

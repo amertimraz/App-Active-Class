@@ -312,6 +312,13 @@ class SettingsController extends GetxController {
     try {
       await _dbSet(SETTING_SHOW_HOMEWORK, v ? '1' : '0');
     } catch (_) {}
+    // spec 050 — مؤشر الواجب في قسم المستوى على البوابة يظهر/يختفي فورًا.
+    try {
+      if (Get.isRegistered<LicenseController>() &&
+          LicenseController.to.parentPortalActiveNow) {
+        unawaited(ParentPortalService().publishAllStudents().catchError((_) => 0));
+      }
+    } catch (_) {}
   }
 
   Future<void> setShowRecitation(bool v) async {
