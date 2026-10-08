@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 37;
+const int DATABASE_VERSION = 38;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -179,6 +179,7 @@ const String COL_ATTENDANCE_NOTES = 'notes';
 const String COL_ATTENDANCE_CREATED_AT = 'created_at';
 // spec 040 — تفاعل الطالب (إيموجي بسيط) على نفس سجل الحضور.
 const String COL_ATTENDANCE_INTERACTION = 'interaction';
+const String COL_ATTENDANCE_RECITATION   = 'recitation';   // spec 048 — 1..10 أو NULL
 const String STUDENT_INTERACTION_ACTIVE = 'نشيط';
 const String STUDENT_INTERACTION_NEUTRAL = 'عادي';
 const String STUDENT_INTERACTION_DISENGAGED = 'غير متفاعل';
@@ -225,6 +226,11 @@ const String SETTING_LATE_GRACE_MINUTES = 'late_grace_minutes';
 // افتراضيًا مفعّل؛ لو معطّل الـQR يسجّل "حاضر" دايمًا. (spec 011)
 const String SETTING_QR_AUTO_LATE_ENABLED = 'qr_auto_late_enabled';
 // spec 046 — الغياب التلقائي بعد انتهاء الحصة (كلها محلية، غير مُزامنة).
+// إظهار/إخفاء أدوات الحصة في ورقة حضور اليوم: الواجب، التسميع (spec 048)،
+// والتفاعل (spec 040). محلية، افتراضيًا ظاهرة.
+const String SETTING_SHOW_HOMEWORK = 'show_homework';
+const String SETTING_SHOW_RECITATION = 'show_recitation';
+const String SETTING_SHOW_INTERACTION = 'show_interaction';
 const String SETTING_AUTO_ABSENT_ENABLED = 'auto_absent_enabled';
 const String SETTING_AUTO_ABSENT_GRACE_MINUTES = 'auto_absent_grace_minutes';
 const String SETTING_AUTO_ABSENT_ENABLED_AT = 'auto_absent_enabled_at';

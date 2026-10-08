@@ -5,6 +5,7 @@
 // spec 013 كان النص متكرّر في 3 نسخ باختلافات بسيطة. المتصل بيجمّع
 // بيانات الطالب للشهر المطلوب (الحضور/الواجب/المدفوعات بالتاريخ،
 // والامتحانات بـ effectiveReportMonth) وبينادي الدالة دي.
+import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 import 'package:active_class/config/constants.dart';
@@ -13,7 +14,9 @@ import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/recitation.dart';
 
 String buildMonthlyReportMessage({
   required Student student,
@@ -33,7 +36,13 @@ String buildMonthlyReportMessage({
   required bool canSeeAcademics,
   // spec 041 — أسطر الملازم (تظهر مع القسم المالي، شهري بس)
   List<String> bookletLines = const [],
+  // spec 048 — null = حسب إعداد "درجة التسميع" (ظاهرة افتراضيًا).
+  bool? includeRecitation,
 }) {
+  final showRecitation = includeRecitation ??
+      (Get.isRegistered<SettingsController>()
+          ? Get.find<SettingsController>().showRecitation.value
+          : true);
   final isPeriod = periodStart != null && periodEnd != null;
   final dFmt = DateFormat('d MMMM yyyy', 'ar');
   final monthLabel = isPeriod
@@ -103,12 +112,21 @@ String buildMonthlyReportMessage({
     buffer.writeln('🙋 التفاعل: ${interactionParts.join(' • ')}');
   }
 
+  // spec 048 — متوسط درجات التسميع (بيظهر بس لو مفعّل وفيه درجات فعلًا).
+  final recAvg = showRecitation ? recitationAverage(monthAtt) : null;
+  if (recAvg != null) {
+    buffer.writeln(
+        '🎤 التسميع: متوسط ${recitationAverageLabel(recAvg)}/10 (${recitationCount(monthAtt)} مرة)');
+  }
+
   if (attsSorted.isNotEmpty) {
     buffer.writeln('\n📅 سجلات الحضور:');
     for (final a in attsSorted.take(10)) {
       // spec 040 — إيموجي التفاعل جنب سطر نفس اليوم (لو مسجَّل).
       final emoji = interactionEmoji(a.interaction);
-      final suffix = emoji.isNotEmpty ? ' $emoji' : '';
+      final rec = showRecitation ? normalizeRecitation(a.recitation) : null;
+      final suffix = '${emoji.isNotEmpty ? ' $emoji' : ''}'
+          '${rec != null ? ' 🎤$rec/10' : ''}';
       buffer.writeln(
           '• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${attendanceStatusLabel(a.status)}$suffix');
     }

@@ -293,9 +293,45 @@ class SettingsController extends GetxController {
           await _migrateBool(SETTING_QR_AUTO_LATE_ENABLED) ?? true;
       attendanceOverdueWarning.value =
           await _migrateBool(SETTING_ATTENDANCE_OVERDUE_WARNING) ?? true;
+      showHomework.value = (await _dbGet(SETTING_SHOW_HOMEWORK)) != '0';
+      showRecitation.value = (await _dbGet(SETTING_SHOW_RECITATION)) != '0';
+      showInteraction.value = (await _dbGet(SETTING_SHOW_INTERACTION)) != '0';
       autoAbsentEnabled.value = (await _dbGet(SETTING_AUTO_ABSENT_ENABLED)) == '1';
       autoAbsentGraceMinutes.value = clampAutoAbsentGrace(
           int.tryParse(await _dbGet(SETTING_AUTO_ABSENT_GRACE_MINUTES) ?? ''));
+    } catch (_) {}
+  }
+
+  // ── إظهار/إخفاء الواجب والتسميع والتفاعل في ورقة حضور اليوم ──
+  final RxBool showHomework = true.obs;
+  final RxBool showRecitation = true.obs;
+  final RxBool showInteraction = true.obs;
+
+  Future<void> setShowHomework(bool v) async {
+    showHomework.value = v;
+    try {
+      await _dbSet(SETTING_SHOW_HOMEWORK, v ? '1' : '0');
+    } catch (_) {}
+  }
+
+  Future<void> setShowRecitation(bool v) async {
+    showRecitation.value = v;
+    try {
+      await _dbSet(SETTING_SHOW_RECITATION, v ? '1' : '0');
+    } catch (_) {}
+    // الأهالي يشوفوا/يخفوا التسميع على البوابة فورًا (لو البوابة شغّالة).
+    try {
+      if (Get.isRegistered<LicenseController>() &&
+          LicenseController.to.parentPortalActiveNow) {
+        unawaited(ParentPortalService().publishAllStudents().catchError((_) => 0));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> setShowInteraction(bool v) async {
+    showInteraction.value = v;
+    try {
+      await _dbSet(SETTING_SHOW_INTERACTION, v ? '1' : '0');
     } catch (_) {}
   }
 

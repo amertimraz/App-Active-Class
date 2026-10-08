@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show WidgetsBinding, WidgetsBindingObserver, AppLifecycleState;
 import 'package:get/get.dart';
+import 'package:active_class/utils/recitation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -575,6 +576,7 @@ class SyncEngine with WidgetsBindingObserver {
           'status': payload[COL_ATTENDANCE_STATUS],
           'notes': payload[COL_ATTENDANCE_NOTES],
           'interaction': payload[COL_ATTENDANCE_INTERACTION],
+          'recitation': payload[COL_ATTENDANCE_RECITATION],
         };
       case TABLE_PAYMENTS:
         final studentLocalId = payload[COL_PAYMENT_STUDENT_ID] as int?;
@@ -1665,6 +1667,7 @@ class SyncEngine with WidgetsBindingObserver {
           COL_ATTENDANCE_STATUS: remote['status'],
           COL_ATTENDANCE_NOTES: remote['notes'],
           COL_ATTENDANCE_INTERACTION: remote['interaction'],
+          COL_ATTENDANCE_RECITATION: normalizeRecitation(remote['recitation'] as int?),
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };

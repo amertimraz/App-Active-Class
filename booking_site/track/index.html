@@ -367,6 +367,15 @@
       : '';
     const hasExams = examHistory.length > 0;
 
+    // ── التسميع (spec 048) — بيظهر بس لو المدرس مفعّله وفيه درجات ──────
+    const recitationHistory = Array.isArray(d.recitationHistory) ? d.recitationHistory : [];
+    const hasRecitation = recitationHistory.length > 0 && typeof d.recitationAverage === 'number';
+    const recitationRows = recitationHistory.map(r => `
+          <div class="history-row">
+            <span class="date">${fmtDate(r.date)}</span>
+            <span class="exam-grade">${Number(r.grade)}<span class="exam-max"> / 10</span></span>
+          </div>`).join('');
+
     card.innerHTML = `
       <div class="welcome-row">
         <div class="avatar">${escapeHtml(initial)}</div>
@@ -403,6 +412,12 @@
 
       <div class="section-title">📖 آخر الواجبات</div>
       <div class="history-list">${homeworkRows}</div>
+      ` : ''}
+
+      ${hasRecitation ? `
+      <div class="section-title">🎤 التسميع</div>
+      <div class="money-row"><span>متوسط التسميع (${d.recitationCount ?? recitationHistory.length} مرة)</span><b>${Number(d.recitationAverage).toFixed(1)} / 10</b></div>
+      <div class="history-list">${recitationRows}</div>
       ` : ''}
 
       ${hasExams ? `

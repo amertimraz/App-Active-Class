@@ -91,6 +91,7 @@ class Attendance {
   final String status; // 'حاضر' or 'غائب'
   final String? notes;
   final String? interaction; // spec 040 — نشيط/عادي/غير متفاعل، أو null
+  final int? recitation; // spec 048 — درجة التسميع 1..10 أو null
   final DateTime? createdAt;
 
   Attendance({
@@ -100,6 +101,7 @@ class Attendance {
     required this.status,
     this.notes,
     this.interaction,
+    this.recitation,
     this.createdAt,
   });
 
@@ -111,6 +113,7 @@ class Attendance {
       'status': status,
       'notes': notes,
       'interaction': interaction,
+      'recitation': recitation,
       'created_at': createdAt?.toIso8601String(),
     };
   }
@@ -123,6 +126,7 @@ class Attendance {
       status: map['status'],
       notes: map['notes'],
       interaction: map['interaction'],
+      recitation: map['recitation'] is num ? (map['recitation'] as num).toInt() : null,
       createdAt: map['created_at'] != null
         ? DateTime.parse(map['created_at'])
         : null,
@@ -137,6 +141,8 @@ class Attendance {
     String? notes,
     String? interaction,
     bool clearInteraction = false,
+    int? recitation,
+    bool clearRecitation = false,
     DateTime? createdAt,
   }) {
     return Attendance(
@@ -146,6 +152,7 @@ class Attendance {
       status: status ?? this.status,
       notes: notes ?? this.notes,
       interaction: clearInteraction ? null : (interaction ?? this.interaction),
+      recitation: clearRecitation ? null : (recitation ?? this.recitation),
       createdAt: createdAt ?? this.createdAt,
     );
   }

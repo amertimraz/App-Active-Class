@@ -11,6 +11,7 @@ import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/views/reports/session_breakdown_page.dart';
+import 'package:active_class/utils/recitation.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -296,6 +297,80 @@ class _ReportsPageState extends State<ReportsPage> {
                   ],
                 ),
               ),
+
+              // ─── spec 048: التسميع (لو مفعّل وفيه درجات الشهر) ─────
+              Builder(builder: (context) {
+                final cfg = Get.find<SettingsController>();
+                if (!cfg.showRecitation.value) return const SizedBox.shrink();
+                final standings = recitationStandings(ctrl.allAttendance,
+                    month: month);
+                if (standings.isEmpty) return const SizedBox.shrink();
+                final monthAvg =
+                    recitationAverage(ctrl.allAttendance, month: month);
+                final nameById = {
+                  for (final s in ctrl.allStudents) s.id: s.name
+                };
+                return Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: buildSoftPanel(
+                    context: context,
+                    radius: 18,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0EA5E9)
+                                  .withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.record_voice_over_rounded,
+                                color: Color(0xFF0EA5E9)),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text('التسميع — ${dateFmt.format(month)}',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.w800)),
+                          ),
+                          Text(
+                              'المتوسط ${recitationAverageLabel(monthAvg)}/10',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0EA5E9))),
+                        ]),
+                        const SizedBox(height: 10),
+                        for (var i = 0; i < standings.take(5).length; i++)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 3),
+                            child: Row(children: [
+                              SizedBox(
+                                  width: 22,
+                                  child: Text('${i + 1}',
+                                      style: TextStyle(
+                                          color: Colors.grey.shade500,
+                                          fontWeight: FontWeight.w700))),
+                              Expanded(
+                                  child: Text(
+                                      nameById[standings[i].studentId] ??
+                                          'طالب',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis)),
+                              Text(
+                                  '${recitationAverageLabel(standings[i].average)}/10  (${standings[i].count})',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700)),
+                            ]),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
 
               const SizedBox(height: 12),
 

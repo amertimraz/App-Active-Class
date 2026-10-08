@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:get/get.dart';
 import 'package:active_class/utils/archive_history.dart';
 import 'package:active_class/utils/auto_absent.dart';
+import 'package:active_class/utils/recitation.dart';
 import 'package:flutter/material.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/homework_model.dart';
@@ -216,8 +217,10 @@ class AttendanceController extends GetxController {
           status: ATTENDANCE_PRESENT,
         ));
       } else if (existing.status == ATTENDANCE_PRESENT) {
-        await _dbService.updateAttendance(
-            existing.copyWith(status: ATTENDANCE_ABSENT));
+        await _dbService.updateAttendance(existing.copyWith(
+            status: ATTENDANCE_ABSENT,
+            clearInteraction: true,
+            clearRecitation: true));
       } else {
         await _dbService.deleteAttendance(existing.id!);
       }
@@ -262,6 +265,8 @@ class AttendanceController extends GetxController {
       final updated = existing.copyWith(
         status: status,
         clearInteraction: clearsInteraction,
+        // spec 048 — الغياب يمسح درجة التسميع كمان.
+        clearRecitation: clearsInteraction,
         // spec 046 — تعديل المدرس اليدوي لسجل "غياب تلقائي" يشيل العلامة
         // (بقى قرار يدوي، فالمسح بعد كده ما يستبدلوش).
         notes: isAutoAbsent(existing) ? '' : null,
@@ -303,6 +308,28 @@ class AttendanceController extends GetxController {
     final updated = existing.copyWith(
       interaction: interaction,
       clearInteraction: interaction == null,
+    );
+    await _dbService.updateAttendance(updated);
+    _replaceLocal(updated);
+    _applyFilter();
+  }
+
+  /// spec 048 — يسجّل/يغيّر/يمسح درجة تسميع (1..10) لسجل حضور يوم معيّن.
+  /// [value] == null → مسح. بيتجاهل بهدوء لو السجل غير موجود أو الحالة
+  /// غير مؤهَّلة (غائب/بلا حضور) أو القيمة خارج النطاق.
+  Future<void> setRecitation(int studentId, DateTime day, int? value) async {
+    if (value != null && normalizeRecitation(value) == null) return;
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
+    final existing = attendance.firstWhereOrNull((a) =>
+        a.studentId == studentId &&
+        !a.date.isBefore(dayStart) &&
+        !a.date.isAfter(dayEnd));
+    if (existing == null || !canRecordRecitation(existing.status)) return;
+
+    final updated = existing.copyWith(
+      recitation: value,
+      clearRecitation: value == null,
     );
     await _dbService.updateAttendance(updated);
     _replaceLocal(updated);
@@ -852,6 +879,10 @@ class AttendanceController extends GetxController {
     String? homeworkStatus,
     String? teacherName,
     String? teacherSpecialization,
+    // spec 048 — درجة تسميع اليوم (1..10) لو مفعّلة ومسجَّلة.
+    int? recitation,
+    // إعداد "الواجب في حضور اليوم": لو مخفي ما يظهرش سطر الواجب.
+    bool includeHomework = true,
   }) {
     final dateLabel = DateFormat('d MMMM yyyy', 'ar').format(DateTime.now());
     final isAbsent =
@@ -863,8 +894,10 @@ class AttendanceController extends GetxController {
       ..writeln('🧾 تقرير اليوم — $dateLabel')
       ..writeln('👤 الطالب: ${student.name}')
       ..writeln('')
-      ..writeln('📊 الحضور: $attLabel')
-      ..writeln('📖 الواجب: $hwLabel');
+      ..writeln('📊 الحضور: $attLabel');
+    if (includeHomework) buffer.writeln('📖 الواجب: $hwLabel');
+    final rec = normalizeRecitation(recitation);
+    if (rec != null && !isAbsent) buffer.writeln('🎤 التسميع: $rec/10');
 
     final tName = teacherName?.trim() ?? '';
     final tSpec = teacherSpecialization?.trim() ?? '';

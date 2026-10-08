@@ -784,6 +784,49 @@ class SettingsPage extends StatelessWidget {
                                 ])
                               : const SizedBox.shrink()),
                           _buildDivider(isDark),
+                          // ── أدوات الحصة في ورقة حضور اليوم: واجب / تسميع / تفاعل ──
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.menu_book_rounded,
+                                iconColor: const Color(0xFF3B82F6),
+                                title: 'الواجب في حضور اليوم',
+                                subtitle: settings.showHomework.value
+                                    ? 'ظاهر — تبويب الواجب في ورقة حضور اليوم'
+                                    : 'مخفي — لا يظهر تسجيل الواجب',
+                                rxValue: settings.showHomework,
+                                onChanged: (v) async =>
+                                    await settings.setShowHomework(v),
+                              )),
+                          _buildDivider(isDark),
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.record_voice_over_rounded,
+                                iconColor: const Color(0xFF0EA5E9),
+                                title: 'درجة التسميع',
+                                subtitle: settings.showRecitation.value
+                                    ? 'ظاهرة — داخل تبويب الواجب (1 إلى 10)'
+                                    : 'مخفية — لا يظهر تسجيل التسميع',
+                                rxValue: settings.showRecitation,
+                                onChanged: (v) async =>
+                                    await settings.setShowRecitation(v),
+                              )),
+                          _buildDivider(isDark),
+                          Obx(() => _buildSwitchTile(
+                                context,
+                                isDark,
+                                icon: Icons.emoji_emotions_rounded,
+                                iconColor: Colors.deepPurple,
+                                title: 'تفاعل الطالب',
+                                subtitle: settings.showInteraction.value
+                                    ? 'ظاهر — إيموجي التفاعل في ورقة الحضور'
+                                    : 'مخفي — لا يظهر تسجيل التفاعل',
+                                rxValue: settings.showInteraction,
+                                onChanged: (v) async =>
+                                    await settings.setShowInteraction(v),
+                              )),
+                          _buildDivider(isDark),
                           // ── الغياب التلقائي بعد انتهاء الحصة (spec 046) ──
                           Obx(() => _buildSwitchTile(
                                 context,

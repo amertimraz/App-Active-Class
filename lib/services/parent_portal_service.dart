@@ -32,6 +32,7 @@ import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/recitation.dart';
 
 class ParentPortalService {
   static final ParentPortalService _instance = ParentPortalService._internal();
@@ -416,6 +417,10 @@ class ParentPortalService {
             'status': normalizeHomeworkStatus(h.status) ?? h.status,
             'statusLabel': homeworkStatusLabel(h.status),
           }).toList(),
+      // spec 048 — التسميع (لو الإعداد مفعّل وفيه درجات)
+      ...recitationPortalFields(attendance,
+          enabled: !Get.isRegistered<SettingsController>() ||
+              Get.find<SettingsController>().showRecitation.value),
       'examCount': examRecords.length,
       'examHistory': examRecords.take(15).map((e) => {
             // examId — عشان صفحة الامتحان الإلكتروني (spec 016) تلاقي

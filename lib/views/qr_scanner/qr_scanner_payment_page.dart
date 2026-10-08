@@ -659,7 +659,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
                 child: Obx(() {
                   final student = controller.scannedStudent.value;
                   if (student == null) return _EmptyPanel();
-                  if (student.isExempt) {
+                  if (student.isFullyExempt) {
                     return _ExemptPanel(
                       student: student,
                       onClear: () {
@@ -820,7 +820,7 @@ class _ManualTab extends StatelessWidget {
               // بطاقة المعفى هنا زي تبويب المسح بالظبط.
               child: Obx(() {
                 final s = controller.scannedStudent.value ?? manualStudent!;
-                if (s.isExempt) {
+                if (s.isFullyExempt) {
                   return _ExemptPanel(student: s, onClear: onBack);
                 }
                 return _PaymentPanel(
@@ -1053,7 +1053,9 @@ class _PaymentPanel extends StatelessWidget {
                                       fontSize: 14,
                                       color: onSurface)),
                               Text(
-                                '${group?.name ?? "—"}  •  ${FormatHelper.formatCurrency(price)} / ${group?.isPerSession == true ? "الحصة" : "شهر"}',
+                                student.isExempt && !isSiblings
+                                    ? '${group?.name ?? "—"}  •  معفى ${student.exemptPercent.toInt()}% — ${FormatHelper.formatCurrency(student.effectivePrice)} / ${group?.isPerSession == true ? "الحصة" : "شهر"}'
+                                    : '${group?.name ?? "—"}  •  ${FormatHelper.formatCurrency(price)} / ${group?.isPerSession == true ? "الحصة" : "شهر"}',
                                 style: TextStyle(
                                     fontSize: 11,
                                     color: onSurface.withValues(alpha: 0.55)),

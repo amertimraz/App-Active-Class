@@ -35,6 +35,7 @@ import 'package:active_class/widgets/remove_student_dialog.dart';
 import 'package:active_class/widgets/locked_feature.dart';
 import 'package:active_class/widgets/archive_event_tile.dart';
 import 'package:active_class/utils/archive_history.dart';
+import 'package:active_class/utils/recitation.dart';
 import 'package:active_class/views/exams/student_exam_history_page.dart';
 import 'package:active_class/views/exams/certificates_sheet.dart';
 import 'package:active_class/views/booklets/student_booklets_section.dart';
@@ -81,6 +82,11 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
   Group? _group;
   List<Group> _groups = [];
   late TabController _tabController;
+  // إعداد "الواجب في حضور اليوم": لو مخفي ما يظهرش تبويب الواجب هنا كمان
+  // (بيتقرا مرة وقت فتح الشاشة زي صلاحيات الفريق).
+  late final bool _showHomeworkTab =
+      !Get.isRegistered<SettingsController>() ||
+          Get.find<SettingsController>().showHomework.value;
   // بيتقرا مرة واحدة بس وقت فتح الشاشة — متطابق مع باقي أماكن فحص
   // صلاحيات وضع الفريق في التطبيق (بتتحدّث بس عند إعادة الاتصال/فتح
   // التطبيق تاني، مش لحظيًا وسط الاستخدام).
@@ -91,7 +97,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
   void initState() {
     super.initState();
     student = Get.arguments as Student?;
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController =
+        TabController(length: _showHomeworkTab ? 3 : 2, vsync: this);
     if (attendanceController.attendance.isEmpty)
       attendanceController.loadAttendance();
     if (paymentController.payments.isEmpty) paymentController.loadPayments();
@@ -542,7 +549,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                           .where((e) => e.studentId == s.id)
                           .toList()
                       : const []),
-              _HomeworkTab(homework: studentHomework, accentColor: primary),
+              if (_showHomeworkTab)
+                _HomeworkTab(homework: studentHomework, accentColor: primary),
               _canSeeFinancials
                   ? _PaymentsTab(
                       student: s,
@@ -753,7 +761,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
               const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           tabs: [
             const Tab(text: 'سجل الحضور'),
-            const Tab(text: 'الواجب'),
+            if (_showHomeworkTab) const Tab(text: 'الواجب'),
             Tab(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1107,6 +1115,10 @@ class _AttendanceTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // إعدادات إظهار التفاعل/التسميع (لو المدرس أخفاهم ما يظهروش هنا كمان).
+    final cfg = Get.find<SettingsController>();
+    final showInteraction = cfg.showInteraction.value;
+    final showRecitation = cfg.showRecitation.value;
     // spec 047 — سجلات الحضور + أحداث الأرشفة مرتّبة بالتاريخ. الأحداث
     // للعرض فقط: العدّادات تحت (حاضر/المجموع) تحسب سجلات الحضور بس.
     final sorted = mergeAttendanceAndArchive(attendance, archiveEvents);
@@ -1176,6 +1188,12 @@ class _AttendanceTab extends StatelessWidget {
             ),
           ]),
         ),
+
+        // spec 048 — متوسط التسميع (بيظهر بس لو فيه درجة واحدة على الأقل)
+        if (showRecitation && recitationCount(attendance) > 0) ...[
+          const SizedBox(height: 12),
+          _RecitationSummary(attendance: attendance, isDark: isDark),
+        ],
 
         const SizedBox(height: 16),
 
@@ -1267,9 +1285,23 @@ class _AttendanceTab extends StatelessWidget {
                         title: Text(FormatHelper.formatFullDate(a.date),
                             style: const TextStyle(fontSize: 13)),
                         // spec 040 — إيموجي التفاعل لنفس اليوم لو مسجَّل.
-                        subtitle: interactionEmoji(a.interaction).isNotEmpty
+                        subtitle: ((showInteraction &&
+                                    interactionEmoji(a.interaction)
+                                        .isNotEmpty) ||
+                                (showRecitation &&
+                                    normalizeRecitation(a.recitation) != null))
                             ? Text(
-                                '${interactionEmoji(a.interaction)} ${interactionLabel(a.interaction)}',
+                                [
+                                  if (showInteraction &&
+                                      interactionEmoji(a.interaction)
+                                          .isNotEmpty)
+                                    '${interactionEmoji(a.interaction)} ${interactionLabel(a.interaction)}',
+                                  // spec 048 — درجة التسميع
+                                  if (showRecitation &&
+                                      normalizeRecitation(a.recitation) !=
+                                          null)
+                                    '📖 تسميع ${a.recitation}/10',
+                                ].join('  •  '),
                                 style: const TextStyle(fontSize: 11))
                             : null,
                         trailing: Container(
@@ -1293,6 +1325,43 @@ class _AttendanceTab extends StatelessWidget {
               ]);
         }),
       ],
+    );
+  }
+}
+
+// spec 048 — بطاقة متوسط التسميع (الشهر الحالي + الإجمالي). عرض فقط.
+class _RecitationSummary extends StatelessWidget {
+  final List<Attendance> attendance;
+  final bool isDark;
+  const _RecitationSummary({required this.attendance, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final month = DateTime(now.year, now.month, 1);
+    final monthAvg = recitationAverage(attendance, month: month);
+    final totalAvg = recitationAverage(attendance);
+    final monthN = recitationCount(attendance, month: month);
+    final totalN = recitationCount(attendance);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A2540) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isDark
+            ? []
+            : [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)],
+      ),
+      child: Row(children: [
+        Expanded(
+            child: _MiniStat('تسميع هذا الشهر',
+                '${recitationAverageLabel(monthAvg)}  ($monthN)',
+                const Color(0xFF0EA5E9))),
+        Expanded(
+            child: _MiniStat('تسميع الإجمالي',
+                '${recitationAverageLabel(totalAvg)}  ($totalN)',
+                const Color(0xFF0EA5E9))),
+      ]),
     );
   }
 }

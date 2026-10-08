@@ -22,6 +22,9 @@ import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/debtors_report.dart';
+import 'package:active_class/utils/recitation.dart';
+import 'package:active_class/controllers/settings_controller.dart';
+import 'package:get/get.dart';
 
 // ═══════════════════════════════════════════════════════════════════════
 //  ExportFormat — صيغة ملف التصدير (spec 023 — تصدير نتائج الامتحان)
@@ -746,6 +749,12 @@ class ExportService {
     );
   }
 
+  /// spec 048 — إعداد "درجة التسميع" (ظاهرة افتراضيًا) يتحكم في ظهورها
+  /// في تقارير الحضور.
+  bool _recitationReportEnabled() => Get.isRegistered<SettingsController>()
+      ? Get.find<SettingsController>().showRecitation.value
+      : true;
+
   // ── جدول الحضور ──────────────────────────────────────────────────
   pw.Widget _attendanceTable(List<Student> students,
       Map<int, Map<DateTime, Attendance>> attMap, DateTime start, DateTime end,
@@ -775,6 +784,11 @@ class ExportService {
     }
     colWidths[n + 1] = const pw.FixedColumnWidth(30); // حضور
     colWidths[n + 2] = const pw.FixedColumnWidth(30); // غياب
+    // spec 048 — عمود متوسط التسميع (بس لو مفعّل وفيه درجات في الجدول ده)
+    final hasRecitation = _recitationReportEnabled() &&
+        students.any((s) =>
+            recitationCount((attMap[s.id] ?? {}).values) > 0);
+    if (hasRecitation) colWidths[n + 3] = const pw.FixedColumnWidth(34);
 
     final rows = <pw.TableRow>[];
 
@@ -785,6 +799,7 @@ class ExportService {
     }
     headerCells.add(_th('ح', size: 8));
     headerCells.add(_th('غ', size: 8));
+    if (hasRecitation) headerCells.add(_th('تسميع', size: 7));
     rows.add(pw.TableRow(children: headerCells));
 
     for (var i = 0; i < students.length; i++) {
@@ -816,6 +831,12 @@ class ExportService {
       }
       cells.add(_td('$presentCount', isEven: isEven, color: _success, size: 9));
       cells.add(_td('$absentCount', isEven: isEven, color: _error, size: 9));
+      if (hasRecitation) {
+        cells.add(_td(
+            recitationAverageLabel(recitationAverage(sAtt.values)),
+            isEven: isEven,
+            size: 9));
+      }
       rows.add(pw.TableRow(children: cells));
     }
 
@@ -847,6 +868,11 @@ class ExportService {
     }
     final total = totalPresent + totalAbsent;
     final rate = total > 0 ? (totalPresent / total * 100) : 0.0;
+    // spec 048 — متوسط التسميع لكل المجموعة (لو مفعّل وفيه درجات)
+    final recAvg = _recitationReportEnabled()
+        ? recitationAverage(
+            students.expand((s) => (attMap[s.id] ?? {}).values))
+        : null;
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -864,6 +890,9 @@ class ExportService {
               if (totalLate > 0)
                 _statBox('منها متأخر', '$totalLate جلسة', _warning),
               _statBox('إجمالي الغياب', '$totalAbsent جلسة', _error),
+              if (recAvg != null)
+                _statBox('متوسط التسميع',
+                    '${recitationAverageLabel(recAvg)}/10', _success),
               _statBox(
                   'نسبة الحضور',
                   '${rate.toStringAsFixed(1)}%',

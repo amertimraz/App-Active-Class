@@ -32,6 +32,7 @@ import 'package:active_class/widgets/custom_dialogs.dart' as custom_dialogs;
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/archive_history.dart';
+import 'package:active_class/utils/recitation.dart';
 import 'package:active_class/widgets/archive_event_tile.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:intl/intl.dart';
@@ -904,7 +905,16 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       final Map<int, String> statusMap = {
         for (final a in dayRecords) a.studentId: a.status,
       };
+      // إظهار/إخفاء الواجب والتسميع والتفاعل (من الإعدادات).
+      final cfg = Get.find<SettingsController>();
+      final showHomework = cfg.showHomework.value;
+      final showRecitation = cfg.showRecitation.value;
+      final showInteraction = cfg.showInteraction.value;
+      final hasSecondTab = showHomework || showRecitation;
       // spec 040 — تفاعل الطالب لنفس اليوم.
+      final Map<int, int?> recitationMap = {
+        for (final a in dayRecords) a.studentId: a.recitation,
+      };
       final Map<int, String?> interactionMap = {
         for (final a in dayRecords) a.studentId: a.interaction,
       };
@@ -1155,17 +1165,23 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
             // فبنحسب ارتفاع صريح من الشاشة (زي ما SingleChildScrollView كان
             // بيتصرّف قبل التبويبات).
             DefaultTabController(
-              length: 2,
+              length: hasSecondTab ? 2 : 1,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const TabBar(
-                    labelStyle: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13),
-                    tabs: [Tab(text: 'حضور'), Tab(text: 'واجب')],
-                  ),
+                  if (hasSecondTab)
+                    TabBar(
+                      labelStyle: const TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13),
+                      tabs: [
+                        const Tab(text: 'حضور'),
+                        // التسميع جوه تبويب الواجب؛ لو الواجب مخفي والتسميع
+                        // ظاهر، التبويب بيتسمّى "تسميع".
+                        Tab(text: showHomework ? 'واجب' : 'تسميع'),
+                      ],
+                    ),
                   SizedBox(
                       height: MediaQuery.of(context).size.height * 0.46,
                       child: TabBarView(children: [
@@ -1215,6 +1231,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                 }),
                                 // spec 040 — تطبيق تفاعل واحد على كل
                                 // الطلاب المؤهَّلين (حاضر/متأخر) دفعة واحدة.
+                                if (showInteraction)
                                 PopupMenuButton<String>(
                                   tooltip: 'تطبيق تفاعل على الكل',
                                   onSelected: (value) async {
@@ -1313,6 +1330,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                         student: s,
                                         status: status,
                                         interaction: interactionMap[s.id],
+                                        showInteraction: showInteraction,
                                         onSelect: (newStatus) async {
                                           try {
                                             await controller
@@ -1342,13 +1360,19 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                 controller, homeworkCtrl, selectedDay),
                           ]),
                         ),
-                        // ── تبويب واجب ──────────────────────────────
-                        _HomeworkTabBody(
-                          students: visibleStudents,
-                          statusMap: statusMap,
-                          homeworkCtrl: homeworkCtrl,
-                          selectedDay: selectedDay,
-                        ),
+                        // ── تبويب واجب (+ التسميع) ──────────────────
+                        if (hasSecondTab)
+                          _HomeworkTabBody(
+                            students: visibleStudents,
+                            statusMap: statusMap,
+                            homeworkCtrl: homeworkCtrl,
+                            selectedDay: selectedDay,
+                            showHomework: showHomework,
+                            showRecitation: showRecitation,
+                            recitationMap: recitationMap,
+                            onRecitation: (id, v) =>
+                                controller.setRecitation(id, selectedDay, v),
+                          ),
                       ]),
                     ),
                   ],
@@ -1652,19 +1676,20 @@ Future<void> _showSendReportConfirm(
   final teacherSpecialization = settings.teacherSpecialization.value.trim();
 
   for (final s in withPhone) {
-    final attStatus = controller.attendance
-        .firstWhereOrNull((a) =>
-            a.studentId == s.id &&
-            a.date.year == selectedDay.year &&
-            a.date.month == selectedDay.month &&
-            a.date.day == selectedDay.day)
-        ?.status;
+    final todayRec = controller.attendance.firstWhereOrNull((a) =>
+        a.studentId == s.id &&
+        a.date.year == selectedDay.year &&
+        a.date.month == selectedDay.month &&
+        a.date.day == selectedDay.day);
+    final attStatus = todayRec?.status;
     if (attStatus == null) continue; // احتياطي: مفروض مستحيل لو الزرار ظاهر
     final hwStatus = homeworkCtrl.statusFor(s.id!, selectedDay);
     final message = controller.buildGuardianReportMessage(
       student: s,
       attendanceStatus: attStatus,
       homeworkStatus: hwStatus,
+      recitation: settings.showRecitation.value ? todayRec?.recitation : null,
+      includeHomework: settings.showHomework.value,
       teacherName: teacherName,
       teacherSpecialization: teacherSpecialization,
     );
@@ -1712,6 +1737,8 @@ class _StudentAttendanceChip extends StatelessWidget {
   // أو الحالة غير مؤهَّلة (canRecordInteraction == false).
   final String? interaction;
   final ValueChanged<String?> onInteractionSelect;
+  // إعداد "تفاعل الطالب" (إظهار/إخفاء صف التفاعل).
+  final bool showInteraction;
 
   const _StudentAttendanceChip({
     required this.student,
@@ -1719,6 +1746,7 @@ class _StudentAttendanceChip extends StatelessWidget {
     required this.onSelect,
     required this.interaction,
     required this.onInteractionSelect,
+    required this.showInteraction,
   });
 
   @override
@@ -1790,7 +1818,7 @@ class _StudentAttendanceChip extends StatelessWidget {
           ]),
           const SizedBox(height: 8),
           _AttendanceStatusSegmented(status: norm, onSelect: onSelect),
-          if (canRecordInteraction(norm)) ...[
+          if (showInteraction && canRecordInteraction(norm)) ...[
             const SizedBox(height: 8),
             _InteractionRow(
                 interaction: normalizeInteraction(interaction),
@@ -1843,6 +1871,60 @@ class _InteractionRow extends StatelessWidget {
       btn(STUDENT_INTERACTION_ACTIVE),
       btn(STUDENT_INTERACTION_NEUTRAL),
       btn(STUDENT_INTERACTION_DISENGAGED),
+    ]);
+  }
+}
+
+// صف درجة التسميع (spec 048) — أزرار 1..10، toggle: ضغط المختار يمسحه،
+// ضغط مختلف يستبدله. بيظهر للحاضر/المتأخر بس.
+class _RecitationRow extends StatelessWidget {
+  final int? recitation;
+  final ValueChanged<int?> onSelect;
+
+  const _RecitationRow({required this.recitation, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFF0EA5E9);
+    return Row(children: [
+      Padding(
+        padding: const EdgeInsetsDirectional.only(end: 6),
+        child: Text('تسميع',
+            style: TextStyle(
+                fontFamily: 'Cairo',
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade600)),
+      ),
+      for (var v = kRecitationMin; v <= kRecitationMax; v++)
+        Expanded(
+          child: GestureDetector(
+            onTap: () => onSelect(recitation == v ? null : v),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              height: 28,
+              alignment: Alignment.center,
+              margin: const EdgeInsets.symmetric(horizontal: 1),
+              decoration: BoxDecoration(
+                color: recitation == v
+                    ? accent.withValues(alpha: 0.18)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(
+                  color: recitation == v
+                      ? accent.withValues(alpha: 0.6)
+                      : Colors.grey.withValues(alpha: 0.25),
+                ),
+              ),
+              child: Text('$v',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight:
+                          recitation == v ? FontWeight.w800 : FontWeight.w500,
+                      color: recitation == v ? accent : Colors.grey.shade700)),
+            ),
+          ),
+        ),
     ]);
   }
 }
@@ -1932,12 +2014,21 @@ class _HomeworkTabBody extends StatelessWidget {
   final Map<int, String> statusMap; // حالة الحضور لكل طالب في اليوم
   final HomeworkController homeworkCtrl;
   final DateTime selectedDay;
+  // الإعدادات: الواجب / التسميع (spec 048 — التسميع جوه هذا التبويب).
+  final bool showHomework;
+  final bool showRecitation;
+  final Map<int, int?> recitationMap;
+  final void Function(int studentId, int? value) onRecitation;
 
   const _HomeworkTabBody({
     required this.students,
     required this.statusMap,
     required this.homeworkCtrl,
     required this.selectedDay,
+    required this.showHomework,
+    required this.showRecitation,
+    required this.recitationMap,
+    required this.onRecitation,
   });
 
   @override
@@ -1987,7 +2078,8 @@ class _HomeworkTabBody extends StatelessWidget {
 
       return SingleChildScrollView(
         child: Column(children: [
-          // شريط ملخّص + زر جماعي
+          // شريط ملخّص + زر جماعي (الواجب فقط)
+          if (showHomework) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
             child: Row(children: [
@@ -2011,6 +2103,7 @@ class _HomeworkTabBody extends StatelessWidget {
             ]),
           ),
           const Divider(height: 1, indent: 14, endIndent: 14),
+          ],
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
             child: Column(
@@ -2027,6 +2120,10 @@ class _HomeworkTabBody extends StatelessWidget {
                             homeworkCtrl.statusFor(s.id!, selectedDay)),
                     onSelect: (st) =>
                         homeworkCtrl.setHomeworkStatus(s.id!, selectedDay, st),
+                    showHomework: showHomework,
+                    showRecitation: showRecitation,
+                    recitation: recitationMap[s.id],
+                    onRecitation: (v) => onRecitation(s.id!, v),
                   ),
                 );
               }).toList(),
@@ -2043,12 +2140,20 @@ class _HomeworkStudentRow extends StatelessWidget {
   final bool absent;
   final String? status; // مطبّع: HOMEWORK_DONE / HOMEWORK_PARTIAL / HOMEWORK_NOT_DONE / null
   final ValueChanged<String?> onSelect;
+  final bool showHomework;
+  final bool showRecitation;
+  final int? recitation;
+  final ValueChanged<int?> onRecitation;
 
   const _HomeworkStudentRow({
     required this.name,
     required this.absent,
     required this.status,
     required this.onSelect,
+    required this.showHomework,
+    required this.showRecitation,
+    required this.recitation,
+    required this.onRecitation,
   });
 
   static const _done = Color(0xFF10B981);
@@ -2123,7 +2228,7 @@ class _HomeworkStudentRow extends StatelessWidget {
                 color: Colors.grey.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text('غائب — لا واجب',
+              child: Text(showHomework ? 'غائب — لا واجب' : 'غائب — لا تسميع',
                   style: TextStyle(
                       fontSize: 10.5,
                       fontWeight: FontWeight.w700,
@@ -2131,9 +2236,16 @@ class _HomeworkStudentRow extends StatelessWidget {
                       fontFamily: 'Cairo')),
             ),
         ]),
-        if (!absent) ...[
+        if (!absent && showHomework) ...[
           const SizedBox(height: 9),
           _HomeworkStatusSegmented(status: status, onSelect: onSelect),
+        ],
+        // spec 048 — درجة التسميع 1..10 (للحاضر/المتأخر)
+        if (!absent && showRecitation) ...[
+          const SizedBox(height: 8),
+          _RecitationRow(
+              recitation: normalizeRecitation(recitation),
+              onSelect: onRecitation),
         ],
       ]),
     );
