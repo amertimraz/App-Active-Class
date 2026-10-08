@@ -109,6 +109,22 @@ class _ExamsPageState extends State<ExamsPage>
     // امتحان — مع مدرّس متراكم عنده امتحانات كتير كان اللف التسلسلي ده
     // بياخد وقت محسوس (شبه تعليق) كل ما الصفحة تفتح.
     final progress = await _ec.getAllExamsProgress();
+    // مفيش إعادة رسم لو الأرقام ما اتغيّرتش (تفادي وميض بلا فايدة).
+    var same = progress.length == _progress.length;
+    if (same) {
+      for (final e in progress.entries) {
+        final o = _progress[e.key];
+        final n = e.value;
+        if (o == null ||
+            o.totalStudents != n.totalStudents ||
+            o.enteredGrades != n.enteredGrades ||
+            o.absentStudents != n.absentStudents) {
+          same = false;
+          break;
+        }
+      }
+    }
+    if (same) return;
     _progress
       ..clear()
       ..addAll(progress);
@@ -249,7 +265,10 @@ class _ExamsPageState extends State<ExamsPage>
         // التبويب ده للامتحانات الورقية فقط — الإلكترونية في تبويب منفصل.
         final exams = _ec.exams.where((e) => !e.isOnline).toList();
 
-        if (_ec.isLoading.value) {
+        // spinner بس عند أول تحميل (القائمة فاضية). إعادة التحميل الدورية
+        // (مزامنة الفريق/أي تعديل) كانت بتبدّل الشاشة كلها بدوّامة وترجع
+        // تاني = "ريفريش" مزعج. دلوقتي القائمة بتفضل ثابتة وتتحدّث بهدوء.
+        if (_ec.isLoading.value && exams.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
         if (exams.isEmpty) {
@@ -280,114 +299,112 @@ class _ExamsPageState extends State<ExamsPage>
           },
           child: CustomScrollView(
             slivers: [
-              // ── لوحة الإحصائيات ──────────────────────────────────
+              // ── شريط الحالات (إحصائيات + فلتر في عنصر واحد) ──────
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: _StatsDashboard(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                  child: _StatusStrip(
                     total: exams.length,
                     complete: complete,
                     inProgress: inProgress,
                     pending: exams.length - complete - inProgress,
+                    selected: _statusFilter,
+                    onSelect: (st) => setState(() => _statusFilter = st),
                   ),
                 ),
               ),
 
-              // ── البحث ────────────────────────────────────────────
+              // ── البحث + فلتر المجموعة ────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                  child: TextField(
-                    controller: _searchCtrl,
-                    onChanged: (v) => setState(() => _search = v),
-                    style: TextStyle(
-                        fontFamily: 'Cairo', fontSize: 13, color: cs.onSurface),
-                    decoration: InputDecoration(
-                      hintText: 'ابحث عن امتحان...',
-                      hintStyle: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 13,
-                          color: cs.onSurface.withValues(alpha: 0.35)),
-                      prefixIcon: Icon(Icons.search_rounded,
-                          size: 20, color: cs.onSurface.withValues(alpha: 0.4)),
-                      suffixIcon: _search.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.close_rounded, size: 18),
-                              onPressed: () {
-                                _searchCtrl.clear();
-                                setState(() => _search = '');
-                              })
-                          : null,
-                      filled: true,
-                      fillColor: isDark
-                          ? cs.onSurface.withValues(alpha: 0.05)
-                          : Colors.white,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 11),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(13),
-                          borderSide: BorderSide(
-                              color: cs.onSurface.withValues(alpha: 0.12))),
-                      enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(13),
-                          borderSide: BorderSide(
-                              color: cs.onSurface.withValues(alpha: 0.12))),
-                      focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(13),
-                          borderSide: const BorderSide(
-                              color: AppTheme.primaryColor, width: 1.5)),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: Row(children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchCtrl,
+                        onChanged: (v) => setState(() => _search = v),
+                        style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 13,
+                            color: cs.onSurface),
+                        decoration: InputDecoration(
+                          hintText: 'ابحث عن امتحان...',
+                          hintStyle: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 13,
+                              color: cs.onSurface.withValues(alpha: 0.35)),
+                          prefixIcon: Icon(Icons.search_rounded,
+                              size: 20,
+                              color: cs.onSurface.withValues(alpha: 0.4)),
+                          suffixIcon: _search.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.close_rounded,
+                                      size: 18),
+                                  onPressed: () {
+                                    _searchCtrl.clear();
+                                    setState(() => _search = '');
+                                  })
+                              : null,
+                          filled: true,
+                          fillColor: isDark
+                              ? cs.onSurface.withValues(alpha: 0.05)
+                              : Colors.white,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 11),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(13),
+                              borderSide: BorderSide(
+                                  color: cs.onSurface.withValues(alpha: 0.12))),
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(13),
+                              borderSide: BorderSide(
+                                  color: cs.onSurface.withValues(alpha: 0.12))),
+                          focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(13),
+                              borderSide: const BorderSide(
+                                  color: AppTheme.primaryColor, width: 1.5)),
+                        ),
+                      ),
+                    ),
+                    if (groups.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      _GroupFilterButton(
+                        active: _groupFilter != null,
+                        onTap: () => _pickGroupFilter(groups),
+                      ),
+                    ],
+                  ]),
+                ),
+              ),
+
+              // المجموعة المختارة (بتتشال بضغطة)
+              if (_groupFilter != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: InputChip(
+                        avatar: const Icon(Icons.groups_rounded, size: 16),
+                        label: Text(
+                            groups
+                                    .firstWhereOrNull(
+                                        (g) => g.id == _groupFilter)
+                                    ?.name ??
+                                'مجموعة',
+                            style: const TextStyle(
+                                fontFamily: 'Cairo',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700)),
+                        onDeleted: () => setState(() => _groupFilter = null),
+                        visualDensity: VisualDensity.compact,
+                      ),
                     ),
                   ),
                 ),
-              ),
 
-              // ── الفلاتر ──────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 46,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-                    children: [
-                      // فلتر الحالة
-                      _FilterChipW(
-                        label: 'الكل',
-                        selected: _statusFilter == null,
-                        color: AppTheme.primaryColor,
-                        onTap: () => setState(() => _statusFilter = null),
-                      ),
-                      ...ExamStatus.values.map((s) => _FilterChipW(
-                            label: s.label,
-                            icon: s.icon,
-                            selected: _statusFilter == s,
-                            color: s.color,
-                            onTap: () => setState(() =>
-                                _statusFilter = _statusFilter == s ? null : s),
-                          )),
-                      // فاصل
-                      Container(
-                        width: 1,
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 6),
-                        color: cs.onSurface.withValues(alpha: 0.12),
-                      ),
-                      // فلتر المجموعات
-                      ...groups.map((g) {
-                        final c = Color(g.color ?? 0xFF4F46E5);
-                        return _FilterChipW(
-                          label: g.name,
-                          icon: Icons.groups_rounded,
-                          selected: _groupFilter == g.id,
-                          color: c,
-                          onTap: () => setState(() => _groupFilter =
-                              _groupFilter == g.id ? null : g.id),
-                        );
-                      }),
-                    ],
-                  ),
-                ),
-              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 4)),
 
               // ── القائمة (مجمّعة بالشهور) ─────────────────────────
               if (filtered.isEmpty)
@@ -421,6 +438,40 @@ class _ExamsPageState extends State<ExamsPage>
           ),
         );
       });
+  }
+
+  // اختيار مجموعة للفلترة (بدل صف شرائح طويل مختلط مع الحالات).
+  Future<void> _pickGroupFilter(List<Group> groups) async {
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.all_inclusive_rounded),
+              title: const Text('كل المجموعات',
+                  style: TextStyle(fontFamily: 'Cairo')),
+              selected: _groupFilter == null,
+              onTap: () => Navigator.pop(ctx, -1),
+            ),
+            for (final g in groups)
+              ListTile(
+                leading: Icon(Icons.groups_rounded,
+                    color: Color(g.color ?? 0xFF4F46E5)),
+                title: Text(g.name,
+                    style: const TextStyle(
+                        fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+                selected: _groupFilter == g.id,
+                onTap: () => Navigator.pop(ctx, g.id),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    setState(() => _groupFilter = picked == -1 ? null : picked);
   }
 
   // بناء القائمة مع عناوين الشهور
@@ -543,141 +594,113 @@ class _ExamsPageState extends State<ExamsPage>
   }
 }
 
-// ─── لوحة الإحصائيات ──────────────────────────────────────────────────────────
-class _StatsDashboard extends StatelessWidget {
+// ─── شريط الحالات: إحصائيات وفلتر في عنصر واحد ───────────────────────────────
+class _StatusStrip extends StatelessWidget {
   final int total, complete, inProgress, pending;
-  const _StatsDashboard({
+  final ExamStatus? selected;
+  final ValueChanged<ExamStatus?> onSelect;
+  const _StatusStrip({
     required this.total,
     required this.complete,
     required this.inProgress,
     required this.pending,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF4F46E5).withValues(alpha: 0.3),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          _DashStat(
-              value: '$total',
-              label: 'إجمالي\nالامتحانات',
-              icon: Icons.assignment_rounded),
-          _dashDivider(),
-          _DashStat(
-              value: '$complete',
-              label: 'مكتمل\nالإدخال',
-              icon: Icons.check_circle_rounded),
-          _dashDivider(),
-          _DashStat(
-              value: '$inProgress',
-              label: 'قيد\nالإدخال',
-              icon: Icons.timelapse_rounded),
-          _dashDivider(),
-          _DashStat(
-              value: '$pending',
-              label: 'لم\nيبدأ',
-              icon: Icons.pending_outlined),
-        ],
-      ),
-    );
-  }
-
-  Widget _dashDivider() => Container(
-        width: 1,
-        height: 40,
-        color: Colors.white.withValues(alpha: 0.2),
-      );
-}
-
-class _DashStat extends StatelessWidget {
-  final String value, label;
-  final IconData icon;
-  const _DashStat(
-      {required this.value, required this.label, required this.icon});
-
-  @override
-  Widget build(BuildContext context) => Expanded(
-        child: Column(children: [
-          Icon(icon, size: 18, color: Colors.white.withValues(alpha: 0.85)),
-          const SizedBox(height: 5),
-          Text(value,
-              style: const TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  height: 1.1)),
-          Text(label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 9.5,
-                  height: 1.3,
-                  color: Colors.white.withValues(alpha: 0.75))),
-        ]),
-      );
-}
-
-// ─── شريحة فلتر ───────────────────────────────────────────────────────────────
-class _FilterChipW extends StatelessWidget {
-  final String label;
-  final IconData? icon;
-  final bool selected;
-  final Color color;
-  final VoidCallback onTap;
-  const _FilterChipW({
-    required this.label,
-    this.icon,
     required this.selected,
-    required this.color,
-    required this.onTap,
+    required this.onSelect,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        margin: const EdgeInsets.only(left: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected ? color : color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: selected ? color : color.withValues(alpha: 0.3)),
+    Widget seg(String label, int n, Color color, ExamStatus? value) {
+      final on = selected == value;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => onSelect(on ? null : value),
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            decoration: BoxDecoration(
+              color: on ? color.withValues(alpha: 0.14) : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: on ? color.withValues(alpha: 0.5) : Colors.transparent),
+            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text('$n',
+                  style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      height: 1.1,
+                      color: color)),
+              const SizedBox(height: 2),
+              Text(label,
+                  maxLines: 1,
+                  style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 10.5,
+                      fontWeight: on ? FontWeight.w800 : FontWeight.w600,
+                      color: cs.onSurface.withValues(alpha: on ? 0.85 : 0.55))),
+            ]),
+          ),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (icon != null) ...[
-            Icon(icon, size: 14, color: selected ? Colors.white : color),
-            const SizedBox(width: 5),
-          ],
-          Text(label,
-              style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: selected
-                      ? Colors.white
-                      : (cs.brightness == Brightness.dark ? color : color))),
-        ]),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+      ),
+      child: Row(children: [
+        seg('الكل', total, AppTheme.primaryColor, null),
+        seg(ExamStatus.complete.label, complete, ExamStatus.complete.color,
+            ExamStatus.complete),
+        seg(ExamStatus.inProgress.label, inProgress,
+            ExamStatus.inProgress.color, ExamStatus.inProgress),
+        seg(ExamStatus.notStarted.label, pending, ExamStatus.notStarted.color,
+            ExamStatus.notStarted),
+      ]),
+    );
+  }
+}
+
+// زر فلتر المجموعة جنب البحث (بنقطة لو فيه فلتر شغّال).
+class _GroupFilterButton extends StatelessWidget {
+  final bool active;
+  final VoidCallback onTap;
+  const _GroupFilterButton({required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: 'فلتر المجموعة',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(13),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: active
+                ? AppTheme.primaryColor.withValues(alpha: 0.12)
+                : cs.surface,
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(
+                color: active
+                    ? AppTheme.primaryColor
+                    : cs.onSurface.withValues(alpha: 0.12)),
+          ),
+          child: Icon(Icons.groups_rounded,
+              size: 22,
+              color: active
+                  ? AppTheme.primaryColor
+                  : cs.onSurface.withValues(alpha: 0.55)),
+        ),
       ),
     );
   }
@@ -709,238 +732,166 @@ class _ExamCard extends StatelessWidget {
     final relatedGroups =
         groups.where((g) => exam.groupIds.contains(g.id)).toList();
     final status = _statusOf(progress);
+    final hasProgress = progress != null && progress!.totalStudents > 0;
+    final done = hasProgress
+        ? progress!.enteredGrades + progress!.absentStudents
+        : 0;
+    final muted = cs.onSurface.withValues(alpha: 0.5);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: cs.surface,
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: status.color.withValues(alpha: 0.18)),
+        border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2)),
+              ],
       ),
-      elevation: isDark ? 0 : 2,
-      color: cs.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.assignment_rounded,
-                    color: AppTheme.primaryColor, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(exam.name,
-                        style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: cs.onSurface)),
-                    Text(
-                      DateFormat('d MMMM yyyy', 'ar').format(exam.date),
-                      style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 12,
-                          color: cs.onSurface.withValues(alpha: 0.5)),
-                    ),
-                  ],
-                ),
-              ),
-              // شارة الحالة
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                margin: const EdgeInsets.only(left: 4),
-                decoration: BoxDecoration(
-                  color: status.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(status.icon, size: 12, color: status.color),
-                  const SizedBox(width: 4),
-                  Text(status.label,
-                      style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: status.color)),
-                ]),
-              ),
-              PopupMenuButton<String>(
-                onSelected: (v) {
-                  if (v == 'edit') onEdit();
-                  if (v == 'delete') onDelete();
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(
-                      value: 'edit',
-                      child: Row(children: [
-                        Icon(Icons.edit_rounded, size: 18),
-                        SizedBox(width: 8),
-                        Text('تعديل', style: TextStyle(fontFamily: 'Cairo')),
-                      ])),
-                  PopupMenuItem(
-                      value: 'delete',
-                      child: Row(children: [
-                        Icon(Icons.delete_rounded,
-                            size: 18, color: Colors.red.shade400),
-                        const SizedBox(width: 8),
-                        Text('حذف',
-                            style: TextStyle(
-                                fontFamily: 'Cairo',
-                                color: Colors.red.shade400)),
-                      ])),
-                ],
-              ),
-            ]),
-            const SizedBox(height: 10),
-
-            // Info chips
-            Wrap(spacing: 8, children: [
-              _InfoChip(
-                icon: Icons.grade_rounded,
-                label: 'من ${exam.maxGrade.toStringAsFixed(0)} درجة',
-                color: AppTheme.primaryColor,
-              ),
-              _InfoChip(
-                icon: Icons.check_circle_outline_rounded,
-                label: 'النجاح: ${exam.passingGrade.toStringAsFixed(0)}',
-                color: AppTheme.successColor,
-              ),
-              if (progress != null && progress!.absentStudents > 0)
-                _InfoChip(
-                  icon: Icons.person_off_rounded,
-                  label: 'غياب: ${progress!.absentStudents}',
-                  color: Colors.grey,
-                ),
-            ]),
-            const SizedBox(height: 12),
-
-            // ── Progress Bar ────────────────────────────────────────
-            if (progress != null && progress!.totalStudents > 0) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // شريط لون الحالة على الجنب (بدل شارة + أيقونة + شريط تقدم ملوّن)
+          Container(width: 5, color: status.color),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 6, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('تقدم الإدخال',
-                      style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface.withValues(alpha: 0.5))),
+                  Row(children: [
+                    Expanded(
+                      child: Text(exam.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: cs.onSurface)),
+                    ),
+                    PopupMenuButton<String>(
+                      padding: EdgeInsets.zero,
+                      onSelected: (v) {
+                        if (v == 'edit') onEdit();
+                        if (v == 'delete') onDelete();
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(
+                            value: 'edit',
+                            child: Row(children: [
+                              Icon(Icons.edit_rounded, size: 18),
+                              SizedBox(width: 8),
+                              Text('تعديل',
+                                  style: TextStyle(fontFamily: 'Cairo')),
+                            ])),
+                        PopupMenuItem(
+                            value: 'delete',
+                            child: Row(children: [
+                              Icon(Icons.delete_rounded,
+                                  size: 18, color: Colors.red.shade400),
+                              const SizedBox(width: 8),
+                              Text('حذف',
+                                  style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      color: Colors.red.shade400)),
+                            ])),
+                      ],
+                    ),
+                  ]),
+                  // سطر واحد للتفاصيل بدل 3 شرائح: التاريخ • الدرجة • النجاح
                   Text(
-                    '${progress!.enteredGrades + progress!.absentStudents}'
-                    '/${progress!.totalStudents}',
+                    '${DateFormat('d MMMM', 'ar').format(exam.date)}  •  '
+                    'من ${exam.maxGrade.toStringAsFixed(0)}  •  '
+                    'النجاح ${exam.passingGrade.toStringAsFixed(0)}',
                     style: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: status.color),
+                        fontFamily: 'Cairo', fontSize: 12, color: muted),
                   ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: (progress!.enteredGrades + progress!.absentStudents) /
-                      progress!.totalStudents,
-                  backgroundColor: cs.onSurface.withValues(alpha: 0.08),
-                  valueColor: AlwaysStoppedAnimation<Color>(status.color),
-                  minHeight: 6,
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-
-            // Groups buttons
-            if (relatedGroups.isEmpty)
-              Text('لا توجد مجموعات مرتبطة',
-                  style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 12,
-                      color: cs.onSurface.withValues(alpha: 0.4)))
-            else ...[
-              Text('إدخال الدرجات:',
-                  style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurface.withValues(alpha: 0.5))),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: relatedGroups.map((g) {
-                  final c = Color(g.color ?? 0xFF4F46E5);
-                  return InkWell(
-                    onTap: () => onOpenGrades(g.id!, g.name),
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: c.withValues(alpha: isDark ? 0.2 : 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: c.withValues(alpha: 0.4)),
+                  if (hasProgress) ...[
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: done / progress!.totalStudents,
+                            backgroundColor:
+                                cs.onSurface.withValues(alpha: 0.08),
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(status.color),
+                            minHeight: 6,
+                          ),
+                        ),
                       ),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.groups_rounded, size: 13, color: c),
-                        const SizedBox(width: 4),
-                        Text(g.name,
+                      const SizedBox(width: 10),
+                      Text('$done/${progress!.totalStudents}',
+                          style: TextStyle(
+                              fontFamily: 'Cairo',
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                              color: status.color)),
+                    ]),
+                    if (progress!.absentStudents > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('منهم ${progress!.absentStudents} غياب',
                             style: TextStyle(
                                 fontFamily: 'Cairo',
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: c)),
-                        const SizedBox(width: 4),
-                        Icon(Icons.arrow_forward_ios_rounded,
-                            size: 10, color: c),
-                      ]),
+                                fontSize: 11,
+                                color: muted)),
+                      ),
+                  ],
+                  const SizedBox(height: 10),
+                  if (relatedGroups.isEmpty)
+                    Text('لا توجد مجموعات مرتبطة',
+                        style: TextStyle(
+                            fontFamily: 'Cairo', fontSize: 12, color: muted))
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: relatedGroups.map((g) {
+                        final c = Color(g.color ?? 0xFF4F46E5);
+                        return InkWell(
+                          onTap: () => onOpenGrades(g.id!, g.name),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: c.withValues(alpha: isDark ? 0.2 : 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                              border:
+                                  Border.all(color: c.withValues(alpha: 0.4)),
+                            ),
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.edit_note_rounded, size: 16, color: c),
+                              const SizedBox(width: 5),
+                              Text(g.name,
+                                  style: TextStyle(
+                                      fontFamily: 'Cairo',
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: c)),
+                            ]),
+                          ),
+                        );
+                      }).toList(),
                     ),
-                  );
-                }).toList(),
+                ],
               ),
-            ],
-          ],
-        ),
+            ),
+          ),
+        ]),
       ),
     );
   }
-}
-
-// ─── Info Chip ────────────────────────────────────────────────────────────────
-class _InfoChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  const _InfoChip(
-      {required this.icon, required this.label, required this.color});
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 13, color: color),
-          const SizedBox(width: 4),
-          Text(label,
-              style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: color)),
-        ]),
-      );
 }
 
 // ─── Empty State ──────────────────────────────────────────────────────────────

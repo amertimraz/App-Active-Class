@@ -3486,34 +3486,9 @@ class DatabaseService {
 
   /// تقدم إدخال الدرجات لامتحان (لبطاقة الامتحان)
   Future<ExamProgress> getExamProgress(int examId) async {
-    final db = await database;
-    // عدد الطلاب الكلي في كل مجموعات الامتحان
-    final totalRes = await db.rawQuery('''
-      SELECT COUNT(DISTINCT s.$COL_STUDENT_ID) AS total
-      FROM $TABLE_STUDENTS s
-      INNER JOIN $TABLE_EXAM_GROUPS eg ON eg.$COL_EG_GROUP_ID = s.$COL_STUDENT_GROUP_ID
-      WHERE eg.$COL_EG_EXAM_ID = ?
-    ''', [examId]);
-    final total = (totalRes.first['total'] as int?) ?? 0;
-
-    // عدد الدرجات المدخلة (سواء رقم أو غياب)
-    final enteredRes = await db.rawQuery('''
-      SELECT
-        COUNT(CASE WHEN $COL_GRADE_VALUE IS NOT NULL THEN 1 END) AS entered,
-        COUNT(CASE WHEN $COL_GRADE_IS_ABSENT = 1 THEN 1 END)     AS absent
-      FROM $TABLE_EXAM_GRADES
-      WHERE $COL_GRADE_EXAM_ID = ?
-    ''', [examId]);
-
-    final entered = (enteredRes.first['entered'] as int?) ?? 0;
-    final absent = (enteredRes.first['absent'] as int?) ?? 0;
-
-    return ExamProgress(
-      examId: examId,
-      totalStudents: total,
-      enteredGrades: entered,
-      absentStudents: absent,
-    );
+    final all = await getAllExamsProgress(examId: examId);
+    return all[examId] ??
+        ExamProgress(examId: examId, totalStudents: 0, enteredGrades: 0);
   }
 
   /// نفس [getExamProgress] لكن لكل الامتحانات مرة واحدة (استعلامين
@@ -3521,24 +3496,45 @@ class DatabaseService {
   /// الامتحانات كانت بتلف على كل امتحان وتستنى استعلامه لحاله، فمع مدرّس
   /// متراكم عنده امتحانات كتير كان بياخد وقت محسوس (شبه تعليق) كل ما
   /// الصفحة تفتح أو امتحان يتضاف/يتعدّل/يتحذف.
-  Future<Map<int, ExamProgress>> getAllExamsProgress() async {
+  Future<Map<int, ExamProgress>> getAllExamsProgress({int? examId}) async {
     final db = await database;
+    final filter = examId == null ? '' : 'WHERE eg.$COL_EG_EXAM_ID = ?';
+    final args = examId == null ? <Object?>[] : <Object?>[examId];
 
+    // المقام = نفس طلاب شاشة إدخال الدرجات بالظبط (getGradesForExamGroup):
+    // الطلاب النشطين في مجموعات الامتحان + المؤرشف اللي ليه درجة مسجّلة.
+    // قبل كده كان بيعدّ المؤرشفين اللي ملهمش درجة، فيظهر "40 من 44" رغم إن
+    // المدرس دخّل كل الطلاب الظاهرين قدامه.
     final totalRows = await db.rawQuery('''
       SELECT eg.$COL_EG_EXAM_ID AS exam_id,
              COUNT(DISTINCT s.$COL_STUDENT_ID) AS total
       FROM $TABLE_EXAM_GROUPS eg
       INNER JOIN $TABLE_STUDENTS s ON s.$COL_STUDENT_GROUP_ID = eg.$COL_EG_GROUP_ID
+      LEFT JOIN $TABLE_EXAM_GRADES g
+        ON g.$COL_GRADE_EXAM_ID = eg.$COL_EG_EXAM_ID
+        AND g.$COL_GRADE_STUDENT_ID = s.$COL_STUDENT_ID
+      $filter
+      ${examId == null ? 'WHERE' : 'AND'}
+        (s.$COL_STUDENT_IS_ARCHIVED = 0 OR g.$COL_GRADE_ID IS NOT NULL)
       GROUP BY eg.$COL_EG_EXAM_ID
-    ''');
+    ''', args);
 
+    // البسط = درجات طلاب موجودين فعلًا في مجموعات الامتحان (درجة طالب
+    // اتنقل لمجموعة تانية ما تتحسبش على مقام مش بيشمله).
     final gradeRows = await db.rawQuery('''
-      SELECT $COL_GRADE_EXAM_ID AS exam_id,
-             COUNT(CASE WHEN $COL_GRADE_VALUE IS NOT NULL THEN 1 END) AS entered,
-             COUNT(CASE WHEN $COL_GRADE_IS_ABSENT = 1 THEN 1 END)     AS absent
-      FROM $TABLE_EXAM_GRADES
-      GROUP BY $COL_GRADE_EXAM_ID
-    ''');
+      SELECT eg.$COL_EG_EXAM_ID AS exam_id,
+             COUNT(DISTINCT CASE WHEN g.$COL_GRADE_VALUE IS NOT NULL
+                                 THEN g.$COL_GRADE_STUDENT_ID END) AS entered,
+             COUNT(DISTINCT CASE WHEN g.$COL_GRADE_IS_ABSENT = 1
+                                 THEN g.$COL_GRADE_STUDENT_ID END) AS absent
+      FROM $TABLE_EXAM_GROUPS eg
+      INNER JOIN $TABLE_STUDENTS s ON s.$COL_STUDENT_GROUP_ID = eg.$COL_EG_GROUP_ID
+      INNER JOIN $TABLE_EXAM_GRADES g
+        ON g.$COL_GRADE_EXAM_ID = eg.$COL_EG_EXAM_ID
+        AND g.$COL_GRADE_STUDENT_ID = s.$COL_STUDENT_ID
+      $filter
+      GROUP BY eg.$COL_EG_EXAM_ID
+    ''', args);
 
     final totalByExam = <int, int>{
       for (final r in totalRows) r['exam_id'] as int: (r['total'] as int?) ?? 0
@@ -3553,12 +3549,12 @@ class DatabaseService {
 
     final examIds = {...totalByExam.keys, ...gradesByExam.keys};
     return {
-      for (final examId in examIds)
-        examId: ExamProgress(
-          examId: examId,
-          totalStudents: totalByExam[examId] ?? 0,
-          enteredGrades: gradesByExam[examId]?.$1 ?? 0,
-          absentStudents: gradesByExam[examId]?.$2 ?? 0,
+      for (final id in examIds)
+        id: ExamProgress(
+          examId: id,
+          totalStudents: totalByExam[id] ?? 0,
+          enteredGrades: gradesByExam[id]?.$1 ?? 0,
+          absentStudents: gradesByExam[id]?.$2 ?? 0,
         )
     };
   }
