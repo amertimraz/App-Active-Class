@@ -460,8 +460,47 @@ class SyncEngine with WidgetsBindingObserver {
     }
     if (payloadStr == null) return true;
     final payload = jsonDecode(payloadStr) as Map<String, dynamic>;
-    final remoteRow = await _buildRemoteRow(table, rowId, payload);
+    var remoteRow = await _buildRemoteRow(table, rowId, payload);
     if (remoteRow == null) return false; // الأب لسه ملوش remote_id
+
+    // spec 049 — صف اتزامن قبل كده (عنده remote_id): نحدّثه بالـid على
+    // السيرفر. المفتاح (origin_device_id, local_id) بيتغيّر لو هوية الجهاز
+    // اتغيّرت (أو الصف جه أصلاً من جهاز تاني)، وبالـupsert كان كل تعديل
+    // بيولّد نسخة مكرّرة. لو الصف مش موجود على السيرفر → نكمّل للـupsert.
+    final knownRemoteId =
+        await _localRemoteId(table, _pkCol(table), rowId);
+    if (knownRemoteId != null) {
+      if ((table == TABLE_GROUPS || table == TABLE_STUDENTS) &&
+          (await _suffixedRemoteIds()).contains(knownRemoteId)) {
+        // الاسم/الكود المحلي معدّل بسبب تعارض — مانرفعوش للصف الأصلي.
+        remoteRow = {...remoteRow}
+          ..remove('name')
+          ..remove('code');
+      }
+      Future<List> updateWith(Map<String, dynamic> row) async =>
+          await client
+              .from(table)
+              .update(inPlaceUpdateColumns(row))
+              .eq('id', knownRemoteId)
+              .eq('team_id', teamId)
+              .select('id')
+              .timeout(_kNetworkTimeout) as List;
+      List updated;
+      try {
+        updated = await updateWith(remoteRow);
+      } on PostgrestException catch (e) {
+        // نفس حالة sibling_remote_id التالف الموثّقة تحت في مسار الـupsert.
+        if (table == TABLE_STUDENTS &&
+            e.code == '23503' &&
+            e.message.contains('sibling_remote_id') &&
+            remoteRow['sibling_remote_id'] != null) {
+          updated = await updateWith({...remoteRow, 'sibling_remote_id': null});
+        } else {
+          rethrow;
+        }
+      }
+      if (updated.isNotEmpty) return true;
+    }
 
     Map<String, dynamic> res;
     try {
@@ -1466,6 +1505,7 @@ class SyncEngine with WidgetsBindingObserver {
       }
 
       final newId = await _insertWithCodeRetry(db, table, localMap);
+      await _noteIfSuffixed(db, table, newId, localMap);
       // أول عضو من مجموعة إخوة يوصل الجهاز ده (مفيش عضو تاني بنفس الـ
       // uuid محليًا لسه) — نديه sibling_group_id = معرّفه المحلي هو
       // (نفس قاعدة "أصغر id" الحالية). أي عضو تاني من نفس المجموعة
@@ -1480,6 +1520,37 @@ class SyncEngine with WidgetsBindingObserver {
       // فشل نهائي حتى بعد محاولات تعديل الكود — نتجاهل الصف بدل ما
       // نكسر حلقة المزامنة كلها.
       debugPrint('SyncEngine: تعذر إدراج صف مستلم من $table — $e');
+    }
+  }
+
+  // spec 049 — صفوف (مجموعة/طالب) اتسجّلت محليًا باسم/كود مختلف عن اللي
+  // على السيرفر بسبب تعارض (لاحقة "(2)" / "-2"). لازم الاسم/الكود المعدّل
+  // ده ما يترفعش تاني لنفس الصف على السيرفر (كان هيغيّر أصل زميل الفريق).
+  static const _kSuffixedKey = 'sync_suffixed_remote_ids';
+
+  Future<Set<String>> _suffixedRemoteIds() async {
+    final raw = await _dbService.getSetting(_kSuffixedKey) ?? '';
+    return raw.split(',').where((e) => e.isNotEmpty).toSet();
+  }
+
+  Future<void> _noteIfSuffixed(DatabaseExecutor db, String table, int newId,
+      Map<String, dynamic> incoming) async {
+    if (table != TABLE_GROUPS && table != TABLE_STUDENTS) return;
+    try {
+      final row = await db.query(table,
+          where: '${_pkCol(table)} = ?', whereArgs: [newId], limit: 1);
+      if (row.isEmpty) return;
+      final changed = table == TABLE_GROUPS
+          ? row.first[COL_GROUP_NAME] != incoming[COL_GROUP_NAME] ||
+              row.first[COL_GROUP_CODE] != incoming[COL_GROUP_CODE]
+          : row.first[COL_STUDENT_CODE] != incoming[COL_STUDENT_CODE];
+      final rid = row.first[COL_SYNC_REMOTE_ID] as String?;
+      if (!changed || rid == null) return;
+      final set = await _suffixedRemoteIds()
+        ..add(rid);
+      await _dbService.setSetting(_kSuffixedKey, set.join(','));
+    } catch (e) {
+      debugPrint('SyncEngine: تعذّر تسجيل صف بلاحقة تعارض — $e');
     }
   }
 

@@ -24,3 +24,17 @@ bool syncConflictIncomingWins({
   if (cmp != 0) return cmp > 0;
   return remoteRemoteId.compareTo(localRemoteId) < 0;
 }
+
+/// spec 049 — تحديث صف متزامن بالـid اللي على السيرفر مش بمفتاح الأصل
+/// (هوية الجهاز + الرقم المحلي): الهوية بتتغيّر (إعادة تثبيت/اختلاف توقيع
+/// الـAPK = ANDROID_ID جديد)، والمفتاح القديم كان بيخلّي كل تعديل يولّد
+/// نسخة مكرّرة على السيرفر. بنشيل مفاتيح الأصل من الصف عشان التحديث ما
+/// يغيّرش أصل الصف الأصلي.
+Map<String, dynamic> inPlaceUpdateColumns(Map<String, dynamic> remoteRow) {
+  const originKeys = {'team_id', 'origin_device_id', 'local_id', 'id'};
+  return {
+    for (final e in remoteRow.entries)
+      if (!originKeys.contains(e.key)) e.key: e.value,
+  };
+}
+
