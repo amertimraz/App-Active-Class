@@ -1690,6 +1690,8 @@ Future<void> _showSendReportConfirm(
       homeworkStatus: hwStatus,
       recitation: settings.showRecitation.value ? todayRec?.recitation : null,
       includeHomework: settings.showHomework.value,
+      interaction:
+          settings.showInteraction.value ? todayRec?.interaction : null,
       teacherName: teacherName,
       teacherSpecialization: teacherSpecialization,
     );

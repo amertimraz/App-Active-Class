@@ -63,6 +63,21 @@ void main() {
     test('بلا تسميع', () => expect(daily(), isNot(contains('🎤'))));
     test('غائب لا تسميع',
         () => expect(daily(rec: 8, st: ATTENDANCE_ABSENT), isNot(contains('🎤'))));
+    test('التفاعل يظهر بالإيموجي للحاضر فقط', () {
+      final m = ctrl.buildGuardianReportMessage(
+          student: s,
+          attendanceStatus: ATTENDANCE_PRESENT,
+          interaction: STUDENT_INTERACTION_ACTIVE);
+      expect(m, contains('🙋 التفاعل: 😃 $STUDENT_INTERACTION_ACTIVE'));
+      final none = ctrl.buildGuardianReportMessage(
+          student: s, attendanceStatus: ATTENDANCE_PRESENT);
+      expect(none, isNot(contains('🙋')));
+      final absent = ctrl.buildGuardianReportMessage(
+          student: s,
+          attendanceStatus: ATTENDANCE_ABSENT,
+          interaction: STUDENT_INTERACTION_ACTIVE);
+      expect(absent, isNot(contains('🙋')));
+    });
     test('الواجب مخفي', () {
       expect(daily(hw: false), isNot(contains('الواجب')));
       expect(daily(hw: true), contains('الواجب'));

@@ -883,6 +883,8 @@ class AttendanceController extends GetxController {
     int? recitation,
     // إعداد "الواجب في حضور اليوم": لو مخفي ما يظهرش سطر الواجب.
     bool includeHomework = true,
+    // تفاعل اليوم (نشيط/عادي/غير متفاعل) لو مفعّل ومسجَّل — spec 040.
+    String? interaction,
   }) {
     final dateLabel = DateFormat('d MMMM yyyy', 'ar').format(DateTime.now());
     final isAbsent =
@@ -896,6 +898,10 @@ class AttendanceController extends GetxController {
       ..writeln('')
       ..writeln('📊 الحضور: $attLabel');
     if (includeHomework) buffer.writeln('📖 الواجب: $hwLabel');
+    final inter = normalizeInteraction(interaction);
+    if (inter != null && !isAbsent) {
+      buffer.writeln('🙋 التفاعل: ${interactionEmoji(inter)} $inter');
+    }
     final rec = normalizeRecitation(recitation);
     if (rec != null && !isAbsent) buffer.writeln('🎤 التسميع: $rec/10');
 
