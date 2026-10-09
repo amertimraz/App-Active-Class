@@ -49,6 +49,11 @@ class ParentPortalService {
 
   static const String _kSlugKey = 'parent_portal_slug';
 
+  /// الدخول بالكود فقط (بدون آخر 4 أرقام)؟ إعداد محلي من الإعدادات.
+  bool get _codeOnly =>
+      Get.isRegistered<SettingsController>() &&
+      Get.find<SettingsController>().portalCodeOnly.value;
+
   /// بتتابع اسم/جنس المدرس وتعيد النشر أول ما يتغيّروا — من غيرها،
   /// البروفايل كان بينشر مرة واحدة بس أول ما شاشة الإعدادات تتفتح،
   /// فلو المدرس غيّر اسمه بعد كده، صفحة المتابعة تفضل باسمه القديم
@@ -308,6 +313,9 @@ class ParentPortalService {
     await _db.collection('parent_portal').doc(slug).set({
       'teacherName': settings?.teacherFullName.value ?? '',
       'teacherGender': settings?.teacherGender.value ?? 'male',
+      // طريقة دخول ولي الأمر — صفحة المتابعة بتقراها عشان تعرض/تخفي خانة
+      // آخر 4 أرقام وتحدد معرّف المستند (كود فقط / كود_آخر4).
+      'loginMode': _codeOnly ? 'code_only' : 'code_phone',
       'ownerUid': _auth.currentUser?.uid,
       'deviceId': LicenseController.to.deviceId.value,
       // .toUtc() ضروري هنا — من غيرها الـstring بيطلع بتوقيت محلي بلا
@@ -381,7 +389,8 @@ class ParentPortalService {
     List<Student> allStudents = const [],
   }) {
     final last4 = _last4(student.guardianPhone);
-    if (last4 == null) return null;
+    // بالكود فقط: الطالب بلا رقم ولي أمر برضو بيتنشر (مفيش آخر 4 مطلوبة).
+    if (last4 == null && !_codeOnly) return null;
     final code = student.code.toUpperCase();
     if (code.isEmpty) return null;
 
@@ -431,7 +440,7 @@ class ParentPortalService {
       ..sort((a, b) => b.examDate.compareTo(a.examDate));
 
     return {
-      '_docId': '${code}_$last4',
+      '_docId': _codeOnly ? code : '${code}_$last4',
       'name': student.name,
       'groupName': groupName,
       'present': present,
@@ -537,18 +546,42 @@ class ParentPortalService {
     if (!LicenseController.to.parentPortalActiveNow) return;
     try {
       final last4 = _last4(student.guardianPhone);
-      if (last4 == null) return;
       final code = student.code.toUpperCase();
       if (code.isEmpty) return;
       final slug = await getSlugIfExists();
       if (slug == null) return;
-      await _db
-          .collection('parent_portal')
-          .doc(slug)
-          .collection('students')
-          .doc('${code}_$last4')
-          .delete();
+      final col =
+          _db.collection('parent_portal').doc(slug).collection('students');
+      // بنمسح الشكلين (بالكود فقط / كود_آخر4) عشان مفيش بيانات طالب
+      // محذوف تفضل معروضة بأي طريقة دخول.
+      await col.doc(code).delete();
+      if (last4 != null) await col.doc('${code}_$last4').delete();
     } catch (_) {}
+  }
+
+  /// تغيير طريقة دخول ولي الأمر: بيمسح كل ملخصات الطلاب القديمة (بمعرّفاتها
+  /// القديمة) ويعيد نشرها بالمعرّفات الجديدة — عشان بيانات قديمة ما تفضلش
+  /// مفتوحة بالطريقة الأضعف/السابقة. بيرمي الخطأ لو فشل.
+  Future<void> switchLoginMode() async {
+    if (!LicenseController.to.parentPortalActiveNow) return;
+    await _ensureAuth();
+    final slug = await ensureSlug();
+    await _publishProfile(slug);
+    final col = _db.collection('parent_portal').doc(slug).collection('students');
+    final snap = await col.get();
+    var batch = _db.batch();
+    var ops = 0;
+    for (final d in snap.docs) {
+      batch.delete(d.reference);
+      ops++;
+      if (ops >= 400) {
+        await batch.commit();
+        batch = _db.batch();
+        ops = 0;
+      }
+    }
+    if (ops > 0) await batch.commit();
+    await publishAllStudents();
   }
 
   /// نشر شامل لكل الطلاب — بيتنادى أول مرة الميزة تتفعّل، أو يدويًا من

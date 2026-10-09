@@ -3286,6 +3286,61 @@ class _ParentPortalTileState extends State<_ParentPortalTile> {
             ),
           ]),
           const SizedBox(height: 10),
+          // طريقة دخول ولي الأمر: كود + آخر 4 أرقام (أأمن) أو كود فقط.
+          Obx(() {
+            final cfg = Get.find<SettingsController>();
+            final codeOnly = cfg.portalCodeOnly.value;
+            return SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('الدخول بالكود فقط',
+                  style: TextStyle(
+                      fontFamily: 'Cairo',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700)),
+              subtitle: Text(
+                  codeOnly
+                      ? 'ولي الأمر بيدخل بكود الطالب بس (أسهل، لكن أي حد يعرف الكود يشوف بيانات الطالب).'
+                      : 'ولي الأمر بيدخل بكود الطالب + آخر 4 أرقام من تليفونه (الأأمن).',
+                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 11.5)),
+              value: codeOnly,
+              onChanged: (v) async {
+                if (v) {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('الدخول بالكود فقط',
+                          style: TextStyle(
+                              fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+                      content: const Text(
+                          'بدون آخر 4 أرقام، أي حد يعرف (أو يخمّن) كود الطالب يقدر يشوف حضوره ومدفوعاته ودرجاته. '
+                          'لو أكواد طلابك متسلسلة (مثل 1، 2، 3) ده بيسهّل التخمين.\n\nمتأكد؟',
+                          style: TextStyle(fontFamily: 'Cairo')),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('إلغاء')),
+                        FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('تفعيل')),
+                      ],
+                    ),
+                  );
+                  if (ok != true) return;
+                }
+                final done = await cfg.setPortalCodeOnly(v);
+                if (done) {
+                  ToastHelper.success(v
+                      ? 'ولي الأمر بيدخل بالكود فقط دلوقتي'
+                      : 'رجع الدخول بالكود + آخر 4 أرقام');
+                } else {
+                  ToastHelper.error(
+                      'تعذر تغيير طريقة الدخول — تأكد من الإنترنت وحاول تاني');
+                }
+              },
+            );
+          }),
+          const SizedBox(height: 4),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(

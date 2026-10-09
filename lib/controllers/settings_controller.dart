@@ -293,6 +293,7 @@ class SettingsController extends GetxController {
           await _migrateBool(SETTING_QR_AUTO_LATE_ENABLED) ?? true;
       attendanceOverdueWarning.value =
           await _migrateBool(SETTING_ATTENDANCE_OVERDUE_WARNING) ?? true;
+      portalCodeOnly.value = (await _dbGet(SETTING_PORTAL_CODE_ONLY)) == '1';
       showHomework.value = (await _dbGet(SETTING_SHOW_HOMEWORK)) != '0';
       showRecitation.value = (await _dbGet(SETTING_SHOW_RECITATION)) != '0';
       showInteraction.value = (await _dbGet(SETTING_SHOW_INTERACTION)) != '0';
@@ -300,6 +301,33 @@ class SettingsController extends GetxController {
       autoAbsentGraceMinutes.value = clampAutoAbsentGrace(
           int.tryParse(await _dbGet(SETTING_AUTO_ABSENT_GRACE_MINUTES) ?? ''));
     } catch (_) {}
+  }
+
+  // ── بوابة أولياء الأمور: الدخول بالكود فقط ──
+  final RxBool portalCodeOnly = false.obs;
+
+  /// يغيّر طريقة دخول ولي الأمر (كود فقط / كود + آخر 4 أرقام) ويعيد نشر
+  /// كل ملخصات الطلاب بمعرّفات المستندات الجديدة (والقديمة بتتمسح).
+  /// بيرجّع false لو إعادة النشر فشلت (والإعداد بيرجع زي ما كان).
+  Future<bool> setPortalCodeOnly(bool v) async {
+    final old = portalCodeOnly.value;
+    portalCodeOnly.value = v;
+    try {
+      await _dbSet(SETTING_PORTAL_CODE_ONLY, v ? '1' : '0');
+    } catch (_) {}
+    try {
+      if (Get.isRegistered<LicenseController>() &&
+          LicenseController.to.parentPortalActiveNow) {
+        await ParentPortalService().switchLoginMode();
+      }
+      return true;
+    } catch (_) {
+      portalCodeOnly.value = old;
+      try {
+        await _dbSet(SETTING_PORTAL_CODE_ONLY, old ? '1' : '0');
+      } catch (_) {}
+      return false;
+    }
   }
 
   // ── إظهار/إخفاء الواجب والتسميع والتفاعل في ورقة حضور اليوم ──

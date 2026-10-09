@@ -214,6 +214,9 @@
 
   const slug = getSlug();
 
+  // طريقة الدخول: 'code_phone' (الافتراضي، والمستندات القديمة) أو 'code_only'.
+  let codeOnly = false;
+
   function renderForm(errorMsg){
     teacherTitle.textContent = window.__teacherName || 'متابعة الطالب';
     teacherSub.textContent = defaultTeacherSub;
@@ -223,14 +226,15 @@
         <label>كود الطالب</label>
         <input id="codeInput" type="text" placeholder="مثلاً A05" autocapitalize="characters">
       </div>
-      <div class="field">
+      ${codeOnly ? '' : `<div class="field">
         <label>آخر 4 أرقام من رقم تليفون ولي الأمر</label>
         <input id="phoneInput" type="tel" placeholder="1234" maxlength="4" inputmode="numeric">
-      </div>
+      </div>`}
       <button class="btn" id="submitBtn">عرض البيانات</button>
     `;
     document.getElementById('submitBtn').onclick = handleSubmit;
-    document.getElementById('phoneInput').addEventListener('keydown', (e) => {
+    const enterTarget = document.getElementById(codeOnly ? 'codeInput' : 'phoneInput');
+    enterTarget.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') handleSubmit();
     });
   }
@@ -255,16 +259,17 @@
 
   async function handleSubmit(){
     const code = document.getElementById('codeInput').value.trim().toUpperCase();
-    const phone = document.getElementById('phoneInput').value.trim();
+    const phoneEl = document.getElementById('phoneInput');
+    const phone = phoneEl ? phoneEl.value.trim() : '';
     if (!code) { renderForm('أدخل كود الطالب'); return; }
-    if (!/^\d{4}$/.test(phone)) { renderForm('أدخل آخر 4 أرقام صحيحة من رقم التليفون'); return; }
+    if (!codeOnly && !/^\d{4}$/.test(phone)) { renderForm('أدخل آخر 4 أرقام صحيحة من رقم التليفون'); return; }
 
     card.innerHTML = '<div class="spinner"></div>';
     try {
-      const docId = `${code}_${phone}`;
+      const docId = codeOnly ? code : `${code}_${phone}`;
       const snap = await getDoc(doc(db, 'parent_portal', slug, 'students', docId));
       if (!snap.exists()) {
-        renderForm('البيانات غير صحيحة — تأكد من الكود ورقم التليفون');
+        renderForm(codeOnly ? 'الكود غير صحيح — تأكد من كود الطالب' : 'البيانات غير صحيحة — تأكد من الكود ورقم التليفون');
         return;
       }
       renderStudent(snap.data());
@@ -493,6 +498,7 @@
           return;
         }
 
+        codeOnly = p.loginMode === 'code_only';
         const title = p.teacherGender === 'female' ? 'مس' : 'مستر';
         const name = p.teacherName ? `${title} ${p.teacherName}` : '';
         if (name) {

@@ -228,6 +228,8 @@ const String SETTING_QR_AUTO_LATE_ENABLED = 'qr_auto_late_enabled';
 // spec 046 — الغياب التلقائي بعد انتهاء الحصة (كلها محلية، غير مُزامنة).
 // إظهار/إخفاء أدوات الحصة في ورقة حضور اليوم: الواجب، التسميع (spec 048)،
 // والتفاعل (spec 040). محلية، افتراضيًا ظاهرة.
+// بوابة أولياء الأمور: الدخول بالكود فقط (بدون آخر 4 أرقام). محلي، افتراضيًا مقفول.
+const String SETTING_PORTAL_CODE_ONLY = 'parent_portal_code_only';
 const String SETTING_SHOW_HOMEWORK = 'show_homework';
 const String SETTING_SHOW_RECITATION = 'show_recitation';
 const String SETTING_SHOW_INTERACTION = 'show_interaction';
