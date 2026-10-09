@@ -24,6 +24,7 @@ import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/debtors_report.dart';
 import 'package:active_class/utils/recitation.dart';
 import 'package:active_class/utils/performance.dart';
+import 'package:active_class/utils/pdf_text.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:get/get.dart';
 
@@ -514,9 +515,9 @@ class ExportService {
           children: [
             _pageHeader('تقرير مستوى الطالب — $monthLabel'),
             pw.SizedBox(height: 12),
-            pw.Text('الطالب: ${p.name}', style: _style(size: 15, bold: true)),
+            pw.Text(fixArabicForPdf('الطالب: ${p.name}'), style: _style(size: 15, bold: true)),
             pw.SizedBox(height: 2),
-            pw.Text('المجموعة: ${p.groupName}',
+            pw.Text(fixArabicForPdf('المجموعة: ${p.groupName}'),
                 style: _style(size: 11, color: _grey)),
             pw.SizedBox(height: 14),
             pw.Table(
@@ -535,8 +536,9 @@ class ExportService {
             if (teacherName.trim().isNotEmpty ||
                 teacherSpecialization.trim().isNotEmpty) ...[
               pw.Text(
-                  'المعلم: ${teacherName.trim().isEmpty ? '-' : teacherName.trim()}'
-                  '    التخصص: ${teacherSpecialization.trim().isEmpty ? '-' : teacherSpecialization.trim()}',
+                  fixArabicForPdf(
+                      'المعلم: ${teacherName.trim().isEmpty ? '-' : teacherName.trim()}'
+                      '    التخصص: ${teacherSpecialization.trim().isEmpty ? '-' : teacherSpecialization.trim()}'),
                   style: _style(size: 10)),
               pw.SizedBox(height: 4),
             ],
@@ -725,7 +727,7 @@ class ExportService {
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
           pw.Expanded(
-            child: pw.Text(title,
+            child: pw.Text(fixArabicForPdf(title),
                 style: _style(size: 14, bold: true, color: _primary),
                 maxLines: 2),
           ),
@@ -1271,7 +1273,7 @@ class ExportService {
         color: _primary,
         padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 4),
         alignment: pw.Alignment.center,
-        child: pw.Text(text,
+        child: pw.Text(fixArabicForPdf(text),
             style: _style(size: size, bold: true, color: _white),
             textAlign: pw.TextAlign.center),
       );
@@ -1280,7 +1282,7 @@ class ExportService {
         color: _primary,
         padding: const pw.EdgeInsets.all(2),
         alignment: pw.Alignment.center,
-        child: pw.Text(text,
+        child: pw.Text(fixArabicForPdf(text),
             style: _style(size: 6.5, bold: true, color: _white),
             textAlign: pw.TextAlign.center),
       );
@@ -1289,7 +1291,7 @@ class ExportService {
         color: _accent,
         padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 4),
         alignment: pw.Alignment.center,
-        child: pw.Text(text,
+        child: pw.Text(fixArabicForPdf(text),
             style: _style(size: 10, bold: true, color: _white),
             textAlign: pw.TextAlign.center),
       );
@@ -1305,7 +1307,7 @@ class ExportService {
         color: isEven ? _white : _lightGrey,
         padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4),
         alignment: pw.Alignment.center,
-        child: pw.Text(text,
+        child: pw.Text(fixArabicForPdf(text),
             style:
                 _style(size: size, bold: bold, color: color ?? PdfColors.black),
             textAlign: pw.TextAlign.center),
@@ -1323,7 +1325,7 @@ class ExportService {
             borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
             border: pw.Border.all(color: color, width: 0.5),
           ),
-          child: pw.Text(text,
+          child: pw.Text(fixArabicForPdf(text),
               style: _style(size: 9, bold: true, color: color),
               textAlign: pw.TextAlign.center),
         ),
@@ -1466,7 +1468,7 @@ class ExportService {
       textDirection: pw.TextDirection.rtl,
       theme: pw.ThemeData.withFont(base: font, bold: fontBold),
       build: (ctx) => [
-        pw.Text(title,
+        pw.Text(fixArabicForPdf(title),
             style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
         pw.SizedBox(height: 10),
         pw.TableHelper.fromTextArray(

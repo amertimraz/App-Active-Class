@@ -8,6 +8,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import 'package:active_class/models/certificate_model.dart';
+import 'package:active_class/utils/pdf_text.dart';
 
 const _navy = PdfColor.fromInt(0xFF15294B);
 const _navySoft = PdfColor.fromInt(0xFF33456B);
@@ -63,7 +64,7 @@ pw.Widget buildCertificate({
       );
 
   pw.Widget centered(String text, pw.TextStyle style, {int maxLines = 2}) =>
-      pw.Text(text,
+      pw.Text(fixArabicForPdf(text),
           textAlign: pw.TextAlign.center,
           maxLines: maxLines,
           overflow: pw.TextOverflow.clip,
@@ -76,7 +77,8 @@ pw.Widget buildCertificate({
           borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
           color: PdfColors.white,
         ),
-        child: pw.Text(text, style: st(13.5, b: true, color: _gold)),
+        child: pw.Text(fixArabicForPdf(text),
+            style: st(13.5, b: true, color: _gold)),
       );
 
   final layers = <pw.Widget>[
