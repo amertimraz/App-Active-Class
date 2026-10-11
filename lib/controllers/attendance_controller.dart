@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:get/get.dart';
+import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/utils/archive_history.dart';
 import 'package:active_class/utils/auto_absent.dart';
 import 'package:active_class/utils/recitation.dart';
@@ -314,11 +315,15 @@ class AttendanceController extends GetxController {
     _applyFilter();
   }
 
-  /// spec 048 — يسجّل/يغيّر/يمسح درجة تسميع (1..10) لسجل حضور يوم معيّن.
-  /// [value] == null → مسح. بيتجاهل بهدوء لو السجل غير موجود أو الحالة
-  /// غير مؤهَّلة (غائب/بلا حضور) أو القيمة خارج النطاق.
+  /// spec 048 — يسجّل/يغيّر/يمسح درجة تسميع (1..الدرجة العظمى الحالية) لسجل
+  /// حضور يوم معيّن. [value] == null → مسح. بيتجاهل بهدوء لو السجل غير
+  /// موجود أو الحالة غير مؤهَّلة (غائب/بلا حضور) أو القيمة خارج النطاق.
+  /// الدرجة العظمى وقت التسجيل بتتحفظ مع السجل.
   Future<void> setRecitation(int studentId, DateTime day, int? value) async {
-    if (value != null && normalizeRecitation(value) == null) return;
+    final max = currentRecitationMax(Get.isRegistered<SettingsController>()
+        ? Get.find<SettingsController>().recitationMax.value
+        : null);
+    if (value != null && normalizeRecitation(value, max: max) == null) return;
     final dayStart = DateTime(day.year, day.month, day.day);
     final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
     final existing = attendance.firstWhereOrNull((a) =>
@@ -329,6 +334,7 @@ class AttendanceController extends GetxController {
 
     final updated = existing.copyWith(
       recitation: value,
+      recitationMax: value == null ? null : max,
       clearRecitation: value == null,
     );
     await _dbService.updateAttendance(updated);
@@ -879,8 +885,9 @@ class AttendanceController extends GetxController {
     String? homeworkStatus,
     String? teacherName,
     String? teacherSpecialization,
-    // spec 048 — درجة تسميع اليوم (1..10) لو مفعّلة ومسجَّلة.
+    // spec 048 — درجة تسميع اليوم (1..الدرجة العظمى) لو مفعّلة ومسجَّلة.
     int? recitation,
+    int recitationMax = kRecitationDefaultMax,
     // إعداد "الواجب في حضور اليوم": لو مخفي ما يظهرش سطر الواجب.
     bool includeHomework = true,
     // تفاعل اليوم (نشيط/عادي/غير متفاعل) لو مفعّل ومسجَّل — spec 040.
@@ -902,8 +909,10 @@ class AttendanceController extends GetxController {
     if (inter != null && !isAbsent) {
       buffer.writeln('🙋 التفاعل: ${interactionEmoji(inter)} $inter');
     }
-    final rec = normalizeRecitation(recitation);
-    if (rec != null && !isAbsent) buffer.writeln('🎤 التسميع: $rec/10');
+    final rec = normalizeRecitation(recitation, max: recitationMax);
+    if (rec != null && !isAbsent) {
+      buffer.writeln('🎤 التسميع: $rec/$recitationMax');
+    }
 
     final tName = teacherName?.trim() ?? '';
     final tSpec = teacherSpecialization?.trim() ?? '';

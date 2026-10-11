@@ -119,4 +119,53 @@ void main() {
       expect((h.first as Map)['grade'], 10);
     });
   });
+
+  group('درجة عظمى قابلة للضبط', () {
+    Attendance a(int day, int? g, {int? max}) => Attendance(
+        studentId: 1,
+        date: DateTime(2026, 10, day),
+        status: ATTENDANCE_PRESENT,
+        recitation: g,
+        recitationMax: max);
+    test('normalizeRecitation بحد مخصّص', () {
+      expect(normalizeRecitation(17, max: 20), 17);
+      expect(normalizeRecitation(21, max: 20), isNull);
+      expect(normalizeRecitation(11), isNull); // الافتراضي 10
+      expect(normalizeRecitation(0, max: 20), isNull);
+    });
+    test('سجل قديم بلا max يتعامل كـ/10، والجديد بدرجته العظمى', () {
+      expect(recitationMaxOf(a(1, 8)), 10);
+      expect(recitationMaxOf(a(1, 17, max: 20)), 20);
+      expect(recitationGradeOf(a(1, 17)), isNull); // 17 من 10 غير صالحة
+      expect(recitationGradeOf(a(1, 17, max: 20)), 17);
+      expect(recitationFractionOf(a(1, 15, max: 30)), 0.5);
+    });
+    test('المتوسط بالنسبة ومعبَّر عنه من أي مقياس', () {
+      final recs = [a(1, 8), a(2, 15, max: 20)]; // 0.8 و0.75
+      expect(recitationAverage(recs), 7.8); // من 10 (7.75 → 7.8)
+      expect(recitationAverage(recs, scaleTo: 20), 15.5);
+      expect(recitationAverage(recs, scaleTo: 100), 77.5);
+      expect(recitationCount(recs), 2);
+    });
+    test('بوابة: max والتاريخ بدرجة كل سجل', () {
+      final f = recitationPortalFields([a(1, 8), a(2, 15, max: 20)],
+          enabled: true, scaleTo: 20);
+      expect(f['recitationMax'], 20);
+      final h = f['recitationHistory'] as List;
+      expect((h.first as Map)['grade'], 15);
+      expect((h.first as Map)['max'], 20);
+      expect((h.last as Map)['max'], 10);
+    });
+    test('currentRecitationMax يقصّ المدى', () {
+      expect(currentRecitationMax(null), 10);
+      expect(currentRecitationMax(0), 10);
+      expect(currentRecitationMax(250), 100);
+      expect(currentRecitationMax(30), 30);
+    });
+    test('Attendance.copyWith/toMap بيحفظ recitation_max', () {
+      final x = a(1, 17, max: 20);
+      expect(Attendance.fromMap(x.toMap()).recitationMax, 20);
+      expect(x.copyWith(clearRecitation: true).recitationMax, isNull);
+    });
+  });
 }

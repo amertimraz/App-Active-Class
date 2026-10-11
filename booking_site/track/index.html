@@ -413,7 +413,7 @@
     const recitationRows = recitationHistory.map(r => `
           <div class="history-row">
             <span class="date">${fmtDate(r.date)}</span>
-            <span class="exam-grade">${Number(r.grade)}<span class="exam-max"> / 10</span></span>
+            <span class="exam-grade">${Number(r.grade)}<span class="exam-max"> / ${Number(r.max) || 10}</span></span>
           </div>`).join('');
 
     card.innerHTML = `
@@ -461,7 +461,7 @@
 
       ${hasRecitation ? `
       <div class="section-title">🎤 التسميع</div>
-      <div class="money-row"><span>متوسط التسميع (${d.recitationCount ?? recitationHistory.length} مرة)</span><b>${Number(d.recitationAverage).toFixed(1)} / 10</b></div>
+      <div class="money-row"><span>متوسط التسميع (${d.recitationCount ?? recitationHistory.length} مرة)</span><b>${Number(d.recitationAverage).toFixed(1)} / ${Number(d.recitationMax) || 10}</b></div>
       <div class="history-list">${recitationRows}</div>
       ` : ''}
 

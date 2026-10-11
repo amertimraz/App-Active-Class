@@ -16,6 +16,7 @@ import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/auto_absent.dart';
+import 'package:active_class/utils/recitation.dart';
 import 'package:active_class/utils/billing_day.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 
@@ -294,12 +295,34 @@ class SettingsController extends GetxController {
       attendanceOverdueWarning.value =
           await _migrateBool(SETTING_ATTENDANCE_OVERDUE_WARNING) ?? true;
       portalCodeOnly.value = (await _dbGet(SETTING_PORTAL_CODE_ONLY)) == '1';
+      recitationMax.value = currentRecitationMax(
+          int.tryParse(await _dbGet(SETTING_RECITATION_MAX) ?? ''));
       showHomework.value = (await _dbGet(SETTING_SHOW_HOMEWORK)) != '0';
       showRecitation.value = (await _dbGet(SETTING_SHOW_RECITATION)) != '0';
       showInteraction.value = (await _dbGet(SETTING_SHOW_INTERACTION)) != '0';
       autoAbsentEnabled.value = (await _dbGet(SETTING_AUTO_ABSENT_ENABLED)) == '1';
       autoAbsentGraceMinutes.value = clampAutoAbsentGrace(
           int.tryParse(await _dbGet(SETTING_AUTO_ABSENT_GRACE_MINUTES) ?? ''));
+    } catch (_) {}
+  }
+
+  // ── الدرجة العظمى لتسميع الحصة (افتراضيًا 10) ──
+  final RxInt recitationMax = kRecitationDefaultMax.obs;
+
+  /// يغيّر الدرجة العظمى للتسجيلات الجديدة. السجلات القديمة بتحتفظ بدرجتها
+  /// العظمى وقت التسجيل (فمفيش تحويل ولا بوظان في المتوسطات).
+  Future<void> setRecitationMax(int max) async {
+    final m = currentRecitationMax(max);
+    recitationMax.value = m;
+    try {
+      await _dbSet(SETTING_RECITATION_MAX, m.toString());
+    } catch (_) {}
+    // ملخصات البوابة بتعرض "من X" — نعيد النشر (لو البوابة شغّالة).
+    try {
+      if (Get.isRegistered<LicenseController>() &&
+          LicenseController.to.parentPortalActiveNow) {
+        unawaited(ParentPortalService().publishAllStudents().catchError((_) => 0));
+      }
     } catch (_) {}
   }
 

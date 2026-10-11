@@ -1340,8 +1340,12 @@ class _RecitationSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final month = DateTime(now.year, now.month, 1);
-    final monthAvg = recitationAverage(attendance, month: month);
-    final totalAvg = recitationAverage(attendance);
+    final maxNow = currentRecitationMax(Get.isRegistered<SettingsController>()
+        ? Get.find<SettingsController>().recitationMax.value
+        : null);
+    final monthAvg =
+        recitationAverage(attendance, month: month, scaleTo: maxNow);
+    final totalAvg = recitationAverage(attendance, scaleTo: maxNow);
     final monthN = recitationCount(attendance, month: month);
     final totalN = recitationCount(attendance);
     return Container(
@@ -1356,11 +1360,11 @@ class _RecitationSummary extends StatelessWidget {
       child: Row(children: [
         Expanded(
             child: _MiniStat('تسميع هذا الشهر',
-                '${recitationAverageLabel(monthAvg)}  ($monthN)',
+                '${recitationAverageLabel(monthAvg)}/$maxNow  ($monthN)',
                 const Color(0xFF0EA5E9))),
         Expanded(
             child: _MiniStat('تسميع الإجمالي',
-                '${recitationAverageLabel(totalAvg)}  ($totalN)',
+                '${recitationAverageLabel(totalAvg)}/$maxNow  ($totalN)',
                 const Color(0xFF0EA5E9))),
       ]),
     );
@@ -1438,12 +1442,14 @@ class _SessionOverridesSection extends StatelessWidget {
 class _DayEntry {
   Homework? hw;
   int? rec;
+  int recMax = kRecitationDefaultMax;
   _DayEntry();
 }
 
-Color _recColor(int g) => g >= 8
+// لون الدرجة بنسبتها لدرجتها العظمى (≥80% أخضر، ≥50% كهرماني).
+Color _recColor(int g, int max) => g >= max * 0.8
     ? const Color(0xFF10B981)
-    : g >= 5
+    : g >= max * 0.5
         ? const Color(0xFFF59E0B)
         : const Color(0xFFEF4444);
 
@@ -1466,6 +1472,10 @@ class _HomeworkTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    final recMaxNow = currentRecitationMax(Get.isRegistered<SettingsController>()
+        ? Get.find<SettingsController>().recitationMax.value
+        : null);
+
     // يوم واحد = واجب و/أو درجة تسميع
     final days = <DateTime, _DayEntry>{};
     if (showHomework) {
@@ -1476,10 +1486,12 @@ class _HomeworkTab extends StatelessWidget {
     }
     if (showRecitation) {
       for (final a in attendance) {
-        final g = normalizeRecitation(a.recitation);
+        final g = recitationGradeOf(a);
         if (g == null) continue;
         final d = DateTime(a.date.year, a.date.month, a.date.day);
-        (days[d] ??= _DayEntry()).rec = g;
+        final e = (days[d] ??= _DayEntry());
+        e.rec = g;
+        e.recMax = recitationMaxOf(a);
       }
     }
     final sortedDays = days.keys.toList()..sort((a, b) => b.compareTo(a));
@@ -1587,11 +1599,11 @@ class _HomeworkTab extends StatelessWidget {
               .length;
           final mRecs = [
             for (final d in list)
-              if (days[d]!.rec != null) days[d]!.rec!
+              if (days[d]!.rec != null) days[d]!.rec! / days[d]!.recMax
           ];
           final mRecAvg = mRecs.isEmpty
               ? null
-              : mRecs.reduce((a, b) => a + b) / mRecs.length;
+              : mRecs.reduce((a, b) => a + b) / mRecs.length * recMaxNow;
           return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1628,7 +1640,7 @@ class _HomeworkTab extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                            '🎤 تسميع ${recitationAverageLabel(double.parse(mRecAvg.toStringAsFixed(1)))}',
+                            '🎤 تسميع ${recitationAverageLabel(double.parse(mRecAvg.toStringAsFixed(1)))}/$recMaxNow',
                             style: const TextStyle(
                                 color: Color(0xFF0EA5E9),
                                 fontSize: 11,
@@ -1702,12 +1714,13 @@ class _HomeworkTab extends StatelessWidget {
                                     horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
                                   color:
-                                      _recColor(e.rec!).withValues(alpha: 0.12),
+                                      _recColor(e.rec!, e.recMax)
+                                          .withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: Text('🎤 ${e.rec}/10',
+                                child: Text('🎤 ${e.rec}/${e.recMax}',
                                     style: TextStyle(
-                                        color: _recColor(e.rec!),
+                                        color: _recColor(e.rec!, e.recMax),
                                         fontSize: 12,
                                         fontWeight: FontWeight.w800)),
                               ),

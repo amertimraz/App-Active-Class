@@ -812,6 +812,36 @@ class SettingsPage extends StatelessWidget {
                                 onChanged: (v) async =>
                                     await settings.setShowRecitation(v),
                               )),
+                          // الدرجة العظمى للتسميع (مش لازم تكون 10)
+                          Obx(() => settings.showRecitation.value
+                              ? Column(children: [
+                                  _buildDivider(isDark),
+                                  _buildDropdownTile<int>(
+                                    context,
+                                    isDark,
+                                    icon: Icons.stairs_rounded,
+                                    iconColor: const Color(0xFF0EA5E9),
+                                    title: 'الدرجة العظمى للتسميع',
+                                    value: settings.recitationMax.value,
+                                    items: const [
+                                      5, 10, 15, 20, 25, 30, 40, 50, 100
+                                    ]
+                                        .map((m) => DropdownMenuItem(
+                                              value: m,
+                                              child: Text('من $m'),
+                                            ))
+                                        .toList(),
+                                    onChanged: (m) async {
+                                      if (m != null) {
+                                        await settings.setRecitationMax(m);
+                                        ToastHelper.success(
+                                            'الدرجات الجديدة هتتسجّل من $m (القديمة بتفضل زي ما هي)',
+                                            title: 'التسميع');
+                                      }
+                                    },
+                                  ),
+                                ])
+                              : const SizedBox.shrink()),
                           _buildDivider(isDark),
                           Obx(() => _buildSwitchTile(
                                 context,

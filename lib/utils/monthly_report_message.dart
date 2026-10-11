@@ -113,10 +113,15 @@ String buildMonthlyReportMessage({
   }
 
   // spec 048 — متوسط درجات التسميع (بيظهر بس لو مفعّل وفيه درجات فعلًا).
-  final recAvg = showRecitation ? recitationAverage(monthAtt) : null;
+  final recMaxNow = currentRecitationMax(Get.isRegistered<SettingsController>()
+      ? Get.find<SettingsController>().recitationMax.value
+      : null);
+  final recAvg = showRecitation
+      ? recitationAverage(monthAtt, scaleTo: recMaxNow)
+      : null;
   if (recAvg != null) {
     buffer.writeln(
-        '🎤 التسميع: متوسط ${recitationAverageLabel(recAvg)}/10 (${recitationCount(monthAtt)} مرة)');
+        '🎤 التسميع: متوسط ${recitationAverageLabel(recAvg)}/$recMaxNow (${recitationCount(monthAtt)} مرة)');
   }
 
   if (attsSorted.isNotEmpty) {
@@ -124,9 +129,9 @@ String buildMonthlyReportMessage({
     for (final a in attsSorted.take(10)) {
       // spec 040 — إيموجي التفاعل جنب سطر نفس اليوم (لو مسجَّل).
       final emoji = interactionEmoji(a.interaction);
-      final rec = showRecitation ? normalizeRecitation(a.recitation) : null;
+      final rec = showRecitation ? recitationGradeOf(a) : null;
       final suffix = '${emoji.isNotEmpty ? ' $emoji' : ''}'
-          '${rec != null ? ' 🎤$rec/10' : ''}';
+          '${rec != null ? ' 🎤$rec/${recitationMaxOf(a)}' : ''}';
       buffer.writeln(
           '• ${DateFormat('yyyy-MM-dd').format(a.date)} — ${attendanceStatusLabel(a.status)}$suffix');
     }

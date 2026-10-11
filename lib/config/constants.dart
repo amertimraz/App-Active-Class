@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 38;
+const int DATABASE_VERSION = 39;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -179,7 +179,8 @@ const String COL_ATTENDANCE_NOTES = 'notes';
 const String COL_ATTENDANCE_CREATED_AT = 'created_at';
 // spec 040 — تفاعل الطالب (إيموجي بسيط) على نفس سجل الحضور.
 const String COL_ATTENDANCE_INTERACTION = 'interaction';
-const String COL_ATTENDANCE_RECITATION   = 'recitation';   // spec 048 — 1..10 أو NULL
+const String COL_ATTENDANCE_RECITATION   = 'recitation';   // spec 048 — 1..max أو NULL
+const String COL_ATTENDANCE_RECITATION_MAX = 'recitation_max'; // الدرجة العظمى وقت التسجيل (NULL = 10)
 const String STUDENT_INTERACTION_ACTIVE = 'نشيط';
 const String STUDENT_INTERACTION_NEUTRAL = 'عادي';
 const String STUDENT_INTERACTION_DISENGAGED = 'غير متفاعل';
@@ -230,6 +231,8 @@ const String SETTING_QR_AUTO_LATE_ENABLED = 'qr_auto_late_enabled';
 // والتفاعل (spec 040). محلية، افتراضيًا ظاهرة.
 // بوابة أولياء الأمور: الدخول بالكود فقط (بدون آخر 4 أرقام). محلي، افتراضيًا مقفول.
 const String SETTING_PORTAL_CODE_ONLY = 'parent_portal_code_only';
+// الدرجة العظمى لتسميع الحصة (افتراضيًا 10). محلي.
+const String SETTING_RECITATION_MAX = 'recitation_max';
 const String SETTING_SHOW_HOMEWORK = 'show_homework';
 const String SETTING_SHOW_RECITATION = 'show_recitation';
 const String SETTING_SHOW_INTERACTION = 'show_interaction';

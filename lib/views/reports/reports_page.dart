@@ -302,11 +302,13 @@ class _ReportsPageState extends State<ReportsPage> {
               Builder(builder: (context) {
                 final cfg = Get.find<SettingsController>();
                 if (!cfg.showRecitation.value) return const SizedBox.shrink();
+                final maxNow = cfg.recitationMax.value;
                 final standings = recitationStandings(ctrl.allAttendance,
-                    month: month);
+                    month: month, scaleTo: maxNow);
                 if (standings.isEmpty) return const SizedBox.shrink();
                 final monthAvg =
-                    recitationAverage(ctrl.allAttendance, month: month);
+                    recitationAverage(ctrl.allAttendance,
+                        month: month, scaleTo: maxNow);
                 final nameById = {
                   for (final s in ctrl.allStudents) s.id: s.name
                 };
@@ -338,7 +340,7 @@ class _ReportsPageState extends State<ReportsPage> {
                                     ?.copyWith(fontWeight: FontWeight.w800)),
                           ),
                           Text(
-                              'المتوسط ${recitationAverageLabel(monthAvg)}/10',
+                              'المتوسط ${recitationAverageLabel(monthAvg)}/$maxNow',
                               style: const TextStyle(
                                   fontWeight: FontWeight.w800,
                                   color: Color(0xFF0EA5E9))),
@@ -361,7 +363,7 @@ class _ReportsPageState extends State<ReportsPage> {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis)),
                               Text(
-                                  '${recitationAverageLabel(standings[i].average)}/10  (${standings[i].count})',
+                                  '${recitationAverageLabel(standings[i].average)}/$maxNow  (${standings[i].count})',
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w700)),
                             ]),

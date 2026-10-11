@@ -473,7 +473,10 @@ class ParentPortalService {
       // spec 048 — التسميع (لو الإعداد مفعّل وفيه درجات)
       ...recitationPortalFields(attendance,
           enabled: !Get.isRegistered<SettingsController>() ||
-              Get.find<SettingsController>().showRecitation.value),
+              Get.find<SettingsController>().showRecitation.value,
+          scaleTo: currentRecitationMax(Get.isRegistered<SettingsController>()
+              ? Get.find<SettingsController>().recitationMax.value
+              : null)),
       'examCount': examRecords.length,
       'examHistory': examRecords.take(15).map((e) => {
             // examId — عشان صفحة الامتحان الإلكتروني (spec 016) تلاقي

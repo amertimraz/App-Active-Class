@@ -880,6 +880,11 @@ class ExportService {
     );
   }
 
+  int _recitationMaxNow() => currentRecitationMax(
+      Get.isRegistered<SettingsController>()
+          ? Get.find<SettingsController>().recitationMax.value
+          : null);
+
   /// spec 048 — إعداد "درجة التسميع" (ظاهرة افتراضيًا) يتحكم في ظهورها
   /// في تقارير الحضور.
   bool _recitationReportEnabled() => Get.isRegistered<SettingsController>()
@@ -964,7 +969,8 @@ class ExportService {
       cells.add(_td('$absentCount', isEven: isEven, color: _error, size: 9));
       if (hasRecitation) {
         cells.add(_td(
-            recitationAverageLabel(recitationAverage(sAtt.values)),
+            recitationAverageLabel(
+                recitationAverage(sAtt.values, scaleTo: _recitationMaxNow())),
             isEven: isEven,
             size: 9));
       }
@@ -1002,7 +1008,8 @@ class ExportService {
     // spec 048 — متوسط التسميع لكل المجموعة (لو مفعّل وفيه درجات)
     final recAvg = _recitationReportEnabled()
         ? recitationAverage(
-            students.expand((s) => (attMap[s.id] ?? {}).values))
+            students.expand((s) => (attMap[s.id] ?? {}).values),
+            scaleTo: _recitationMaxNow())
         : null;
 
     return pw.Column(
@@ -1023,7 +1030,8 @@ class ExportService {
               _statBox('إجمالي الغياب', '$totalAbsent جلسة', _error),
               if (recAvg != null)
                 _statBox('متوسط التسميع',
-                    '${recitationAverageLabel(recAvg)}/10', _success),
+                    '${recitationAverageLabel(recAvg)}/${_recitationMaxNow()}',
+                    _success),
               _statBox(
                   'نسبة الحضور',
                   '${rate.toStringAsFixed(1)}%',

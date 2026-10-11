@@ -910,10 +910,14 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       final showHomework = cfg.showHomework.value;
       final showRecitation = cfg.showRecitation.value;
       final showInteraction = cfg.showInteraction.value;
+      final recitationMaxNow = cfg.recitationMax.value;
       final hasSecondTab = showHomework || showRecitation;
       // spec 040 — تفاعل الطالب لنفس اليوم.
-      final Map<int, int?> recitationMap = {
-        for (final a in dayRecords) a.studentId: a.recitation,
+      final Map<int, (int, int)?> recitationMap = {
+        for (final a in dayRecords)
+          a.studentId: recitationGradeOf(a) == null
+              ? null
+              : (recitationGradeOf(a)!, recitationMaxOf(a)),
       };
       final Map<int, String?> interactionMap = {
         for (final a in dayRecords) a.studentId: a.interaction,
@@ -1370,6 +1374,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                             showHomework: showHomework,
                             showRecitation: showRecitation,
                             recitationMap: recitationMap,
+                            recitationMaxNow: recitationMaxNow,
                             onRecitation: (id, v) =>
                                 controller.setRecitation(id, selectedDay, v),
                           ),
@@ -1688,7 +1693,12 @@ Future<void> _showSendReportConfirm(
       student: s,
       attendanceStatus: attStatus,
       homeworkStatus: hwStatus,
-      recitation: settings.showRecitation.value ? todayRec?.recitation : null,
+      recitation: settings.showRecitation.value && todayRec != null
+          ? recitationGradeOf(todayRec)
+          : null,
+      recitationMax: todayRec == null
+          ? kRecitationDefaultMax
+          : recitationMaxOf(todayRec),
       includeHomework: settings.showHomework.value,
       interaction:
           settings.showInteraction.value ? todayRec?.interaction : null,
@@ -1877,43 +1887,113 @@ class _InteractionRow extends StatelessWidget {
   }
 }
 
-// صف درجة التسميع (spec 048) — أزرار 1..10، toggle: ضغط المختار يمسحه،
-// ضغط مختلف يستبدله. بيظهر للحاضر/المتأخر بس.
+// صف درجة التسميع (spec 048) — الدرجة من 1 لحد [max] (الدرجة العظمى من
+// الإعدادات). لحد 10: أزرار أرقام (toggle: ضغط المختار يمسحه). أكتر من 10:
+// خانة بتفتح إدخال رقم. بيظهر للحاضر/المتأخر بس.
 class _RecitationRow extends StatelessWidget {
-  final int? recitation;
+  final (int, int)? recitation; // (الدرجة، الدرجة العظمى وقت تسجيلها)
+  final int max; // الدرجة العظمى الحالية
   final ValueChanged<int?> onSelect;
 
-  const _RecitationRow({required this.recitation, required this.onSelect});
+  const _RecitationRow(
+      {required this.recitation, required this.max, required this.onSelect});
+
+  static const accent = Color(0xFF0EA5E9);
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFF0EA5E9);
+    final rec = recitation;
+    // الدرجة المسجّلة بدرجة عظمى مختلفة عن الحالية: نعرضها كما هي ولا
+    // نحدّدها في الأزرار (الضغط على زر بيستبدلها بدرجة على المقياس الجديد).
+    final sameScale = rec != null && rec.$2 == max;
+    final current = sameScale ? rec.$1 : null;
+    final otherScale = rec != null && !sameScale;
+
+    Widget label() => Padding(
+          padding: const EdgeInsetsDirectional.only(end: 6),
+          child: Text('تسميع',
+              style: TextStyle(
+                  fontFamily: 'Cairo',
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade600)),
+        );
+
+    Widget oldBadge() => otherScale
+        ? Container(
+            margin: const EdgeInsetsDirectional.only(end: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(color: accent.withValues(alpha: 0.5)),
+            ),
+            child: Text('${rec.$1}/${rec.$2}',
+                style: const TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w800, color: accent)),
+          )
+        : const SizedBox.shrink();
+
+    // مقياس كبير: خانة واحدة + إدخال رقم.
+    if (max > 10) {
+      return Row(children: [
+        label(),
+        InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () async {
+            final v = await _askGrade(context, max, current);
+            if (v == _kClear) {
+              onSelect(null);
+            } else if (v != null) {
+              onSelect(v);
+            }
+          },
+          child: Container(
+            height: 30,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: current != null
+                  ? accent.withValues(alpha: 0.18)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                  color: current != null
+                      ? accent.withValues(alpha: 0.6)
+                      : Colors.grey.withValues(alpha: 0.35)),
+            ),
+            child: Text(
+                current != null
+                    ? '$current / $max'
+                    : (otherScale ? '${rec.$1}/${rec.$2}  ← $max' : 'سجّل الدرجة (من $max)'),
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: current != null ? accent : Colors.grey.shade700)),
+          ),
+        ),
+      ]);
+    }
+
     return Row(children: [
-      Padding(
-        padding: const EdgeInsetsDirectional.only(end: 6),
-        child: Text('تسميع',
-            style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: Colors.grey.shade600)),
-      ),
-      for (var v = kRecitationMin; v <= kRecitationMax; v++)
+      label(),
+      oldBadge(),
+      for (var v = kRecitationMin; v <= max; v++)
         Expanded(
           child: GestureDetector(
-            onTap: () => onSelect(recitation == v ? null : v),
+            onTap: () => onSelect(current == v ? null : v),
             behavior: HitTestBehavior.opaque,
             child: Container(
               height: 28,
               alignment: Alignment.center,
               margin: const EdgeInsets.symmetric(horizontal: 1),
               decoration: BoxDecoration(
-                color: recitation == v
+                color: current == v
                     ? accent.withValues(alpha: 0.18)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(7),
                 border: Border.all(
-                  color: recitation == v
+                  color: current == v
                       ? accent.withValues(alpha: 0.6)
                       : Colors.grey.withValues(alpha: 0.25),
                 ),
@@ -1922,13 +2002,66 @@ class _RecitationRow extends StatelessWidget {
                   style: TextStyle(
                       fontSize: 11,
                       fontWeight:
-                          recitation == v ? FontWeight.w800 : FontWeight.w500,
-                      color: recitation == v ? accent : Colors.grey.shade700)),
+                          current == v ? FontWeight.w800 : FontWeight.w500,
+                      color: current == v ? accent : Colors.grey.shade700)),
             ),
           ),
         ),
     ]);
   }
+}
+
+const int _kClear = -1;
+
+/// إدخال درجة تسميع لمقياس كبير. بيرجّع الدرجة، أو [_kClear] للمسح، أو null
+/// لو اتلغى.
+Future<int?> _askGrade(BuildContext context, int max, int? current) {
+  final c = TextEditingController(text: current?.toString() ?? '');
+  String? err;
+  return showDialog<int>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setSt) => AlertDialog(
+        title: Text('درجة التسميع (من $max)',
+            style: const TextStyle(
+                fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+              hintText: 'من 1 إلى $max', errorText: err),
+          onSubmitted: (_) {
+            final v = int.tryParse(c.text.trim());
+            if (v != null && v >= kRecitationMin && v <= max) {
+              Navigator.pop(ctx, v);
+            } else {
+              setSt(() => err = 'أدخل رقم من 1 إلى $max');
+            }
+          },
+        ),
+        actions: [
+          if (current != null)
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, _kClear),
+                child: const Text('مسح')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          FilledButton(
+            onPressed: () {
+              final v = int.tryParse(c.text.trim());
+              if (v != null && v >= kRecitationMin && v <= max) {
+                Navigator.pop(ctx, v);
+              } else {
+                setSt(() => err = 'أدخل رقم من 1 إلى $max');
+              }
+            },
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 // segmented ثلاثي لحالة الحضور: حاضر / متأخر / غائب — يُختار واحد،
@@ -2019,7 +2152,8 @@ class _HomeworkTabBody extends StatelessWidget {
   // الإعدادات: الواجب / التسميع (spec 048 — التسميع جوه هذا التبويب).
   final bool showHomework;
   final bool showRecitation;
-  final Map<int, int?> recitationMap;
+  final Map<int, (int, int)?> recitationMap;
+  final int recitationMaxNow;
   final void Function(int studentId, int? value) onRecitation;
 
   const _HomeworkTabBody({
@@ -2030,6 +2164,7 @@ class _HomeworkTabBody extends StatelessWidget {
     required this.showHomework,
     required this.showRecitation,
     required this.recitationMap,
+    required this.recitationMaxNow,
     required this.onRecitation,
   });
 
@@ -2125,6 +2260,7 @@ class _HomeworkTabBody extends StatelessWidget {
                     showHomework: showHomework,
                     showRecitation: showRecitation,
                     recitation: recitationMap[s.id],
+                    recitationMaxNow: recitationMaxNow,
                     onRecitation: (v) => onRecitation(s.id!, v),
                   ),
                 );
@@ -2144,7 +2280,8 @@ class _HomeworkStudentRow extends StatelessWidget {
   final ValueChanged<String?> onSelect;
   final bool showHomework;
   final bool showRecitation;
-  final int? recitation;
+  final (int, int)? recitation; // (الدرجة، الدرجة العظمى وقت التسجيل)
+  final int recitationMaxNow;
   final ValueChanged<int?> onRecitation;
 
   const _HomeworkStudentRow({
@@ -2155,6 +2292,7 @@ class _HomeworkStudentRow extends StatelessWidget {
     required this.showHomework,
     required this.showRecitation,
     required this.recitation,
+    required this.recitationMaxNow,
     required this.onRecitation,
   });
 
@@ -2246,7 +2384,8 @@ class _HomeworkStudentRow extends StatelessWidget {
         if (!absent && showRecitation) ...[
           const SizedBox(height: 8),
           _RecitationRow(
-              recitation: normalizeRecitation(recitation),
+              recitation: recitation,
+              max: recitationMaxNow,
               onSelect: onRecitation),
         ],
       ]),

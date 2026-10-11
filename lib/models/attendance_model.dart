@@ -91,7 +91,8 @@ class Attendance {
   final String status; // 'حاضر' or 'غائب'
   final String? notes;
   final String? interaction; // spec 040 — نشيط/عادي/غير متفاعل، أو null
-  final int? recitation; // spec 048 — درجة التسميع 1..10 أو null
+  final int? recitation; // spec 048 — درجة التسميع 1..max أو null
+  final int? recitationMax; // الدرجة العظمى وقت التسجيل (null = 10)
   final DateTime? createdAt;
 
   Attendance({
@@ -102,6 +103,7 @@ class Attendance {
     this.notes,
     this.interaction,
     this.recitation,
+    this.recitationMax,
     this.createdAt,
   });
 
@@ -114,6 +116,7 @@ class Attendance {
       'notes': notes,
       'interaction': interaction,
       'recitation': recitation,
+      'recitation_max': recitationMax,
       'created_at': createdAt?.toIso8601String(),
     };
   }
@@ -127,6 +130,7 @@ class Attendance {
       notes: map['notes'],
       interaction: map['interaction'],
       recitation: map['recitation'] is num ? (map['recitation'] as num).toInt() : null,
+      recitationMax: map['recitation_max'] is num ? (map['recitation_max'] as num).toInt() : null,
       createdAt: map['created_at'] != null
         ? DateTime.parse(map['created_at'])
         : null,
@@ -142,6 +146,7 @@ class Attendance {
     String? interaction,
     bool clearInteraction = false,
     int? recitation,
+    int? recitationMax,
     bool clearRecitation = false,
     DateTime? createdAt,
   }) {
@@ -153,6 +158,8 @@ class Attendance {
       notes: notes ?? this.notes,
       interaction: clearInteraction ? null : (interaction ?? this.interaction),
       recitation: clearRecitation ? null : (recitation ?? this.recitation),
+      recitationMax:
+          clearRecitation ? null : (recitationMax ?? this.recitationMax),
       createdAt: createdAt ?? this.createdAt,
     );
   }

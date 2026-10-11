@@ -616,6 +616,7 @@ class SyncEngine with WidgetsBindingObserver {
           'notes': payload[COL_ATTENDANCE_NOTES],
           'interaction': payload[COL_ATTENDANCE_INTERACTION],
           'recitation': payload[COL_ATTENDANCE_RECITATION],
+          'recitation_max': payload[COL_ATTENDANCE_RECITATION_MAX],
         };
       case TABLE_PAYMENTS:
         final studentLocalId = payload[COL_PAYMENT_STUDENT_ID] as int?;
@@ -1738,7 +1739,10 @@ class SyncEngine with WidgetsBindingObserver {
           COL_ATTENDANCE_STATUS: remote['status'],
           COL_ATTENDANCE_NOTES: remote['notes'],
           COL_ATTENDANCE_INTERACTION: remote['interaction'],
-          COL_ATTENDANCE_RECITATION: normalizeRecitation(remote['recitation'] as int?),
+          COL_ATTENDANCE_RECITATION: normalizeRecitation(
+              remote['recitation'] as int?,
+              max: (remote['recitation_max'] as int?) ?? kRecitationDefaultMax),
+          COL_ATTENDANCE_RECITATION_MAX: remote['recitation_max'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };
