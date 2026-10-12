@@ -279,9 +279,12 @@ class TeamModeService {
     // فبنرجع للقيمة المحفوظة على الجهاز كـ fallback لو الذاكرة فاضية.
     final hadTeam = teamId.value != null ||
         await _db.getSetting(SETTING_TEAM_MODE_ENABLED) == 'true';
-    final wasOwner = teamId.value != null
-        ? isOwner.value
-        : await _db.getSetting(SETTING_TEAM_IS_OWNER) == 'true';
+    // المالك لازم ما تتمسحش بياناته أبدًا. isOwner في الذاكرة ممكن يكون
+    // false بالغلط لو تحميل الصلاحيات فشل أول ما التطبيق فتح (نت ضعيف/جلسة
+    // لسه بتتجدّد) — فبنعتبره مالك لو الذاكرة أو القيمة المحفوظة على الجهاز
+    // قالت كده (القيمة المحفوظة بتتكتب من السيرفر عند آخر تحميل ناجح).
+    final storedOwner = await _db.getSetting(SETTING_TEAM_IS_OWNER) == 'true';
+    final wasOwner = isOwner.value || storedOwner;
 
     await _engine?.stop();
     _engine = null;
