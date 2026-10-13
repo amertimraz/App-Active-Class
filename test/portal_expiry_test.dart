@@ -37,11 +37,13 @@ void main() {
       expect(portalExpiryBannerText(i), contains('ينتهي اليوم'));
     });
 
-    test('انتهى حديثًا → expired، وبعد 30 يوم → none', () {
+    test('انتهى حديثًا → expired، وبعد 7 أيام → none', () {
       final i = info(now.subtract(const Duration(days: 5)));
       expect(i.stage, PortalExpiryStage.expired);
       expect(i.daysSinceExpiry, 5);
-      expect(info(now.subtract(const Duration(days: 31))).stage,
+      expect(info(now.subtract(const Duration(days: 7))).stage,
+          PortalExpiryStage.expired);
+      expect(info(now.subtract(const Duration(days: 8))).stage,
           PortalExpiryStage.none);
     });
 

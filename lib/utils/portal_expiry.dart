@@ -22,7 +22,7 @@ enum PortalExpiryStage {
 
 const int kPortalWarnDays = 7;
 const int kPortalUrgentDays = 3;
-const int kPortalExpiredShowDays = 30;
+const int kPortalExpiredShowDays = 7;
 
 /// أيام التذكير قبل الانتهاء (إشعارات محلية الساعة 9 صباحًا).
 const List<int> kPortalReminderDaysBefore = [7, 3, 1];
