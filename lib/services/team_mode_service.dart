@@ -110,6 +110,14 @@ class TeamModeService {
     }
 
     teamId.value = storedTeamId;
+    // المالك: نستعيد الدور المحفوظ قبل أي طلب شبكة. _refreshMyPermissions
+    // بتفضل isOwner=false لو الطلب فشل/عدّى timeout (نت ضعيف، جلسة بتتجدّد)،
+    // فالمالك كان بيشتغل "كمساعد بلا صلاحيات" (حذف مرفوض + callbacks
+    // المساعد على المحرّك) لحد ما يتحمّل ناجح. القيمة المحفوظة بتتكتب من
+    // السيرفر عند آخر تحميل ناجح، والتحميل الناجح بيصحّحها لو اتغيّرت.
+    if (await _db.getSetting(SETTING_TEAM_IS_OWNER) == 'true') {
+      isOwner.value = true;
+    }
     await _refreshMyPermissions(client, storedTeamId);
     await _refreshTeamPortal(client, storedTeamId);
     if (!await _claimDevice(client, storedTeamId)) {
