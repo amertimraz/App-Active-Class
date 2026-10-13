@@ -19,6 +19,8 @@ import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/views/exams/online_exam_editor_page.dart';
 import 'package:active_class/views/exams/online_exam_results_page.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/portal_expiry.dart';
+import 'package:active_class/views/license/trial_banner.dart' show openRenewalWhatsApp;
 
 // ─── ألوان الحالة ────────────────────────────────────────────────────────────
 Color _statusColor(OnlineExamStatus? s) {
@@ -117,7 +119,20 @@ class _OnlineExamsTabState extends State<OnlineExamsTab> {
       team.teamPortalSlug.value;
       final access = team.onlineExamAccessNow;
       if (access.locked) {
-        return _LockedState(assistant: team.isAssistant);
+        // منتهي فعلًا ولا عمره ما اتفعّل؟ المدرس/خارج الفريق بيعتمد على
+        // اشتراك جهازه، والمساعد على اشتراك المدرس (اللي وصله من الفريق).
+        final ownDevice = !team.isEnabled.value || team.isOwner.value;
+        final lic = LicenseController.to;
+        final expiredAt = portalExpiredAt(
+          enabled: ownDevice
+              ? lic.parentPortalEnabled.value
+              : team.teamPortalEnabled.value,
+          expiresAt: ownDevice
+              ? lic.parentPortalExpiresAt.value
+              : team.teamPortalExpiresAt.value,
+          now: DateTime.now(),
+        );
+        return _LockedState(assistant: team.isAssistant, expiredAt: expiredAt);
       }
       final exams = _ec.onlineExams;
       if (exams.isEmpty) return const _EmptyState();
@@ -767,7 +782,10 @@ class _InfoChip extends StatelessWidget {
 // ─── حالة مقفولة (بدون بوابة أهالي) ─────────────────────────────────────────
 class _LockedState extends StatelessWidget {
   final bool assistant;
-  const _LockedState({this.assistant = false});
+
+  /// تاريخ انتهاء الاشتراك لو كان منتهي (وإلا null = لسه ما اتفعّلش).
+  final DateTime? expiredAt;
+  const _LockedState({this.assistant = false, this.expiredAt});
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -796,9 +814,13 @@ class _LockedState extends StatelessWidget {
                     fontSize: 16)),
             const SizedBox(height: 6),
             Text(
-              assistant
-                  ? 'الميزة دي ضمن إضافة بوابة متابعة أولياء الأمور عند المدرس.\nهتشتغل أول ما يفعّلها أو يجدّد اشتراكها.'
-                  : 'الميزة دي ضمن إضافة بوابة متابعة أولياء الأمور.\nفعّلها عشان الطلاب يحلّوا الامتحان من موبايلهم والتصحيح يتم تلقائي.',
+              expiredAt != null
+                  ? (assistant
+                      ? 'انتهى اشتراك بوابة أولياء الأمور عند المدرس في ${FormatHelper.formatFullDate(expiredAt)}.\nالامتحانات ونتايجها محفوظة، وهتظهر تاني أول ما يجدّد الاشتراك.'
+                      : 'انتهى اشتراك بوابة أولياء الأمور في ${FormatHelper.formatFullDate(expiredAt)}.\nامتحاناتك ونتايج الطلاب محفوظة، وهترجع تظهر أول ما تجدّد الاشتراك.')
+                  : assistant
+                      ? 'الميزة دي ضمن إضافة بوابة متابعة أولياء الأمور عند المدرس.\nهتشتغل أول ما يفعّلها أو يجدّد اشتراكها.'
+                      : 'الميزة دي ضمن إضافة بوابة متابعة أولياء الأمور.\nفعّلها عشان الطلاب يحلّوا الامتحان من موبايلهم والتصحيح يتم تلقائي.',
               textAlign: TextAlign.center,
               style: TextStyle(
                   fontFamily: 'Cairo',
@@ -809,6 +831,16 @@ class _LockedState extends StatelessWidget {
                       .onSurface
                       .withValues(alpha: 0.55)),
             ),
+            if (expiredAt != null && !assistant) ...[
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () => openRenewalWhatsApp(portalAddon: true),
+                icon: const Icon(Icons.autorenew_rounded, size: 18),
+                label: const Text('تجديد الاشتراك',
+                    style: TextStyle(
+                        fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+              ),
+            ],
           ],
         ),
       ),

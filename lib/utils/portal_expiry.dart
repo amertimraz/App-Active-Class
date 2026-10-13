@@ -67,6 +67,18 @@ PortalExpiryInfo portalExpiryInfo({
   );
 }
 
+/// تاريخ انتهاء الاشتراك لو كان فعلًا انتهى (مفعّل وله تاريخ وعدّى)، وإلا
+/// null (عمره ما اتفعّل / مدى الحياة / لسه شغّال). بتستخدمها شاشة قفل
+/// الامتحانات الإلكترونية عشان تفرّق "منتهي" عن "مش مفعّل".
+DateTime? portalExpiredAt({
+  required bool enabled,
+  required DateTime? expiresAt,
+  required DateTime now,
+}) {
+  if (!enabled || expiresAt == null) return null;
+  return expiresAt.isAfter(now) ? null : expiresAt;
+}
+
 /// نص البانر حسب الحالة.
 String portalExpiryBannerText(PortalExpiryInfo info) {
   const name = 'بوابة أولياء الأمور والامتحانات الإلكترونية';

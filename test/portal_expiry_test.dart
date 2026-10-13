@@ -47,6 +47,17 @@ void main() {
           PortalExpiryStage.none);
     });
 
+    test('portalExpiredAt: التاريخ لو منتهي فعلًا، وإلا null', () {
+      DateTime? at(bool enabled, DateTime? exp) =>
+          portalExpiredAt(enabled: enabled, expiresAt: exp, now: now);
+      final past = now.subtract(const Duration(days: 40));
+      expect(at(true, past), past); // منتهي (حتى لو أقدم من 7 أيام)
+      expect(at(true, now), now); // لحظة الانتهاء نفسها
+      expect(at(true, now.add(const Duration(days: 3))), isNull); // شغّال
+      expect(at(true, null), isNull); // مدى الحياة
+      expect(at(false, past), isNull); // عمره ما اتفعّل
+    });
+
     test('نص البانر يذكر الامتحانات الإلكترونية', () {
       final i = info(now.add(const Duration(days: 5)));
       expect(portalExpiryBannerText(i), contains('الامتحانات الإلكترونية'));
