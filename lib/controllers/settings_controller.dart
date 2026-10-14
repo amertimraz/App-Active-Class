@@ -349,6 +349,16 @@ class SettingsController extends GetxController {
       try {
         await _dbSet(SETTING_PORTAL_CODE_ONLY, old ? '1' : '0');
       } catch (_) {}
+      // switchLoginMode بيمسح مستندات الطلاب قبل إعادة النشر؛ لو فشل في
+      // النص، الصفحة العامة كانت هتفضل فاضية لحد النشر الجاي. نحاول نرجّع
+      // النشر بالوضع القديم (best-effort، من غير ما يعطّل الواجهة).
+      try {
+        if (Get.isRegistered<LicenseController>() &&
+            LicenseController.to.parentPortalActiveNow) {
+          unawaited(
+              ParentPortalService().publishAllStudents().catchError((_) => 0));
+        }
+      } catch (_) {}
       return false;
     }
   }
