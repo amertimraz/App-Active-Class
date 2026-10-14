@@ -592,6 +592,12 @@ specs/026-qr-payment-accumulated-debt/
 - ملحوظة بناء: لو الإضافات فشلت بـ"integration_test does not exist" شغّل `flutter pub get` بدون `--no-pub`.
 
 ### 📦 إصدار v1.2.75+4093 — مجهَّز محليًا (2026-10-13)، **لسه ما اتنشرش**
+
+**(تحديث 2026-10-14) النسخ النهائية اتبنت من commit `67ec044` وفيها تنظيم الإعدادات (051) + تجميع الداشبورد + إصلاح البوابة:**
+- `release_assets/v1.2.75/`: `-arm64-v8a.apk` (48.9MB، sha256 `e6bcb40c…c86c`)، `-armeabi-v7a.apk` (47.6MB، `211b5388…28f5`)، `-x86_64.apk` (50.4MB، `d064acef…101d`)، `-play.aab` (70.8MB، `6b3bebf3…9026`). توقيع `5f74fe10…ec7b` ✅، versionCode 4093. (نسخ 2026-10-13 اتبدّلت.)
+- migration `recitation_max` اتطبّقت على الـVPS (2026-10-14).
+- لسه: tag + GitHub Release + APK على الـVPS + رفع `booking_site/track/index.html` (تعديل `/max`) + AAB على Play (يدويًا).
+- تنظيف Grade 2: الـdry-run اتعمل (24 طالب مكرّر يتدمجوا في 21، 288 سجل حضور مكرّر). التنفيذ الحقيقي لسه ما اتعملش — محتاج تعطيل حرّاس الحذف داخل transaction وإعادة تفعيلهم قبل COMMIT.
 - الملفات: `release_assets/v1.2.75/` — `ActiveClass-arm64-v8a.apk` (48.8MB، sha256 `6dcc08cd…c510`)، `-armeabi-v7a.apk` (47.5MB، `3b6cc7c3…1f39`)، `-x86_64.apk` (50.4MB، `56a6776c…6838`)، `-play.aab` (70.8MB، `f01ea959…2125`). توقيع release `5f74fe10…ec7b` ✅ (APK + AAB)، versionCode 4093. analyze بلا error/warning، 350 اختبار ناجحين.
 - يضم (بعد v1.2.74): تفاعل رسالة تقرير اليوم، تصليح "ي" المنفصلة في PDF/الشهادات، سويتش "الدخول بالكود فقط" للبوابة، الدرجة العظمى للتسميع قابلة للضبط (`recitation_max`، DB v39)، حماية `disable()` من مسح بيانات المالك، المالك يستعيد دوره المحفوظ عند فتح التطبيق (`eaeeead`)، بانر انتهاء البوابة 7 أيام بدل 30، شاشة قفل الامتحانات الإلكترونية تفرّق منتهي/غير مفعّل + زرار تجديد.
 - ⚠️ **شرط قبل توزيع أي APK:** `supabase/migration_attendance_recitation_max.sql` لازم يتطبّق على الـVPS الأول (بدور `supabase_admin`)، وإلا مزامنة الحضور هتفشل لأي جهاز على 1.2.75. **اتطبّق على الـVPS (2026-10-14، بدور supabase_admin) ✅** — العمود `recitation_max` + قيد `attendance_recitation_range` + `notify pgrst reload schema`.
