@@ -14,6 +14,7 @@ import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/utils/billing_day.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/billing_period.dart';
+import 'package:active_class/utils/single_flight.dart';
 
 enum ActivityType { attendance, payment }
 
@@ -270,7 +271,15 @@ class DashboardController extends GetxController {
     loadDashboardData();
   }
 
-  Future<void> loadDashboardData() async {
+  // تجميع الاستدعاءات: كل حدث realtime وارد (وضع الفريق) كان بيعمل إعادة
+  // حساب كاملة من أول وجديد، فمع مساعد شغّال كانت النُسخ بتتراكم ومؤشر
+  // التحميل يفضل دايمًا على جهاز المالك. دلوقتي نسخة واحدة شغّالة + إعادة
+  // واحدة بعدها تغطي كل الأحداث اللي وصلت في الأثناء.
+  late final SingleFlight _loader = SingleFlight(_loadDashboardOnce);
+
+  Future<void> loadDashboardData() => _loader.run();
+
+  Future<void> _loadDashboardOnce() async {
     isLoading(true);
     try {
       // كل قسم مستقل بـ try/catch بتاعه (بدل Future.wait اللي كان بيوقف
