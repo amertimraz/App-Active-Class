@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:uuid/uuid.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/utils/merge_plan.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
@@ -25,6 +26,9 @@ import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/archive_history.dart';
+
+// spec 052 — صحة البيانات (دمج المكرّر): extension بنفس الـlibrary.
+part 'database_service_data_health.dart';
 
 /// ملخص أعداد البيانات (مجموعات، طلاب، إلخ) في لحظة معيّنة.
 class DataSummary {

@@ -611,3 +611,10 @@ specs/026-qr-payment-accumulated-debt/
 - نُقل: إعدادات الحضور من قسم "ماسح QR" لفئة الحضور (قسم "ورقة الحضور" + قسم "ماسح QR")، رمز دولة الواتساب للواتساب، "تأخّر الدفع" لفئة الفلوس (مع سطر تنقّل في المتابعة)، وحذف السجلات/حذف الكل في قسم "منطقة الخطر".
 - لا تغيير في مفاتيح الإعدادات ولا `SettingsController` ولا DB/مزامنة. `sendMonthlyReportsViaWhatsAppAuto` ما زالت متاحة من نفس الـlibrary (`main.dart` بلا تعديل).
 - مطلوب: تحقق يدوي على الجهاز (specs/051-settings-reorganize/quickstart.md) — لسه ما اتجرّبش.
+
+## Spec 052 — صحة البيانات: اكتشاف ودمج المكرّر (implemented 2026-10-14، device test pending)
+- شاشة "صحة البيانات" (الإعدادات ← البيانات، للمالك/المدرس فقط): فحص (قراءة فقط) ← حالات (مجموعات مكرّرة بالاسم المطبّع؛ طلاب بنفس الكود بعد تشيل `-N`؛ أو نفس الاسم داخل المجموعة/مجموعتين مكرّرتين غير محدّد تلقائيًا) ← اختيار الأساسي ← معاينة بالأرقام ← تأكيد ← نسخة احتياطية إجبارية ← دمج ذرّي ← تقرير + سجل (آخر 20 في `settings['data_health_log']`).
+- النواة الصرفة: `lib/utils/duplicate_detection.dart`، `lib/utils/merge_plan.dart`، `lib/utils/arabic_normalize.dart` (نُقلت من settings_registry). الخدمة: `lib/services/data_health_service.dart`. التنفيذ المحلي: `lib/services/database_service_data_health.dart` (extension داخل نفس library DatabaseService). الكنترولر `data_health_controller.dart`، والصفحة `views/settings/data_health_page.dart`.
+- قواعد الدمج مطابقة لسكربت Grade 2 (الأساسي يكسب بالمفتاح الطبيعي: يوم/تاريخ+مبلغ/امتحان، وإلا يتنقل). طابور المزامنة: نقل ← حذف مكرّر ← حذف طالب ← نقل طلاب/روابط ← حذف مجموعة. شروط وضع الفريق: الأساسي له remote_id + تحذير outbox معلّق.
+- حمايات: رفض دوّارة (أ↔ب) وأساسي=مكرّر، الأساسي المختار داخل المجموعة المكرّرة بيتنقل مش بيتدمج.
+- طبقة التنفيذ مغطّاة باختبار على SQLite حقيقي (`test/data_health_db_test.dart` بـ`sqflite_common_ffi` كـdev dependency): الفحص، دمج مجموعة+طالب بالأرقام، ترتيب طابور المزامنة، rollback عند فشل UNIQUE في النص، ورفض الأساسي=مكرّر/غير موجود. لسه محتاجة تجربة يدوية بجهازين لوضع الفريق (specs/052-data-health-merge/quickstart.md).

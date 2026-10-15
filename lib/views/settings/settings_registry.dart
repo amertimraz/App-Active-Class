@@ -5,6 +5,11 @@
 // ولا إعداد ضاع في إعادة التنظيم. مفيش أي منطق تخزين هنا ولا GetX.
 import 'package:flutter/material.dart';
 
+import 'package:active_class/utils/arabic_normalize.dart';
+
+// إعادة تصدير عشان الاختبارات/المستدعين القدام يفضلوا شغّالين (انتقلت لـutils).
+export 'package:active_class/utils/arabic_normalize.dart' show normalizeArabic;
+
 /// نوع عنصر الإعداد.
 enum SettingsItemKind { switchTile, dropdown, nav, field, info }
 
@@ -435,6 +440,12 @@ const List<SettingsItem> kSettingsItems = [
       kind: SettingsItemKind.nav,
       keywords: ['درايف', 'جوجل', 'سحابي']),
   SettingsItem(
+      id: 'data.data_health',
+      categoryId: 'data',
+      title: 'صحة البيانات',
+      kind: SettingsItemKind.nav,
+      keywords: ['تكرار', 'مكرر', 'دمج', 'طالب مكرر', 'مجموعة مكررة', 'تنظيف']),
+  SettingsItem(
       id: 'data.delete_range',
       categoryId: 'data',
       section: _danger,
@@ -486,36 +497,6 @@ const List<SettingsItem> kSettingsItems = [
 /// عناصر فئة بعينها بترتيب السجل.
 List<SettingsItem> itemsOfCategory(String categoryId) =>
     kSettingsItems.where((i) => i.categoryId == categoryId).toList();
-
-/// تطبيع عربي للبحث: يشيل التشكيل والتطويل، يوحّد الألف والياء والتاء
-/// المربوطة، ويحوّل الأرقام الهندية للاتينية.
-String normalizeArabic(String input) {
-  final b = StringBuffer();
-  for (final r in input.runes) {
-    if ((r >= 0x064B && r <= 0x065F) || r == 0x0670 || r == 0x0640) continue;
-    switch (r) {
-      case 0x0623: // أ
-      case 0x0625: // إ
-      case 0x0622: // آ
-      case 0x0671: // ٱ
-        b.writeCharCode(0x0627);
-        break;
-      case 0x0649: // ى
-        b.writeCharCode(0x064A);
-        break;
-      case 0x0629: // ة
-        b.writeCharCode(0x0647);
-        break;
-      default:
-        if (r >= 0x0660 && r <= 0x0669) {
-          b.writeCharCode(0x30 + (r - 0x0660));
-        } else {
-          b.writeCharCode(r);
-        }
-    }
-  }
-  return b.toString().toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
-}
 
 /// بحث في الإعدادات: كل كلمة في الاستعلام لازم تتلاقى في العنوان أو الكلمات
 /// المفتاحية أو اسم الفئة. الحد الأدنى حرفين. النتايج مرتّبة (مطابقة العنوان

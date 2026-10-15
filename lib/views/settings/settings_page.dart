@@ -48,6 +48,7 @@ import 'package:active_class/widgets/hardware_reader_widgets.dart';
 import 'package:active_class/views/settings/delete_records_page.dart';
 
 import 'package:active_class/views/settings/settings_registry.dart';
+import 'package:active_class/views/settings/data_health_page.dart';
 
 // spec 051 — الشاشة الرئيسية للإعدادات = قائمة فئات. باقي الكود (ودجتس،
 // أفعال، حوارات، صفحات الفئات) في ملفات part بنفس الـlibrary (نقل حرفي).

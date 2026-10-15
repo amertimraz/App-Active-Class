@@ -48,7 +48,8 @@ void main() {
 
     test('20 سويتش', () => expect(count(SettingsItemKind.switchTile), 20));
     test('13 قائمة اختيار', () => expect(count(SettingsItemKind.dropdown), 13));
-    test('9 عناصر تنقّل', () => expect(count(SettingsItemKind.nav), 9));
+    test('10 عناصر تنقّل (9 + صحة البيانات spec 052)',
+        () => expect(count(SettingsItemKind.nav), 10));
   });
 
   test('منطقة الخطر: حذف السجلات وحذف الكل فقط وفي فئة البيانات', () {

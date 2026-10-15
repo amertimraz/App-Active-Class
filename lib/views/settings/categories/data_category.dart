@@ -99,6 +99,26 @@ class _DataCategoryPage extends StatelessWidget {
               subtitle: 'رفع تلقائي لنسخة احتياطية على درايفك الشخصي',
               onTap: () => _handleCloudBackup(context),
             ),
+            // spec 052 — صحة البيانات (اكتشاف ودمج المكرّر): للمالك/المدرس
+            // فقط — المساعد في وضع الفريق ما يشوفهاش.
+            Obx(() {
+              final team = TeamModeService();
+              if (team.isEnabled.value && !team.isOwner.value) {
+                return const SizedBox.shrink();
+              }
+              return Column(children: [
+                _buildDivider(isDark),
+                _buildNavTile(
+                  context,
+                  isDark,
+                  icon: Icons.health_and_safety_rounded,
+                  iconColor: const Color(0xFF0EA5E9),
+                  title: 'صحة البيانات',
+                  subtitle: 'اكتشاف ودمج الطلاب والمجموعات المكرّرة',
+                  onTap: () => Get.to(() => const DataHealthPage()),
+                ),
+              ]);
+            }),
           ],
         ),
         const SizedBox(height: 14),
