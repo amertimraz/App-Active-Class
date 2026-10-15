@@ -355,13 +355,12 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
     if (s.id == null) return;
     final history = await DatabaseService().getStudentExamHistory(s.id!);
     final passed = history
-        .where((r) =>
-            r.grade != null && !r.isAbsent && r.grade! > r.passingGrade)
+        .where(
+            (r) => r.grade != null && !r.isAbsent && r.grade! > r.passingGrade)
         .toList();
     if (!mounted) return;
     if (passed.isEmpty) {
-      ToastHelper.info(
-          'الطالب لسه مجابش أكتر من درجة النجاح في أي امتحان');
+      ToastHelper.info('الطالب لسه مجابش أكتر من درجة النجاح في أي امتحان');
       return;
     }
 
@@ -385,8 +384,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                         style: const TextStyle(fontFamily: 'Cairo')),
                     subtitle: Text(
                         '${FormatHelper.formatGrade(r.grade!)} / ${FormatHelper.formatGrade(r.maxGrade)}',
-                        style: const TextStyle(
-                            fontFamily: 'Cairo', fontSize: 12)),
+                        style:
+                            const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
                     onTap: () => Navigator.pop(context, r),
                   )),
             ],
@@ -495,8 +494,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
             .where((a) => attendanceCountsAsPresent(a.status))
             .length;
         final absentCount = studentAtts
-            .where((a) =>
-                normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT)
+            .where(
+                (a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT)
             .length;
         final attRate = studentAtts.isEmpty
             ? 0.0
@@ -1330,47 +1329,6 @@ class _AttendanceTab extends StatelessWidget {
   }
 }
 
-// spec 048 — بطاقة متوسط التسميع (الشهر الحالي + الإجمالي). عرض فقط.
-class _RecitationSummary extends StatelessWidget {
-  final List<Attendance> attendance;
-  final bool isDark;
-  const _RecitationSummary({required this.attendance, required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final month = DateTime(now.year, now.month, 1);
-    final maxNow = currentRecitationMax(Get.isRegistered<SettingsController>()
-        ? Get.find<SettingsController>().recitationMax.value
-        : null);
-    final monthAvg =
-        recitationAverage(attendance, month: month, scaleTo: maxNow);
-    final totalAvg = recitationAverage(attendance, scaleTo: maxNow);
-    final monthN = recitationCount(attendance, month: month);
-    final totalN = recitationCount(attendance);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A2540) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: isDark
-            ? []
-            : [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)],
-      ),
-      child: Row(children: [
-        Expanded(
-            child: _MiniStat('تسميع هذا الشهر',
-                '${recitationAverageLabel(monthAvg)}/$maxNow  ($monthN)',
-                const Color(0xFF0EA5E9))),
-        Expanded(
-            child: _MiniStat('تسميع الإجمالي',
-                '${recitationAverageLabel(totalAvg)}/$maxNow  ($totalN)',
-                const Color(0xFF0EA5E9))),
-      ]),
-    );
-  }
-}
-
 // spec 032 — قسم "حصص ملغاة / تعويضية / إضافية" أعلى سجل حضور الطالب.
 // عرض فقط — مش بيتحسب في نسبة الحضور (اللي مبنية على صفوف attendance).
 class _SessionOverridesSection extends StatelessWidget {
@@ -1390,7 +1348,10 @@ class _SessionOverridesSection extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: isDark
             ? []
-            : [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)],
+            : [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)
+              ],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('حصص استثنائية',
@@ -1437,7 +1398,7 @@ class _SessionOverridesSection extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Homework tab
+// Homework + recitation tab (إعادة تصميم 2026-10-15)
 // ─────────────────────────────────────────────────────────────────────────────
 class _DayEntry {
   Homework? hw;
@@ -1453,7 +1414,15 @@ Color _recColor(int g, int max) => g >= max * 0.8
         ? const Color(0xFFF59E0B)
         : const Color(0xFFEF4444);
 
-class _HomeworkTab extends StatelessWidget {
+Color _rateColor(double pct) => pct >= 75
+    ? const Color(0xFF10B981)
+    : pct >= 50
+        ? const Color(0xFFF59E0B)
+        : const Color(0xFFEF4444);
+
+enum _HwFilter { all, homework, recitation }
+
+class _HomeworkTab extends StatefulWidget {
   final List<Homework> homework;
   final List<Attendance> attendance; // لدرجات التسميع (spec 048)
   final bool showHomework;
@@ -1469,23 +1438,34 @@ class _HomeworkTab extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  State<_HomeworkTab> createState() => _HomeworkTabState();
+}
 
-    final recMaxNow = currentRecitationMax(Get.isRegistered<SettingsController>()
-        ? Get.find<SettingsController>().recitationMax.value
-        : null);
+class _HomeworkTabState extends State<_HomeworkTab> {
+  _HwFilter _filter = _HwFilter.all;
+
+  static const _recAccent = Color(0xFF0EA5E9);
+  static const _hwAccent = Color(0xFF3B82F6);
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final recMaxNow = currentRecitationMax(
+        Get.isRegistered<SettingsController>()
+            ? Get.find<SettingsController>().recitationMax.value
+            : null);
 
     // يوم واحد = واجب و/أو درجة تسميع
     final days = <DateTime, _DayEntry>{};
-    if (showHomework) {
-      for (final h in homework) {
+    if (w.showHomework) {
+      for (final h in w.homework) {
         final d = DateTime(h.date.year, h.date.month, h.date.day);
         (days[d] ??= _DayEntry()).hw = h;
       }
     }
-    if (showRecitation) {
-      for (final a in attendance) {
+    if (w.showRecitation) {
+      for (final a in w.attendance) {
         final g = recitationGradeOf(a);
         if (g == null) continue;
         final d = DateTime(a.date.year, a.date.month, a.date.day);
@@ -1494,38 +1474,63 @@ class _HomeworkTab extends StatelessWidget {
         e.recMax = recitationMaxOf(a);
       }
     }
-    final sortedDays = days.keys.toList()..sort((a, b) => b.compareTo(a));
 
-    final hwList = showHomework ? homework : const <Homework>[];
-    final doneCount = hwList
+    // ── إحصاءات الواجب ──
+    final hwList = w.showHomework ? w.homework : const <Homework>[];
+    final done = hwList
         .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_DONE)
         .length;
-    final partialCount = hwList
+    final partial = hwList
         .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_PARTIAL)
         .length;
-    final notDoneCount = hwList
+    final notDone = hwList
         .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_NOT_DONE)
         .length;
-    final total = doneCount + partialCount + notDoneCount;
+    final hwTotal = done + partial + notDone;
     // الناقص = نص درجة في نسبة الالتزام
-    final rate =
-        total == 0 ? 0.0 : ((doneCount + partialCount * 0.5) / total) * 100;
-    final hasRec = showRecitation && recitationCount(attendance) > 0;
+    final hwRate =
+        hwTotal == 0 ? 0.0 : ((done + partial * 0.5) / hwTotal) * 100;
+
+    // ── إحصاءات التسميع ──
+    final hasRec = w.showRecitation && recitationCount(w.attendance) > 0;
+    final monthStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
+    final recMonthAvg =
+        recitationAverage(w.attendance, month: monthStart, scaleTo: recMaxNow);
+    final recTotalAvg = recitationAverage(w.attendance, scaleTo: recMaxNow);
+    final recMonthN = recitationCount(w.attendance, month: monthStart);
+    final recTotalN = recitationCount(w.attendance);
+
+    final hasHwStats = w.showHomework && hwTotal > 0;
+    final canFilter = hasHwStats && hasRec;
+
+    // ── الأيام بعد الفلتر ──
+    bool pass(_DayEntry e) {
+      switch (_filter) {
+        case _HwFilter.all:
+          return true;
+        case _HwFilter.homework:
+          return e.hw != null;
+        case _HwFilter.recitation:
+          return e.rec != null;
+      }
+    }
+
+    final sortedDays = days.keys.where((d) => pass(days[d]!)).toList()
+      ..sort((a, b) => b.compareTo(a));
 
     final Map<String, List<DateTime>> byMonth = {};
     for (final d in sortedDays) {
       final label = DateFormat('MMMM yyyy', 'ar').format(d);
       (byMonth[label] ??= []).add(d);
     }
-    final months = byMonth.keys.toList();
 
-    if (sortedDays.isEmpty) {
+    if (days.isEmpty) {
       return Center(
         child: EmptyState(
           icon: Icons.menu_book_outlined,
-          title: showHomework && showRecitation
+          title: w.showHomework && w.showRecitation
               ? 'لا توجد سجلات واجب أو تسميع'
-              : showRecitation
+              : w.showRecitation
                   ? 'لا توجد درجات تسميع'
                   : 'لا توجد سجلات واجب',
           subtitle: 'سيظهر هنا السجل عند التسجيل',
@@ -1535,62 +1540,123 @@ class _HomeworkTab extends StatelessWidget {
 
     BoxDecoration cardDeco() => BoxDecoration(
           color: isDark ? const Color(0xFF1A2540) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           boxShadow: isDark
               ? []
               : [
                   BoxShadow(
                       color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 8)
+                      blurRadius: 10,
+                      offset: const Offset(0, 3))
                 ],
         );
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      children: [
-        if (total > 0)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: cardDeco(),
-            child: Column(children: [
-              Row(children: [
-                Expanded(child: _MiniStat('عمل', '$doneCount', Colors.blue)),
-                Expanded(
-                    child:
-                        _MiniStat('لم يعمل', '$notDoneCount', Colors.orange)),
-                Expanded(
-                    child: _MiniStat(
-                        'النسبة',
-                        '${rate.toStringAsFixed(0)}%',
-                        rate >= 75
-                            ? Colors.green
-                            : rate >= 50
-                                ? Colors.orange
-                                : Colors.red)),
-              ]),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  value: total == 0 ? 0 : rate / 100,
-                  minHeight: 8,
-                  backgroundColor: Colors.orange.withValues(alpha: 0.15),
-                  valueColor: AlwaysStoppedAnimation(rate >= 75
-                      ? Colors.green
-                      : rate >= 50
-                          ? Colors.orange
-                          : Colors.red),
-                ),
-              ),
-            ]),
+    Widget filterChip(String label, _HwFilter f, Color c) {
+      final on = _filter == f;
+      return GestureDetector(
+        onTap: () => setState(() => _filter = f),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+          decoration: BoxDecoration(
+            color: on ? c.withValues(alpha: 0.15) : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+                color: on ? c : Colors.grey.withValues(alpha: 0.35),
+                width: on ? 1.5 : 1),
           ),
-        if (hasRec) ...[
-          if (total > 0) const SizedBox(height: 12),
-          _RecitationSummary(attendance: attendance, isDark: isDark),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: on ? FontWeight.w800 : FontWeight.w600,
+                  color: on ? c : Colors.grey.shade600)),
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      children: [
+        // ═══ نظرة عامة: عمودين (الواجب | التسميع) ═══
+        if (hasHwStats || hasRec)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+            decoration: cardDeco(),
+            child: IntrinsicHeight(
+              child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (hasHwStats)
+                      Expanded(
+                        child: _HwOverviewColumn(
+                          icon: Icons.menu_book_rounded,
+                          title: 'الواجب',
+                          value: '${hwRate.toStringAsFixed(0)}%',
+                          caption: 'نسبة الالتزام',
+                          progress: hwRate / 100,
+                          color: _rateColor(hwRate),
+                          lines: [
+                            'عمل $done  •  ناقص $partial  •  لم يعمل $notDone',
+                          ],
+                        ),
+                      ),
+                    if (hasHwStats && hasRec)
+                      VerticalDivider(
+                          width: 24,
+                          thickness: 1,
+                          color: Colors.grey.withValues(alpha: 0.2)),
+                    if (hasRec)
+                      Expanded(
+                        child: Builder(builder: (_) {
+                          final useMonth = recMonthAvg != null;
+                          final main = useMonth ? recMonthAvg : recTotalAvg;
+                          final frac = main == null ? 0.0 : main / recMaxNow;
+                          return _HwOverviewColumn(
+                            icon: Icons.record_voice_over_rounded,
+                            title: 'التسميع',
+                            value: '${recitationAverageLabel(main)}/$recMaxNow',
+                            caption: useMonth
+                                ? 'متوسط هذا الشهر ($recMonthN)'
+                                : 'المتوسط الإجمالي',
+                            progress: frac.clamp(0.0, 1.0),
+                            color: _rateColor(frac * 100),
+                            lines: [
+                              if (useMonth)
+                                'الإجمالي ${recitationAverageLabel(recTotalAvg)}/$recMaxNow ($recTotalN مرة)'
+                              else
+                                '$recTotalN مرة',
+                            ],
+                          );
+                        }),
+                      ),
+                  ]),
+            ),
+          ),
+
+        // ═══ الفلتر ═══
+        if (canFilter) ...[
+          const SizedBox(height: 14),
+          Wrap(spacing: 8, children: [
+            filterChip('الكل', _HwFilter.all, widget.accentColor),
+            filterChip('الواجب', _HwFilter.homework, _hwAccent),
+            filterChip('التسميع', _HwFilter.recitation, _recAccent),
+          ]),
         ],
         const SizedBox(height: 16),
-        ...months.map((month) {
-          final list = byMonth[month]!;
+
+        if (sortedDays.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32),
+            child: Center(
+              child: Text('مفيش سجلات للفلتر ده',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+            ),
+          ),
+
+        // ═══ الشهور ═══
+        ...byMonth.entries.map((entry) {
+          final month = entry.key;
+          final list = entry.value;
           final mHw = list.where((d) => days[d]!.hw != null).toList();
           final mDone = mHw
               .where((d) =>
@@ -1604,136 +1670,250 @@ class _HomeworkTab extends StatelessWidget {
           final mRecAvg = mRecs.isEmpty
               ? null
               : mRecs.reduce((a, b) => a + b) / mRecs.length * recMaxNow;
-          return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8, top: 4),
-                  child: Row(children: [
-                    Text(month,
+
+          Widget pill(String t, Color c) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: c.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(t,
+                    style: TextStyle(
+                        color: c, fontSize: 11, fontWeight: FontWeight.w800)),
+              );
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 18),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8, right: 2, left: 2),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(month,
                         style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 14)),
-                    if (mHw.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text('واجب $mDone/${mHw.length}',
-                            style: const TextStyle(
-                                color: Colors.blue,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700)),
-                      ),
-                    ],
-                    if (mRecAvg != null) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color:
-                              const Color(0xFF0EA5E9).withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                            '🎤 تسميع ${recitationAverageLabel(double.parse(mRecAvg.toStringAsFixed(1)))}/$recMaxNow',
-                            style: const TextStyle(
-                                color: Color(0xFF0EA5E9),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700)),
-                      ),
-                    ],
-                  ]),
-                ),
-                Container(
-                  decoration: cardDeco(),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: list.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 0, indent: 56),
-                    itemBuilder: (_, i) {
-                      final day = list[i];
-                      final e = days[day]!;
-                      final h = e.hw;
-                      final norm =
-                          h == null ? null : normalizeHomeworkStatus(h.status);
-                      final c = h == null
-                          ? const Color(0xFF0EA5E9)
-                          : norm == HOMEWORK_DONE
-                              ? const Color(0xFF10B981)
-                              : norm == HOMEWORK_PARTIAL
-                                  ? const Color(0xFFF59E0B)
-                                  : const Color(0xFFEF4444);
-                      return ListTile(
-                        leading: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: c.withValues(alpha: 0.12),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            h == null
-                                ? Icons.record_voice_over_rounded
-                                : norm == HOMEWORK_DONE
-                                    ? Icons.menu_book_rounded
-                                    : Icons.menu_book_outlined,
-                            color: c,
-                            size: 18,
-                          ),
-                        ),
-                        title: Text(FormatHelper.formatFullDate(day),
-                            style: const TextStyle(fontSize: 13)),
-                        trailing: Wrap(
-                          spacing: 6,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            if (h != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: c.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(homeworkStatusLabel(h.status),
-                                    style: TextStyle(
-                                        color: c,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700)),
-                              ),
-                            if (e.rec != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color:
-                                      _recColor(e.rec!, e.recMax)
-                                          .withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text('🎤 ${e.rec}/${e.recMax}',
-                                    style: TextStyle(
-                                        color: _recColor(e.rec!, e.recMax),
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800)),
-                              ),
-                          ],
-                        ),
-                      );
-                    },
+                            fontWeight: FontWeight.w900, fontSize: 14.5)),
                   ),
-                ),
-                const SizedBox(height: 12),
-              ]);
+                  if (mHw.isNotEmpty && _filter != _HwFilter.recitation)
+                    pill('📖 $mDone/${mHw.length}', _hwAccent),
+                  if (mRecAvg != null && _filter != _HwFilter.homework) ...[
+                    const SizedBox(width: 6),
+                    pill(
+                        '🎤 ${recitationAverageLabel(double.parse(mRecAvg.toStringAsFixed(1)))}/$recMaxNow',
+                        _recAccent),
+                  ],
+                ]),
+              ),
+              Container(
+                decoration: cardDeco(),
+                clipBehavior: Clip.antiAlias,
+                child: Column(children: [
+                  for (var i = 0; i < list.length; i++) ...[
+                    if (i > 0)
+                      Divider(
+                          height: 1,
+                          indent: 70,
+                          endIndent: 12,
+                          color: Colors.grey.withValues(alpha: 0.15)),
+                    _HwDayRow(
+                      day: list[i],
+                      entry: days[list[i]]!,
+                      showHomework:
+                          w.showHomework && _filter != _HwFilter.recitation,
+                      showRecitation:
+                          w.showRecitation && _filter != _HwFilter.homework,
+                    ),
+                  ],
+                ]),
+              ),
+            ]),
+          );
         }),
       ],
+    );
+  }
+}
+
+/// عمود في كارت النظرة العامة: عنوان + رقم كبير + شريط + أسطر شرح.
+class _HwOverviewColumn extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String value;
+  final String caption;
+  final double progress;
+  final Color color;
+  final List<String> lines;
+  const _HwOverviewColumn({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.caption,
+    required this.progress,
+    required this.color,
+    required this.lines,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text(title,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.grey.shade600)),
+        ]),
+        const SizedBox(height: 8),
+        Text(value,
+            style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+                color: color,
+                height: 1.1)),
+        const SizedBox(height: 2),
+        Text(caption,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: progress.clamp(0.0, 1.0),
+            minHeight: 7,
+            backgroundColor: color.withValues(alpha: 0.15),
+            valueColor: AlwaysStoppedAnimation(color),
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final l in lines)
+          Text(l,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+      ],
+    );
+  }
+}
+
+/// صف يوم: مربع التاريخ + خانتين ثابتتين (الواجب | التسميع) متحاذيتين.
+class _HwDayRow extends StatelessWidget {
+  final DateTime day;
+  final _DayEntry entry;
+  final bool showHomework;
+  final bool showRecitation;
+  const _HwDayRow({
+    required this.day,
+    required this.entry,
+    required this.showHomework,
+    required this.showRecitation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final h = entry.hw;
+    final norm = h == null ? null : normalizeHomeworkStatus(h.status);
+    final hwColor = norm == HOMEWORK_DONE
+        ? const Color(0xFF10B981)
+        : norm == HOMEWORK_PARTIAL
+            ? const Color(0xFFF59E0B)
+            : const Color(0xFFEF4444);
+    final dash =
+        Text('—', style: TextStyle(color: Colors.grey.shade400, fontSize: 14));
+
+    Widget hwSlot() {
+      if (h == null)
+        return Align(alignment: AlignmentDirectional.centerStart, child: dash);
+      return Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: hwColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(color: hwColor, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(homeworkStatusLabel(h.status),
+                style: TextStyle(
+                    color: hwColor, fontSize: 12, fontWeight: FontWeight.w800)),
+          ]),
+        ),
+      );
+    }
+
+    Widget recSlot() {
+      final g = entry.rec;
+      if (g == null) {
+        return Align(alignment: AlignmentDirectional.centerStart, child: dash);
+      }
+      final c = _recColor(g, entry.recMax);
+      return Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Container(
+          width: 78,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: BoxDecoration(
+            color: c.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('🎤 $g/${entry.recMax}',
+                style: TextStyle(
+                    color: c, fontSize: 12, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 4),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: (g / entry.recMax).clamp(0.0, 1.0),
+                minHeight: 3,
+                backgroundColor: c.withValues(alpha: 0.2),
+                valueColor: AlwaysStoppedAnimation(c),
+              ),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    final dateBox = Container(
+      width: 46,
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(DateFormat('d', 'ar').format(day),
+            style: const TextStyle(
+                fontSize: 16, fontWeight: FontWeight.w900, height: 1.1)),
+        Text(DateFormat('EEE', 'ar').format(day),
+            style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+      ]),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(children: [
+        dateBox,
+        const SizedBox(width: 12),
+        if (showHomework) Expanded(flex: 5, child: hwSlot()),
+        if (showHomework && showRecitation) const SizedBox(width: 8),
+        if (showRecitation)
+          showHomework
+              ? SizedBox(width: 82, child: recSlot())
+              : Expanded(child: recSlot()),
+      ]),
     );
   }
 }
