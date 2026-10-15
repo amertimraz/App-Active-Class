@@ -174,6 +174,7 @@ class _AttendancePageState extends State<AttendancePage>
       students:   studentCtrl.students,
       attendance: controller.attendance,
       groups:     groupCtrl.groups,
+      homework:   homeworkCtrl.homework,
     );
     if (!context.mounted) return;
     if (result.success && result.path != null) {

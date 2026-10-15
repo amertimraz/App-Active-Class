@@ -133,8 +133,7 @@ class ReportController extends GetxController {
     // يستبعد صفوف إسقاط المديونية. isFullyPaid تحت بتحسب "الحالة" من
     // accumulatedDebtThrough على allPayments كاملة (بدون فلترة) — مقصود.
     final paidByStudent = <int, double>{};
-    for (final p
-        in monthPayments.where((p) => p.note != kDebtWriteOffNote)) {
+    for (final p in monthPayments.where((p) => p.note != kDebtWriteOffNote)) {
       paidByStudent.update(p.studentId, (v) => v + p.amount,
           ifAbsent: () => p.amount);
     }
@@ -410,6 +409,7 @@ class ReportController extends GetxController {
         students: allStudents,
         attendance: allAttendance,
         groups: allGroups,
+        homework: allHomework,
       );
       if (result.success && result.path != null) {
         ToastHelper.success('تم إنشاء التقرير بنجاح');
@@ -439,6 +439,7 @@ class ReportController extends GetxController {
         students: allStudents,
         homework: allHomework,
         groups: allGroups,
+        attendance: allAttendance,
       );
       if (result.success && result.path != null) {
         ToastHelper.success('تم إنشاء التقرير بنجاح');
@@ -465,6 +466,7 @@ class ReportController extends GetxController {
         payments: allPayments,
         attendance: allAttendance,
         groups: allGroups,
+        homework: allHomework,
       );
       if (result.success && result.path != null) {
         ToastHelper.success('تم إنشاء التقرير بنجاح');

@@ -1244,7 +1244,7 @@ void _showExportMenu(BuildContext context, ReportController ctrl) {
                 icon: Icons.how_to_reg_rounded,
                 color: const Color(0xFF2E7D32),
                 title: 'تقرير الحضور',
-                subtitle: 'جدول تفصيلي لحضور وغياب كل طالب',
+                subtitle: 'حضور وغياب كل طالب + الواجب والتسميع',
                 onTap: () {
                   Navigator.pop(ctx);
                   if (!licenceOk()) return;
@@ -1263,7 +1263,7 @@ void _showExportMenu(BuildContext context, ReportController ctrl) {
                 icon: Icons.menu_book_rounded,
                 color: const Color(0xFF2563EB),
                 title: 'تقرير الواجب',
-                subtitle: 'جدول تفصيلي بحالة الواجب لكل طالب',
+                subtitle: 'حالة الواجب لكل طالب + متوسط التسميع',
                 onTap: () {
                   Navigator.pop(ctx);
                   if (!licenceOk()) return;
@@ -1283,7 +1283,7 @@ void _showExportMenu(BuildContext context, ReportController ctrl) {
                   icon: Icons.bar_chart_rounded,
                   color: const Color(0xFF6A1B9A),
                   title: 'ملخص المجموعات',
-                  subtitle: 'إجماليات كل مجموعة (دفعات + حضور)',
+                  subtitle: 'إجماليات كل مجموعة (دفعات + حضور + واجب + تسميع)',
                   onTap: () {
                     Navigator.pop(ctx);
                     if (!licenceOk()) return;

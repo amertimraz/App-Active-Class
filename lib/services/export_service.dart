@@ -173,13 +173,14 @@ class ExportService {
   Future<ExportResult> exportTodayPaymentsPDF({
     required DateTime date,
     required List<
-        ({
-          String studentName,
-          String studentCode,
-          String groupName,
-          double amount,
-          DateTime time,
-        })> entries,
+            ({
+              String studentName,
+              String studentCode,
+              String groupName,
+              double amount,
+              DateTime time,
+            })>
+        entries,
   }) async {
     try {
       await _loadFonts();
@@ -223,13 +224,14 @@ class ExportService {
 
   pw.Widget _todayPaymentsTable(
       List<
-          ({
-            String studentName,
-            String studentCode,
-            String groupName,
-            double amount,
-            DateTime time,
-          })> entries) {
+              ({
+                String studentName,
+                String studentCode,
+                String groupName,
+                double amount,
+                DateTime time,
+              })>
+          entries) {
     const headers = ['#', 'الاسم', 'الكود', 'المجموعة', 'الوقت', 'المبلغ'];
     final colWidths = [
       pw.FixedColumnWidth(25),
@@ -261,9 +263,7 @@ class ExportService {
         for (var i = 0; i < colWidths.length; i++) i: colWidths[i]
       },
       border: pw.TableBorder.all(color: _grey, width: 0.3),
-      children: rows
-          .map((r) => pw.TableRow(children: r))
-          .toList(),
+      children: rows.map((r) => pw.TableRow(children: r)).toList(),
     );
   }
 
@@ -278,6 +278,8 @@ class ExportService {
     required List<Student> students,
     required List<Attendance> attendance,
     required List<Group> groups,
+    // الواجب في نفس التقرير (عمود + نسبة التزام) — لو سويتش الواجب شغّال.
+    List<Homework> homework = const [],
   }) async {
     try {
       await _loadFonts();
@@ -290,6 +292,10 @@ class ExportService {
       final end = isRange
           ? DateTime(periodEnd.year, periodEnd.month, periodEnd.day, 23, 59, 59)
           : DateTime(month.year, month.month + 1, 0, 23, 59, 59);
+
+      final attHwMap = _homeworkReportEnabled()
+          ? _hwMapOf(homework, start, end)
+          : <int, Map<DateTime, String>>{};
 
       final rangeAtt = attendance
           .where((a) => !a.date.isBefore(start) && !a.date.isAfter(end))
@@ -332,9 +338,10 @@ class ExportService {
           header: (_) => _pageHeader('تقرير الحضور — $gLabel — $label'),
           footer: (ctx) => _pageFooter(ctx),
           build: (ctx) => [
-            _attendanceTable(gStudents, attMap, start, end, isRange),
+            _attendanceTable(gStudents, attMap, start, end, isRange,
+                hwMap: attHwMap),
             pw.SizedBox(height: 12),
-            _attendanceSummary(gStudents, attMap),
+            _attendanceSummary(gStudents, attMap, hwMap: attHwMap),
           ],
         ));
       }
@@ -359,6 +366,8 @@ class ExportService {
     required List<Student> students,
     required List<Homework> homework,
     required List<Group> groups,
+    // درجات التسميع على سجلات الحضور (عمود تسميع + متوسط) — لو السويتش شغّال.
+    List<Attendance> attendance = const [],
   }) async {
     try {
       await _loadFonts();
@@ -371,6 +380,19 @@ class ExportService {
       final end = isRange
           ? DateTime(periodEnd.year, periodEnd.month, periodEnd.day, 23, 59, 59)
           : DateTime(month.year, month.month + 1, 0, 23, 59, 59);
+
+      final recRecords = _recitationReportEnabled()
+          ? attendance
+              .where((a) =>
+                  !a.date.isBefore(start) &&
+                  !a.date.isAfter(end) &&
+                  recitationGradeOf(a) != null)
+              .toList()
+          : <Attendance>[];
+      final recByStudent = <int, List<Attendance>>{};
+      for (final a in recRecords) {
+        recByStudent.putIfAbsent(a.studentId, () => []).add(a);
+      }
 
       final rangeHw = homework
           .where((h) => !h.date.isBefore(start) && !h.date.isAfter(end))
@@ -410,9 +432,10 @@ class ExportService {
           header: (_) => _pageHeader('تقرير الواجب — $gLabel — $label'),
           footer: (ctx) => _pageFooter(ctx),
           build: (ctx) => [
-            _homeworkTable(gStudents, hwMap, start, end, isRange),
+            _homeworkTable(gStudents, hwMap, start, end, isRange,
+                recByStudent: recByStudent),
             pw.SizedBox(height: 12),
-            _homeworkSummary(gStudents, hwMap),
+            _homeworkSummary(gStudents, hwMap, recByStudent: recByStudent),
           ],
         ));
       }
@@ -485,8 +508,12 @@ class ExportService {
           _td(pct(ind.previous), isEven: even),
           _td(trendText(ind), isEven: even, color: trendColor(ind.trend)),
           _td(ind.level.isEmpty ? '—' : ind.level, isEven: even),
-          _td(ind.current == null ? '—' : ind.kind.samplesLabel(ind.currentSamples),
-              isEven: even, size: 9),
+          _td(
+              ind.current == null
+                  ? '—'
+                  : ind.kind.samplesLabel(ind.currentSamples),
+              isEven: even,
+              size: 9),
         ]));
       }
 
@@ -515,7 +542,8 @@ class ExportService {
           children: [
             _pageHeader('تقرير مستوى الطالب — $monthLabel'),
             pw.SizedBox(height: 12),
-            pw.Text(fixArabicForPdf('الطالب: ${p.name}'), style: _style(size: 15, bold: true)),
+            pw.Text(fixArabicForPdf('الطالب: ${p.name}'),
+                style: _style(size: 15, bold: true)),
             pw.SizedBox(height: 2),
             pw.Text(fixArabicForPdf('المجموعة: ${p.groupName}'),
                 style: _style(size: 11, color: _grey)),
@@ -549,8 +577,8 @@ class ExportService {
         ),
       ));
 
-      return _savePdf(
-          doc, 'performance_${p.studentId}_${DateFormat('yyyyMM').format(p.month)}');
+      return _savePdf(doc,
+          'performance_${p.studentId}_${DateFormat('yyyyMM').format(p.month)}');
     } catch (e) {
       return ExportResult.fail('فشل إنشاء PDF: $e');
     }
@@ -565,11 +593,19 @@ class ExportService {
     required List<Payment> payments,
     required List<Attendance> attendance,
     required List<Group> groups,
+    // الواجب (نسبة التزام لكل مجموعة) — لو سويتش الواجب شغّال.
+    List<Homework> homework = const [],
   }) async {
     try {
       await _loadFonts();
       final doc = pw.Document();
 
+      final monthHw = _homeworkReportEnabled()
+          ? homework
+              .where((h) =>
+                  h.date.year == month.year && h.date.month == month.month)
+              .toList()
+          : <Homework>[];
       final monthAtt = attendance
           .where(
               (a) => a.date.year == month.year && a.date.month == month.month)
@@ -599,7 +635,8 @@ class ExportService {
         footer: (ctx) => _pageFooter(ctx),
         build: (ctx) => [
           _groupsSummaryTable(
-              groups, students, paidMap, presentMap, month, attendance),
+              groups, students, paidMap, presentMap, month, attendance,
+              monthHw: monthHw, monthRec: monthAtt),
         ],
       ));
 
@@ -880,8 +917,8 @@ class ExportService {
     );
   }
 
-  int _recitationMaxNow() => currentRecitationMax(
-      Get.isRegistered<SettingsController>()
+  int _recitationMaxNow() =>
+      currentRecitationMax(Get.isRegistered<SettingsController>()
           ? Get.find<SettingsController>().recitationMax.value
           : null);
 
@@ -891,10 +928,46 @@ class ExportService {
       ? Get.find<SettingsController>().showRecitation.value
       : true;
 
+  /// سويتش "الواجب" يتحكم في ظهوره في تقارير الحضور والملخصات (تقرير الواجب
+  /// نفسه بيفضل يتطبع).
+  bool _homeworkReportEnabled() => Get.isRegistered<SettingsController>()
+      ? Get.find<SettingsController>().showHomework.value
+      : true;
+
+  /// خريطة واجب (طالب → يوم → حالة) داخل [start, end].
+  Map<int, Map<DateTime, String>> _hwMapOf(
+      Iterable<Homework> hw, DateTime start, DateTime end) {
+    final m = <int, Map<DateTime, String>>{};
+    for (final h in hw) {
+      if (h.date.isBefore(start) || h.date.isAfter(end)) continue;
+      final d = DateTime(h.date.year, h.date.month, h.date.day);
+      m.putIfAbsent(h.studentId, () => {})[d] = h.status;
+    }
+    return m;
+  }
+
+  /// (عمل، لم يعمل) — الناقص بيتحسب "عمل" زي تقرير الواجب.
+  ({int done, int notDone}) _hwCounts(Map<DateTime, String>? m) {
+    var done = 0, notDone = 0;
+    for (final v in (m ?? const <DateTime, String>{}).values) {
+      final n = normalizeHomeworkStatus(v);
+      if (n == HOMEWORK_DONE || n == HOMEWORK_PARTIAL) {
+        done++;
+      } else if (n == HOMEWORK_NOT_DONE) {
+        notDone++;
+      }
+    }
+    return (done: done, notDone: notDone);
+  }
+
   // ── جدول الحضور ──────────────────────────────────────────────────
-  pw.Widget _attendanceTable(List<Student> students,
-      Map<int, Map<DateTime, Attendance>> attMap, DateTime start, DateTime end,
-      bool isRange) {
+  pw.Widget _attendanceTable(
+      List<Student> students,
+      Map<int, Map<DateTime, Attendance>> attMap,
+      DateTime start,
+      DateTime end,
+      bool isRange,
+      {Map<int, Map<DateTime, String>> hwMap = const {}}) {
     // أعمدة الأيام = التواريخ اللي فيها تسجيل حصص فعلي فقط (spec 013 US5).
     // في وضع الفترة (spec 014) الترويسة تعرض يوم/شهر عشان الفترة اللي
     // بتمتد على أكتر من شهر ما يحصلش فيها لبس.
@@ -922,9 +995,13 @@ class ExportService {
     colWidths[n + 2] = const pw.FixedColumnWidth(30); // غياب
     // spec 048 — عمود متوسط التسميع (بس لو مفعّل وفيه درجات في الجدول ده)
     final hasRecitation = _recitationReportEnabled() &&
-        students.any((s) =>
-            recitationCount((attMap[s.id] ?? {}).values) > 0);
-    if (hasRecitation) colWidths[n + 3] = const pw.FixedColumnWidth(34);
+        students.any((s) => recitationCount((attMap[s.id] ?? {}).values) > 0);
+    // عمود الواجب (عمل/إجمالي) — بس لو فيه واجب مسجّل لأي طالب في الجدول ده.
+    final hasHomework = hwMap.isNotEmpty &&
+        students.any((s) => (hwMap[s.id] ?? const {}).isNotEmpty);
+    var extraCol = n + 3;
+    if (hasHomework) colWidths[extraCol++] = const pw.FixedColumnWidth(34);
+    if (hasRecitation) colWidths[extraCol++] = const pw.FixedColumnWidth(34);
 
     final rows = <pw.TableRow>[];
 
@@ -935,6 +1012,7 @@ class ExportService {
     }
     headerCells.add(_th('ح', size: 8));
     headerCells.add(_th('غ', size: 8));
+    if (hasHomework) headerCells.add(_th('واجب', size: 7));
     if (hasRecitation) headerCells.add(_th('تسميع', size: 7));
     rows.add(pw.TableRow(children: headerCells));
 
@@ -967,6 +1045,20 @@ class ExportService {
       }
       cells.add(_td('$presentCount', isEven: isEven, color: _success, size: 9));
       cells.add(_td('$absentCount', isEven: isEven, color: _error, size: 9));
+      if (hasHomework) {
+        final c = _hwCounts(hwMap[s.id]);
+        final t = c.done + c.notDone;
+        cells.add(_td(t == 0 ? '—' : '${c.done}/$t',
+            isEven: isEven,
+            color: t == 0
+                ? _grey
+                : (c.done / t >= 0.75
+                    ? _success
+                    : c.done / t >= 0.5
+                        ? _warning
+                        : _error),
+            size: 9));
+      }
       if (hasRecitation) {
         cells.add(_td(
             recitationAverageLabel(
@@ -981,22 +1073,22 @@ class ExportService {
   }
 
   pw.Widget _attendanceSummary(
-      List<Student> students, Map<int, Map<DateTime, Attendance>> attMap) {
+      List<Student> students, Map<int, Map<DateTime, Attendance>> attMap,
+      {Map<int, Map<DateTime, String>> hwMap = const {}}) {
     int totalPresent = 0;
     int totalAbsent = 0;
     int totalLate = 0;
     var hasAnyInteraction = false;
     for (final s in students) {
       final sAtt = attMap[s.id] ?? {};
-      totalPresent += sAtt.values
-          .where((v) => attendanceCountsAsPresent(v.status))
-          .length;
+      totalPresent +=
+          sAtt.values.where((v) => attendanceCountsAsPresent(v.status)).length;
       totalLate += sAtt.values
           .where((v) => normalizeAttendanceStatus(v.status) == ATTENDANCE_LATE)
           .length;
       totalAbsent += sAtt.values
-          .where((v) =>
-              normalizeAttendanceStatus(v.status) == ATTENDANCE_ABSENT)
+          .where(
+              (v) => normalizeAttendanceStatus(v.status) == ATTENDANCE_ABSENT)
           .length;
       if (!hasAnyInteraction &&
           sAtt.values.any((v) => normalizeInteraction(v.interaction) != null)) {
@@ -1007,10 +1099,19 @@ class ExportService {
     final rate = total > 0 ? (totalPresent / total * 100) : 0.0;
     // spec 048 — متوسط التسميع لكل المجموعة (لو مفعّل وفيه درجات)
     final recAvg = _recitationReportEnabled()
-        ? recitationAverage(
-            students.expand((s) => (attMap[s.id] ?? {}).values),
+        ? recitationAverage(students.expand((s) => (attMap[s.id] ?? {}).values),
             scaleTo: _recitationMaxNow())
         : null;
+
+    // التزام الواجب لكل المجموعة (لو فيه واجب مسجّل)
+    var hwDone = 0, hwNot = 0;
+    for (final s in students) {
+      final c = _hwCounts(hwMap[s.id]);
+      hwDone += c.done;
+      hwNot += c.notDone;
+    }
+    final hwTotal = hwDone + hwNot;
+    final hwRate = hwTotal > 0 ? hwDone / hwTotal * 100 : 0.0;
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1028,8 +1129,18 @@ class ExportService {
               if (totalLate > 0)
                 _statBox('منها متأخر', '$totalLate جلسة', _warning),
               _statBox('إجمالي الغياب', '$totalAbsent جلسة', _error),
+              if (hwTotal > 0)
+                _statBox(
+                    'التزام الواجب',
+                    '${hwRate.toStringAsFixed(0)}%',
+                    hwRate >= 75
+                        ? _success
+                        : hwRate >= 50
+                            ? _warning
+                            : _error),
               if (recAvg != null)
-                _statBox('متوسط التسميع',
+                _statBox(
+                    'متوسط التسميع',
                     '${recitationAverageLabel(recAvg)}/${_recitationMaxNow()}',
                     _success),
               _statBox(
@@ -1057,9 +1168,13 @@ class ExportService {
   }
 
   // ── جدول الواجب ──────────────────────────────────────────────────
-  pw.Widget _homeworkTable(List<Student> students,
-      Map<int, Map<DateTime, String>> hwMap, DateTime start, DateTime end,
-      bool isRange) {
+  pw.Widget _homeworkTable(
+      List<Student> students,
+      Map<int, Map<DateTime, String>> hwMap,
+      DateTime start,
+      DateTime end,
+      bool isRange,
+      {Map<int, List<Attendance>> recByStudent = const {}}) {
     // أعمدة الأيام = تواريخ التسجيل الفعلي فقط (spec 013 US5)؛ ترويسة
     // يوم/شهر في وضع الفترة (spec 014).
     final dateSet = <DateTime>{};
@@ -1084,6 +1199,10 @@ class ExportService {
     }
     colWidths[n + 1] = const pw.FixedColumnWidth(30);
     colWidths[n + 2] = const pw.FixedColumnWidth(30);
+    // عمود متوسط التسميع (بس لو فيه درجات لأي طالب في الجدول ده)
+    final hasRec =
+        students.any((s) => (recByStudent[s.id] ?? const []).isNotEmpty);
+    if (hasRec) colWidths[n + 3] = const pw.FixedColumnWidth(36);
 
     final rows = <pw.TableRow>[];
 
@@ -1094,6 +1213,7 @@ class ExportService {
     }
     headerCells.add(_th('عمل', size: 8));
     headerCells.add(_th('لم يعمل', size: 8));
+    if (hasRec) headerCells.add(_th('تسميع', size: 7));
     rows.add(pw.TableRow(children: headerCells));
 
     for (var i = 0; i < students.length; i++) {
@@ -1121,6 +1241,14 @@ class ExportService {
       }
       cells.add(_td('$doneCount', isEven: isEven, color: _success, size: 9));
       cells.add(_td('$notDoneCount', isEven: isEven, color: _error, size: 9));
+      if (hasRec) {
+        cells.add(_td(
+            recitationAverageLabel(recitationAverage(
+                recByStudent[s.id] ?? const [],
+                scaleTo: _recitationMaxNow())),
+            isEven: isEven,
+            size: 9));
+      }
       rows.add(pw.TableRow(children: cells));
     }
 
@@ -1128,7 +1256,8 @@ class ExportService {
   }
 
   pw.Widget _homeworkSummary(
-      List<Student> students, Map<int, Map<DateTime, String>> hwMap) {
+      List<Student> students, Map<int, Map<DateTime, String>> hwMap,
+      {Map<int, List<Attendance>> recByStudent = const {}}) {
     int totalDone = 0;
     int totalNotDone = 0;
     for (final s in students) {
@@ -1143,6 +1272,9 @@ class ExportService {
     }
     final total = totalDone + totalNotDone;
     final rate = total > 0 ? (totalDone / total * 100) : 0.0;
+    final groupRec = recitationAverage(
+        students.expand((s) => recByStudent[s.id] ?? const <Attendance>[]),
+        scaleTo: _recitationMaxNow());
 
     return pw.Container(
       padding: const pw.EdgeInsets.all(10),
@@ -1155,6 +1287,11 @@ class ExportService {
         children: [
           _statBox('إجمالي عمل الواجب', '$totalDone', _success),
           _statBox('إجمالي لم يعمل', '$totalNotDone', _error),
+          if (groupRec != null)
+            _statBox(
+                'متوسط التسميع',
+                '${recitationAverageLabel(groupRec)}/${_recitationMaxNow()}',
+                _success),
           _statBox(
               'نسبة الالتزام',
               '${rate.toStringAsFixed(1)}%',
@@ -1175,22 +1312,31 @@ class ExportService {
       Map<int, double> paidMap,
       Map<int, int> presentMap,
       DateTime month,
-      List<Attendance> allAttendance) {
+      List<Attendance> allAttendance,
+      {List<Homework> monthHw = const [],
+      List<Attendance> monthRec = const []}) {
     final byGroup = <int, List<Student>>{};
     for (final s in students) {
       byGroup.putIfAbsent(s.groupId, () => []).add(s);
     }
 
-    const headers = [
+    // أعمدة أكاديمية إضافية (بس لو فيه بيانات + السويتش شغّال).
+    final showHw = monthHw.isNotEmpty;
+    final recEnabled = _recitationReportEnabled() &&
+        monthRec.any((a) => recitationGradeOf(a) != null);
+
+    final headers = <String>[
       'المجموعة',
       'الطلاب',
       'معفيون',
       'المتوقع',
       'المحصّل',
       'نسبة التحصيل',
-      'جلسات الحضور'
+      'جلسات الحضور',
+      if (showHw) 'التزام الواجب',
+      if (recEnabled) 'متوسط التسميع',
     ];
-    final colWidths = [
+    final colWidths = <pw.TableColumnWidth>[
       pw.FlexColumnWidth(2.5),
       pw.FixedColumnWidth(45),
       pw.FixedColumnWidth(45),
@@ -1198,6 +1344,8 @@ class ExportService {
       pw.FlexColumnWidth(1.5),
       pw.FlexColumnWidth(1.5),
       pw.FlexColumnWidth(1.5),
+      if (showHw) pw.FlexColumnWidth(1.4),
+      if (recEnabled) pw.FlexColumnWidth(1.4),
     ];
 
     final rows = <pw.TableRow>[];
@@ -1234,6 +1382,23 @@ class ExportService {
       grandPaid += paid;
       grandStudents += gStudents.length;
 
+      // الواجب والتسميع للمجموعة دي في الشهر.
+      final gIds = gStudents.map((s) => s.id).toSet();
+      final gHw = monthHw.where((h) => gIds.contains(h.studentId));
+      final gDone = gHw.where((h) {
+        final n = normalizeHomeworkStatus(h.status);
+        return n == HOMEWORK_DONE || n == HOMEWORK_PARTIAL;
+      }).length;
+      final gNot = gHw
+          .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_NOT_DONE)
+          .length;
+      final hwTotal = gDone + gNot;
+      final hwRate = hwTotal > 0 ? gDone / hwTotal * 100 : null;
+      final recAvg = recEnabled
+          ? recitationAverage(monthRec.where((a) => gIds.contains(a.studentId)),
+              scaleTo: _recitationMaxNow())
+          : null;
+
       rows.add(pw.TableRow(children: [
         _td(g.name, isEven: isEven, bold: true),
         _td('${gStudents.length}', isEven: isEven),
@@ -1250,6 +1415,24 @@ class ExportService {
           isEven: isEven,
         ),
         _td('$sessions', isEven: isEven),
+        if (showHw)
+          hwRate == null
+              ? _td('—', isEven: isEven, color: _grey)
+              : _tdStatus(
+                  '${hwRate.toStringAsFixed(0)}%',
+                  hwRate >= 75
+                      ? _success
+                      : hwRate >= 50
+                          ? _warning
+                          : _error,
+                  isEven: isEven),
+        if (recEnabled)
+          _td(
+              recAvg == null
+                  ? '—'
+                  : '${recitationAverageLabel(recAvg)}/${_recitationMaxNow()}',
+              isEven: isEven,
+              color: recAvg == null ? _grey : null),
       ]));
     }
 
@@ -1263,6 +1446,8 @@ class ExportService {
       _thTotal(_fmt(grandPaid)),
       _thTotal('${grandRate.toStringAsFixed(0)}%'),
       _thTotal(''),
+      if (showHw) _thTotal(''),
+      if (recEnabled) _thTotal(''),
     ]));
 
     return pw.Table(
@@ -1372,7 +1557,8 @@ class ExportService {
               height: 7,
               decoration: pw.BoxDecoration(
                 shape: pw.BoxShape.circle,
-                color: dotColor ?? (late ? _warning : (present ? _success : null)),
+                color:
+                    dotColor ?? (late ? _warning : (present ? _success : null)),
                 border: (present || late)
                     ? null
                     : pw.Border.all(color: _error, width: 1),
@@ -1431,8 +1617,7 @@ class ExportService {
   String _pctStr(double? earned, double max) =>
       (earned == null || max <= 0) ? '' : '${(earned / max * 100).round()}%';
 
-  Future<ExportResult> _saveXlsx(
-      List<List<String>> rows, String name) async {
+  Future<ExportResult> _saveXlsx(List<List<String>> rows, String name) async {
     final wb = xl.Excel.createExcel();
     final def = wb.getDefaultSheet()!;
     wb.rename(def, 'النتائج');
@@ -1466,10 +1651,10 @@ class ExportService {
         if (footerRow.isNotEmpty) footerRow,
       ], fileName);
     }
-    final font = pw.Font.ttf(
-        await rootBundle.load('assets/fonts/Cairo-Regular.ttf'));
-    final fontBold = pw.Font.ttf(
-        await rootBundle.load('assets/fonts/Cairo-Bold.ttf'));
+    final font =
+        pw.Font.ttf(await rootBundle.load('assets/fonts/Cairo-Regular.ttf'));
+    final fontBold =
+        pw.Font.ttf(await rootBundle.load('assets/fonts/Cairo-Bold.ttf'));
     final doc = pw.Document();
     doc.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
@@ -1483,7 +1668,9 @@ class ExportService {
           headers: header,
           data: dataRows,
           headerStyle: pw.TextStyle(
-              fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
+              fontWeight: pw.FontWeight.bold,
+              fontSize: 9,
+              color: PdfColors.white),
           headerDecoration: const pw.BoxDecoration(color: _primary),
           cellStyle: const pw.TextStyle(fontSize: 9),
           cellAlignment: pw.Alignment.centerRight,
@@ -1522,9 +1709,7 @@ class ExportService {
     for (final r in rows) {
       final absent = (r['is_absent'] as int? ?? 0) == 1;
       final grade = (r['grade'] as num?)?.toDouble();
-      final status = absent
-          ? 'غائب'
-          : (grade == null ? 'لم يُدخل' : '');
+      final status = absent ? 'غائب' : (grade == null ? 'لم يُدخل' : '');
       if (!absent && grade != null) {
         sum += grade;
         entered++;
@@ -1588,9 +1773,7 @@ class ExportService {
     var highest = 0.0;
     for (final st in students) {
       final sub = byStudent[st.id];
-      final status = sub == null
-          ? 'لم يسلّم'
-          : sub.status.label;
+      final status = sub == null ? 'لم يسلّم' : sub.status.label;
       final earned = sub == null
           ? null
           : (sub.status == SubmissionStatus.voided
