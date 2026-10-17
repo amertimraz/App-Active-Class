@@ -1289,6 +1289,13 @@ class SyncEngine with WidgetsBindingObserver {
     return channel;
   }
 
+  /// للاختبارات فقط: يطبّق صف وارد بنفس مسار السحب (جوّه transaction
+  /// المستدعي) — لإعادة إنتاج حالات التعارض/الـdeadlock (2026-10).
+  @visibleForTesting
+  Future<void> applyRemoteRowForTest(String table, Map<String, dynamic> remote,
+          {DatabaseExecutor? executor}) =>
+      _applyRemoteRow(table, remote, executor: executor);
+
   Future<void> _applyRemoteRow(String table, Map<String, dynamic> remote,
       {DatabaseExecutor? executor}) async {
     final db = executor ?? await _dbService.database;
