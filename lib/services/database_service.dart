@@ -2577,8 +2577,11 @@ class DatabaseService {
   }
 
   // ========== APP SETTINGS (key/value) ==========
-  Future<String?> getSetting(String key) async {
-    final db = await database;
+  /// [on]: executor اختياري (txn) — لازم يتمرّر لو النداء جوّه
+  /// `db.transaction` وإلا deadlock دائم (sqflite بيحجز الـdb الرئيسي لحد ما
+  /// الـtransaction تخلص، والـtransaction مستنية النداء ده).
+  Future<String?> getSetting(String key, {DatabaseExecutor? on}) async {
+    final db = on ?? await database;
     final result = await db.query(
       TABLE_APP_SETTINGS,
       where: '$COL_SETTING_KEY = ?',
@@ -2588,8 +2591,9 @@ class DatabaseService {
     return result.first[COL_SETTING_VALUE] as String?;
   }
 
-  Future<void> setSetting(String key, String value) async {
-    final db = await database;
+  Future<void> setSetting(String key, String value,
+      {DatabaseExecutor? on}) async {
+    final db = on ?? await database;
     await db.insert(
       TABLE_APP_SETTINGS,
       {COL_SETTING_KEY: key, COL_SETTING_VALUE: value},

@@ -630,3 +630,10 @@ specs/026-qr-payment-accumulated-debt/
 - الملفات: `release_assets/v1.2.76/` — `-arm64-v8a.apk` (49.0MB، sha256 `d9d7ad80…52edb`)، `-armeabi-v7a.apk` (47.8MB، `88e0a1b7…3f95`)، `-x86_64.apk` (50.6MB، `2d01ea08…981f`)، `-play.aab` (71.1MB، `436d5b63…4b6d`). توقيع `5f74fe10…ec7b` ✅، versionCode 4094، بدون migration جديدة.
 - يضم (بعد 1.2.75): صحة البيانات (اكتشاف ودمج الطلاب/المجموعات المكرّرة بالتطبيق، spec 052)، إعادة تصميم تبويب الواجب والتسميع، الواجب والتسميع في تقارير الحضور/الواجب/ملخص المجموعات PDF، تصليح عدّاد المزامنة المعلّقة.
 - النشر: tag `v1.2.76` + GitHub Release (3 APKs) + APK arm64 على `/var/www/active-class.online/downloads/` (backup `.bak-1.2.75`). الـAAB على Play: يدويًا.
+
+## 🔥 حادثة: deadlock في سحب الفريق (2026-10-17) — جهاز مدرس (Xiaomi 12 Lite) بدوّامات/أصفار، نسخ احتياطي بيعلّق، حفظ تلقائي واقف من 11/10
+- **العَرَض:** مع النت شغّال الداشبورد أصفار + دوّامات بعد كل فتح؛ مع النت مقفول بيشتغل طبيعي؛ المساعد سليم؛ النسخ اليدوي بيعلّق؛ الحفظ التلقائي واقف.
+- **السبب:** `SyncEngine._noteIfSuffixed` (spec 049، من v1.2.74) كان بينادي `getSetting/setSetting` على الـdb **الرئيسي** أثناء transaction السحب (`executor = txn`). لما صف وارد اتعدّل اسمه/كوده بسبب تعارض (مثلًا مجموعة Grade 2 المكرّرة على السيرفر) بيحصل **deadlock دائم** في sqflite، وكل استعلام بعده بيتعلّق (داشبورد، wal_checkpoint في النسخ الاحتياطي، إلخ). و`AutoBackupService._running` كان بيفضل true للأبد لأن `createBackup` ما بترجعش.
+- **الإصلاح:** `getSetting/setSetting(on: executor)` + `_noteIfSuffixed` بيمرّر الـtxn؛ `AutoBackupService` بـtimeout 3 دقايق على createBackup (فك القفل). اختبارات: `test/sqflite_txn_deadlock_test.dart` (يثبت النمط القديم بيعلّق، والجديد بيخلص).
+- **التأثير:** v1.2.74/1.2.75/1.2.76 كلها فيها الباج؛ أي فريق فيه تعارض اسم/كود وقت السحب معرّض. الإصلاح يحتاج إصدار جديد (1.2.77).
+- **قاعدة:** أي دالة بتتنادى جوّه `db.transaction` لازم تاخد/تمرّر الـtxn؛ ممنوع `DatabaseService().database` أو `_dbService.*` داخلها.

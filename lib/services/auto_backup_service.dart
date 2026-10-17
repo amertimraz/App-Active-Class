@@ -14,10 +14,10 @@ class AutoBackupService {
   factory AutoBackupService() => _instance;
   AutoBackupService._internal();
 
-  static const String _keyEnabled        = 'auto_backup_enabled';
-  static const String _keyLastBackup     = 'auto_backup_last_time';
-  static const String _keyExternalFiles  = 'auto_backup_external_files';
-  static const int    _keepExternalCount = 5;
+  static const String _keyEnabled = 'auto_backup_enabled';
+  static const String _keyLastBackup = 'auto_backup_last_time';
+  static const String _keyExternalFiles = 'auto_backup_external_files';
+  static const int _keepExternalCount = 5;
 
   /// هل الحفظ التلقائي مفعّل؟ — مفعّل افتراضيًا (المستخدم يقدر يوقفه يدويًا)
   final RxBool enabled = true.obs;
@@ -38,7 +38,7 @@ class AutoBackupService {
   }
 
   Timer? _debounce;
-  bool   _running = false;
+  bool _running = false;
 
   // ─── تهيئة ───────────────────────────────────────────────────────
   Future<void> init() async {
@@ -70,7 +70,13 @@ class AutoBackupService {
     if (_running) return;
     _running = true;
     try {
-      final result = await BackupService().createBackup();
+      // timeout: لو القاعدة اتعلّقت لأي سبب (deadlock/قفل طويل)، createBackup
+      // ما بترجعش أبدًا و_running كان بيفضل true للأبد فالحفظ التلقائي كله
+      // يقف بصمت (حادثة 2026-10: "آخر حفظ 10/11"). الـtimeout بيفكّ القفل
+      // عشان المحاولة الجاية تشتغل لما القاعدة ترجع.
+      final result = await BackupService()
+          .createBackup()
+          .timeout(const Duration(minutes: 3));
       if (result.success) {
         // نظّف النسخ الداخلية الزائدة عن سقف الاحتفاظ الافتراضي (5) —
         // بدون ده النسخ الداخلية (Documents/backups) كانت بتتراكم من

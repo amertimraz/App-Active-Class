@@ -12,7 +12,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart' show WidgetsBinding, WidgetsBindingObserver, AppLifecycleState;
+import 'package:flutter/widgets.dart'
+    show WidgetsBinding, WidgetsBindingObserver, AppLifecycleState;
 import 'package:get/get.dart';
 import 'package:active_class/utils/recitation.dart';
 import 'package:sqflite/sqflite.dart';
@@ -45,21 +46,25 @@ class SyncEngine with WidgetsBindingObserver {
   final SupabaseClient client;
   final String teamId;
   final String deviceId;
+
   /// بتتنادى لو اكتشفنا إن المستخدم بقى مش عضو في الفريق ده (المدرس
   /// شاله، أو حذف الفريق) — RLS بتقفل القراءة/الكتابة صامتة (نتيجة
   /// فاضية، مش error)، فمن غير الفحص الصريح ده الجهاز كان هيفضل شغال
   /// بصلاحيات bypass للأبد من غير ما حد يعرف إنه اتشال فعليًا.
   final VoidCallback? onRemovedFromTeam;
+
   /// بتتنادى لو ترخيص المدرس الحقيقي (Firebase) بقى موقوف/منتهي —
   /// RLS بتقفل السيرفر فورًا (وده شغال ومتأكد منه)، بس ده بيوقف
   /// المزامنة بس صامت في الخلفية؛ من غير الفحص ده مفيش أي حاجة كانت
   /// بتوقف الـ bypass المحلي (teamModeBypassLimits) على جهاز المساعد،
   /// فكان بيفضل يقدر يضيف بيانات محليًا من غير حدود وكأن حاجة ملحصلتش.
   final VoidCallback? onLicenseInactive;
+
   /// بتتنادى لو المدرس فكّ ارتباط الجهاز ده (من شاشة إدارة الأعضاء)
   /// عشان يسمح لجهاز جديد ياخد مكانه — الجهاز القديم (اللي شغال دلوقتي)
   /// لازم يتقفل فورًا بدل ما يفضل شغال وكأن حاجة ملحصلتش.
   final VoidCallback? onDeviceUnbound;
+
   /// بتتنادى مع كل catchUpPull (أول اتصال وكل إعادة اتصال) — team_members
   /// (صلاحيات الأعضاء) مش من ضمن الجداول المتزامنة/الـ Realtime هنا،
   /// فلو المدرس غيّر صلاحية لمساعد (زي منح/سحب حذف الطلاب) وجهاز
@@ -141,9 +146,9 @@ class SyncEngine with WidgetsBindingObserver {
   bool _pulling = false;
 
   // spec 030 — تقوية طابور الإرسال: صف بيفشل باستمرار مايوقفش الطابور.
-  final Map<int, int> _outboxFails = {};      // outboxId → عدد الفشل المتتالي
+  final Map<int, int> _outboxFails = {}; // outboxId → عدد الفشل المتتالي
   final Map<int, String> _lastOutboxErr = {}; // outboxId → آخر نص خطأ (للّوج)
-  final Set<int> _loggedPoison = {};          // اتسجّل في اللوج مرة واحدة
+  final Set<int> _loggedPoison = {}; // اتسجّل في اللوج مرة واحدة
   int _drainRound = 0;
 
   // spec 030 — حارس فحص الخروج من الفريق: هبّة شبكة/توكن متأخّر مايسجّلش
@@ -175,7 +180,8 @@ class SyncEngine with WidgetsBindingObserver {
 
   void start() {
     DatabaseService.teamModeEnabled = true;
-    _pushTimer = Timer.periodic(const Duration(seconds: 3), (_) => drainOutbox());
+    _pushTimer =
+        Timer.periodic(const Duration(seconds: 3), (_) => drainOutbox());
     // Realtime بس بتوصّل أحداث الجداول المشتركة (groups/students/...)،
     // مش team_members/teams — فلو المدرس عطّل وضع الفريق أو شال المساعد
     // وهو متصل بالفعل (من غير أي قطع/إعادة اتصال)، من غير الفحص الدوري
@@ -265,8 +271,7 @@ class SyncEngine with WidgetsBindingObserver {
       final retryPoison = _drainRound % kPoisonRetryEvery == 0;
       final where = StringBuffer('$COL_OUTBOX_SYNCED = 0');
       if (_loggedPoison.isNotEmpty && !retryPoison) {
-        where.write(
-            ' AND $COL_OUTBOX_ID NOT IN (${_loggedPoison.join(',')})');
+        where.write(' AND $COL_OUTBOX_ID NOT IN (${_loggedPoison.join(',')})');
       }
       final rows = await db.query(
         TABLE_SYNC_OUTBOX,
@@ -307,8 +312,9 @@ class SyncEngine with WidgetsBindingObserver {
             // حرفيًا (الأب — مجموعة/طالب — اتمسح محليًا وعمره ما هيرجع)
             // — فلازم عتبة استسلام نهائية معقولة (دقايق، مش ساعات) بدل
             // انتظار للأبد.
-            final giveUp = _recordOutboxFail(outboxId, table, rowId,
-                'الأب لسه بلا remote_id', maxFails: kMaxOutboxFails * 4);
+            final giveUp = _recordOutboxFail(
+                outboxId, table, rowId, 'الأب لسه بلا remote_id',
+                maxFails: kMaxOutboxFails * 4);
             if (giveUp) {
               await db.delete(TABLE_SYNC_OUTBOX,
                   where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
@@ -334,7 +340,8 @@ class SyncEngine with WidgetsBindingObserver {
           // استثناء فعلي (RLS/trigger/شبكة) — ده اللي بيسدّ رأس الطابور.
           // لو تكرر بعد عدد معقول من المحاولات، امسحه بدل ما يفضل عالق
           // للأبد (كان بيتسجّل تحذير بس من غير أي تنظيف فعلي).
-          final giveUp = _recordOutboxFail(outboxId, table, rowId, e.toString());
+          final giveUp =
+              _recordOutboxFail(outboxId, table, rowId, e.toString());
           debugPrint('SyncEngine: فشل push لـ $table/$rowId '
               '(${_describeRow(payloadStr)}) — $e');
           if (giveUp) {
@@ -467,8 +474,7 @@ class SyncEngine with WidgetsBindingObserver {
     // السيرفر. المفتاح (origin_device_id, local_id) بيتغيّر لو هوية الجهاز
     // اتغيّرت (أو الصف جه أصلاً من جهاز تاني)، وبالـupsert كان كل تعديل
     // بيولّد نسخة مكرّرة. لو الصف مش موجود على السيرفر → نكمّل للـupsert.
-    final knownRemoteId =
-        await _localRemoteId(table, _pkCol(table), rowId);
+    final knownRemoteId = await _localRemoteId(table, _pkCol(table), rowId);
     if (knownRemoteId != null) {
       if ((table == TABLE_GROUPS || table == TABLE_STUDENTS) &&
           (await _suffixedRemoteIds()).contains(knownRemoteId)) {
@@ -477,14 +483,13 @@ class SyncEngine with WidgetsBindingObserver {
           ..remove('name')
           ..remove('code');
       }
-      Future<List> updateWith(Map<String, dynamic> row) async =>
-          await client
-              .from(table)
-              .update(inPlaceUpdateColumns(row))
-              .eq('id', knownRemoteId)
-              .eq('team_id', teamId)
-              .select('id')
-              .timeout(_kNetworkTimeout) as List;
+      Future<List> updateWith(Map<String, dynamic> row) async => await client
+          .from(table)
+          .update(inPlaceUpdateColumns(row))
+          .eq('id', knownRemoteId)
+          .eq('team_id', teamId)
+          .select('id')
+          .timeout(_kNetworkTimeout) as List;
       List updated;
       try {
         updated = await updateWith(remoteRow);
@@ -576,7 +581,8 @@ class SyncEngine with WidgetsBindingObserver {
         // هيتزامن لاحقًا أول ما الطرفين يبقى عندهم remote_id.
         final siblingLocalId = payload[COL_STUDENT_SIBLING_ID] as int?;
         final siblingRemoteId = siblingLocalId != null
-            ? await _localRemoteId(TABLE_STUDENTS, COL_STUDENT_ID, siblingLocalId)
+            ? await _localRemoteId(
+                TABLE_STUDENTS, COL_STUDENT_ID, siblingLocalId)
             : null;
         return {
           ...base,
@@ -689,8 +695,7 @@ class SyncEngine with WidgetsBindingObserver {
         final grpLocal = payload[COL_BG_GROUP_ID] as int?;
         String? bkRemote, grpRemote;
         if (bkLocal != null) {
-          bkRemote =
-              await _localRemoteId(TABLE_BOOKLETS, COL_BK_ID, bkLocal);
+          bkRemote = await _localRemoteId(TABLE_BOOKLETS, COL_BK_ID, bkLocal);
           if (bkRemote == null) return null;
         }
         if (grpLocal != null) {
@@ -712,13 +717,12 @@ class SyncEngine with WidgetsBindingObserver {
             payload[isRec ? COL_BR_STUDENT_ID : COL_BP_STUDENT_ID] as int?;
         String? bkRemote, stRemote;
         if (bkLocal != null) {
-          bkRemote =
-              await _localRemoteId(TABLE_BOOKLETS, COL_BK_ID, bkLocal);
+          bkRemote = await _localRemoteId(TABLE_BOOKLETS, COL_BK_ID, bkLocal);
           if (bkRemote == null) return null;
         }
         if (stLocal != null) {
-          stRemote = await _localRemoteId(
-              TABLE_STUDENTS, COL_STUDENT_ID, stLocal);
+          stRemote =
+              await _localRemoteId(TABLE_STUDENTS, COL_STUDENT_ID, stLocal);
           if (stRemote == null) return null;
         }
         if (isRec) {
@@ -822,7 +826,8 @@ class SyncEngine with WidgetsBindingObserver {
         final groupLocalId = payload[COL_EG_GROUP_ID] as int?;
         String? examRemoteId, groupRemoteId;
         if (examLocalId != null) {
-          examRemoteId = await _localRemoteId(TABLE_EXAMS, COL_EXAM_ID, examLocalId);
+          examRemoteId =
+              await _localRemoteId(TABLE_EXAMS, COL_EXAM_ID, examLocalId);
           if (examRemoteId == null) return null;
         }
         if (groupLocalId != null) {
@@ -840,7 +845,8 @@ class SyncEngine with WidgetsBindingObserver {
         final studentLocalId = payload[COL_GRADE_STUDENT_ID] as int?;
         String? examRemoteId, studentRemoteId;
         if (examLocalId != null) {
-          examRemoteId = await _localRemoteId(TABLE_EXAMS, COL_EXAM_ID, examLocalId);
+          examRemoteId =
+              await _localRemoteId(TABLE_EXAMS, COL_EXAM_ID, examLocalId);
           if (examRemoteId == null) return null;
         }
         if (studentLocalId != null) {
@@ -875,16 +881,18 @@ class SyncEngine with WidgetsBindingObserver {
     return null;
   }
 
-  Future<String?> _localRemoteId(String table, String pkCol, int localId) async {
+  Future<String?> _localRemoteId(
+      String table, String pkCol, int localId) async {
     final db = await _dbService.database;
     final rows = await db.query(table,
-        columns: [COL_SYNC_REMOTE_ID], where: '$pkCol = ?', whereArgs: [localId]);
+        columns: [COL_SYNC_REMOTE_ID],
+        where: '$pkCol = ?',
+        whereArgs: [localId]);
     if (rows.isEmpty) return null;
     return rows.first[COL_SYNC_REMOTE_ID] as String?;
   }
 
-  Future<int?> _localIdForRemote(
-      String table, String pkCol, String remoteId,
+  Future<int?> _localIdForRemote(String table, String pkCol, String remoteId,
       {DatabaseExecutor? executor}) async {
     final db = executor ?? await _dbService.database;
     final rows = await db.query(table,
@@ -898,8 +906,7 @@ class SyncEngine with WidgetsBindingObserver {
   /// كل الصفوف المحلية الموجودة فعلاً وقت ما المدرس يفعّل وضع الفريق
   /// لأول مرة — نضيفهم لطابور الإرسال (بترتيب الجداول: مجموعات قبل
   /// طلاب قبل حضور/مدفوعات، عشان الآباء يتزامنوا قبل الأبناء).
-  Future<void> enqueueAllExistingLocalRows() =>
-      _enqueueExistingRows(_tables);
+  Future<void> enqueueAllExistingLocalRows() => _enqueueExistingRows(_tables);
 
   /// إعادة إرسال الامتحانات/الدرجات الموجودة محليًا بالفعل — لمدرّس كان
   /// شغّال بالفعل بوضع الفريق قبل ما الامتحانات تتوصّل بالمزامنة أصلاً
@@ -919,7 +926,8 @@ class SyncEngine with WidgetsBindingObserver {
         final map = Map<String, dynamic>.from(row);
         if (map[COL_SYNC_UPDATED_AT] == null) {
           map[COL_SYNC_UPDATED_AT] = DateTime.now().toIso8601String();
-          await db.update(table, {COL_SYNC_UPDATED_AT: map[COL_SYNC_UPDATED_AT]},
+          await db.update(
+              table, {COL_SYNC_UPDATED_AT: map[COL_SYNC_UPDATED_AT]},
               where: '$pkCol = ?', whereArgs: [id]);
         }
         await db.insert(TABLE_SYNC_OUTBOX, {
@@ -983,7 +991,8 @@ class SyncEngine with WidgetsBindingObserver {
           now.difference(_lastRefreshAttempt!) > const Duration(seconds: 15)) {
         _lastRefreshAttempt = now;
         unawaited(client.auth.refreshSession().then((_) {}, onError: (_) {}));
-        debugPrint('SyncEngine: جلسة غير صالحة — محاولة تجديد وتأجيل فحوصات الفريق');
+        debugPrint(
+            'SyncEngine: جلسة غير صالحة — محاولة تجديد وتأجيل فحوصات الفريق');
       }
       return false;
     }
@@ -1056,10 +1065,10 @@ class SyncEngine with WidgetsBindingObserver {
   Future<bool> _wasDeviceUnbound() async {
     if (!_sessionUsable()) return false; // spec 030 — FR-013
     try {
-      final stillBound = await client
-          .rpc('is_device_still_bound',
-              params: {'_team_id': teamId, '_device_id': deviceId})
-          .timeout(_kNetworkTimeout) as bool;
+      final stillBound = await client.rpc('is_device_still_bound', params: {
+        '_team_id': teamId,
+        '_device_id': deviceId
+      }).timeout(_kNetworkTimeout) as bool;
       if (!stillBound) {
         // spec 030 — نفس منطق العتبة المتتالية لتفادي الإيجابيات الكاذبة.
         _deviceUnboundStreak++;
@@ -1133,8 +1142,9 @@ class SyncEngine with WidgetsBindingObserver {
           .timeout(_kNetworkTimeout)) as List;
       if (page.isEmpty) break;
       for (var i = 0; i < page.length; i += _applyBatchSize) {
-        final end =
-            (i + _applyBatchSize < page.length) ? i + _applyBatchSize : page.length;
+        final end = (i + _applyBatchSize < page.length)
+            ? i + _applyBatchSize
+            : page.length;
         // كل دفعة transaction مستقلة — لو صف واحد رمى استثناء بنمسكه هنا
         // عشان الـtransaction ماترجعش وتضيّع باقي صفوف الدفعة.
         await db.transaction((txn) async {
@@ -1260,7 +1270,8 @@ class SyncEngine with WidgetsBindingObserver {
         ),
         callback: (payload) {
           final newRow = payload.newRecord;
-          if (newRow.isEmpty) return; // DELETE فعلي (مش بنستخدمه — بنعمل soft-delete)
+          if (newRow.isEmpty)
+            return; // DELETE فعلي (مش بنستخدمه — بنعمل soft-delete)
           unawaited(_applyRemoteRow(table, newRow)
               .then((_) => _refreshUiForTable(table)));
         },
@@ -1283,18 +1294,20 @@ class SyncEngine with WidgetsBindingObserver {
     final db = executor ?? await _dbService.database;
     final pkCol = _pkCol(table);
     final remoteId = remote['id'] as String;
-    final remoteUpdatedAt = DateTime.tryParse(remote['updated_at'] as String? ?? '');
+    final remoteUpdatedAt =
+        DateTime.tryParse(remote['updated_at'] as String? ?? '');
     final remoteDeleted = remote['deleted_at'] != null;
     final remoteOriginDevice = remote['origin_device_id'] as String?;
     final remoteLocalId = remote['local_id'] as int?;
 
     // 1) الصف ده معروف عندي محليًا (متسجّل remote_id) — طبّق آخر تعديل.
-    final existing = await db.query(table,
-        where: '$COL_SYNC_REMOTE_ID = ?', whereArgs: [remoteId]);
+    final existing = await db
+        .query(table, where: '$COL_SYNC_REMOTE_ID = ?', whereArgs: [remoteId]);
     if (existing.isNotEmpty) {
       final localRow = existing.first;
       if (remoteDeleted) {
-        await db.delete(table, where: '$pkCol = ?', whereArgs: [localRow[pkCol]]);
+        await db
+            .delete(table, where: '$pkCol = ?', whereArgs: [localRow[pkCol]]);
         return;
       }
       final localUpdatedAt =
@@ -1324,11 +1337,12 @@ class SyncEngine with WidgetsBindingObserver {
     // 2) مفيش remote_id مسجّل عندي — يمكن ده صدى push بتاعي أنا لسه
     //    مستني تأكيد (سباق)، أو صف جديد من عضو تاني.
     if (remoteOriginDevice == deviceId && remoteLocalId != null) {
-      final mine = await db.query(table,
-          where: '$pkCol = ?', whereArgs: [remoteLocalId]);
+      final mine = await db
+          .query(table, where: '$pkCol = ?', whereArgs: [remoteLocalId]);
       if (mine.isNotEmpty) {
         if (remoteDeleted) {
-          await db.delete(table, where: '$pkCol = ?', whereArgs: [remoteLocalId]);
+          await db
+              .delete(table, where: '$pkCol = ?', whereArgs: [remoteLocalId]);
         } else {
           await db.update(table, {COL_SYNC_REMOTE_ID: remoteId},
               where: '$pkCol = ?', whereArgs: [remoteLocalId]);
@@ -1355,7 +1369,8 @@ class SyncEngine with WidgetsBindingObserver {
           final dayPrefix = date.substring(0, 10);
           final dup = await db.query(
             table,
-            where: '$COL_ATTENDANCE_STUDENT_ID = ? AND substr($COL_ATTENDANCE_DATE, 1, 10) = ?',
+            where:
+                '$COL_ATTENDANCE_STUDENT_ID = ? AND substr($COL_ATTENDANCE_DATE, 1, 10) = ?',
             whereArgs: [studentId, dayPrefix],
             limit: 1,
           );
@@ -1375,7 +1390,8 @@ class SyncEngine with WidgetsBindingObserver {
           final dayPrefix = date.substring(0, 10);
           final dup = await db.query(
             table,
-            where: '$COL_HOMEWORK_STUDENT_ID = ? AND substr($COL_HOMEWORK_DATE, 1, 10) = ?',
+            where:
+                '$COL_HOMEWORK_STUDENT_ID = ? AND substr($COL_HOMEWORK_DATE, 1, 10) = ?',
             whereArgs: [studentId, dayPrefix],
             limit: 1,
           );
@@ -1394,7 +1410,8 @@ class SyncEngine with WidgetsBindingObserver {
         if (examId != null && groupId != null) {
           final dup = await db.query(table,
               where: '$COL_EG_EXAM_ID = ? AND $COL_EG_GROUP_ID = ?',
-              whereArgs: [examId, groupId], limit: 1);
+              whereArgs: [examId, groupId],
+              limit: 1);
           if (dup.isNotEmpty) {
             await _reconcileDuplicate(
                 db, table, pkCol, dup.first, remote, localMap);
@@ -1411,7 +1428,8 @@ class SyncEngine with WidgetsBindingObserver {
         if (examId != null && studentId != null) {
           final dup = await db.query(table,
               where: '$COL_GRADE_EXAM_ID = ? AND $COL_GRADE_STUDENT_ID = ?',
-              whereArgs: [examId, studentId], limit: 1);
+              whereArgs: [examId, studentId],
+              limit: 1);
           if (dup.isNotEmpty) {
             await _reconcileDuplicate(
                 db, table, pkCol, dup.first, remote, localMap);
@@ -1428,7 +1446,8 @@ class SyncEngine with WidgetsBindingObserver {
         if (examId != null && studentId != null) {
           final dup = await db.query(table,
               where: '$COL_ES_EXAM_ID = ? AND $COL_ES_STUDENT_ID = ?',
-              whereArgs: [examId, studentId], limit: 1);
+              whereArgs: [examId, studentId],
+              limit: 1);
           if (dup.isNotEmpty) {
             await _reconcileDuplicate(
                 db, table, pkCol, dup.first, remote, localMap);
@@ -1446,7 +1465,8 @@ class SyncEngine with WidgetsBindingObserver {
           final dayPrefix = date.length >= 10 ? date.substring(0, 10) : date;
           final dup = await db.query(table,
               where: '$COL_SO_GROUP_ID = ? AND $COL_SO_DATE = ?',
-              whereArgs: [groupId, dayPrefix], limit: 1);
+              whereArgs: [groupId, dayPrefix],
+              limit: 1);
           if (dup.isNotEmpty) {
             await _reconcileDuplicate(
                 db, table, pkCol, dup.first, remote, localMap);
@@ -1465,7 +1485,8 @@ class SyncEngine with WidgetsBindingObserver {
           final dup = await db.query(table,
               where:
                   '$COL_SAE_STUDENT_ID = ? AND $COL_SAE_TYPE = ? AND $COL_SAE_EVENT_AT = ?',
-              whereArgs: [st, ty, at], limit: 1);
+              whereArgs: [st, ty, at],
+              limit: 1);
           if (dup.isNotEmpty) {
             await _reconcileDuplicate(
                 db, table, pkCol, dup.first, remote, localMap);
@@ -1482,7 +1503,8 @@ class SyncEngine with WidgetsBindingObserver {
         if (bk != null && st != null) {
           final dup = await db.query(table,
               where: '$COL_BR_BOOKLET_ID = ? AND $COL_BR_STUDENT_ID = ?',
-              whereArgs: [bk, st], limit: 1);
+              whereArgs: [bk, st],
+              limit: 1);
           if (dup.isNotEmpty) {
             await _reconcileDuplicate(
                 db, table, pkCol, dup.first, remote, localMap);
@@ -1496,7 +1518,8 @@ class SyncEngine with WidgetsBindingObserver {
         if (bk != null && gr != null) {
           final dup = await db.query(table,
               where: '$COL_BG_BOOKLET_ID = ? AND $COL_BG_GROUP_ID = ?',
-              whereArgs: [bk, gr], limit: 1);
+              whereArgs: [bk, gr],
+              limit: 1);
           if (dup.isNotEmpty) {
             await _reconcileDuplicate(
                 db, table, pkCol, dup.first, remote, localMap);
@@ -1529,8 +1552,11 @@ class SyncEngine with WidgetsBindingObserver {
   // ده ما يترفعش تاني لنفس الصف على السيرفر (كان هيغيّر أصل زميل الفريق).
   static const _kSuffixedKey = 'sync_suffixed_remote_ids';
 
-  Future<Set<String>> _suffixedRemoteIds() async {
-    final raw = await _dbService.getSetting(_kSuffixedKey) ?? '';
+  /// [on]: لازم يتمرّر لما النداء جوّه transaction السحب — استخدام الـdb
+  /// الرئيسي هناك كان بيعمل deadlock دائم (كل استعلام بعده بيتعلّق: داشبورد
+  /// بدوّامة، نسخ احتياطي بيعلّق، الحفظ التلقائي يقف).
+  Future<Set<String>> _suffixedRemoteIds([DatabaseExecutor? on]) async {
+    final raw = await _dbService.getSetting(_kSuffixedKey, on: on) ?? '';
     return raw.split(',').where((e) => e.isNotEmpty).toSet();
   }
 
@@ -1547,9 +1573,9 @@ class SyncEngine with WidgetsBindingObserver {
           : row.first[COL_STUDENT_CODE] != incoming[COL_STUDENT_CODE];
       final rid = row.first[COL_SYNC_REMOTE_ID] as String?;
       if (!changed || rid == null) return;
-      final set = await _suffixedRemoteIds()
+      final set = await _suffixedRemoteIds(db)
         ..add(rid);
-      await _dbService.setSetting(_kSuffixedKey, set.join(','));
+      await _dbService.setSetting(_kSuffixedKey, set.join(','), on: db);
     } catch (e) {
       debugPrint('SyncEngine: تعذّر تسجيل صف بلاحقة تعارض — $e');
     }
@@ -1573,8 +1599,8 @@ class SyncEngine with WidgetsBindingObserver {
     Map<String, dynamic> localMap,
   ) async {
     final wins = syncConflictIncomingWins(
-      localUpdatedAt: DateTime.tryParse(
-          dupRow[COL_SYNC_UPDATED_AT] as String? ?? ''),
+      localUpdatedAt:
+          DateTime.tryParse(dupRow[COL_SYNC_UPDATED_AT] as String? ?? ''),
       remoteUpdatedAt: DateTime.tryParse(remote['updated_at'] as String? ?? ''),
       localRemoteId: dupRow[COL_SYNC_REMOTE_ID] as String? ?? '',
       remoteRemoteId: remote['id'] as String,
@@ -1585,8 +1611,8 @@ class SyncEngine with WidgetsBindingObserver {
     }
     final data = Map<String, Object?>.from(localMap)
       ..remove(COL_SYNC_REMOTE_ID);
-    await db.update(table, data,
-        where: '$pkCol = ?', whereArgs: [dupRow[pkCol]]);
+    await db
+        .update(table, data, where: '$pkCol = ?', whereArgs: [dupRow[pkCol]]);
     debugPrint('SyncEngine: توفيق صف مكرر — طُبِّق الوارد الأحدث ($table)');
   }
 
@@ -1720,7 +1746,8 @@ class SyncEngine with WidgetsBindingObserver {
           COL_STUDENT_EXEMPT_REASON: remote['exempt_reason'],
           // العمود المحلي INTEGER (0/1) بينما Supabase بيرجّعه boolean —
           // لازم تحويل صريح، مش تمرير القيمة زي ما هي، وإلا sqflite هيرفضها.
-          COL_STUDENT_IS_ARCHIVED: (remote['is_archived'] as bool? ?? false) ? 1 : 0,
+          COL_STUDENT_IS_ARCHIVED:
+              (remote['is_archived'] as bool? ?? false) ? 1 : 0,
           COL_STUDENT_ARCHIVED_AT: remote['archived_at'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
@@ -1850,8 +1877,7 @@ class SyncEngine with WidgetsBindingObserver {
                 executor: executor)
             : null;
         final localSt = stRemote != null
-            ? await _localIdForRemote(
-                TABLE_STUDENTS, COL_STUDENT_ID, stRemote,
+            ? await _localIdForRemote(TABLE_STUDENTS, COL_STUDENT_ID, stRemote,
                 executor: executor)
             : null;
         if ((bkRemote != null && localBk == null) ||
