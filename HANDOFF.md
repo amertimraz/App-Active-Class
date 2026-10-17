@@ -637,3 +637,8 @@ specs/026-qr-payment-accumulated-debt/
 - **الإصلاح:** `getSetting/setSetting(on: executor)` + `_noteIfSuffixed` بيمرّر الـtxn؛ `AutoBackupService` بـtimeout 3 دقايق على createBackup (فك القفل). اختبارات: `test/sqflite_txn_deadlock_test.dart` (يثبت النمط القديم بيعلّق، والجديد بيخلص).
 - **التأثير:** v1.2.74/1.2.75/1.2.76 كلها فيها الباج؛ أي فريق فيه تعارض اسم/كود وقت السحب معرّض. الإصلاح يحتاج إصدار جديد (1.2.77).
 - **قاعدة:** أي دالة بتتنادى جوّه `db.transaction` لازم تاخد/تمرّر الـtxn؛ ممنوع `DatabaseService().database` أو `_dbService.*` داخلها.
+
+### 📦 إصدار v1.2.77+4095 — منشور (2026-10-17): GitHub Release + APK على الـVPS (AAB على Play يدويًا) — **hotfix حرج**
+- الملفات: `release_assets/v1.2.77/` — `-arm64-v8a.apk` (49.1MB، sha256 `19889311…3b5a`)، `-armeabi-v7a.apk` (47.8MB، `079afa3e…48bd`)، `-x86_64.apk` (50.7MB، `921a5d21…0707`)، `-play.aab` (71.1MB، `37600da6…8c7f`). توقيع `5f74fe10…ec7b` ✅، versionCode 4095، بدون migration.
+- **السبب الأساسي للإصدار:** إصلاح deadlock سحب الفريق (`SyncEngine._noteIfSuffixed`، موجود في 1.2.74–1.2.76) — راجع حادثة 2026-10-17 فوق. + إصلاح SnackBar فيه action مابيختفيش (Flutter ≥3.29)، تصنيف الدفع في الملازم، وتقارير الواجب/التسميع.
+- النشر: tag `v1.2.77` + GitHub Release (3 APKs) + APK arm64 على `/var/www/active-class.online/downloads/` (backup `.bak-1.2.76`). الـAAB على Play: يدويًا.
