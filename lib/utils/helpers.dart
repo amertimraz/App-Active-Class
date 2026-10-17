@@ -1,4 +1,4 @@
-﻿// lib/utils/helpers.dart
+// lib/utils/helpers.dart
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -10,7 +10,8 @@ import 'package:active_class/widgets/app_toast.dart';
 
 /// يتحقق من صلاحية الوصول لميزة محدودة بالباقة (نسخ احتياطي/واتساب
 /// جماعي/تصدير). لو ممنوعة، بيعرض SnackBar فيه زر "ترقية" ويرجّع false.
-bool requireLicenseFeature(BuildContext context, bool allowed, String deniedMessage) {
+bool requireLicenseFeature(
+    BuildContext context, bool allowed, String deniedMessage) {
   if (allowed) return true;
   final messenger = ScaffoldMessenger.of(context);
   messenger.clearSnackBars();
@@ -18,6 +19,8 @@ bool requireLicenseFeature(BuildContext context, bool allowed, String deniedMess
     content: Text(deniedMessage, style: const TextStyle(fontFamily: 'Cairo')),
     backgroundColor: Colors.red.shade700,
     duration: const Duration(seconds: 4),
+    persist:
+        false, // Flutter ≥3.29: SnackBar فيه action مابيختفيش لوحده من غير ده
     action: SnackBarAction(
       label: 'ترقية',
       textColor: Colors.white,
@@ -80,7 +83,7 @@ class FormatHelper {
   static String formatDate(DateTime? date) {
     if (date == null) return 'لم يتم التحديد';
     return DateFormat('yyyy-MM-dd', 'ar').format(date);
-    }
+  }
 
   /// تنسيق تاريخ الدفعة — يوم + ساعة + دقيقة (للدقة في السجلات)
   static String formatPaymentDate(DateTime? date) {
@@ -142,11 +145,13 @@ class FormatHelper {
     // Try to read currency from SettingsController if available
     try {
       final settings = Get.find<SettingsController>();
-      final formatter = NumberFormat.currency(locale: 'ar', symbol: settings.symbol, decimalDigits: 2);
+      final formatter = NumberFormat.currency(
+          locale: 'ar', symbol: settings.symbol, decimalDigits: 2);
       return formatter.format(value);
     } catch (_) {
       // fallback to SAR symbol if controller not ready
-      final formatter = NumberFormat.currency(locale: 'ar', symbol: 'ريال', decimalDigits: 2);
+      final formatter =
+          NumberFormat.currency(locale: 'ar', symbol: 'ريال', decimalDigits: 2);
       return formatter.format(value);
     }
   }
@@ -156,7 +161,8 @@ class FormatHelper {
   /// مالي أصلاً، فمش محتاجين نكرّر اسم العملة الكامل جنب الرقم.
   static String formatCurrencyCompact(double? amount) {
     final value = (amount ?? 0).toDouble();
-    final formatter = NumberFormat.currency(locale: 'ar', symbol: '', decimalDigits: 2);
+    final formatter =
+        NumberFormat.currency(locale: 'ar', symbol: '', decimalDigits: 2);
     return formatter.format(value).trim();
   }
 
@@ -176,14 +182,18 @@ class FormatHelper {
   static bool isToday(DateTime? date) {
     if (date == null) return false;
     final now = DateTime.now();
-    return date.year == now.year && date.month == now.month && date.day == now.day;
+    return date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
   }
 
   /// هل التاريخ بالأمس؟
   static bool isYesterday(DateTime? date) {
     if (date == null) return false;
     final yesterday = DateTime.now().subtract(const Duration(days: 1));
-    return date.year == yesterday.year && date.month == yesterday.month && date.day == yesterday.day;
+    return date.year == yesterday.year &&
+        date.month == yesterday.month &&
+        date.day == yesterday.day;
   }
 
   /// نص نسبي للتاريخ
@@ -252,7 +262,8 @@ class ValidationHelper {
   }
 
   /// التحقق من الحد الأدنى للطول
-  static String? validateMinLength(String? value, int minLength, String fieldName) {
+  static String? validateMinLength(
+      String? value, int minLength, String fieldName) {
     if (value == null || value.trim().isEmpty) {
       return 'يرجى إدخال $fieldName';
     }
@@ -263,7 +274,8 @@ class ValidationHelper {
   }
 
   /// تحقق من تطابق كلمتي المرور
-  static String? validatePasswordMatch(String? password, String? confirmPassword) {
+  static String? validatePasswordMatch(
+      String? password, String? confirmPassword) {
     if (password != confirmPassword) {
       return 'كلمتا المرور غير متطابقتين';
     }
@@ -376,7 +388,8 @@ class ToastHelper {
   //   الطالب المكرر عند الحفظ)، السناك بار بيظهر ورا الموديل بدل ما
   //   يظهر فوقه. الـ Overlay الجذري بتاع AppToast بيتحط فوق كل حاجة
   //   دايماً، فمفيش المشكلة دي.
-  static void _show(String title, String message, {ToastType type = ToastType.success}) {
+  static void _show(String title, String message,
+      {ToastType type = ToastType.success}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final context = Get.context;
       if (context == null) return;

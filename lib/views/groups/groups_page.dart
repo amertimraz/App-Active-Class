@@ -61,20 +61,25 @@ class _GroupsPageState extends State<GroupsPage> {
 
   List<Student> _groupStudents(int? groupId) {
     if (groupId == null) return [];
-    return studentController.students.where((s) => s.groupId == groupId).toList();
+    return studentController.students
+        .where((s) => s.groupId == groupId)
+        .toList();
   }
 
   List<Map<String, String>> _parseScheduleSlots(String raw) {
     final parts = raw.split(',');
-    return parts.map((s) {
-      final txt = s.trim();
-      if (txt.isEmpty) return <String, String>{};
-      final sp = txt.split(' ');
-      if (sp.length < 2) return <String, String>{'day': txt, 'time': ''};
-      final day = sp.first;
-      final time = txt.substring(day.length).trim();
-      return <String, String>{'day': day, 'time': time};
-    }).where((m) => m.isNotEmpty).toList();
+    return parts
+        .map((s) {
+          final txt = s.trim();
+          if (txt.isEmpty) return <String, String>{};
+          final sp = txt.split(' ');
+          if (sp.length < 2) return <String, String>{'day': txt, 'time': ''};
+          final day = sp.first;
+          final time = txt.substring(day.length).trim();
+          return <String, String>{'day': day, 'time': time};
+        })
+        .where((m) => m.isNotEmpty)
+        .toList();
   }
 
   @override
@@ -100,7 +105,8 @@ class _GroupsPageState extends State<GroupsPage> {
           final query = _searchController.text.trim();
           final List<Group> items = controller.groups.where((g) {
             if (query.isEmpty) return true;
-            final byGroup = g.name.contains(query) || (g.code?.contains(query) ?? false);
+            final byGroup =
+                g.name.contains(query) || (g.code?.contains(query) ?? false);
             final byStudent = studentController.students
                 .any((s) => s.groupId == g.id && s.name.contains(query));
             return byGroup || byStudent;
@@ -159,7 +165,8 @@ class _GroupsPageState extends State<GroupsPage> {
                             title: 'لا توجد مجموعات',
                             subtitle: 'ابدأ بإضافة مجموعة جديدة',
                             actionLabel: 'إضافة مجموعة',
-                            onActionPressed: () => _showGroupFormDialog(context),
+                            onActionPressed: () =>
+                                _showGroupFormDialog(context),
                           ),
                         ),
                       )
@@ -171,22 +178,23 @@ class _GroupsPageState extends State<GroupsPage> {
                         : ListView.builder(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
                             itemCount: items.length,
-                            itemBuilder: (_, i) =>
-                                GroupCard(
-                                  group: items[i],
-                                  studentCount: _studentCount(items[i].id),
-                                  archivedCount: _archivedStudentCount(items[i].id),
-                                  students: _groupStudents(items[i].id),
-                                  onEdit: () => _showGroupFormDialog(context, group: items[i]),
-                                  onDelete: () {
-                                    if (!requireDeletePermission(context,
-                                        TeamModeService().canDeleteStudentsNow)) {
-                                      return;
-                                    }
-                                    if (items[i].id != null) controller.deleteGroup(items[i].id!);
-                                  },
-                                  parseSlots: _parseScheduleSlots,
-                                ),
+                            itemBuilder: (_, i) => GroupCard(
+                              group: items[i],
+                              studentCount: _studentCount(items[i].id),
+                              archivedCount: _archivedStudentCount(items[i].id),
+                              students: _groupStudents(items[i].id),
+                              onEdit: () => _showGroupFormDialog(context,
+                                  group: items[i]),
+                              onDelete: () {
+                                if (!requireDeletePermission(context,
+                                    TeamModeService().canDeleteStudentsNow)) {
+                                  return;
+                                }
+                                if (items[i].id != null)
+                                  controller.deleteGroup(items[i].id!);
+                              },
+                              parseSlots: _parseScheduleSlots,
+                            ),
                           ),
               ),
             ],
@@ -202,6 +210,8 @@ class _GroupsPageState extends State<GroupsPage> {
               content: Text(err, style: const TextStyle(fontFamily: 'Cairo')),
               backgroundColor: Colors.red.shade700,
               duration: const Duration(seconds: 4),
+              persist:
+                  false, // Flutter ≥3.29: SnackBar فيه action مابيختفيش لوحده من غير ده
               action: SnackBarAction(
                 label: 'ترقية',
                 textColor: Colors.white,
@@ -218,7 +228,8 @@ class _GroupsPageState extends State<GroupsPage> {
     );
   }
 
-  Future<void> _showGroupFormDialog(BuildContext context, {Group? group}) async {
+  Future<void> _showGroupFormDialog(BuildContext context,
+      {Group? group}) async {
     double? savedNewPrice;
     await showDialog(
       context: context,
@@ -270,5 +281,3 @@ class _GroupsPageState extends State<GroupsPage> {
     }
   }
 }
-
-

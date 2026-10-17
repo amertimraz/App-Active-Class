@@ -300,6 +300,8 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
             style: TextStyle(fontFamily: 'Cairo')),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 8),
+        persist:
+            false, // Flutter ≥3.29: SnackBar فيه action مابيختفيش لوحده من غير ده
         action: SnackBarAction(
           label: 'من المتصفح',
           onPressed: () {

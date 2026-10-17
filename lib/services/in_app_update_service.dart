@@ -33,6 +33,8 @@ class InAppUpdateService {
           ),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 10),
+          persist:
+              false, // Flutter ≥3.29: SnackBar فيه action مابيختفيش لوحده من غير ده
           action: SnackBarAction(
             label: 'إعادة التشغيل',
             onPressed: () {

@@ -336,6 +336,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                         Text(err, style: const TextStyle(fontFamily: 'Cairo')),
                     backgroundColor: Colors.red.shade700,
                     duration: const Duration(seconds: 4),
+                    persist:
+                        false, // Flutter ≥3.29: SnackBar فيه action مابيختفيش لوحده من غير ده
                     action: SnackBarAction(
                       label: 'ترقية',
                       textColor: Colors.white,
@@ -386,8 +388,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         // تعويضية في يوم غير الجدول المعتاد). محصورة بآخر 4 شهور (تقريبًا
         // مدة ترم) عشان الكارت والقايمة يفضلوا معبّرين عن الفترة الحالية
         // بدل تاريخ المجموعة بالكامل من أول يوم.
-        final fourMonthsAgo =
-            DateTime(now.year, now.month - 4, now.day);
+        final fourMonthsAgo = DateTime(now.year, now.month - 4, now.day);
         final studentIds = allStudents.map((s) => s.id).toSet();
         final groupAttendance = attendanceController.attendance
             .where((a) =>
@@ -633,47 +634,47 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             // متساوية الطول رغم إنها متساوية العرض.
             IntrinsicHeight(
               child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                HeaderStat(
-                    label: 'الطلاب',
-                    value: '${students.length}',
-                    icon: Icons.people_rounded),
-                const SizedBox(width: 10),
-                HeaderStat(
-                    // بدون اسم العملة هنا — الأيقونة والتسمية تحت الرقم
-                    // ("إجمالي الرسوم") بتوضّح إنه مبلغ مالي أصلاً، فمفيش
-                    // داعي نكرر "جنيه"/"ريال"/... جنب كل رقم في مساحة ضيقة.
-                    label: 'إجمالي الرسوم',
-                    value: _canSeeFinancials
-                        ? FormatHelper.formatCurrencyCompact(totalFees)
-                        : '🔒',
-                    icon: Icons.payments_rounded,
-                    locked: !_canSeeFinancials,
-                    onTap: students.isEmpty
-                        ? null
-                        : () =>
-                            _gdShowFeesBreakdownDialog(context, students, g)),
-                const SizedBox(width: 10),
-                HeaderStat(
-                    label: 'اشتراك',
-                    value: !_canSeeFinancials
-                        ? '🔒'
-                        : (g.price != null
-                            ? FormatHelper.formatCurrencyCompact(g.price!)
-                            : '-'),
-                    icon: Icons.monetization_on_rounded,
-                    locked: !_canSeeFinancials),
-                const SizedBox(width: 10),
-                HeaderStat(
-                    label: 'حصص مسجلة',
-                    value: '${sessionDays.length}',
-                    icon: Icons.event_available_rounded,
-                    onTap: sessionDays.isEmpty
-                        ? null
-                        : () => _gdShowSessionsDialog(
-                            context, g.name, sessionDays)),
-              ],
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  HeaderStat(
+                      label: 'الطلاب',
+                      value: '${students.length}',
+                      icon: Icons.people_rounded),
+                  const SizedBox(width: 10),
+                  HeaderStat(
+                      // بدون اسم العملة هنا — الأيقونة والتسمية تحت الرقم
+                      // ("إجمالي الرسوم") بتوضّح إنه مبلغ مالي أصلاً، فمفيش
+                      // داعي نكرر "جنيه"/"ريال"/... جنب كل رقم في مساحة ضيقة.
+                      label: 'إجمالي الرسوم',
+                      value: _canSeeFinancials
+                          ? FormatHelper.formatCurrencyCompact(totalFees)
+                          : '🔒',
+                      icon: Icons.payments_rounded,
+                      locked: !_canSeeFinancials,
+                      onTap: students.isEmpty
+                          ? null
+                          : () =>
+                              _gdShowFeesBreakdownDialog(context, students, g)),
+                  const SizedBox(width: 10),
+                  HeaderStat(
+                      label: 'اشتراك',
+                      value: !_canSeeFinancials
+                          ? '🔒'
+                          : (g.price != null
+                              ? FormatHelper.formatCurrencyCompact(g.price!)
+                              : '-'),
+                      icon: Icons.monetization_on_rounded,
+                      locked: !_canSeeFinancials),
+                  const SizedBox(width: 10),
+                  HeaderStat(
+                      label: 'حصص مسجلة',
+                      value: '${sessionDays.length}',
+                      icon: Icons.event_available_rounded,
+                      onTap: sessionDays.isEmpty
+                          ? null
+                          : () => _gdShowSessionsDialog(
+                              context, g.name, sessionDays)),
+                ],
               ),
             ),
           ],
@@ -770,7 +771,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
 
   // ─── Dialogs / sheets ─────────────────────────────────────────────────────
   void _confirmDeleteGroup(Group g) {
-    if (!requireDeletePermission(context, TeamModeService().canDeleteStudentsNow)) {
+    if (!requireDeletePermission(
+        context, TeamModeService().canDeleteStudentsNow)) {
       return;
     }
     // لازم نحسب الطلاب المؤرشفين كمان — قيد المفتاح الأجنبي على الجدول
@@ -805,7 +807,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   }
 
   void _confirmResetStudents(Group g) {
-    if (!requireDeletePermission(context, TeamModeService().canDeleteStudentsNow)) {
+    if (!requireDeletePermission(
+        context, TeamModeService().canDeleteStudentsNow)) {
       return;
     }
     Get.defaultDialog(
@@ -1223,7 +1226,6 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
   final maxMonth = defaultCollectionMonth();
   final sentMap = await db.getReportSentMap(ids, maxMonth);
 
-
   if (!context.mounted) return;
   await showDialog(
     context: context,
@@ -1235,8 +1237,7 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
       bool sending = false;
       DateTime selMonth = maxMonth;
       DateTime start = DateTime(selMonth.year, selMonth.month, 1);
-      DateTime end =
-          DateTime(selMonth.year, selMonth.month + 1, 0, 23, 59, 59);
+      DateTime end = DateTime(selMonth.year, selMonth.month + 1, 0, 23, 59, 59);
       return StatefulBuilder(
         builder: (ctx, setSt) {
           Future<void> changeMonth(int delta) async {
@@ -1256,8 +1257,8 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
             });
           }
 
-          final atMaxMonth = !selMonth
-              .isBefore(DateTime(maxMonth.year, maxMonth.month, 1));
+          final atMaxMonth =
+              !selMonth.isBefore(DateTime(maxMonth.year, maxMonth.month, 1));
           final sentCount =
               items.where((s) => sentMap.containsKey(s.id)).length;
           final remainingCount = items.length - sentCount;
@@ -1293,9 +1294,7 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       IconButton(
-                        onPressed: sending
-                            ? null
-                            : () => changeMonth(-1),
+                        onPressed: sending ? null : () => changeMonth(-1),
                         icon: const Icon(Icons.chevron_right_rounded),
                         tooltip: 'الشهر السابق',
                       ),
@@ -1305,9 +1304,8 @@ Future<void> _pickAndSend(BuildContext context, List<Student> all,
                             fontWeight: FontWeight.w800, fontSize: 15),
                       ),
                       IconButton(
-                        onPressed: sending || atMaxMonth
-                            ? null
-                            : () => changeMonth(1),
+                        onPressed:
+                            sending || atMaxMonth ? null : () => changeMonth(1),
                         icon: const Icon(Icons.chevron_left_rounded),
                         tooltip: 'الشهر التالي',
                       ),
@@ -1564,7 +1562,6 @@ void _gdShowSessionsDialog(
   );
 }
 
-
 Future<void> _gdWaitForResume() {
   final c = Completer<void>();
   late GDResumeObserver obs;
@@ -1590,7 +1587,6 @@ void _gdShowFeesBreakdownDialog(
           ? Get.find<AttendanceController>()
           : Get.put(AttendanceController());
       DateTime selected = defaultCollectionMonth();
-
 
       Future<Map<String, dynamic>> load(DateTime monthStart) async {
         final monthEnd =
@@ -1633,7 +1629,8 @@ void _gdShowFeesBreakdownDialog(
         solo.forEach((p, c) => expected += p * c);
 
         int paidCount = 0;
-        double paidAmount = 0; // كاش محصّل فعليًا مؤرَّخ في نطاق الشهر ده (تدفق نقدي)
+        double paidAmount =
+            0; // كاش محصّل فعليًا مؤرَّخ في نطاق الشهر ده (تدفق نقدي)
         final List<Student> unpaidStudents = [];
         // مفيش أي مستحق أصلاً (معفى بالكامل، أو بالحصة ولسه محضرش أي
         // حصة الشهر ده) — مش هيتحسب لا مدفوع ولا غير مدفوع.
