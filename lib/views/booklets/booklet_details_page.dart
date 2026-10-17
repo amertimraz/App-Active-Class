@@ -68,8 +68,7 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
       if (mine.isNotEmpty) paymentId = mine.first.id;
     }
     if (!mounted) return;
-    final canUndo =
-        paymentId == null || TeamModeService().canDeletePaymentsNow;
+    final canUndo = paymentId == null || TeamModeService().canDeletePaymentsNow;
     final msg = '${r.student.name}: ${wasDelivered ? '' : 'استلم'}'
         '${!wasDelivered && paidNow > 0 ? ' + ' : ''}'
         '${paidNow > 0 ? 'دفع ${_money(paidNow)}' : ''}';
@@ -78,6 +77,8 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
     messenger.showSnackBar(SnackBar(
       content: Text(msg),
       duration: const Duration(seconds: 5),
+      persist:
+          false, // Flutter ≥3.29: SnackBar فيه action مابيختفيش لوحده من غير ده
       action: canUndo
           ? SnackBarAction(
               label: 'تراجع',
@@ -91,8 +92,7 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
   }
 
   Future<void> _deliverAll() async {
-    final pending =
-        c.rowsFor(bookletId).where((r) => !r.delivered).length;
+    final pending = c.rowsFor(bookletId).where((r) => !r.delivered).length;
     if (pending == 0) return ToastHelper.info('كل الطلاب استلموا بالفعل');
     final ok = await showDialog<bool>(
       context: context,
@@ -137,10 +137,7 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
 
   /// قائمة اللي عليهم متبقي — إرسال تذكير لكل واحد بضغطة (بتتعلّم ✓ بعد الإرسال).
   Future<void> _remindAll(Booklet b) async {
-    final owing = c
-        .rowsFor(bookletId)
-        .where((r) => r.remaining > 0)
-        .toList();
+    final owing = c.rowsFor(bookletId).where((r) => r.remaining > 0).toList();
     if (owing.isEmpty) return ToastHelper.info('مفيش حد عليه متبقي');
     final sent = <int>{};
     await showModalBottomSheet(
@@ -331,7 +328,8 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
       final b = c.booklets.firstWhereOrNull((x) => x.id == bookletId);
       if (b == null) {
         return Scaffold(
-            appBar: AppBar(), body: const Center(child: Text('الملزمة اتحذفت')));
+            appBar: AppBar(),
+            body: const Center(child: Text('الملزمة اتحذفت')));
       }
       final all = c.rowsFor(bookletId,
           filter: BookletFilter(delivery: _delivery, pay: _pay),
@@ -345,6 +343,15 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
                   r.student.code.toLowerCase().contains(q))
               .toList();
       final sum = c.summaryFor(bookletId);
+      // تصنيف الدفع: عدّادات على كل طلاب الملزمة (قبل أي فلتر/بحث).
+      final everyone = c.rowsFor(bookletId, historical: _historical);
+      final cntFull =
+          everyone.where((r) => r.status == BookletPaymentStatus.full).length;
+      final cntPartial = everyone
+          .where((r) => r.status == BookletPaymentStatus.partial)
+          .length;
+      final cntNone =
+          everyone.where((r) => r.status == BookletPaymentStatus.none).length;
       return Scaffold(
         appBar: AppBar(
           title: Text(b.name),
@@ -358,11 +365,11 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
                 if (v == 'history') setState(() => _historical = !_historical);
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(
-                    value: 'all', child: Text('تسليم للكل')),
+                const PopupMenuItem(value: 'all', child: Text('تسليم للكل')),
                 if (_fin)
                   const PopupMenuItem(
-                      value: 'remindAll', child: Text('تذكير المتأخرين (واتساب)')),
+                      value: 'remindAll',
+                      child: Text('تذكير المتأخرين (واتساب)')),
                 const PopupMenuItem(
                     value: 'export', child: Text('تصدير كشف الملزمة')),
                 const PopupMenuItem(
@@ -378,6 +385,8 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
         body: Column(
           children: [
             _header(b, sum),
+            if (_fin && everyone.isNotEmpty)
+              _payBar(cntFull, cntPartial, cntNone),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
               child: CustomSearchBar(
@@ -390,7 +399,7 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
                 }),
               ),
             ),
-            _filters(),
+            _filters(cntFull, cntPartial, cntNone),
             Expanded(
               child: rows.isEmpty
                   ? const EmptyState(
@@ -411,8 +420,8 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
 
   Widget _header(Booklet b, BookletSummary sum) {
     Widget stat(String label, Color color, {String? text, double? amount}) {
-      final st = TextStyle(
-          fontSize: 16, fontWeight: FontWeight.w900, color: color);
+      final st =
+          TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: color);
       return Expanded(
         child: Column(children: [
           amount != null
@@ -443,7 +452,59 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
     );
   }
 
-  Widget _filters() {
+  /// شريط مرئي لتصنيف الدفع: دفع كامل / جزئي / لم يدفع (بالعدد)، وكل جزء
+  /// بيضغط عليه فيفلتر القايمة.
+  Widget _payBar(int full, int partial, int none) {
+    final total = full + partial + none;
+    if (total == 0) return const SizedBox.shrink();
+    Widget seg(int n, Color color, PayFilter f) => n == 0
+        ? const SizedBox.shrink()
+        : Expanded(
+            flex: n,
+            child: GestureDetector(
+              onTap: () => setState(() => _pay = _pay == f ? PayFilter.all : f),
+              child: Container(height: 8, color: color),
+            ),
+          );
+    Widget legend(String label, int n, Color color, PayFilter f) =>
+        GestureDetector(
+          onTap: () => setState(() => _pay = _pay == f ? PayFilter.all : f),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+                width: 9,
+                height: 9,
+                decoration:
+                    BoxDecoration(color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 5),
+            Text('$label $n',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: _pay == f ? FontWeight.w900 : FontWeight.w600,
+                    color: color)),
+          ]),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+      child: Column(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: Row(children: [
+            seg(full, AppTheme.successColor, PayFilter.full),
+            seg(partial, AppTheme.warningColor, PayFilter.partial),
+            seg(none, AppTheme.errorColor, PayFilter.none),
+          ]),
+        ),
+        const SizedBox(height: 6),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          legend('دفع كامل', full, AppTheme.successColor, PayFilter.full),
+          legend('دفع جزئي', partial, AppTheme.warningColor, PayFilter.partial),
+          legend('لم يدفع', none, AppTheme.errorColor, PayFilter.none),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _filters(int cntFull, int cntPartial, int cntNone) {
     Widget chip(String label, bool sel, VoidCallback on) => Padding(
           padding: const EdgeInsetsDirectional.only(end: 6),
           child: ChoiceChip(
@@ -454,6 +515,7 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
           ),
         );
     final owing = _pay == PayFilter.owing;
+    void togglePay(PayFilter f) => _pay = _pay == f ? PayFilter.all : f;
     return SizedBox(
       height: 40,
       child: ListView(
@@ -470,11 +532,45 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
                 ? DeliveryFilter.all
                 : DeliveryFilter.notDelivered;
           }),
-          if (_fin)
-            chip('عليه متبقي', owing,
-                () => _pay = owing ? PayFilter.all : PayFilter.owing),
+          if (_fin) ...[
+            chip('دفع كامل ($cntFull)', _pay == PayFilter.full,
+                () => togglePay(PayFilter.full)),
+            chip('دفع جزئي ($cntPartial)', _pay == PayFilter.partial,
+                () => togglePay(PayFilter.partial)),
+            chip('لم يدفع ($cntNone)', _pay == PayFilter.none,
+                () => togglePay(PayFilter.none)),
+            chip('عليه متبقي (${cntPartial + cntNone})', owing,
+                () => togglePay(PayFilter.owing)),
+          ],
         ],
       ),
+    );
+  }
+
+  /// شارة تصنيف الدفع للطالب: دفع كامل / جزئي / لم يدفع.
+  Widget _payBadge(BookletStudentRow r) {
+    final Color c0;
+    final String label;
+    switch (r.status) {
+      case BookletPaymentStatus.full:
+        c0 = AppTheme.successColor;
+        label = 'دفع كامل';
+      case BookletPaymentStatus.partial:
+        c0 = AppTheme.warningColor;
+        label = 'جزئي';
+      case BookletPaymentStatus.none:
+        c0 = AppTheme.errorColor;
+        label = 'لم يدفع';
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: c0.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 10.5, fontWeight: FontWeight.w800, color: c0)),
     );
   }
 
@@ -519,21 +615,30 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
             color: r.delivered ? AppTheme.successColor : Colors.grey,
             size: 28,
           ),
-          onPressed: () => c.setDelivered(bookletId, r.student.id!, !r.delivered),
+          onPressed: () =>
+              c.setDelivered(bookletId, r.student.id!, !r.delivered),
         ),
-        title: Text(
-          r.student.name +
-              (r.student.isArchived
-                  ? ' (مؤرشف)'
-                  : r.excluded
-                      ? ' (مستثنى)'
-                      : ''),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: inactive ? Colors.grey : null),
-        ),
+        title: Row(children: [
+          Flexible(
+            child: Text(
+              r.student.name +
+                  (r.student.isArchived
+                      ? ' (مؤرشف)'
+                      : r.excluded
+                          ? ' (مستثنى)'
+                          : ''),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: inactive ? Colors.grey : null),
+            ),
+          ),
+          if (_fin && !inactive) ...[
+            const SizedBox(width: 6),
+            _payBadge(r),
+          ],
+        ]),
         subtitle: Text(sub,
             style: TextStyle(
                 fontSize: 12.5, fontWeight: FontWeight.w600, color: subColor)),
@@ -548,7 +653,7 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
             ),
           PopupMenuButton<String>(
             onSelected: (v) {
-                if (v == 'pay') _openPayments(r, b);
+              if (v == 'pay') _openPayments(r, b);
               if (v == 'remind') _remind(r, b);
               if (v == 'exclude') _exclude(r);
             },
