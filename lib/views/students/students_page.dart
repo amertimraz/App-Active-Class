@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/widgets/guardian_phone_line.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/controllers/payment_controller.dart';
@@ -709,6 +710,8 @@ class _StudentCard extends StatelessWidget {
                             ),
                           ],
                         ),
+                        GuardianPhoneLine(
+                            student: student, color: subtitleColor),
                       ],
                     ),
                   ),

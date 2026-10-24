@@ -3,6 +3,7 @@
 // group_details_page.dart لتقصير الملف الرئيسي (spec 039).
 import 'package:flutter/material.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/widgets/guardian_phone_line.dart';
 import 'package:active_class/widgets/locked_feature.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -272,6 +273,7 @@ class StudentCard extends StatelessWidget {
                           ),
                       ],
                     ),
+                    GuardianPhoneLine(student: student),
                   ],
                 ),
               ),
