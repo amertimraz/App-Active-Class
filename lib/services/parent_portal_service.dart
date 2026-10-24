@@ -58,13 +58,25 @@ class ParentPortalService {
   /// البروفايل كان بينشر مرة واحدة بس أول ما شاشة الإعدادات تتفتح،
   /// فلو المدرس غيّر اسمه بعد كده، صفحة المتابعة تفضل باسمه القديم
   /// لحد ما يقفل الإعدادات ويفتحها تاني بالصدفة.
+  Timer? _profileDebounce;
+
   void _watchProfileChanges() {
     if (_profileWorker != null) return;
     if (!Get.isRegistered<SettingsController>()) return;
     final settings = Get.find<SettingsController>();
+    // التخصص بيتكتب حرف حرف في الإعدادات — نجمّع التغييرات (ثانية) بدل
+    // كتابة على Firestore مع كل حرف.
     _profileWorker = everAll(
-      [settings.teacherFullName, settings.teacherGender],
-      (_) => publishProfile(),
+      [
+        settings.teacherFullName,
+        settings.teacherGender,
+        settings.teacherSpecialization,
+      ],
+      (_) {
+        _profileDebounce?.cancel();
+        _profileDebounce =
+            Timer(const Duration(seconds: 1), () => publishProfile());
+      },
     );
   }
 
@@ -88,7 +100,11 @@ class ParentPortalService {
       // licenseVerifiedTick كمان — عشان الـcallback يفير حتى لو الأدمن
       // قفل البوابة والتطبيق كان مقفول (ساعتها parentPortalEnabled بيفضل
       // false→false ومفيش تغيير)، فأول تحقق ترخيص بعد الفتح بيوفّق الحالة.
-      [lic.parentPortalEnabled, lic.parentPortalExpiresAt, lic.licenseVerifiedTick],
+      [
+        lic.parentPortalEnabled,
+        lic.parentPortalExpiresAt,
+        lic.licenseVerifiedTick
+      ],
       (_) {
         // تنبيه قرب انتهاء الاشتراك — يتحدّث مع أي تغيّر (تجديد/إلغاء/أول تحقق).
         unawaited(NotificationService().schedulePortalExpiryReminders());
@@ -302,8 +318,9 @@ class ParentPortalService {
   }
 
   Future<void> _publishProfile(String slug) async {
-    final settings =
-        Get.isRegistered<SettingsController>() ? Get.find<SettingsController>() : null;
+    final settings = Get.isRegistered<SettingsController>()
+        ? Get.find<SettingsController>()
+        : null;
     // بننشر تاريخ انتهاء بوابة أولياء الأمور (لو موجود) جوه نفس المستند
     // العام ده — عشان صفحة /track/{slug} (كود JS خام، بدون وصول لمجموعة
     // licenses المحمية) تقدر تتحقق بنفسها إن المدة لسه سارية قبل ما
@@ -313,6 +330,9 @@ class ParentPortalService {
     await _db.collection('parent_portal').doc(slug).set({
       'teacherName': settings?.teacherFullName.value ?? '',
       'teacherGender': settings?.teacherGender.value ?? 'male',
+      // التخصص بيظهر تحت اسم المعلم في أعلى صفحة المتابعة.
+      'teacherSpecialization':
+          (settings?.teacherSpecialization.value ?? '').trim(),
       // طريقة دخول ولي الأمر — صفحة المتابعة بتقراها عشان تعرض/تخفي خانة
       // آخر 4 أرقام وتحدد معرّف المستند (كود فقط / كود_آخر4).
       'loginMode': _codeOnly ? 'code_only' : 'code_phone',
@@ -453,21 +473,30 @@ class ParentPortalService {
       'homeworkDone': homeworkDone,
       'homeworkPartial': homeworkPartial,
       'homeworkNotDone': homeworkNotDone,
-      'attendanceHistory': sortedAttendance.take(20).map((a) => {
-            'date': a.date.toIso8601String(),
-            'status': normalizeAttendanceStatus(a.status) ?? a.status,
-            'statusLabel': attendanceStatusLabel(a.status),
-          }).toList(),
-      'paymentHistory': sortedPayments.take(15).map((p) => {
-            'date': p.date.toIso8601String(),
-            'amount': p.amount,
-            'note': p.note ?? '',
-          }).toList(),
-      'homeworkHistory': sortedHomework.take(20).map((h) => {
-            'date': h.date.toIso8601String(),
-            'status': normalizeHomeworkStatus(h.status) ?? h.status,
-            'statusLabel': homeworkStatusLabel(h.status),
-          }).toList(),
+      'attendanceHistory': sortedAttendance
+          .take(20)
+          .map((a) => {
+                'date': a.date.toIso8601String(),
+                'status': normalizeAttendanceStatus(a.status) ?? a.status,
+                'statusLabel': attendanceStatusLabel(a.status),
+              })
+          .toList(),
+      'paymentHistory': sortedPayments
+          .take(15)
+          .map((p) => {
+                'date': p.date.toIso8601String(),
+                'amount': p.amount,
+                'note': p.note ?? '',
+              })
+          .toList(),
+      'homeworkHistory': sortedHomework
+          .take(20)
+          .map((h) => {
+                'date': h.date.toIso8601String(),
+                'status': normalizeHomeworkStatus(h.status) ?? h.status,
+                'statusLabel': homeworkStatusLabel(h.status),
+              })
+          .toList(),
       // spec 050 — مستوى الطالب (مؤشرات + اتجاه + رسم 6 شهور)
       ..._performanceForPortal(student, groupName, attendance, homework, exams),
       // spec 048 — التسميع (لو الإعداد مفعّل وفيه درجات)
@@ -478,16 +507,19 @@ class ParentPortalService {
               ? Get.find<SettingsController>().recitationMax.value
               : null)),
       'examCount': examRecords.length,
-      'examHistory': examRecords.take(15).map((e) => {
-            // examId — عشان صفحة الامتحان الإلكتروني (spec 016) تلاقي
-            // نتيجة هذا الامتحان بالتحديد وتعرضها للطالب بعد اعتماد المدرس.
-            'examId': e.examId,
-            'name': e.examName,
-            'date': e.examDate.toIso8601String(),
-            'absent': e.isAbsent,
-            'grade': e.isAbsent ? null : e.grade,
-            'maxGrade': e.maxGrade,
-          }).toList(),
+      'examHistory': examRecords
+          .take(15)
+          .map((e) => {
+                // examId — عشان صفحة الامتحان الإلكتروني (spec 016) تلاقي
+                // نتيجة هذا الامتحان بالتحديد وتعرضها للطالب بعد اعتماد المدرس.
+                'examId': e.examId,
+                'name': e.examName,
+                'date': e.examDate.toIso8601String(),
+                'absent': e.isAbsent,
+                'grade': e.isAbsent ? null : e.grade,
+                'maxGrade': e.maxGrade,
+              })
+          .toList(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -503,7 +535,8 @@ class ParentPortalService {
       final student = await _dbService.getStudent(studentId);
       if (student == null) return;
 
-      final attendanceRecords = await _dbService.getAttendanceByStudent(studentId);
+      final attendanceRecords =
+          await _dbService.getAttendanceByStudent(studentId);
       final payments = await _dbService.getPaymentsByStudent(studentId);
       final homework = await _dbService.getHomeworkByStudent(studentId);
       final exams = await _dbService.getStudentExamHistory(studentId);
@@ -536,7 +569,8 @@ class ParentPortalService {
           .doc(docId)
           .set(data);
     } catch (e) {
-      debugPrint('ParentPortalService: pushStudentSummary($studentId) failed — $e');
+      debugPrint(
+          'ParentPortalService: pushStudentSummary($studentId) failed — $e');
       // best-effort — مش هنعطّل أي حاجة في التطبيق بسبب فشل نشر خلفي
     }
   }
@@ -570,7 +604,8 @@ class ParentPortalService {
     await _ensureAuth();
     final slug = await ensureSlug();
     await _publishProfile(slug);
-    final col = _db.collection('parent_portal').doc(slug).collection('students');
+    final col =
+        _db.collection('parent_portal').doc(slug).collection('students');
     final snap = await col.get();
     var batch = _db.batch();
     var ops = 0;
@@ -634,7 +669,8 @@ class ParentPortalService {
       homeworkByStudent.putIfAbsent(h.studentId, () => []).add(h);
     }
 
-    final col = _db.collection('parent_portal').doc(slug).collection('students');
+    final col =
+        _db.collection('parent_portal').doc(slug).collection('students');
 
     // Firestore بتحدّد أقصى 500 عملية لكل batch — بنقسّم كل 400 طالب
     // لدفعة منفصلة عشان نفضل بعيد عن الحد الأقصى بهامش أمان.

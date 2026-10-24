@@ -38,6 +38,17 @@
   }
   .wrap{width:100%;max-width:460px;}
 
+  /* بانر المعلم: اسم + تخصص، أعلى الصفحة دايمًا */
+  .teacher-banner{
+    text-align:center;margin:0 0 16px;padding:12px 16px;
+    background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+    color:#fff;border-radius:18px;
+    box-shadow:0 8px 22px rgba(16,185,129,.25);
+  }
+  .teacher-banner[hidden]{display:none;}
+  .tb-name{font-size:18px;font-weight:800;line-height:1.4;}
+  .tb-spec{font-size:13px;font-weight:600;opacity:.92;margin-top:2px;}
+
   .hero{text-align:center;margin-bottom:22px;}
   .hero-icon{
     width:60px;height:60px;border-radius:50%;
@@ -161,6 +172,10 @@
 </head>
 <body>
 <div class="wrap">
+  <div class="teacher-banner" id="teacherBanner" hidden>
+    <div class="tb-name" id="tbName"></div>
+    <div class="tb-spec" id="tbSpec" hidden></div>
+  </div>
   <div class="hero">
     <div class="hero-icon">🎓</div>
     <p class="hero-title" id="teacherTitle">متابعة الطالب</p>
@@ -218,7 +233,7 @@
   let codeOnly = false;
 
   function renderForm(errorMsg){
-    teacherTitle.textContent = window.__teacherName || 'متابعة الطالب';
+    teacherTitle.textContent = 'متابعة الطالب';
     teacherSub.textContent = defaultTeacherSub;
     card.innerHTML = `
       ${errorMsg ? `<div class="err">${escapeHtml(errorMsg)}</div>` : ''}
@@ -504,6 +519,12 @@
         if (name) {
           window.__teacherName = name;
           document.getElementById('pageTitle').textContent = `متابعة الطلاب — ${name}`;
+          // بانر أعلى الصفحة: اسم المعلم + تخصصه (لو منشور)
+          document.getElementById('tbName').textContent = name;
+          const spec = (p.teacherSpecialization || '').toString().trim();
+          const specEl = document.getElementById('tbSpec');
+          if (spec) { specEl.textContent = spec; specEl.hidden = false; }
+          document.getElementById('teacherBanner').hidden = false;
         }
       }
     } catch (e) {}
