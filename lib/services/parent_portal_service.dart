@@ -12,6 +12,7 @@
 // بس لازم تعرف الـ ID الصح الأول عشان توصله.
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -29,6 +30,7 @@ import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/payment_model.dart';
+import 'package:active_class/services/booking_service.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/utils/pricing_helper.dart';
@@ -71,6 +73,7 @@ class ParentPortalService {
         settings.teacherFullName,
         settings.teacherGender,
         settings.teacherSpecialization,
+        settings.teacherAvatarPath,
       ],
       (_) {
         _profileDebounce?.cancel();
@@ -317,6 +320,53 @@ class ParentPortalService {
     }
   }
 
+  // صورة المعلم في صفحة المتابعة: بتترفع على نفس خدمة الرفع بتاعة الحجز
+  // (VPS) تحت slug البوابة، ورابطها بيتنشر مع البروفايل. الرفع بيحصل بس لما
+  // الصورة تتغيّر (توقيع حجم+وقت تعديل) — مش مع كل نشر.
+  static const _kPhotoSigKey = 'portal_teacher_photo_sig';
+  static const _kPhotoUrlKey = 'portal_teacher_photo_url';
+  static const _kPhotoMaxBytes = 5 * 1024 * 1024; // حد الخادم
+
+  Future<String?> _teacherPhotoUrl(String slug, String avatarPath) async {
+    try {
+      final cachedUrl = await _dbService.getSetting(_kPhotoUrlKey);
+      final path = avatarPath.trim();
+      if (path.isEmpty) {
+        // اتشالت الصورة → امسح المرفوعة (best-effort) وصفّر الكاش.
+        if (cachedUrl != null && cachedUrl.isNotEmpty) {
+          await BookingService().deleteUploadedImage(slug);
+          await _dbService.setSetting(_kPhotoUrlKey, '');
+          await _dbService.setSetting(_kPhotoSigKey, '');
+        }
+        return null;
+      }
+      final file = File(path);
+      if (!await file.exists()) {
+        return (cachedUrl == null || cachedUrl.isEmpty) ? null : cachedUrl;
+      }
+      final stat = await file.stat();
+      final sig = '$slug:${stat.size}:${stat.modified.millisecondsSinceEpoch}';
+      if (await _dbService.getSetting(_kPhotoSigKey) == sig &&
+          cachedUrl != null &&
+          cachedUrl.isNotEmpty) {
+        return cachedUrl; // نفس الصورة — مفيش رفع جديد
+      }
+      if (stat.size > _kPhotoMaxBytes) return null;
+      final url = await BookingService().uploadPhoto(slug, file);
+      if (url != null && url.isNotEmpty) {
+        await _dbService.setSetting(_kPhotoUrlKey, url);
+        await _dbService.setSetting(_kPhotoSigKey, sig);
+        return url;
+      }
+      // فشل الرفع (نت): نستخدم آخر رابط ناجح لو موجود، والمحاولة الجاية
+      // هتعيد الرفع (التوقيع ما اتحفظش).
+      return (cachedUrl == null || cachedUrl.isEmpty) ? null : cachedUrl;
+    } catch (e) {
+      debugPrint('ParentPortalService: تعذّر رفع صورة المعلم — $e');
+      return null;
+    }
+  }
+
   Future<void> _publishProfile(String slug) async {
     final settings = Get.isRegistered<SettingsController>()
         ? Get.find<SettingsController>()
@@ -327,12 +377,16 @@ class ParentPortalService {
     // تعرض أي بيانات طالب. null صراحةً لو مفيش تاريخ (مدى الحياة)،
     // عشان تجديد لاحق يمسح تاريخ قديم كان منشور.
     final expiresAt = LicenseController.to.parentPortalExpiresAt.value;
+    final photoUrl =
+        await _teacherPhotoUrl(slug, settings?.teacherAvatarPath.value ?? '');
     await _db.collection('parent_portal').doc(slug).set({
       'teacherName': settings?.teacherFullName.value ?? '',
       'teacherGender': settings?.teacherGender.value ?? 'male',
       // التخصص بيظهر تحت اسم المعلم في أعلى صفحة المتابعة.
       'teacherSpecialization':
           (settings?.teacherSpecialization.value ?? '').trim(),
+      // صورة المعلم (رابط على الـVPS) — null لو مفيش صورة.
+      'teacherPhotoUrl': photoUrl,
       // طريقة دخول ولي الأمر — صفحة المتابعة بتقراها عشان تعرض/تخفي خانة
       // آخر 4 أرقام وتحدد معرّف المستند (كود فقط / كود_آخر4).
       'loginMode': _codeOnly ? 'code_only' : 'code_phone',

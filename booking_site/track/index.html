@@ -38,16 +38,44 @@
   }
   .wrap{width:100%;max-width:460px;}
 
-  /* بانر المعلم: اسم + تخصص، أعلى الصفحة دايمًا */
-  .teacher-banner{
-    text-align:center;margin:0 0 16px;padding:12px 16px;
-    background:linear-gradient(135deg,var(--primary),var(--primary-dark));
-    color:#fff;border-radius:18px;
-    box-shadow:0 8px 22px rgba(16,185,129,.25);
+  /* كارت المعلم: غلاف متدرّج + صورة دائرية + اسم + تخصص (أعلى الصفحة دايمًا) */
+  .teacher-card{
+    position:relative;text-align:center;margin:0 0 20px;padding:0 18px 18px;
+    background:var(--card-bg);border:1px solid var(--border);
+    border-radius:var(--radius);overflow:hidden;
+    box-shadow:0 12px 34px rgba(17,24,39,.07);
+    animation:fadeIn .3s ease;
   }
-  .teacher-banner[hidden]{display:none;}
-  .tb-name{font-size:18px;font-weight:800;line-height:1.4;}
-  .tb-spec{font-size:13px;font-weight:600;opacity:.92;margin-top:2px;}
+  .teacher-card[hidden]{display:none;}
+  .tc-cover{
+    height:80px;margin:0 -18px;position:relative;
+    background:linear-gradient(135deg,var(--primary) 0%,var(--primary-dark) 55%,#0F766E 100%);
+  }
+  .tc-cover::after{
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(circle at 14% 22%,rgba(255,255,255,.25),transparent 42%),
+      radial-gradient(circle at 88% 84%,rgba(255,255,255,.16),transparent 46%);
+  }
+  .tc-avatar{
+    position:relative;width:96px;height:96px;border-radius:50%;
+    margin:-48px auto 10px;border:4px solid #fff;overflow:hidden;
+    background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+    box-shadow:0 10px 24px rgba(17,24,39,.2);
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-size:38px;font-weight:800;
+  }
+  .tc-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
+  .tc-avatar img[hidden]{display:none;}
+  .tc-name{font-size:20px;font-weight:800;line-height:1.5;letter-spacing:.1px;}
+  .tc-spec{
+    display:inline-block;margin-top:6px;padding:4px 16px;border-radius:999px;
+    background:#ECFDF5;color:var(--primary-dark);border:1px solid #A7F3D0;
+    font-size:12.5px;font-weight:700;
+  }
+  .tc-spec[hidden]{display:none;}
+  .hero.compact{margin-bottom:16px;}
+  .hero.compact .hero-icon{display:none;}
 
   .hero{text-align:center;margin-bottom:22px;}
   .hero-icon{
@@ -172,11 +200,16 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="teacher-banner" id="teacherBanner" hidden>
-    <div class="tb-name" id="tbName"></div>
-    <div class="tb-spec" id="tbSpec" hidden></div>
+  <div class="teacher-card" id="teacherCard" hidden>
+    <div class="tc-cover"></div>
+    <div class="tc-avatar" id="tcAvatar">
+      <span id="tcInitial">🎓</span>
+      <img id="tcImg" alt="" hidden decoding="async">
+    </div>
+    <div class="tc-name" id="tbName"></div>
+    <div class="tc-spec" id="tbSpec" hidden></div>
   </div>
-  <div class="hero">
+  <div class="hero" id="heroBox">
     <div class="hero-icon">🎓</div>
     <p class="hero-title" id="teacherTitle">متابعة الطالب</p>
     <p class="hero-sub" id="teacherSub">أدخل بيانات الطالب لعرض الحضور والمدفوعات</p>
@@ -519,12 +552,27 @@
         if (name) {
           window.__teacherName = name;
           document.getElementById('pageTitle').textContent = `متابعة الطلاب — ${name}`;
-          // بانر أعلى الصفحة: اسم المعلم + تخصصه (لو منشور)
+          // كارت المعلم أعلى الصفحة: صورة + اسم + تخصص (الصورة والتخصص اختياريين)
           document.getElementById('tbName').textContent = name;
           const spec = (p.teacherSpecialization || '').toString().trim();
           const specEl = document.getElementById('tbSpec');
           if (spec) { specEl.textContent = spec; specEl.hidden = false; }
-          document.getElementById('teacherBanner').hidden = false;
+          // حرف أول من الاسم (بدون اللقب) كبديل لو مفيش صورة
+          document.getElementById('tcInitial').textContent =
+            (p.teacherName || '').trim().charAt(0) || '🎓';
+          const photo = (p.teacherPhotoUrl || '').toString();
+          // نقبل بس صور مرفوعة على نطاقنا (دفاع إضافي)
+          if (/^https:\/\/active-class\.online\/photos\//.test(photo)) {
+            const img = document.getElementById('tcImg');
+            img.onload = () => {
+              img.hidden = false;
+              document.getElementById('tcInitial').hidden = true;
+            };
+            img.onerror = () => { img.hidden = true; };
+            img.src = photo;
+          }
+          document.getElementById('teacherCard').hidden = false;
+          document.getElementById('heroBox').classList.add('compact');
         }
       }
     } catch (e) {}
