@@ -10,6 +10,18 @@ BookletPayment pay(double a, {int s = 1}) =>
     BookletPayment(bookletId: 1, studentId: s, amount: a, date: DateTime(2026, 1, 1));
 
 void main() {
+  test('دفعات يوم معيّن فقط، الأحدث أولًا', () {
+    BookletPayment at(DateTime d, double a) =>
+        BookletPayment(bookletId: 1, studentId: 1, amount: a, date: d);
+    final out = bookletPaymentsOnDay([
+      at(DateTime(2026, 10, 24, 9), 10),
+      at(DateTime(2026, 10, 23, 23, 59), 20),
+      at(DateTime(2026, 10, 24, 18), 30),
+      at(DateTime(2026, 10, 25, 0, 1), 40),
+    ], DateTime(2026, 10, 24, 12));
+    expect(out.map((p) => p.amount), [30, 10]);
+  });
+
   test('مدفوع/متبقي/حالة', () {
     var paid = bookletPaid([pay(40)]);
     expect(bookletRemaining(100, paid), 60);

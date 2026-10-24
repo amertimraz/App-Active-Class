@@ -21,7 +21,7 @@ class OverdueWarningBadge extends StatelessWidget {
     this.compact = false,
   });
 
-  /// قيمة المديونية المتراكمة الحقيقية للطالب (تُعرَض في التنبيه).
+  /// قيمة الاشتراك المتأخر الحقيقية للطالب (تُعرَض في التنبيه).
   final double debtAmount;
 
   /// نسخة صغيرة لصفوف القوائم (attendance_page).
@@ -67,7 +67,7 @@ class OverdueWarningBadge extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            'متأخر في الدفع • مديونية ${FormatHelper.formatCurrency(debtAmount)}',
+            'متأخر في الدفع • اشتراك ${FormatHelper.formatCurrency(debtAmount)}',
             style: const TextStyle(
                 fontFamily: 'Cairo',
                 fontSize: 12.5,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
+import 'package:active_class/utils/payment_reminder_message.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/report_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
@@ -724,8 +725,17 @@ class _UnpaidStudentCard extends StatelessWidget {
     }
     final settings = Get.find<SettingsController>();
     final monthLabel = DateFormat('MMMM yyyy', 'ar').format(data.month);
-    final message =
-        'السلام عليكم 🌸\nتذكير بسيط بخصوص رسوم ${data.student.name} لشهر $monthLabel، نتمنى السداد في أقرب وقت يناسبكم. جزاكم الله خيرًا 🙏';
+    final remaining = data.due - data.paid;
+    final message = buildPaymentReminderMessage(
+      studentName: data.student.name,
+      studentCode: data.student.code,
+      groupName: data.group?.name ?? '',
+      monthLabel: monthLabel,
+      remainingText:
+          remaining > 0 ? FormatHelper.formatCurrency(remaining) : '',
+      teacherName: settings.teacherFullName.value.trim(),
+      teacherSpecialization: settings.teacherSpecialization.value.trim(),
+    );
     await launchGuardianWhatsapp(
       context: context,
       phone: data.student.guardianPhone,

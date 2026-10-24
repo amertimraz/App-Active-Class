@@ -354,6 +354,10 @@ class BookletController extends GetxController {
   double remainingForStudent(int studentId) => studentBookletsRemaining(
       linesForStudent(studentId).map((l) => BookletRemainingLine(l.remaining, 0)));
 
+  /// دفعات الملزمة دي النهاردة (الأحدث أولًا) — لشريط "مدفوعات اليوم".
+  List<BookletPayment> todayPaymentsOf(int bookletId) => bookletPaymentsOnDay(
+      payments.where((p) => p.bookletId == bookletId), DateTime.now());
+
   List<BookletPayment> paymentsOf(int bookletId, int studentId) =>
       _paymentsFor(bookletId, studentId).toList();
 

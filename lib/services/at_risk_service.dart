@@ -243,7 +243,7 @@ RiskSignal? _checkLatePayment({
   if (debt <= 0) return null; // isOverdue=true بس مديونية صفر (نادر) — تجاهل
   return RiskSignal(
     type: RiskSignalType.latePayment,
-    reasonText: 'متأخّر في الدفع — مديونية ${debt.round()}',
+    reasonText: 'متأخّر في الدفع — المتبقي من الاشتراك ${debt.round()}',
     severityWeight: 3,
   );
 }

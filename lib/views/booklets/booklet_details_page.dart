@@ -387,6 +387,7 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
             _header(b, sum),
             if (_fin && everyone.isNotEmpty)
               _payBar(cntFull, cntPartial, cntNone),
+            if (_fin) _todayStrip(),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
               child: CustomSearchBar(
@@ -449,6 +450,84 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
               amount: sum.remaining),
         ],
       ]),
+    );
+  }
+
+  /// شريط "مدفوعات اليوم": عدد الدفعات وإجماليها، وبالضغط تفاصيل كل دفعة.
+  Widget _todayStrip() {
+    final today = c.todayPaymentsOf(bookletId);
+    final total = bookletPaid(today);
+    final color = today.isEmpty ? Colors.grey : AppTheme.successColor;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: today.isEmpty ? null : () => _showTodayPayments(today),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: bookletCardDecoration(context),
+          child: Row(children: [
+            Icon(Icons.today_rounded, size: 18, color: color),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                today.isEmpty
+                    ? 'مدفوعات اليوم: لا يوجد'
+                    : 'مدفوعات اليوم: ${today.length} دفعة • ${_money(total)}',
+                style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700, color: color),
+              ),
+            ),
+            if (today.isNotEmpty)
+              const Icon(Icons.chevron_left_rounded, size: 20),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showTodayPayments(List<BookletPayment> today) {
+    final names = {
+      for (final r in c.rowsFor(bookletId, historical: true))
+        if (r.student.id != null) r.student.id!: r.student.name
+    };
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints:
+              BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text('مدفوعات اليوم • ${_money(bookletPaid(today))}',
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w800)),
+            ),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: today.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final p = today[i];
+                  return ListTile(
+                    title: Text(names[p.studentId] ?? '-',
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text(FormatHelper.formatTime(p.date)),
+                    trailing: Text(_money(p.amount),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.successColor)),
+                  );
+                },
+              ),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 
@@ -618,30 +697,35 @@ class _BookletDetailsPageState extends State<BookletDetailsPage> {
           onPressed: () =>
               c.setDelivered(bookletId, r.student.id!, !r.delivered),
         ),
-        title: Row(children: [
-          Flexible(
-            child: Text(
-              r.student.name +
-                  (r.student.isArchived
-                      ? ' (مؤرشف)'
-                      : r.excluded
-                          ? ' (مستثنى)'
-                          : ''),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: inactive ? Colors.grey : null),
-            ),
+        title: Text(
+          r.student.name +
+              (r.student.isArchived
+                  ? ' (مؤرشف)'
+                  : r.excluded
+                      ? ' (مستثنى)'
+                      : ''),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: inactive ? Colors.grey : null),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 2,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (_fin && !inactive) _payBadge(r),
+              Text(sub,
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: subColor)),
+            ],
           ),
-          if (_fin && !inactive) ...[
-            const SizedBox(width: 6),
-            _payBadge(r),
-          ],
-        ]),
-        subtitle: Text(sub,
-            style: TextStyle(
-                fontSize: 12.5, fontWeight: FontWeight.w600, color: subColor)),
+        ),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
           if (quickLabel != null && !inactive)
             FilledButton.tonal(

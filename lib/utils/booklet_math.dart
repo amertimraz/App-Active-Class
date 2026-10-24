@@ -10,6 +10,18 @@ const double _eps = 0.005;
 
 double _clean(double v) => v.abs() < _eps ? 0 : v;
 
+/// دفعات يوم [day] (بتاريخ التقويم المحلي، من غير الوقت) — الأحدث أولًا.
+List<BookletPayment> bookletPaymentsOnDay(
+    Iterable<BookletPayment> payments, DateTime day) {
+  return payments
+      .where((p) =>
+          p.date.year == day.year &&
+          p.date.month == day.month &&
+          p.date.day == day.day)
+      .toList()
+    ..sort((a, b) => b.date.compareTo(a.date));
+}
+
 double bookletPaid(Iterable<BookletPayment> payments) =>
     payments.fold<double>(0, (s, p) => s + p.amount);
 

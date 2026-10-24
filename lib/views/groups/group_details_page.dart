@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'dart:io';
 import 'package:get/get.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
+import 'package:active_class/utils/payment_reminder_message.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
@@ -1830,7 +1831,19 @@ void _gdShowFeesBreakdownDialog(
                                               phone: s.guardianPhone,
                                               whatsapp: s.guardianWhatsapp,
                                               message:
-                                                  'تذكير برسوم شهر ${data['month']} للطالب ${s.name}.',
+                                                  buildPaymentReminderMessage(
+                                                studentName: s.name,
+                                                studentCode: s.code,
+                                                groupName: group.name,
+                                                monthLabel:
+                                                    '${data['month']}',
+                                                teacherName: settings
+                                                    .teacherFullName.value
+                                                    .trim(),
+                                                teacherSpecialization: settings
+                                                    .teacherSpecialization.value
+                                                    .trim(),
+                                              ),
                                               dialCode:
                                                   settings.countryDial.value,
                                             );

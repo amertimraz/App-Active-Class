@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
+import 'package:active_class/utils/payment_reminder_message.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
@@ -845,8 +846,16 @@ class _WhatsButton extends StatelessWidget {
           ? null
           : () async {
               final settings = Get.find<SettingsController>();
-              final msg =
-                  'تذكير برسوم شهر $monthLabel للطالب ${student.name} (الكود: ${student.code}) في مجموعة $groupName. المتبقي: ${FormatHelper.formatCurrency(remaining)}';
+              final msg = buildPaymentReminderMessage(
+                studentName: student.name,
+                studentCode: student.code,
+                groupName: groupName,
+                monthLabel: monthLabel,
+                remainingText: FormatHelper.formatCurrency(remaining),
+                teacherName: settings.teacherFullName.value.trim(),
+                teacherSpecialization:
+                    settings.teacherSpecialization.value.trim(),
+              );
               await launchGuardianWhatsapp(
                 context: context,
                 phone: student.guardianPhone,
