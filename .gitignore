@@ -93,3 +93,6 @@ google-services.json
 /certificates_v2.pdf
 /certpng/
 
+
+# graphify
+graphify-out/

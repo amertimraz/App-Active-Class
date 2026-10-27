@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
+import 'package:active_class/utils/absence_message.dart';
+import 'package:active_class/views/attendance/session_detail_page.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
@@ -345,6 +347,8 @@ class _RegisterTabState extends State<_RegisterTab> {
                           overrideType: widget.controller
                               .sessionOverrideFor(group, selectedDay)
                               ?.type,
+                          onDetails: () => Get.to(() =>
+                              SessionDetailPage(group: group, day: selectedDay)),
                           onTap: () => showAttendanceSheet(
                             context,
                             group: group,
@@ -526,6 +530,7 @@ class _GroupSummaryCard extends StatelessWidget {
   final double attendanceRate;
   final AttendanceController controller;
   final VoidCallback onTap;
+  final VoidCallback? onDetails; // spec 053 — تفاصيل الحصة
   final SessionOverrideType? overrideType;
 
   const _GroupSummaryCard({
@@ -538,6 +543,7 @@ class _GroupSummaryCard extends StatelessWidget {
     required this.attendanceRate,
     required this.controller,
     required this.onTap,
+    this.onDetails,
     this.overrideType,
   });
 
@@ -627,7 +633,17 @@ class _GroupSummaryCard extends StatelessWidget {
                         fontSize: 15)),
               ),
               if (overrideType != null) _overrideChip(overrideType!),
-              Icon(Icons.chevron_left_rounded, color: Colors.grey.shade400),
+              if (onDetails != null)
+                IconButton(
+                  tooltip: 'تفاصيل الحصة',
+                  constraints:
+                      const BoxConstraints(minWidth: 44, minHeight: 44),
+                  icon: const Icon(Icons.fact_check_outlined,
+                      size: 22, color: AppTheme.primaryColor),
+                  onPressed: onDetails,
+                )
+              else
+                Icon(Icons.chevron_left_rounded, color: Colors.grey.shade400),
             ]),
             const SizedBox(height: 6),
             // ميعاد الحصة + الشارات (العداد التنازلي/نسبة الحضور) — Wrap
@@ -3785,38 +3801,26 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
   final Set<int> _selectedLate = {};
 
   String _buildMessage(Student s, String groupName, String teacherName,
-      String teacherSpecialization) {
-    final dateStr = DateFormat('yyyy-MM-dd', 'ar').format(DateTime.now());
-    final buffer = StringBuffer()
-      ..writeln('⚠️ *تنبيه غياب*')
-      ..writeln('👤 ${s.name} (${s.code})')
-      ..writeln('👥 $groupName')
-      ..writeln('📅 $dateStr');
-    if (teacherName.isNotEmpty) {
-      buffer.writeln('👨‍🏫 $teacherName');
-    }
-    if (teacherSpecialization.isNotEmpty) {
-      buffer.writeln('📘 $teacherSpecialization');
-    }
-    return buffer.toString().trimRight();
-  }
+          String teacherSpecialization) =>
+      buildAbsenceMessage(
+        studentName: s.name,
+        studentCode: s.code,
+        groupName: groupName,
+        date: DateTime.now(),
+        teacherName: teacherName,
+        teacherSpecialization: teacherSpecialization,
+      );
 
   String _buildLateMessage(Student s, String groupName, String teacherName,
-      String teacherSpecialization) {
-    final dateStr = DateFormat('yyyy-MM-dd', 'ar').format(DateTime.now());
-    final buffer = StringBuffer()
-      ..writeln('⚠️ *تنبيه تأخير*')
-      ..writeln('👤 ${s.name} (${s.code})')
-      ..writeln('👥 $groupName')
-      ..writeln('📅 $dateStr');
-    if (teacherName.isNotEmpty) {
-      buffer.writeln('👨‍🏫 $teacherName');
-    }
-    if (teacherSpecialization.isNotEmpty) {
-      buffer.writeln('📘 $teacherSpecialization');
-    }
-    return buffer.toString().trimRight();
-  }
+          String teacherSpecialization) =>
+      buildLateMessage(
+        studentName: s.name,
+        studentCode: s.code,
+        groupName: groupName,
+        date: DateTime.now(),
+        teacherName: teacherName,
+        teacherSpecialization: teacherSpecialization,
+      );
 
   Future<void> _sendWhatsapp(Student s, String groupName) async {
     final hasContact = (s.guardianPhone?.trim().isNotEmpty ?? false) ||

@@ -1,12 +1,17 @@
 // lib/views/schedule/schedule_page.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
+import 'package:active_class/controllers/session_override_controller.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/models/session_override_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/schedule_week.dart';
+import 'package:active_class/views/attendance/session_detail_page.dart';
 import 'package:active_class/widgets/clock_text.dart';
 
 // ─── أيام الأسبوع (تبدأ السبت) ────────────────────────────────────────────────
@@ -24,6 +29,8 @@ class _ClassSlot {
   final TimeOfDay from;
   final TimeOfDay to;
   final int       studentCount;
+  // spec 053 — استثناء الحصة في التاريخ المعروض (ملغاة/تعويضية/إضافية).
+  final SessionOverrideType? override;
 
   _ClassSlot({
     required this.group,
@@ -31,7 +38,16 @@ class _ClassSlot {
     required this.from,
     required this.to,
     required this.studentCount,
+    this.override,
   });
+
+  _ClassSlot withOverride(SessionOverrideType? o) => _ClassSlot(
+      group: group,
+      dayIndex: dayIndex,
+      from: from,
+      to: to,
+      studentCount: studentCount,
+      override: o);
 
   int get fromMinutes => from.hour * 60 + from.minute;
   int get toMinutes   => to.hour * 60 + to.minute;
@@ -49,7 +65,12 @@ class SchedulePage extends StatefulWidget {
 class _SchedulePageState extends State<SchedulePage> {
   final _db = DatabaseService();
   late int _selectedDay;
+  // spec 053 — إزاحة الأسبوع عن الأسبوع الحالي (0 = الحالي، -1 = اللي فات).
+  int _weekOffset = 0;
   List<_ClassSlot> _slots = [];
+  List<Group> _groups = [];
+  Map<int, int> _countByGroup = {};
+  SessionOverrideController? _so;
   bool _loading = true;
 
   @override
@@ -69,6 +90,13 @@ class _SchedulePageState extends State<SchedulePage> {
     for (final Student s in students) {
       countByGroup.update(s.groupId, (v) => v + 1, ifAbsent: () => 1);
     }
+
+    _groups = groups;
+    _countByGroup = countByGroup;
+    _so = Get.isRegistered<SessionOverrideController>()
+        ? Get.find<SessionOverrideController>()
+        : Get.put(SessionOverrideController());
+    await _so!.load();
 
     final slots = <_ClassSlot>[];
     for (final g in groups) {
@@ -123,26 +151,156 @@ class _SchedulePageState extends State<SchedulePage> {
     return list;
   }
 
-  // هل الحصة جارية الآن؟ (فقط لو اليوم المختار = اليوم الحالي)
-  bool _isNow(_ClassSlot s) {
-    if (s.dayIndex != _todayIndex()) return false;
+  // ── spec 053: التاريخ الفعلي لكل يوم في الأسبوع المعروض ──
+  DateTime _dateOf(int dayIndex) =>
+      dateForDayIndex(DateTime.now(), _weekOffset, dayIndex);
+
+  DateTime get _selectedDate => _dateOf(_selectedDay);
+
+  void _goToDate(DateTime d) => setState(() {
+        _weekOffset = weekOffsetFor(DateTime.now(), d);
+        _selectedDay = dayIndexOf(d);
+      });
+
+  static TimeOfDay? _parseHm(String v) {
+    final p = v.trim().split(':');
+    if (p.length != 2) return null;
+    final h = int.tryParse(p[0].trim()), m = int.tryParse(p[1].trim());
+    if (h == null || m == null) return null;
+    return TimeOfDay(hour: h, minute: m);
+  }
+
+  /// حصص تاريخ معيّن: حصص اليوم الأسبوعي (الملغاة بعلامة) + الحصص
+  /// التعويضية/الإضافية اللي في التاريخ ده بموعدها الخاص.
+  List<_ClassSlot> _slotsForDate(DateTime date) {
+    final so = _so;
+    final base = _slotsForDay(dayIndexOf(date));
+    if (so == null) return base;
+    final result = <_ClassSlot>[];
+    final covered = <int?>{};
+    for (final sl in base) {
+      final ov = sl.group.id == null ? null : so.overrideFor(sl.group.id!, date);
+      covered.add(sl.group.id);
+      result.add(ov != null && ov.type == SessionOverrideType.cancelled
+          ? sl.withOverride(SessionOverrideType.cancelled)
+          : ov != null
+              ? sl.withOverride(ov.type)
+              : sl);
+    }
+    for (final g in _groups) {
+      if (g.id == null || covered.contains(g.id)) continue;
+      final ov = so.overrideFor(g.id!, date);
+      if (ov == null || ov.type == SessionOverrideType.cancelled) continue;
+      // موعد التعويضية/الإضافية (اختياري): "HH:mm-HH:mm" أو "HH:mm".
+      final parts = (ov.sessionTime ?? '').split('-');
+      final from = parts.isNotEmpty ? _parseHm(parts[0]) : null;
+      final to = parts.length > 1 ? _parseHm(parts[1]) : null;
+      final f = from ?? const TimeOfDay(hour: 0, minute: 0);
+      result.add(_ClassSlot(
+        group: g,
+        dayIndex: dayIndexOf(date),
+        from: f,
+        to: to ?? f,
+        studentCount: _countByGroup[g.id] ?? 0,
+        override: ov.type,
+      ));
+    }
+    result.sort((a, b) => a.fromMinutes.compareTo(b.fromMinutes));
+    return result;
+  }
+
+  int _cmpToday(DateTime d) {
+    final n = DateTime.now();
+    return DateTime(d.year, d.month, d.day)
+        .compareTo(DateTime(n.year, n.month, n.day));
+  }
+
+  // هل الحصة جارية الآن؟ (فقط لو التاريخ المعروض = النهاردة)
+  bool _isNow(_ClassSlot s, DateTime date) {
+    if (_cmpToday(date) != 0 || s.override == SessionOverrideType.cancelled) {
+      return false;
+    }
     final now = TimeOfDay.now();
     final nowMin = now.hour * 60 + now.minute;
     return nowMin >= s.fromMinutes && nowMin < s.toMinutes;
   }
 
-  bool _isPast(_ClassSlot s) {
-    if (s.dayIndex != _todayIndex()) return false;
+  bool _isPast(_ClassSlot s, DateTime date) {
+    final c = _cmpToday(date);
+    if (c < 0) return true;
+    if (c > 0) return false;
     final now = TimeOfDay.now();
     final nowMin = now.hour * 60 + now.minute;
     return nowMin >= s.toMinutes;
+  }
+
+  Future<void> _pickDate() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(DateTime.now().year + 2, 12, 31),
+    );
+    if (d != null) _goToDate(d);
+  }
+
+  Widget _dateNav(bool isDark) {
+    final d = _selectedDate;
+    final fmt = DateFormat('EEEE d MMMM yyyy', 'ar');
+    Widget btn(IconData i, String tip, VoidCallback f) => IconButton(
+          tooltip: tip,
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+          icon: Icon(i, size: 22),
+          onPressed: f,
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      child: Row(children: [
+        btn(Icons.keyboard_double_arrow_right_rounded, 'شهر قبل',
+            () => _goToDate(DateTime(d.year, d.month - 1, d.day))),
+        btn(Icons.chevron_right_rounded, 'أسبوع قبل',
+            () => setState(() => _weekOffset -= 1)),
+        Expanded(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: _pickDate,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(fmt.format(d),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800)),
+                if (_weekOffset != 0 || _selectedDay != _todayIndex())
+                  GestureDetector(
+                    onTap: () => _goToDate(DateTime.now()),
+                    child: const Text('الرجوع لليوم',
+                        style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.primaryColor)),
+                  ),
+              ]),
+            ),
+          ),
+        ),
+        btn(Icons.chevron_left_rounded, 'أسبوع بعد',
+            () => setState(() => _weekOffset += 1)),
+        btn(Icons.keyboard_double_arrow_left_rounded, 'شهر بعد',
+            () => _goToDate(DateTime(d.year, d.month + 1, d.day))),
+      ]),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final cs     = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final daySlots = _slotsForDay(_selectedDay);
+    final selectedDate = _selectedDate;
+    final daySlots = _slotsForDate(selectedDate);
 
     return Scaffold(
       backgroundColor:
@@ -171,6 +329,8 @@ class _SchedulePageState extends State<SchedulePage> {
                   child: _WeekSummary(slots: _slots),
                 ),
 
+                _dateNav(isDark),
+
                 // ── شريط الأيام ───────────────────────────────────
                 SizedBox(
                   height: 108,
@@ -179,11 +339,16 @@ class _SchedulePageState extends State<SchedulePage> {
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     itemCount: _kDays.length,
                     itemBuilder: (_, i) {
-                      final count = _slotsForDay(i).length;
+                      final dayDate = _dateOf(i);
+                      final count = _slotsForDate(dayDate)
+                          .where((x) =>
+                              x.override != SessionOverrideType.cancelled)
+                          .length;
                       return _DayChip(
                         label:     _kDays[i],
+                        dateText:  '${dayDate.day}/${dayDate.month}',
                         count:     count,
-                        isToday:   i == _todayIndex(),
+                        isToday:   _cmpToday(dayDate) == 0,
                         selected:  i == _selectedDay,
                         onTap:     () => setState(() => _selectedDay = i),
                       );
@@ -208,12 +373,16 @@ class _SchedulePageState extends State<SchedulePage> {
                               final s = daySlots[i];
                               return _ClassCard(
                                 slot:      s,
-                                isNow:     _isNow(s),
-                                isPast:    _isPast(s),
+                                isNow:     _isNow(s, selectedDate),
+                                isPast:    _isPast(s, selectedDate),
                                 isLast:    i == daySlots.length - 1,
                                 timeFrom:  _fmtTime(s.from),
                                 timeTo:    _fmtTime(s.to),
-                                onTap: () => Get.toNamed(
+                                // spec 053: تفاصيل الحصة بتاريخها، والضغط
+                                // المطوّل لتفاصيل المجموعة (السلوك القديم).
+                                onTap: () => Get.to(() => SessionDetailPage(
+                                    group: s.group, day: selectedDate)),
+                                onLongPress: () => Get.toNamed(
                                     ROUTE_GROUP_DETAILS, arguments: s.group),
                               );
                             },
@@ -294,12 +463,14 @@ class _WeekSummary extends StatelessWidget {
 // ─── شريحة اليوم ──────────────────────────────────────────────────────────────
 class _DayChip extends StatelessWidget {
   final String label;
+  final String dateText;
   final int    count;
   final bool   isToday;
   final bool   selected;
   final VoidCallback onTap;
   const _DayChip({
     required this.label,
+    required this.dateText,
     required this.count,
     required this.isToday,
     required this.selected,
@@ -369,6 +540,12 @@ class _DayChip extends StatelessWidget {
                     color: selected
                         ? Colors.white
                         : cs.onSurface.withValues(alpha: 0.8))),
+            Text(dateText,
+                style: TextStyle(
+                    fontFamily: 'Cairo', fontSize: 9.5,
+                    color: selected
+                        ? Colors.white.withValues(alpha: 0.85)
+                        : cs.onSurface.withValues(alpha: 0.5))),
             const SizedBox(height: 3),
             Container(
               padding:
@@ -404,6 +581,7 @@ class _ClassCard extends StatelessWidget {
   final bool   isNow, isPast, isLast;
   final String timeFrom, timeTo;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   const _ClassCard({
     required this.slot,
     required this.isNow,
@@ -412,7 +590,30 @@ class _ClassCard extends StatelessWidget {
     required this.timeFrom,
     required this.timeTo,
     required this.onTap,
+    this.onLongPress,
   });
+
+  Widget? _overrideBadge() {
+    final o = slot.override;
+    if (o == null) return null;
+    final (String label, Color c) = switch (o) {
+      SessionOverrideType.cancelled => ('ملغاة', const Color(0xFFEF4444)),
+      SessionOverrideType.makeup => ('تعويضية', const Color(0xFF10B981)),
+      SessionOverrideType.extra => ('إضافية', const Color(0xFF6366F1)),
+    };
+    return Container(
+      margin: const EdgeInsetsDirectional.only(start: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontFamily: 'Cairo', fontSize: 10,
+              fontWeight: FontWeight.w800, color: c)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -474,6 +675,7 @@ class _ClassCard extends StatelessWidget {
                   color: Colors.transparent,
                   child: InkWell(
                     onTap: onTap,
+                    onLongPress: onLongPress,
                     borderRadius: BorderRadius.circular(16),
                     child: Container(
                       padding: const EdgeInsets.all(14),
@@ -536,6 +738,8 @@ class _ClassCard extends StatelessWidget {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis),
                                   ),
+                                  if (_overrideBadge() != null)
+                                    _overrideBadge()!,
                                   if (isNow)
                                     Container(
                                       padding: const EdgeInsets.symmetric(
