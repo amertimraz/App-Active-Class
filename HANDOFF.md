@@ -651,3 +651,11 @@ specs/026-qr-payment-accumulated-debt/
 - **اختبارات:** session_attendance / schedule_week / absence_message / session_detail_page (widget) — الإجمالي 456 ناجح. صفحة الجدول نفسها بتقرا DB مباشرة فمغطّاة يدويًا (quickstart.md).
 - **لسه:** قياس الأداء على مجموعة 200+ على الموبايل، وتجربة quickstart كاملة.
 
+### ✨ Spec 054 — إعلانات وبنر الخصومات عن بعد (2026-10-29) — منفّذ، **النشر + تجربة الجهاز لسه**
+- **الفكرة:** الأدمن ينشر إعلانًا (خصم/تنبيه/خبر) من صفحة "الإعلانات" الجديدة في لوحة الأدمن (`C:epoctive_class_admin`، مستودع مستقل) فيظهر في تطبيق العملاء من غير إصدار: بنر على الرئيسية والباقات، نافذة مرة لكل إصدار، وإشعار نظام (مقدمة + مهمة WorkManager كل 3 ساعات بقراءة Firestore REST عامة). كاش أوفلاين، واستهداف بالباقة (trial/basic/pro/lifetime؛ "المجاني" = التجريبي).
+- **التطبيق:** `models/announcement_model.dart`، `utils/announcement_logic.dart` (صرف)، `widgets/announcement_banner.dart` (6 تصاميم × 8 ألوان × فاتح/داكن، Flutter صرف — منسوخ حرفيًا للأدمن)، `announcement_slot/popup.dart`، `services/announcement_service.dart` + `announcement_background.dart`، `controllers/announcement_controller.dart` (permanent في main). زرار واتساب الافتراضي = رقم الأدمن + رسالة + (الاسم/الكود/الباقة).
+- **الأدمن:** `views/announcements_page.dart` (قائمة بالحالات + محرّر + اختيار التصميم/اللون + معاينة حيّة بنر/نافذة/إشعار فاتح/داكن)، `models/announcement_draft.dart` (تحقق)، `services/announcement_service.dart`.
+- **⚠️ لازم قبل أي استخدام:** نشر قاعدة `announcements` (موجودة في `firestore.rules` بمشروع التطبيق) — `firebase deploy --only firestore:rules` — بدونها الأدمن مش هيقدر يكتب. التطبيق القديم مش متأثر.
+- **قيد معروف:** الإشعار والتطبيق مقفول بالفحص الدوري (قد يتأخر ساعات، شاومي بتقيّد الخلفية)؛ ضغط الإشعار من cold start لا يوجّه (قيد قديم).
+- **اختبارات:** التطبيق 604 ناجح (140 جديد)، الأدمن 10 جديد. `callbackDispatcher` بقى يفرّق بالاسم؛ المنطق الشهري كما هو.
+
