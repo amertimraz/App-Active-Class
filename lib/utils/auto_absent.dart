@@ -122,3 +122,20 @@ Set<String> pruneProcessed(Set<String> keys, DateTime now) {
     return d != null && !d.isBefore(oldest);
   }).toSet();
 }
+
+/// هل المزامنة "طازة" كفاية عشان نسجّل غياب تلقائي؟ في وضع الفريق، لو
+/// جهاز المالك اتفتح بعد ما كان مقفول، تحضير المساعد لسه ما وصلوش، فالغياب
+/// التلقائي كان بيسجّل "غائب" لطلاب المساعد حضّرهم فعلًا (وبيكسب أحيانًا في
+/// تعارض المزامنة). فننتظر سحبًا كاملًا ناجحًا حديثًا. خارج وضع الفريق
+/// (جهاز لوحده) مفيش حاجة تتنتظر. [maxAge] أقصى عمر مقبول لآخر سحب.
+bool autoAbsentSyncReady({
+  required bool teamMode,
+  required DateTime? lastFullPullAt,
+  required DateTime now,
+  Duration maxAge = const Duration(minutes: 10),
+}) {
+  if (!teamMode) return true;
+  if (lastFullPullAt == null) return false;
+  return now.difference(lastFullPullAt) <= maxAge;
+}
+

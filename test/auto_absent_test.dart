@@ -6,6 +6,7 @@ import 'package:active_class/utils/auto_absent.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  syncReadyTests();
   final day = DateTime(2026, 10, 7);
   DateTime at(int h, int m, [int d = 7]) => DateTime(2026, 10, d, h, m);
 
@@ -129,5 +130,35 @@ void main() {
     expect(clampAutoAbsentGrace(-5), 0);
     expect(clampAutoAbsentGrace(999), 180);
     expect(clampAutoAbsentGrace(30), 30);
+  });
+}
+
+void syncReadyTests() {
+  final now = DateTime(2026, 10, 29, 10, 0);
+  group('autoAbsentSyncReady', () {
+    test('جهاز لوحده (بدون فريق) → دايمًا جاهز', () {
+      expect(autoAbsentSyncReady(teamMode: false, lastFullPullAt: null, now: now),
+          isTrue);
+    });
+    test('فريق وما سحبش لسه → مش جاهز', () {
+      expect(autoAbsentSyncReady(teamMode: true, lastFullPullAt: null, now: now),
+          isFalse);
+    });
+    test('فريق وآخر سحب من دقيقتين → جاهز', () {
+      expect(
+          autoAbsentSyncReady(
+              teamMode: true,
+              lastFullPullAt: now.subtract(const Duration(minutes: 2)),
+              now: now),
+          isTrue);
+    });
+    test('فريق وآخر سحب من ساعة → مش جاهز', () {
+      expect(
+          autoAbsentSyncReady(
+              teamMode: true,
+              lastFullPullAt: now.subtract(const Duration(hours: 1)),
+              now: now),
+          isFalse);
+    });
   });
 }

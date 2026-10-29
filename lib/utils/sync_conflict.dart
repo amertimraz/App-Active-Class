@@ -2,6 +2,9 @@
 //
 // حسم تعارض المزامنة عند وصول صف يطابق منطقيًا صفًا محليًا بمعرّف
 // مزامنة مختلف (spec 031). دالة نقية قابلة للاختبار بمعزل.
+import 'package:active_class/config/constants.dart';
+import 'package:active_class/models/attendance_model.dart';
+import 'package:active_class/utils/auto_absent.dart';
 
 /// هل الصف الوارد (من جهاز آخر) يفوز على الصف المحلي المكرّر منطقيًا؟
 ///
@@ -38,3 +41,33 @@ Map<String, dynamic> inPlaceUpdateColumns(Map<String, dynamic> remoteRow) {
   };
 }
 
+/// حسم تعارض سجلَي حضور لنفس الطالب واليوم: تحضير **يدوي** (حاضر/متأخر/
+/// غائب بقرار المدرس أو المساعد) بيكسب دايمًا على "غياب تلقائي" (spec 046)،
+/// مهما كان الأحدث وقتًا. السبب: جهاز المالك بيولّد الغياب التلقائي لحصة
+/// قفلت قبل ما تحضير المساعد يوصله، فالغياب التلقائي كان بيطلع "أحدث" في
+/// الخادم ويكسب على تحضير حقيقي. لو الاتنين تلقائي أو الاتنين يدوي → نفس
+/// قاعدة [syncConflictIncomingWins] (الأحدث).
+bool attendanceConflictIncomingWins({
+  required String? localStatus,
+  required String? localNotes,
+  required String? remoteStatus,
+  required String? remoteNotes,
+  DateTime? localUpdatedAt,
+  DateTime? remoteUpdatedAt,
+  required String localRemoteId,
+  required String remoteRemoteId,
+}) {
+  bool auto(String? status, String? notes) =>
+      normalizeAttendanceStatus(status) == ATTENDANCE_ABSENT &&
+      notes == kAutoAbsentNote;
+  final localAuto = auto(localStatus, localNotes);
+  final remoteAuto = auto(remoteStatus, remoteNotes);
+  if (localAuto && !remoteAuto) return true; // الوارد يدوي
+  if (!localAuto && remoteAuto) return false; // الوارد تلقائي
+  return syncConflictIncomingWins(
+    localUpdatedAt: localUpdatedAt,
+    remoteUpdatedAt: remoteUpdatedAt,
+    localRemoteId: localRemoteId,
+    remoteRemoteId: remoteRemoteId,
+  );
+}

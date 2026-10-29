@@ -17,6 +17,7 @@ import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
+import 'package:active_class/services/sync_engine.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/auto_absent.dart';
 
@@ -49,6 +50,15 @@ class AutoAbsentService {
     }
     final settings = Get.find<SettingsController>();
     if (!settings.autoAbsentEnabled.value) return 0;
+    // وضع الفريق: ما نسجّلش غياب قبل ما نسحب تحضير الزملاء (وإلا تحضير
+    // المساعد بيتمسح بغياب تلقائي لما المالك يفتح التطبيق بعد غياب).
+    if (!autoAbsentSyncReady(
+      teamMode: DatabaseService.teamModeEnabled,
+      lastFullPullAt: SyncEngine.lastFullPullAt,
+      now: now ?? DateTime.now(),
+    )) {
+      return 0;
+    }
 
     _running = true;
     try {

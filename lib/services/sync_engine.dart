@@ -1105,9 +1105,14 @@ class SyncEngine with WidgetsBindingObserver {
   static const int _pullPageSize = 500;
   static const int _applyBatchSize = 200;
 
+  /// وقت آخر سحب كامل **ناجح لكل الجداول** (static عشان خدمات زي الغياب
+  /// التلقائي تتأكد إن تحضير الزملاء وصل قبل ما تسجّل أي حاجة).
+  static DateTime? lastFullPullAt;
+
   Future<void> _fullPull({required bool includeDeleted}) async {
     if (_pulling) return;
     _pulling = true;
+    var failed = false;
     try {
       final db = await _dbService.database;
       // بالتتابع (مش Future.wait) — الترتيب بيضمن الآباء قبل الأبناء،
@@ -1118,9 +1123,11 @@ class SyncEngine with WidgetsBindingObserver {
         try {
           await _pullTable(db, table, includeDeleted: includeDeleted);
         } catch (e) {
+          failed = true;
           debugPrint('SyncEngine: فشل سحب جدول $table — $e');
         }
       }
+      if (!failed) lastFullPullAt = DateTime.now();
     } finally {
       _pulling = false;
     }
@@ -1605,13 +1612,31 @@ class SyncEngine with WidgetsBindingObserver {
     Map<String, dynamic> remote,
     Map<String, dynamic> localMap,
   ) async {
-    final wins = syncConflictIncomingWins(
-      localUpdatedAt:
-          DateTime.tryParse(dupRow[COL_SYNC_UPDATED_AT] as String? ?? ''),
-      remoteUpdatedAt: DateTime.tryParse(remote['updated_at'] as String? ?? ''),
-      localRemoteId: dupRow[COL_SYNC_REMOTE_ID] as String? ?? '',
-      remoteRemoteId: remote['id'] as String,
-    );
+    final localUpdatedAt =
+        DateTime.tryParse(dupRow[COL_SYNC_UPDATED_AT] as String? ?? '');
+    final remoteUpdatedAt =
+        DateTime.tryParse(remote['updated_at'] as String? ?? '');
+    final localRid = dupRow[COL_SYNC_REMOTE_ID] as String? ?? '';
+    final remoteRid = remote['id'] as String;
+    // الحضور: التحضير اليدوي يكسب على "غياب تلقائي" مهما كان الأحدث
+    // (غير كده غياب المالك التلقائي كان بيمسح تحضير المساعد).
+    final wins = table == TABLE_ATTENDANCE
+        ? attendanceConflictIncomingWins(
+            localStatus: dupRow[COL_ATTENDANCE_STATUS] as String?,
+            localNotes: dupRow[COL_ATTENDANCE_NOTES] as String?,
+            remoteStatus: localMap[COL_ATTENDANCE_STATUS] as String?,
+            remoteNotes: localMap[COL_ATTENDANCE_NOTES] as String?,
+            localUpdatedAt: localUpdatedAt,
+            remoteUpdatedAt: remoteUpdatedAt,
+            localRemoteId: localRid,
+            remoteRemoteId: remoteRid,
+          )
+        : syncConflictIncomingWins(
+            localUpdatedAt: localUpdatedAt,
+            remoteUpdatedAt: remoteUpdatedAt,
+            localRemoteId: localRid,
+            remoteRemoteId: remoteRid,
+          );
     if (!wins) {
       debugPrint('SyncEngine: صف مكرر وارد أقدم/خاسر — إبقاء المحلي ($table)');
       return;
