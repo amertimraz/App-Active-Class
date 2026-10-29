@@ -61,6 +61,8 @@ import 'package:active_class/services/parent_portal_service.dart';
 
 // تشغيل المهام الخلفية
 import 'package:workmanager/workmanager.dart';
+import 'package:active_class/controllers/announcement_controller.dart';
+import 'package:active_class/services/announcement_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // مفاتيح ثابتة لمهام الخلفية وتخزين الحالة
@@ -71,6 +73,11 @@ const String kShouldSendWhatsappReports = 'should_send_whatsapp_reports';
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
+    // spec 054 — فحص الإعلانات (إشعار والتطبيق مقفول). باقي المهام تفضل
+    // على المنطق الشهري زي ما كانت بالظبط.
+    if (task == kAnnouncementCheckTask) {
+      return runAnnouncementBackgroundCheck();
+    }
     final now = DateTime.now();
     final nextMonth = DateTime(now.year, now.month + 1, 1);
     final lastDay = nextMonth.subtract(const Duration(days: 1)).day;
@@ -155,6 +162,8 @@ void main() async {
 
   // تسجيل المتحكمات
   Get.put(LicenseController(), permanent: true);
+  // spec 054 — إعلانات الأدمن (بنر/نافذة/إشعار). فشلها صامت ومش بتعطّل البدء.
+  Get.put(AnnouncementController(), permanent: true);
   Get.put(ThemeController());
   Get.put(SettingsController());
   // بتؤمّن إن تغييرات مدة/تفعيل بوابة أولياء الأمور (من الأدمن أو من
@@ -187,6 +196,15 @@ void main() async {
       constraints: Constraints(
           networkType: NetworkType.connected), // يحتاج اتصال للواتساب
       initialDelay: const Duration(hours: 6), // توزيع الحمل
+    );
+    // spec 054 — فحص إعلانات الأدمن كل ~3 ساعات (يحتاج اتصال).
+    await Workmanager().registerPeriodicTask(
+      kAnnouncementCheckTask,
+      kAnnouncementCheckTask,
+      frequency: const Duration(hours: 3),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+      constraints: Constraints(networkType: NetworkType.connected),
+      initialDelay: const Duration(minutes: 30),
     );
 
     // إضافة مراقب دورة الحياة

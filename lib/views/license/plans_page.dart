@@ -8,6 +8,8 @@ import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/models/plan_config_model.dart';
 import 'package:active_class/views/license/activation_page.dart';
 import 'package:active_class/views/auth/login_screen.dart';
+import 'package:active_class/models/announcement_model.dart';
+import 'package:active_class/widgets/announcement_slot.dart';
 
 const String _kSupportPhone = '201096066818';
 
@@ -112,6 +114,12 @@ class _PlansPageState extends State<PlansPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // spec 054 — إعلان الأدمن (خصم/عرض) أعلى الباقات
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 12),
+                        child: AnnouncementSlot(
+                            placement: AnnouncementPlacement.plans),
+                      ),
                       // ── Trial Banner ────────────────────────────
                       Obx(() {
                         final lc = LicenseController.to;

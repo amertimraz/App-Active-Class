@@ -23,6 +23,9 @@ import 'package:active_class/widgets/update_dialog.dart';
 import 'package:active_class/services/in_app_update_service.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/services/auto_absent_service.dart';
+import 'package:active_class/models/announcement_model.dart';
+import 'package:active_class/widgets/announcement_slot.dart';
+import 'package:active_class/widgets/announcement_popup.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -63,6 +66,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (!mounted) return;
         checkAndShowUpdateDialog(context);
         InAppUpdateService.checkAndPrompt(context);
+      });
+      // spec 054 — نافذة إعلان الأدمن (مرة لكل إصدار)، بعد حوار التحديث.
+      Future.delayed(const Duration(seconds: 5), () {
+        if (!mounted) return;
+        unawaited(maybeShowAnnouncementPopup(context));
       });
     });
   }
@@ -219,6 +227,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               children: [
                 const TrialBanner(),
                 const PortalExpiryBanner(),
+                const AnnouncementSlot(placement: AnnouncementPlacement.home),
                 _buildAppBar(),
                 _buildQuickActionsPinned(),
                 Expanded(

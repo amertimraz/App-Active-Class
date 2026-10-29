@@ -16,6 +16,7 @@ import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/portal_expiry.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/models/announcement_model.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/helpers.dart';
 
@@ -190,7 +191,36 @@ class NotificationService {
     if (response.payload == 'at_risk') {
       Get.toNamed(ROUTE_AT_RISK_STUDENTS);
     }
+    // spec 054 — إشعار إعلان: بيفتح التطبيق، وللباقات لو الزرار كده.
+    if (response.payload == 'announcement_plans') {
+      Get.toNamed(ROUTE_PLANS);
+    }
   }
+
+  /// spec 054 — إشعار إعلان تسويقي (مرة لكل إصدار؛ التكرار بيمنعه المتصل).
+  /// معرّف ثابت عشان إشعار جديد يستبدل القديم ومايتراكمش.
+  Future<void> showAnnouncement(Announcement a) async {
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'active_class_announcements',
+        'عروض وإعلانات',
+        channelDescription: 'عروض وخصومات من Active Class',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        showWhen: true,
+      ),
+    );
+    await _notificationsPlugin.show(
+      announcementNotificationId,
+      a.title,
+      a.body,
+      details,
+      payload:
+          a.cta.type == 'plans' ? 'announcement_plans' : 'announcement',
+    );
+  }
+
+  static const int announcementNotificationId = 990000100;
 
   // Show immediate notification
   Future<void> showNotification({

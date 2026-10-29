@@ -23,6 +23,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // إعلانات التسويق (خصومات/عروض) — spec 054: يقرأها أي تطبيق، ويكتبها الأدمن فقط
+    match /announcements/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // التراخيص
     match /licenses/{code} {
       // get بس (قراءة كود معروف بالاسم عشان التفعيل العادي) — ممنوع list
