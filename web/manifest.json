@@ -1,12 +1,14 @@
 {
-    "name": "active_class",
-    "short_name": "active_class",
+    "name": "Active Class",
+    "short_name": "Active Class",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#4F46E5",
+    "theme_color": "#4F46E5",
+    "description": "Active Class — إدارة الحضور والمدفوعات والامتحانات للمدرسين",
+    "lang": "ar",
+    "dir": "rtl",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

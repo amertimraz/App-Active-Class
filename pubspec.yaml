@@ -92,6 +92,12 @@ dependencies:
   supabase_flutter: ^2.8.0
   firebase_app_check: ^0.3.2+10
 
+  # spec 055 — قاعدة البيانات على الويب (SQLite WASM فوق IndexedDB).
+  # بتتحمّل بالاستيراد الشرطي في lib/core/platform/db_factory.dart بس.
+  sqflite_common_ffi_web: ^1.1.1
+  sqflite_common: ^2.5.8
+  web: ^1.1.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

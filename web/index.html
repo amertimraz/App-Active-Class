@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -18,21 +18,58 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Active Class — إدارة الحضور والمدفوعات والامتحانات للمدرسين">
+  <meta name="theme-color" content="#4F46E5">
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="active_class">
+  <meta name="apple-mobile-web-app-title" content="Active Class">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>active_class</title>
-  <link rel="manifest" href="manifest.json">
+  <title>Active Class</title>
+  <link rel="manifest" href="manifest.json" crossorigin="use-credentials">
+
+  <style>
+    /* spec 055 — شاشة تحميل خفيفة لحد أول إطار Flutter */
+    html, body { margin: 0; height: 100%; background: #F5F6FB; }
+    #ac-loading {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+      font-family: system-ui, "Segoe UI", Tahoma, sans-serif; color: #4F46E5;
+      transition: opacity .25s ease;
+    }
+    #ac-loading img { width: 72px; height: 72px; border-radius: 16px; }
+    #ac-loading .bar {
+      width: 140px; height: 4px; border-radius: 2px; background: #E0E1F5; overflow: hidden;
+    }
+    #ac-loading .bar::after {
+      content: ""; display: block; width: 40%; height: 100%; background: #4F46E5;
+      animation: ac-slide 1.1s ease-in-out infinite;
+    }
+    @keyframes ac-slide { from { transform: translateX(260%); } to { transform: translateX(-100%); } }
+    @media (prefers-reduced-motion: reduce) { #ac-loading .bar::after { animation: none; } }
+  </style>
 </head>
 <body>
+  <div id="ac-loading" role="status" aria-live="polite">
+    <img src="icons/Icon-192.png" alt="">
+    <div>جاري تحميل Active Class…</div>
+    <div class="bar"></div>
+  </div>
+  <script>
+    // يختفي أول ما Flutter يرسم أول إطار.
+    window.addEventListener('flutter-first-frame', function () {
+      var el = document.getElementById('ac-loading');
+      if (!el) return;
+      el.style.opacity = '0';
+      setTimeout(function () { el.remove(); }, 300);
+    });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

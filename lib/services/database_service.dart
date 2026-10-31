@@ -4,8 +4,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
 import 'package:uuid/uuid.dart';
+import 'package:active_class/core/platform/db_factory.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/merge_plan.dart';
 import 'package:active_class/models/group_model.dart';
@@ -270,17 +270,20 @@ class DatabaseService {
   }
 
   Future<Database> _initDatabase() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, DATABASE_NAME);
+    // spec 055: المسار والمصنع حسب المنصّة (على أندرويد/ويندوز نفس السلوك
+    // القديم بالحرف؛ على الويب SQLite WASM فوق IndexedDB).
+    final path = await appDatabasePath(DATABASE_NAME);
 
-    return await openDatabase(
+    return await appDatabaseFactory.openDatabase(
       path,
-      version: DATABASE_VERSION,
-      onConfigure: (db) async {
-        await db.execute('PRAGMA foreign_keys = ON');
-      },
-      onCreate: _createTables,
-      onUpgrade: _onUpgrade,
+      options: OpenDatabaseOptions(
+        version: DATABASE_VERSION,
+        onConfigure: (db) async {
+          await db.execute('PRAGMA foreign_keys = ON');
+        },
+        onCreate: _createTables,
+        onUpgrade: _onUpgrade,
+      ),
     );
   }
 
