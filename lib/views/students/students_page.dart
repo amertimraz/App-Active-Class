@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:active_class/utils/responsive.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/widgets/guardian_phone_line.dart';
 import 'package:active_class/config/theme.dart';
@@ -320,23 +321,27 @@ class _StudentsPageState extends State<StudentsPage>
 
   // ── Grid ─────────────────────────────────────────────────────────
   Widget _buildGrid(BuildContext context, List<Student> students) {
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 0.85,
-      ),
-      itemCount: students.length,
-      itemBuilder: (_, i) => _StudentGridTile(
-        student: students[i],
-        group: _groupOf(students[i]),
-        groupColor: _groupColor(students[i]),
-        onTap: () => Get.toNamed(ROUTE_STUDENT_DETAILS, arguments: students[i]),
-        onQr: () => _showQRDialog(context, students[i]),
-        onEdit: () => _showEditSheet(context, students[i]),
-        onArchive: () => _confirmArchive(context, students[i]),
+    return LayoutBuilder(
+      builder: (context, box) => GridView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount:
+              adaptiveColumns(box.maxWidth, phone: 2, minTileWidth: 230, max: 5),
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.85,
+        ),
+        itemCount: students.length,
+        itemBuilder: (_, i) => _StudentGridTile(
+          student: students[i],
+          group: _groupOf(students[i]),
+          groupColor: _groupColor(students[i]),
+          onTap: () =>
+              Get.toNamed(ROUTE_STUDENT_DETAILS, arguments: students[i]),
+          onQr: () => _showQRDialog(context, students[i]),
+          onEdit: () => _showEditSheet(context, students[i]),
+          onArchive: () => _confirmArchive(context, students[i]),
+        ),
       ),
     );
   }

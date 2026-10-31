@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:get/get.dart';
+import 'package:active_class/utils/responsive.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
@@ -794,9 +795,12 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
                   : GridView.builder(
                       padding: const EdgeInsets.fromLTRB(
                           PADDING_NORMAL, 0, PADDING_NORMAL, 80),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: adaptiveColumns(
+                            MediaQuery.sizeOf(context).width,
+                            phone: 2,
+                            minTileWidth: 230,
+                            max: 5),
                         crossAxisSpacing: 10,
                         mainAxisSpacing: 10,
                         childAspectRatio: 0.75,

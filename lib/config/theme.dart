@@ -1,5 +1,7 @@
 // lib/config/theme.dart
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:active_class/utils/responsive.dart';
 
 class AppTheme {
   // Colors - Premium & Modern
@@ -173,6 +175,11 @@ class AppTheme {
         );
       }),
     ),
+    // spec 055: على الويب القوائم السفلية بعرض مريح متوسّط بدل عرض الشاشة كلها.
+    bottomSheetTheme: BottomSheetThemeData(
+      constraints:
+          kIsWeb ? const BoxConstraints(maxWidth: kSheetMaxWidth) : null,
+    ),
     iconTheme: const IconThemeData(
       color: textPrimary,
       size: 24,
@@ -340,6 +347,11 @@ class AppTheme {
           color: Colors.grey,
         );
       }),
+    ),
+    // spec 055: على الويب القوائم السفلية بعرض مريح متوسّط بدل عرض الشاشة كلها.
+    bottomSheetTheme: BottomSheetThemeData(
+      constraints:
+          kIsWeb ? const BoxConstraints(maxWidth: kSheetMaxWidth) : null,
     ),
     iconTheme: const IconThemeData(
       color: Colors.white,

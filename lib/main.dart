@@ -51,6 +51,7 @@ import 'package:intl/intl.dart';
 import 'dart:ui' as ui;
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:active_class/widgets/web_responsive_frame.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -247,7 +248,9 @@ class MyApp extends StatelessWidget {
                         settingsController.use24hFormat.value),
                 child: Directionality(
                   textDirection: ui.TextDirection.rtl,
-                  child: child ?? const SizedBox.shrink(),
+                  // spec 055: إطار الشاشات العريضة (ويب فقط، لا أثر على أندرويد).
+                  child: WebResponsiveFrame(
+                      child: child ?? const SizedBox.shrink()),
                 ),
               )),
           home: const SplashPage(),

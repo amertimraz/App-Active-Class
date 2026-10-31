@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:active_class/views/web/web_session.dart';
+import 'package:active_class/utils/responsive.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/at_risk_controller.dart';
@@ -44,8 +47,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final SettingsController _settingsController = Get.find<SettingsController>();
   // spec 021 — مسجّل من هنا (أول شاشة بتتفتح) عشان عدّاد "محتاجين
   // متابعة" يفضل حيّ حتى قبل ما المدرس يفتح الشاشة المخصّصة بنفسه.
-  final AtRiskController _atRiskController =
-      Get.put(AtRiskController());
+  final AtRiskController _atRiskController = Get.put(AtRiskController());
   bool _statsVisible = true;
 
   @override
@@ -67,6 +69,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(seconds: 2), () {
         if (!mounted) return;
+        // spec 055: فحص التحديث/المتجر مخصوص لأندرويد — على الويب بيرمي أخطاء.
+        if (kIsWeb) return;
         checkAndShowUpdateDialog(context);
         InAppUpdateService.checkAndPrompt(context);
       });
@@ -77,7 +81,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       });
       // نافذة تقييم Google Play بعد استخدام فعلي — بتتخطّى لو فيه حوار فوق.
       Future.delayed(const Duration(seconds: 9), () {
-        if (!mounted) return;
+        if (!mounted || kIsWeb) return;
         unawaited(maybeShowRatePrompt(context));
       });
     });
@@ -297,7 +301,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           fontFamily: 'Cairo',
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
-                          color: isDark ? Colors.white : const Color(0xFF111827),
+                          color:
+                              isDark ? Colors.white : const Color(0xFF111827),
                         ),
                       ),
                     ),
@@ -349,6 +354,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 isDark: isDark,
                 onTap: () => Get.toNamed(ROUTE_SETTINGS),
               ),
+              // spec 055: زرار خروج ظاهر على الويب فقط.
+              if (kIsWeb) ...[
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: 'تسجيل الخروج',
+                  child: _AppBarIcon(
+                    icon: Icons.logout_rounded,
+                    isDark: isDark,
+                    onTap: () => confirmAndSignOutWeb(context),
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -370,26 +387,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
           Obx(() {
             final entries = _menuEntries;
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: entries.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 0.92,
+            return LayoutBuilder(
+              builder: (context, box) => GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: entries.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: adaptiveColumns(box.maxWidth,
+                      phone: 3, minTileWidth: 170, max: 6),
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 0.92,
+                ),
+                itemBuilder: (context, index) {
+                  final item = entries[index];
+                  return _MenuGridItem(
+                    icon: item.icon,
+                    label: item.label,
+                    color: item.color,
+                    onTap: item.onTap,
+                    locked: item.locked,
+                  );
+                },
               ),
-              itemBuilder: (context, index) {
-                final item = entries[index];
-                return _MenuGridItem(
-                  icon: item.icon,
-                  label: item.label,
-                  color: item.color,
-                  onTap: item.onTap,
-                  locked: item.locked,
-                );
-              },
             );
           }),
         ],
@@ -1487,8 +1507,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       itemBuilder: (_, i) {
                         final g = breakdown[i];
                         final done = g.remaining <= 0.01;
-                        final color =
-                            done ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+                        final color = done
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFFEF4444);
                         return ListTile(
                           leading: CircleAvatar(
                             backgroundColor: color.withValues(alpha: 0.1),
@@ -1543,9 +1564,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final allUnpaid = _dashboardController.paymentCardUnpaidList;
     final students = groupIdFilter == null
         ? allUnpaid
-        : allUnpaid
-            .where((e) => e.student.groupId == groupIdFilter)
-            .toList();
+        : allUnpaid.where((e) => e.student.groupId == groupIdFilter).toList();
     final cardMonth = _dashboardController.paymentCardMonth.value;
     final monthName = _PaymentProgressCard._arabicMonth(cardMonth.month);
     final groupName = groupIdFilter == null
@@ -1713,7 +1732,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       tooltip: 'تصدير PDF',
                       icon: const Icon(Icons.picture_as_pdf_rounded,
                           color: Color(0xFF10B981)),
-                      onPressed: () => _exportTodayPaymentsPDF(context, entries),
+                      onPressed: () =>
+                          _exportTodayPaymentsPDF(context, entries),
                     ),
                 ],
               ),
@@ -2341,7 +2361,8 @@ class _AtRiskDashboardCard extends StatelessWidget {
               ),
             ),
             Icon(Icons.chevron_left_rounded,
-                size: 20, color: isDark ? Colors.white38 : Colors.grey.shade400),
+                size: 20,
+                color: isDark ? Colors.white38 : Colors.grey.shade400),
           ],
         ),
       ),
