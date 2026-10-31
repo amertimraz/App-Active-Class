@@ -2,6 +2,7 @@
 //
 // حالة نافذة التقييم (SharedPreferences) + تنفيذ الإجراءات. كل فشل صامت.
 import 'package:flutter/foundation.dart';
+import 'package:in_app_review/in_app_review.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -70,12 +71,24 @@ class RatePromptService {
     } catch (_) {}
   }
 
-  /// "قيّم الآن": بنعتبره خلص (مش بنقدر نعرف لو فعلًا قيّم) ونفتح Google Play.
+  /// "قيّم الآن": بنعتبره خلص (مش بنقدر نعرف لو فعلًا قيّم).
   Future<void> rateNow() async {
     try {
       final p = await SharedPreferences.getInstance();
       await p.setBool(_kDone, true);
     } catch (_) {}
+    // أولًا ورقة التقييم الرسمية من Google جوه التطبيق (من غير ما المدرس يخرج).
+    // بتشتغل بس لو التطبيق متثبّت من Google Play وفي حدود الكوتا اللي جوجل
+    // بتحددها؛ غير كده بنفتح صفحة التطبيق على Google Play.
+    try {
+      final review = InAppReview.instance;
+      if (await review.isAvailable()) {
+        await review.requestReview();
+        return;
+      }
+    } catch (e) {
+      debugPrint('RatePromptService: in-app review غير متاح — $e');
+    }
     try {
       if (!await launchUrl(playMarketUri(),
           mode: LaunchMode.externalApplication)) {

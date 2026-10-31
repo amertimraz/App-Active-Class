@@ -31,6 +31,7 @@ dependencies:
 
   # URL Launcher for WhatsApp
   url_launcher: ^6.3.0
+  in_app_review: ^2.0.9
 
   # State Management & Navigation
   get: ^4.6.0
