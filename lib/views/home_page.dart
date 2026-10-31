@@ -26,6 +26,8 @@ import 'package:active_class/services/auto_absent_service.dart';
 import 'package:active_class/models/announcement_model.dart';
 import 'package:active_class/widgets/announcement_slot.dart';
 import 'package:active_class/widgets/announcement_popup.dart';
+import 'package:active_class/widgets/rate_prompt_dialog.dart';
+import 'package:active_class/services/rate_prompt_service.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -57,6 +59,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // (زي مسح بيانات الفريق عند تعطيله) هتفضل مش ظاهرة في الأرقام لحد
     // ما حد يضغط زرار التحديث يدويًا.
     _dashboardController.loadDashboardData();
+    unawaited(RatePromptService.instance.registerLaunch());
     // spec 046 — الغياب التلقائي بعد انتهاء الحصة (بيرجع فورًا لو الإعداد مطفي).
     AutoAbsentService.instance.start();
     // فحص التحديث بهدوء بعد ما الداشبورد يخلص رسم — ميتقفلش استخدام
@@ -71,6 +74,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       Future.delayed(const Duration(seconds: 5), () {
         if (!mounted) return;
         unawaited(maybeShowAnnouncementPopup(context));
+      });
+      // نافذة تقييم Google Play بعد استخدام فعلي — بتتخطّى لو فيه حوار فوق.
+      Future.delayed(const Duration(seconds: 9), () {
+        if (!mounted) return;
+        unawaited(maybeShowRatePrompt(context));
       });
     });
   }
