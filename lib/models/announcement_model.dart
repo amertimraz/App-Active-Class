@@ -67,6 +67,30 @@ class AnnouncementCta {
   }
 }
 
+/// نص تذكير واحد (إشعار) ضمن إعلان — بيتبعت بالتناوب بفاصل أيام.
+class AnnouncementReminder {
+  final String title;
+  final String body;
+  const AnnouncementReminder({this.title = '', this.body = ''});
+
+  Map<String, dynamic> toJson() => {'title': title, 'body': body};
+
+  static List<AnnouncementReminder> listFrom(Object? raw) {
+    if (raw is! List) return const [];
+    final out = <AnnouncementReminder>[];
+    for (final e in raw) {
+      if (e is! Map) continue;
+      final t = _clip(_str(e['title']), 60);
+      if (t.isEmpty) continue;
+      out.add(AnnouncementReminder(title: t, body: _clip(_str(e['body']), 240)));
+      if (out.length >= kMaxReminders) break;
+    }
+    return out;
+  }
+}
+
+const int kMaxReminders = 10;
+
 class Announcement {
   final String id;
   final String title;
@@ -86,6 +110,11 @@ class Announcement {
   final DateTime? publishedAt;
   final DateTime? updatedAt;
 
+  /// تذكيرات الإشعار: لو فاضية الإشعار بيتبعت مرة واحدة بعنوان/نص الإعلان.
+  final List<AnnouncementReminder> reminders;
+  final int reminderEveryDays; // 1..14
+  final int reminderHour; // 0..23
+
   const Announcement({
     required this.id,
     this.title = '',
@@ -104,6 +133,9 @@ class Announcement {
     this.cta = const AnnouncementCta(),
     this.publishedAt,
     this.updatedAt,
+    this.reminders = const [],
+    this.reminderEveryDays = 1,
+    this.reminderHour = 10,
   });
 
   /// إصدار الإعلان — بيتغيّر مع كل حفظ (updatedAt بالمللي ثانية).
@@ -139,6 +171,9 @@ class Announcement {
         'cta': cta.toJson(),
         'publishedAt': publishedAt?.toIso8601String(),
         'updatedAt': updatedAt?.toIso8601String(),
+        'reminders': [for (final r in reminders) r.toJson()],
+        'reminderEveryDays': reminderEveryDays,
+        'reminderHour': reminderHour,
       };
 
   factory Announcement.fromMap(String id, Map<String, dynamic> m) {
@@ -170,6 +205,9 @@ class Announcement {
       cta: AnnouncementCta.fromMap(m['cta']),
       publishedAt: _dt(m['publishedAt']),
       updatedAt: _dt(m['updatedAt']),
+      reminders: AnnouncementReminder.listFrom(m['reminders']),
+      reminderEveryDays: _intIn(m['reminderEveryDays'], 1, 14, 1),
+      reminderHour: _intIn(m['reminderHour'], 0, 23, 10),
     );
   }
 
@@ -217,6 +255,11 @@ Object? _decodeRestValue(Object? v) {
         : <String, dynamic>{};
   }
   return null;
+}
+
+int _intIn(Object? v, int lo, int hi, int fallback) {
+  final n = v is num ? v.toInt() : null;
+  return n == null || n < lo || n > hi ? fallback : n;
 }
 
 String _str(Object? v) => v is String ? v.trim() : '';

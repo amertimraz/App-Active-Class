@@ -117,3 +117,67 @@ Uri? announcementWhatsappUri({
   return Uri.parse(
       'https://wa.me/$digits${text.isEmpty ? '' : '?text=${Uri.encodeComponent(text)}'}');
 }
+
+/// إشعار مطلوب إرساله دلوقتي: المفتاح (لمنع التكرار) + النص + الإعلان.
+class AnnouncementNotification {
+  final String key;
+  final String title;
+  final String body;
+  final Announcement announcement;
+  const AnnouncementNotification(
+      {required this.key,
+      required this.title,
+      required this.body,
+      required this.announcement});
+}
+
+/// ترتيب "الخانة" (الدورة) الحالية لتذكيرات إعلان: الدورة n بتبدأ يوم
+/// `anchor + n*every` الساعة [Announcement.reminderHour]. بترجّع -1 لو لسه
+/// أول دورة ماجاش وقتها. بتبعت **آخر دورة مستحقة بس** (مفيش تعويض لكل اللي فات).
+int currentReminderSlot(Announcement a, DateTime now) {
+  final anchor = a.startsAt ?? a.publishedAt ?? a.updatedAt ?? now;
+  final every = a.reminderEveryDays < 1 ? 1 : a.reminderEveryDays;
+  // فرق أيام تقويمي (UTC) — عشان تغيّر التوقيت الصيفي مايخليش اليوم 23/25 ساعة.
+  final days = DateTime.utc(now.year, now.month, now.day)
+      .difference(DateTime.utc(anchor.year, anchor.month, anchor.day))
+      .inDays;
+  if (days < 0) return -1;
+  var n = days ~/ every;
+  DateTime slotTime(int k) {
+    // حساب تقويمي (مش Duration) عشان DST.
+    return DateTime(anchor.year, anchor.month, anchor.day + k * every,
+        a.reminderHour);
+  }
+
+  // الدورة الأولى بتتعدّى لو الإعلان اتنشر بعد الساعة (أول إشعار فورًا).
+  if (now.isBefore(slotTime(n))) n -= 1;
+  return n;
+}
+
+/// الإشعار اللي يتبعت دلوقتي (أو null): لو الإعلان فيه تذكيرات → نص الدورة
+/// الحالية بالتناوب (مرة لكل دورة)؛ وإلا → إشعار واحد بعنوان/نص الإعلان.
+AnnouncementNotification? notificationToSend(
+  Iterable<Announcement> items, {
+  required DateTime now,
+  required String planKey,
+  String? lastNotifiedKey,
+}) {
+  final a = pickAnnouncement(items,
+      now: now, planKey: planKey, placement: AnnouncementPlacement.notify);
+  if (a == null) return null;
+  if (a.reminders.isEmpty) {
+    if (!shouldShowOnce(lastNotifiedKey, a.displayKey)) return null;
+    return AnnouncementNotification(
+        key: a.displayKey, title: a.title, body: a.body, announcement: a);
+  }
+  final slot = currentReminderSlot(a, now);
+  if (slot < 0) return null;
+  final key = '${a.displayKey}#$slot';
+  if (!shouldShowOnce(lastNotifiedKey, key)) return null;
+  final r = a.reminders[slot % a.reminders.length];
+  return AnnouncementNotification(
+      key: key,
+      title: r.title,
+      body: r.body.isEmpty ? a.body : r.body,
+      announcement: a);
+}

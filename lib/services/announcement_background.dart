@@ -18,7 +18,7 @@ const int kAnnouncementNotificationId = 990000100;
 /// الخارجية قابلة للاستبدال للاختبار.
 Future<bool> runAnnouncementBackgroundCheck({
   Future<List<Announcement>> Function()? fetch,
-  Future<void> Function(Announcement)? show,
+  Future<void> Function(AnnouncementNotification)? show,
   DateTime? now,
 }) async {
   try {
@@ -26,31 +26,32 @@ Future<bool> runAnnouncementBackgroundCheck({
     await prefs.reload();
     final items = await (fetch ?? AnnouncementService.instance.fetchViaRest)();
     if (items.isEmpty) return true;
-    final a = announcementToNotify(
+    final n = notificationToSend(
       items,
       now: now ?? DateTime.now(),
       planKey: prefs.getString(kAnnPlanKey) ?? 'trial',
       lastNotifiedKey: prefs.getString(kAnnNotifiedKey),
     );
-    if (a == null) return true;
+    if (n == null) return true;
     // نحجز المفتاح قبل الإظهار (المقدمة بتعيد قراءته فمفيش إشعار مزدوج).
-    await prefs.setString(kAnnNotifiedKey, a.displayKey);
-    await (show ?? _showViaPlugin)(a);
+    await prefs.setString(kAnnNotifiedKey, n.key);
+    await (show ?? _showViaPlugin)(n);
   } catch (e) {
     debugPrint('runAnnouncementBackgroundCheck فشل: $e');
   }
   return true;
 }
 
-Future<void> _showViaPlugin(Announcement a) async {
+Future<void> _showViaPlugin(AnnouncementNotification n) async {
+  final a = n.announcement;
   final plugin = FlutterLocalNotificationsPlugin();
   await plugin.initialize(const InitializationSettings(
     android: AndroidInitializationSettings('@mipmap/ic_launcher'),
   ));
   await plugin.show(
     kAnnouncementNotificationId,
-    a.title,
-    a.body,
+    n.title,
+    n.body,
     const NotificationDetails(
       android: AndroidNotificationDetails(
         'active_class_announcements',

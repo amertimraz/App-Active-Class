@@ -199,7 +199,8 @@ class NotificationService {
 
   /// spec 054 — إشعار إعلان تسويقي (مرة لكل إصدار؛ التكرار بيمنعه المتصل).
   /// معرّف ثابت عشان إشعار جديد يستبدل القديم ومايتراكمش.
-  Future<void> showAnnouncement(Announcement a) async {
+  Future<void> showAnnouncement(Announcement a,
+      {String? title, String? body}) async {
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         'active_class_announcements',
@@ -212,8 +213,8 @@ class NotificationService {
     );
     await _notificationsPlugin.show(
       announcementNotificationId,
-      a.title,
-      a.body,
+      title ?? a.title,
+      body ?? a.body,
       details,
       payload:
           a.cta.type == 'plans' ? 'announcement_plans' : 'announcement',

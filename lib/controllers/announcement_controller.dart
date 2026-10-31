@@ -145,13 +145,14 @@ class AnnouncementController extends GetxController {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
-      final a = announcementToNotify(items,
+      final n = notificationToSend(items,
           now: _clock(),
           planKey: planKey,
           lastNotifiedKey: prefs.getString(kAnnNotifiedKey));
-      if (a == null) return;
-      await prefs.setString(kAnnNotifiedKey, a.displayKey);
-      await NotificationService().showAnnouncement(a);
+      if (n == null) return;
+      await prefs.setString(kAnnNotifiedKey, n.key);
+      await NotificationService().showAnnouncement(n.announcement,
+          title: n.title, body: n.body);
     } catch (e) {
       debugPrint('AnnouncementController.maybeNotify فشل: $e');
     }
