@@ -1109,9 +1109,14 @@ class SyncEngine with WidgetsBindingObserver {
   /// التلقائي تتأكد إن تحضير الزملاء وصل قبل ما تسجّل أي حاجة).
   static DateTime? lastFullPullAt;
 
+  /// أخطاء آخر سحب (جدول: الخطأ) — بتتعرض على شاشة دخول الويب للتشخيص
+  /// بدل ما تفضل في الـconsole بس.
+  static final List<String> lastPullErrors = [];
+
   Future<void> _fullPull({required bool includeDeleted}) async {
     if (_pulling) return;
     _pulling = true;
+    lastPullErrors.clear();
     var failed = false;
     try {
       final db = await _dbService.database;
@@ -1124,6 +1129,7 @@ class SyncEngine with WidgetsBindingObserver {
           await _pullTable(db, table, includeDeleted: includeDeleted);
         } catch (e) {
           failed = true;
+          lastPullErrors.add('$table: $e');
           debugPrint('SyncEngine: فشل سحب جدول $table — $e');
         }
       }

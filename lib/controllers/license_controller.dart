@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:active_class/utils/web_owner_license.dart';
 import 'package:uuid/uuid.dart';
 
 // ── حالة الترخيص ──────────────────────────────────────────────────────────────
@@ -365,7 +366,47 @@ class LicenseController extends GetxController {
   }
 
   // ── Trial Check ───────────────────────────────────────────────────────────
+  /// spec 055: على الويب بيتحوّل true لما نعرض ترخيص صاحب الفريق، وساعتها
+  /// حساب التجربة المحلي ماينفعش يكتب فوقه (سباق مع _init).
+  bool webOwnerLicenseApplied = false;
+
+  /// spec 055: على الويب مفيش ترخيص للجهاز ولا تجربة — بنعرض ترخيص **صاحب
+  /// الفريق** (قراءة بس من Firebase: من غير ربط جهاز ولا أي كتابة).
+  /// بترجع true لو اتطبّق.
+  Future<bool> applyOwnerLicenseReadOnly(String code) async {
+    try {
+      final doc = await _db
+          .collection('licenses')
+          .doc(code)
+          .get()
+          .timeout(const Duration(seconds: 12));
+      if (!doc.exists) return false;
+      final data = doc.data()!;
+      final expires = (data['expiresAt'] as Timestamp?)?.toDate();
+      final st = webOwnerLicenseStatus(
+        status: data['status'] as String? ?? 'active',
+        expiresAt: expires,
+        now: DateTime.now(),
+      );
+      webOwnerLicenseApplied = true;
+      plan.value = _parsePlan(data['plan'] as String? ?? 'basic');
+      licenseCode.value = code;
+      expiresAt.value = expires; // null = مدى الحياة
+      state.value = switch (st) {
+        'suspended' => LicenseState.suspended,
+        'expired' => LicenseState.expired,
+        _ => LicenseState.active,
+      };
+      licenseVerifiedTick.value++;
+      return true;
+    } catch (e) {
+      debugPrint('LicenseController: تعذر قراءة ترخيص صاحب الفريق — $e');
+      return false;
+    }
+  }
+
   Future<void> _checkTrial(SharedPreferences prefs) async {
+    if (kIsWeb && webOwnerLicenseApplied) return;
     var firstLaunchMs = prefs.getInt(_kFirstLaunch);
 
     if (firstLaunchMs == null) {

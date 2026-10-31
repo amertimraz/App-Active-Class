@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:active_class/utils/web_login_notice.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
@@ -55,6 +56,13 @@ class TeamModeService {
   String? _serverFirebaseUid; // آخر uid مسجّل لهذا العضو على السيرفر
 
   final isEnabled = false.obs;
+
+  /// نتيجة آخر [restoreForCurrentUser] (راجع TeamRestoreStatus) — بتتعرض على
+  /// شاشة دخول الويب لو الدخول نجح بس الفريق ماتحمّلش.
+  String restoreStatus = TeamRestoreStatus.ok;
+
+  /// تفاصيل فنية مختصرة لآخر فشل في [restoreForCurrentUser] (للتشخيص).
+  String restoreDetail = '';
   final teamId = RxnString();
   final isOwner = false.obs;
   final canDeleteAttendance = false.obs;
@@ -392,6 +400,8 @@ class TeamModeService {
   Future<void> resetForAccountSwitch() => disable();
 
   Future<void> restoreForCurrentUser() async {
+    restoreStatus = TeamRestoreStatus.failed;
+    restoreDetail = '';
     final client = await _auth.ensureClient();
     final uid = client?.auth.currentUser?.id;
     if (client == null || uid == null) return;
@@ -401,11 +411,15 @@ class TeamModeService {
           .select('team_id')
           .eq('user_id', uid)
           .limit(1);
-      if (rows.isEmpty) return; // الحساب ده مش عضو في أي فريق
+      if (rows.isEmpty) {
+        restoreStatus = TeamRestoreStatus.noTeam;
+        return; // الحساب ده مش عضو في أي فريق
+      }
       final foundTeamId = rows.first['team_id'] as String;
       teamId.value = foundTeamId;
       if (!await _claimDevice(client, foundTeamId)) {
         teamId.value = null;
+        restoreStatus = TeamRestoreStatus.deviceLocked;
         return;
       }
       await _db.setSetting(SETTING_TEAM_MODE_ENABLED, 'true');
@@ -420,7 +434,14 @@ class TeamModeService {
       await _engine!.initialFullPull();
       LicenseController.to.teamModeBypassLimits = true;
       isEnabled.value = true;
+      if (SyncEngine.lastPullErrors.isEmpty) {
+        restoreStatus = TeamRestoreStatus.ok;
+      } else {
+        restoreStatus = TeamRestoreStatus.failed;
+        restoreDetail = SyncEngine.lastPullErrors.take(3).join(' | ');
+      }
     } catch (e) {
+      restoreDetail = '$e';
       debugPrint('TeamModeService: فشل استعادة الفريق للحساب الحالي — $e');
     }
   }
@@ -455,6 +476,14 @@ class TeamModeService {
       onReconnected: () => _refreshMyPermissions(client, tId),
     );
     _engine!.start();
+    // spec 055: الويب بيقرا ويعدّل بيانات الفريق بس. ممنوع يبعت حالة الترخيص
+    // ولا بيانات المالك (اسمه/بوابة أولياء الأمور/المالكين الشركاء) لأن
+    // ترخيصه المحلي = تجربة، فكان بيبعت "الترخيص متوقف" (owner_license_active
+    // = false) ويقفل الفريق كله على الموبايل والمساعدين.
+    if (kIsWeb) {
+      unawaited(_applyOwnerLicenseOnWeb(client, tId));
+      return;
+    }
     if (isOwner.value) {
       _watchOwnerLicense(client, tId);
       _watchOwnerProfile(client, tId);
@@ -464,6 +493,40 @@ class TeamModeService {
     } else {
       _tagAssistantDevice(client, tId);
       _startAssistantRefresh(client, tId);
+    }
+  }
+
+  /// spec 055: على الويب بنعرض ترخيص صاحب الفريق واسمه بدل التجربة المحلية —
+  /// بنجيب كود الترخيص من صف الفريق ونقرا حالته (قراءة بس).
+  Future<void> _applyOwnerLicenseOnWeb(SupabaseClient client, String tId) async {
+    try {
+      final row = await client
+          .from('teams')
+          .select('license_code, teacher_name, teacher_gender')
+          .eq('id', tId)
+          .maybeSingle()
+          .timeout(kTeamModeNetworkTimeout);
+      // اسم/جنس المدرس: محفوظين على الفريق (المالك بيرفعهم)، والويب مفيهوش
+      // إعدادات محلية — فبنعرضهم في الذاكرة بس (مفيش كتابة ولا رفع على الويب:
+      // _watchOwnerProfile مقفول).
+      final name = (row?['teacher_name'] as String?)?.trim();
+      final gender = row?['teacher_gender'] as String?;
+      ownerTeacherName.value = name;
+      ownerTeacherGender.value = gender;
+      if (Get.isRegistered<SettingsController>()) {
+        final settings = Get.find<SettingsController>();
+        if (name != null && name.isNotEmpty) {
+          settings.teacherFullName.value = name;
+        }
+        if (gender == 'male' || gender == 'female') {
+          settings.teacherGender.value = gender!;
+        }
+      }
+      final code = row?['license_code'] as String?;
+      if (code == null || code.isEmpty) return;
+      await LicenseController.to.applyOwnerLicenseReadOnly(code);
+    } catch (e) {
+      debugPrint('TeamModeService: تعذر عرض ترخيص صاحب الفريق على الويب — $e');
     }
   }
 

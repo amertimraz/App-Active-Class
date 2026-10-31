@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show User;
+import 'package:active_class/services/auth_service.dart';
+import 'package:active_class/views/web/web_welcome_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/license_controller.dart';
@@ -35,6 +39,21 @@ class _SplashPageState extends State<SplashPage> {
     // انتظر حد أدنى لعرض الـ splash
     await Future.delayed(const Duration(milliseconds: 1400));
     if (!mounted) return;
+
+    // spec 055: على الويب مفيش استخدام من غير حساب — لو مفيش جلسة دخول،
+    // نعرض شاشة الترحيب/الدخول (مسار أندرويد مالوش علاقة).
+    if (kIsWeb) {
+      User? user;
+      try {
+        user = await AuthService().tryRestoreSession();
+      } catch (_) {}
+      if (!mounted) return;
+      if (user == null) {
+        Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const WebWelcomePage()));
+        return;
+      }
+    }
 
     // انتظر حتى يكتمل فحص الترخيص
     final lc = LicenseController.to;
@@ -89,11 +108,14 @@ class _SplashPageState extends State<SplashPage> {
 
   /// يعرض الشرح التعريفي مرة واحدة بس (أول تشغيل)، وبعدها يروح للرئيسية مباشرة.
   Future<void> _goHomeOrOnboarding() async {
-    bool seen = false;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      seen = prefs.getBool(OnboardingPage.prefsKey) ?? false;
-    } catch (_) {}
+    // الشرح التعريفي مخصوص للموبايل — الويب يدخل الرئيسية على طول.
+    bool seen = kIsWeb;
+    if (!kIsWeb) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        seen = prefs.getBool(OnboardingPage.prefsKey) ?? false;
+      } catch (_) {}
+    }
     if (!mounted) return;
     Navigator.of(context).pushReplacement(MaterialPageRoute(
         builder: (_) => seen ? const HomePage() : const OnboardingPage()));
@@ -104,7 +126,8 @@ class _SplashPageState extends State<SplashPage> {
     return Scaffold(
       body: Obx(() {
         // الرسالة بتظهر بس لو التحقق من الترخيص أخد وقت (مش وميض في كل فتح).
-        final loading = LicenseController.to.state.value == LicenseState.loading;
+        final loading =
+            LicenseController.to.state.value == LicenseState.loading;
         return SplashBrand(
           title: APP_NAME,
           tagline: 'إدارة الفصول والحضور والمدفوعات',

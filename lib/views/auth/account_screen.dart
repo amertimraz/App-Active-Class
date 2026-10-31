@@ -1,7 +1,9 @@
 // lib/views/auth/account_screen.dart
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import 'package:active_class/views/web/web_session.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/auth_controller.dart';
 
@@ -97,6 +99,12 @@ class AccountSection extends StatelessWidget {
                               fontWeight: FontWeight.w700,
                               color: Colors.red)),
                       onTap: () async {
+                        if (kIsWeb) {
+                          // spec 055: تأكيد + مسح البيانات المحلية + إعادة تحميل
+                          // (الصفحة بعدها بتعرض شاشة الترحيب).
+                          await confirmAndSignOutWeb(context);
+                          return;
+                        }
                         await auth.signOut();
                         if (context.mounted) Get.back();
                       },
