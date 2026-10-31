@@ -1,8 +1,11 @@
 // lib/views/onboarding/onboarding_page.dart
+//
+// الشرح التعريفي (أول تشغيل): 4 شرايح برسومات مصغّرة من التطبيق نفسه، تخطّي
+// ورجوع (مبدأ حرية المستخدم)، فاتح/داكن، ومؤشر شرائح بوصف للقارئ الصوتي.
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:active_class/config/theme.dart';
 import 'package:active_class/views/home_page.dart';
+import 'package:active_class/views/onboarding/onboarding_illustrations.dart';
 
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key});
@@ -13,36 +16,38 @@ class OnboardingPage extends StatefulWidget {
   State<OnboardingPage> createState() => _OnboardingPageState();
 }
 
+class _OnboardingSlide {
+  final Widget art;
+  final String title;
+  final String subtitle;
+  const _OnboardingSlide(
+      {required this.art, required this.title, required this.subtitle});
+}
+
 class _OnboardingPageState extends State<OnboardingPage> {
   final PageController _controller = PageController();
   int _index = 0;
 
   static const _slides = [
     _OnboardingSlide(
-      icon: Icons.groups_rounded,
-      color: Color(0xFFFF4D7A),
+      art: GroupsIllustration(),
       title: 'نظّم فصولك في مجموعات',
-      subtitle: 'أنشئ مجموعة لكل فصل أو صف، وحدّد موعده ورسومه الشهرية بسهولة',
+      subtitle: 'مجموعة لكل فصل أو صف، بموعدها ورسومها الشهرية',
     ),
     _OnboardingSlide(
-      icon: Icons.person_rounded,
-      color: Color(0xFF23A6F0),
-      title: 'أضف طلابك وتابع بياناتهم',
-      subtitle:
-          'كل طالب له كود QR خاص به، وبيانات ولي أمره، وسجل حضور ومدفوعات مستقل',
+      art: StudentIllustration(),
+      title: 'ملف كامل لكل طالب',
+      subtitle: 'بيانات الطالب وولي أمره وكود QR خاص بيه، وسجل حضور ومدفوعات مستقل',
     ),
     _OnboardingSlide(
-      icon: Icons.fact_check_rounded,
-      color: Color(0xFF5B67F1),
-      title: 'سجّل الحضور والمدفوعات بسهولة',
-      subtitle: 'تابع حضور كل حصة وسجّل الدفعات الشهرية في ثواني',
+      art: AttendanceIllustration(),
+      title: 'حضور ومدفوعات في ثواني',
+      subtitle: 'سجّل حاضر أو متأخر أو غائب، وتابع اللي دفع واللي متبقي عليه',
     ),
     _OnboardingSlide(
-      icon: Icons.qr_code_2_rounded,
-      color: Color(0xFF10B981),
-      title: 'استخدم QR للمسح السريع',
-      subtitle:
-          'اطبع أكواد QR لطلابك وسجّل الحضور أو الدفع بمسح سريع بدل البحث اليدوي',
+      art: ScanIllustration(),
+      title: 'امسح QR بدل البحث اليدوي',
+      subtitle: 'اطبع أكواد طلابك وسجّل الحضور أو الدفع بمسحة واحدة',
     ),
   ];
 
@@ -56,6 +61,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
         .pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
   }
 
+  void _go(int delta) {
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    final target = (_index + delta).clamp(0, _slides.length - 1);
+    if (reduce) {
+      _controller.jumpToPage(target);
+    } else {
+      _controller.animateToPage(target,
+          duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
+    }
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -64,65 +80,137 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
     final isLast = _index == _slides.length - 1;
+    final ink = dark ? Colors.white : const Color(0xFF111827);
+    final sub = dark ? const Color(0xFFB6BFD6) : const Color(0xFF4B5563);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: dark ? const Color(0xFF0B1020) : const Color(0xFFF7F8FD),
       body: SafeArea(
         child: Column(
           children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: _finish,
-                child: const Text('تخطي',
-                    style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)),
-              ),
+            // ── الشريط العلوي: رجوع (في البداية) وتخطّي (في النهاية) ──────
+            SizedBox(
+              height: 56,
+              child: Row(children: [
+                const SizedBox(width: 4),
+                if (_index > 0)
+                  Semantics(
+                    button: true,
+                    label: 'الشريحة السابقة',
+                    child: IconButton(
+                      onPressed: () => _go(-1),
+                      iconSize: 24,
+                      constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                      icon: Icon(Icons.arrow_forward_rounded, color: ink),
+                    ),
+                  )
+                else
+                  const SizedBox(width: 48),
+                const Spacer(),
+                if (!isLast)
+                  TextButton(
+                    onPressed: _finish,
+                    style: TextButton.styleFrom(
+                        minimumSize: const Size(64, 48),
+                        foregroundColor: sub,
+                        padding: const EdgeInsets.symmetric(horizontal: 16)),
+                    child: const Text('تخطّي',
+                        style: TextStyle(
+                            fontFamily: 'Cairo',
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                const SizedBox(width: 4),
+              ]),
             ),
+
+            // ── الشرايح ────────────────────────────────────────────────
             Expanded(
               child: PageView.builder(
                 controller: _controller,
                 itemCount: _slides.length,
                 onPageChanged: (i) => setState(() => _index = i),
-                itemBuilder: (_, i) => _SlideView(slide: _slides[i]),
+                itemBuilder: (_, i) {
+                  final s = _slides[i];
+                  return LayoutBuilder(
+                    builder: (context, c) => SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: c.maxHeight),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(height: 250, child: s.art),
+                            const SizedBox(height: 28),
+                            Text(
+                              s.title,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 23,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.35,
+                                  color: ink),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              s.subtitle,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 15,
+                                  height: 1.7,
+                                  color: sub),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                _slides.length,
-                (i) => AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: i == _index ? 22 : 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: i == _index
-                        ? _slides[_index].color
-                        : Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(4),
+
+            // ── مؤشر الشرايح ───────────────────────────────────────────
+            Semantics(
+              label: 'الشريحة ${_index + 1} من ${_slides.length}',
+              child: ExcludeSemantics(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    _slides.length,
+                    (i) => AnimatedContainer(
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 200),
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      width: i == _index ? 24 : 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: i == _index
+                            ? kOnbIndigo
+                            : (dark ? Colors.white24 : const Color(0xFFC7CBD6)),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
+
+            // ── زرار الإجراء الرئيسي (واحد بس) ─────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+              padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
               child: SizedBox(
                 width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: () {
-                    if (isLast) {
-                      _finish();
-                    } else {
-                      _controller.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
+                height: 54,
+                child: FilledButton(
+                  onPressed: isLast ? _finish : () => _go(1),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: kOnbIndigo,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14)),
@@ -131,70 +219,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
                     isLast ? 'ابدأ الآن' : 'التالي',
                     style: const TextStyle(
                         fontFamily: 'Cairo',
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700),
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w800),
                   ),
                 ),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _OnboardingSlide {
-  final IconData icon;
-  final Color color;
-  final String title;
-  final String subtitle;
-  const _OnboardingSlide({
-    required this.icon,
-    required this.color,
-    required this.title,
-    required this.subtitle,
-  });
-}
-
-class _SlideView extends StatelessWidget {
-  final _OnboardingSlide slide;
-  const _SlideView({required this.slide});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 160,
-            height: 160,
-            decoration: BoxDecoration(
-              color: slide.color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(slide.icon, size: 76, color: slide.color),
-          ),
-          const SizedBox(height: 40),
-          Text(
-            slide.title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                fontFamily: 'Cairo', fontSize: 22, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            slide.subtitle,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 14,
-                color: Colors.grey.shade600,
-                height: 1.6),
-          ),
-        ],
       ),
     );
   }
