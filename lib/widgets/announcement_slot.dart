@@ -58,6 +58,7 @@ Widget announcementBannerFor(
       design: a.design,
       color: a.color,
       couponCode: a.couponCode,
+      startsAt: a.startsAt,
       endsAt: a.endsAt,
       showCountdown: a.countdownEnabled,
       ctaLabel: a.cta.isActionable ? a.cta.label : '',

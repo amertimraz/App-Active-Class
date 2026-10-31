@@ -100,7 +100,7 @@ class NotificationService {
     }
 
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('ic_stat_notify');
 
     final DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings(
@@ -203,6 +203,9 @@ class NotificationService {
       {String? title, String? body}) async {
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
+        icon: 'ic_stat_notify',
+        largeIcon: DrawableResourceAndroidBitmap('ic_notification_large'),
+        color: Color(0xFF4F46E5),
         'active_class_announcements',
         'عروض وإعلانات',
         channelDescription: 'عروض وخصومات من Active Class',
@@ -231,6 +234,9 @@ class NotificationService {
   }) async {
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
+        icon: 'ic_stat_notify',
+        largeIcon: DrawableResourceAndroidBitmap('ic_notification_large'),
+        color: Color(0xFF4F46E5),
       'active_class_channel',
       'Active Class Notifications',
       channelDescription: 'Notifications for Active Class app',
@@ -741,6 +747,9 @@ class NotificationService {
     DateTimeComponents? matchDateTimeComponents,
   }) async {
     final androidDetails = AndroidNotificationDetails(
+        icon: 'ic_stat_notify',
+        largeIcon: DrawableResourceAndroidBitmap('ic_notification_large'),
+        color: Color(0xFF4F46E5),
       channelId,
       channelName,
       channelDescription: channelDescription,

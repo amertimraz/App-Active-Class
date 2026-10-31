@@ -181,3 +181,28 @@ AnnouncementNotification? notificationToSend(
       body: r.body.isEmpty ? a.body : r.body,
       announcement: a);
 }
+
+String _unit(int n, String one, String two, String few, String many) {
+  if (n == 1) return one;
+  if (n == 2) return two;
+  if (n >= 3 && n <= 10) return '$n $few';
+  return '$n $many';
+}
+
+/// مدة بصيغة عربية طبيعية: "3 ساعات ودقيقتين و5 ثواني". بتتجاهل الوحدات
+/// الفاضية من الأول (من غير "0 يوم")، وبتفضل ثواني آخر وحدة دايمًا.
+String formatArabicDuration(Duration d) {
+  var s = d.inSeconds;
+  if (s < 0) s = 0;
+  final days = s ~/ 86400, hours = (s % 86400) ~/ 3600;
+  final mins = (s % 3600) ~/ 60, secs = s % 60;
+  final parts = <String>[
+    if (days > 0) _unit(days, 'يوم', 'يومين', 'أيام', 'يوم'),
+    if (days > 0 || hours > 0) _unit(hours, 'ساعة', 'ساعتين', 'ساعات', 'ساعة'),
+    if (days > 0 || hours > 0 || mins > 0)
+      _unit(mins, 'دقيقة', 'دقيقتين', 'دقائق', 'دقيقة'),
+    _unit(secs, 'ثانية', 'ثانيتين', 'ثواني', 'ثانية'),
+  ].where((e) => !e.startsWith('0 ')).toList();
+  if (parts.isEmpty) return '0 ثانية';
+  return parts.join(' و');
+}

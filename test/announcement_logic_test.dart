@@ -29,6 +29,7 @@ Announcement ann(
     );
 
 void main() {
+  durationTests();
   group('النشاط والحالة', () {
     test('داخل النطاق، قبل البداية، بعد النهاية، بلا نهاية', () {
       expect(
@@ -163,6 +164,32 @@ void main() {
       final u = announcementWhatsappUri(phone: '201012345678', message: '', name: '', code: '', planName: '')!;
       expect(u.hasQuery, isFalse);
       expect(announcementWhatsappUri(phone: 'abc', message: 'x'), isNull);
+    });
+  });
+}
+
+void durationTests() {
+  group('formatArabicDuration', () {
+    String f(int d, int h, int m, int s) => formatArabicDuration(
+        Duration(days: d, hours: h, minutes: m, seconds: s));
+    test('أمثلة أساسية', () {
+      expect(f(0, 3, 2, 5), '3 ساعات ودقيقتين و5 ثواني');
+      expect(f(0, 1, 1, 1), 'ساعة ودقيقة وثانية');
+      expect(f(2, 0, 0, 0), 'يومين');
+      expect(f(1, 2, 0, 10), 'يوم وساعتين و10 ثواني');
+    });
+    test('بتخفي الوحدات الفاضية من الأول والنص', () {
+      expect(f(0, 0, 5, 0), '5 دقائق');
+      expect(f(0, 0, 0, 45), '45 ثانية');
+      expect(f(0, 0, 0, 2), 'ثانيتين');
+      expect(f(0, 0, 0, 0), '0 ثانية');
+    });
+    test('الجمع والمفرد (11 فما فوق مفرد)', () {
+      expect(f(11, 11, 11, 11), '11 يوم و11 ساعة و11 دقيقة و11 ثانية');
+      expect(f(4, 10, 3, 0), '4 أيام و10 ساعات و3 دقائق');
+    });
+    test('سالب = صفر', () {
+      expect(formatArabicDuration(const Duration(seconds: -5)), '0 ثانية');
     });
   });
 }

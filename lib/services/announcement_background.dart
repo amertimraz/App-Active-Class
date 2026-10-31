@@ -4,6 +4,7 @@
 // بدون Firebase في الـisolate: قراءة REST عامة. التوصيل بالفحص الدوري يعني
 // تأخير ممكن (ساعات)، وبعض الأجهزة بتقيّد الخلفية — مقبول (راجع spec 054).
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -46,7 +47,7 @@ Future<void> _showViaPlugin(AnnouncementNotification n) async {
   final a = n.announcement;
   final plugin = FlutterLocalNotificationsPlugin();
   await plugin.initialize(const InitializationSettings(
-    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    android: AndroidInitializationSettings('ic_stat_notify'),
   ));
   await plugin.show(
     kAnnouncementNotificationId,
@@ -54,6 +55,9 @@ Future<void> _showViaPlugin(AnnouncementNotification n) async {
     n.body,
     const NotificationDetails(
       android: AndroidNotificationDetails(
+        icon: 'ic_stat_notify',
+        largeIcon: DrawableResourceAndroidBitmap('ic_notification_large'),
+        color: Color(0xFF4F46E5),
         'active_class_announcements',
         'عروض وإعلانات',
         channelDescription: 'عروض وخصومات من Active Class',
