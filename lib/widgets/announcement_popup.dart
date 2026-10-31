@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:active_class/controllers/announcement_controller.dart';
+import 'package:active_class/models/announcement_model.dart';
 import 'package:active_class/widgets/announcement_slot.dart';
 
 /// بتعرض النافذة لو فيه إعلان popup مناسب لم يُعرض بعد. آمنة لو الشاشة اتقفلت
@@ -16,6 +17,11 @@ Future<void> maybeShowAnnouncementPopup(BuildContext context) async {
   if (ModalRoute.of(context)?.isCurrent != true) return;
   final a = await Get.find<AnnouncementController>().takePopup();
   if (a == null || !context.mounted) return;
+  await showAnnouncementDialog(context, a);
+}
+
+/// نافذة التفاصيل الكاملة لإعلان (للنافذة المنبثقة ولضغطة البنر المضغوط).
+Future<void> showAnnouncementDialog(BuildContext context, Announcement a) async {
   await showDialog<void>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.6),

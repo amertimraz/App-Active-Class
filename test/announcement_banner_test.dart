@@ -21,7 +21,9 @@ Widget host(Widget child, {bool dark = false, double width = 320, double textSca
     );
 
 AnnouncementBanner banner(String design, String color,
-        {DateTime Function()? clock, VoidCallback? onExpired, VoidCallback? onCta, VoidCallback? onClose, DateTime? ends}) =>
+        {bool compact = false,
+        VoidCallback? onTap,
+        DateTime Function()? clock, VoidCallback? onExpired, VoidCallback? onCta, VoidCallback? onClose, DateTime? ends}) =>
     AnnouncementBanner(
       title: 'خصم 30% على كل الباقات',
       body: 'اشترك أو جدّد قبل انتهاء العرض ووفّر.',
@@ -36,10 +38,37 @@ AnnouncementBanner banner(String design, String color,
       onCta: onCta ?? () {},
       onClose: onClose ?? () {},
       onExpired: onExpired,
+      compact: compact,
+      onTap: onTap,
       clock: clock ?? () => DateTime(2026, 10, 29, 12),
     );
 
 void main() {
+  for (final dark in [false, true]) {
+    for (final design in kAnnouncementDesigns) {
+      for (final color in kAnnouncementColors) {
+        testWidgets('مضغوط $design/$color/${dark ? "dark" : "light"} بلا overflow وبارتفاع صغير', (t) async {
+          await t.pumpWidget(host(banner(design, color, compact: true), dark: dark));
+          await t.pump();
+          expect(t.takeException(), isNull);
+          final h = t.getSize(find.byType(AnnouncementBanner)).height;
+          expect(h, lessThan(100), reason: 'compact $design = $h');
+          await t.pumpWidget(host(banner(design, color, compact: true), dark: dark, textScale: 1.5));
+          await t.pump();
+          expect(t.takeException(), isNull);
+        });
+      }
+    }
+  }
+
+  testWidgets('ضغطة جسم الكارت المضغوط بتستدعي onTap', (t) async {
+    var taps = 0;
+    await t.pumpWidget(host(banner('classic', 'blue', compact: true, onTap: () => taps++)));
+    await t.pump();
+    await t.tap(find.text('خصم 30% على كل الباقات'));
+    expect(taps, 1);
+  });
+
   for (final dark in [false, true]) {
     for (final design in kAnnouncementDesigns) {
       for (final color in kAnnouncementColors) {

@@ -14,6 +14,7 @@ import 'package:active_class/models/announcement_model.dart';
 import 'package:active_class/utils/announcement_logic.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/announcement_banner.dart';
+import 'package:active_class/widgets/announcement_popup.dart';
 
 /// بنر الإعلان لمكان معيّن، أو لا شيء لو مفيش إعلان مناسب/اتقفل.
 class AnnouncementSlot extends StatelessWidget {
@@ -32,10 +33,15 @@ class AnnouncementSlot extends StatelessWidget {
       if (a == null) return const SizedBox.shrink();
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: announcementBannerFor(
-          a,
-          onClose: () => c.dismiss(placement, a),
-          onExpired: c.reevaluate,
+        // مضغوط (≈64px) عشان ميزاحمش الشاشة؛ الضغط عليه بيفتح التفاصيل الكاملة.
+        child: Builder(
+          builder: (ctx) => announcementBannerFor(
+            a,
+            compact: true,
+            onTap: () => showAnnouncementDialog(ctx, a),
+            onClose: () => c.dismiss(placement, a),
+            onExpired: c.reevaluate,
+          ),
         ),
       );
     });
@@ -48,6 +54,8 @@ Widget announcementBannerFor(
   VoidCallback? onClose,
   VoidCallback? onExpired,
   VoidCallback? afterCta,
+  bool compact = false,
+  VoidCallback? onTap,
 }) =>
     AnnouncementBanner(
       key: ValueKey(a.displayKey),
@@ -70,6 +78,8 @@ Widget announcementBannerFor(
           : null,
       onClose: onClose,
       onExpired: onExpired,
+      compact: compact,
+      onTap: onTap,
     );
 
 /// بيفتح وجهة زرار الإعلان: واتساب (رسالة الأدمن + بيانات المدرس) أو رابط

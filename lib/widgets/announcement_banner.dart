@@ -84,7 +84,15 @@ class AnnouncementBanner extends StatelessWidget {
     this.onExpired,
     this.clock,
     this.forceDark,
+    this.compact = false,
+    this.onTap,
   });
+
+  /// نسخة مضغوطة (≈64px) للرئيسية والباقات؛ الكاملة للنافذة المنبثقة.
+  final bool compact;
+
+  /// ضغطة على جسم الكارت المضغوط (بتفتح التفاصيل الكاملة).
+  final VoidCallback? onTap;
 
   final String title, body, kind, badge, design, color, couponCode, ctaLabel;
   final DateTime? startsAt, endsAt;
@@ -106,14 +114,16 @@ class AnnouncementBanner extends StatelessWidget {
     final dark = forceDark ?? (Theme.of(context).brightness == Brightness.dark);
     final rtl = Directionality.of(context) == TextDirection.rtl;
     final p = AnnouncementPalette.of(color, dark: dark);
-    final card = switch (design) {
+    final card = compact
+        ? _compactCard(p, rtl)
+        : switch (design) {
       'poster' => _poster(p, rtl),
       'glass' => _notebook(p, rtl),
       'strip' => _strip(p),
       'coupon' => _coupon(p, rtl),
       'minimal' => _note(p),
       _ => _receipt(p),
-    };
+          };
     // Material شفّاف عشان InkWell/InkResponse يشتغلوا حتى لو البنر اتحط في مكان
     // مفيهوش Scaffold (معاينة الأدمن، نافذة منبثقة).
     return Semantics(
@@ -249,6 +259,131 @@ class AnnouncementBanner extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // ── النسخة المضغوطة: نفس هوية كل تصميم بس في سطر واحد ≈64px ──────────────
+  Widget _compactCard(AnnouncementPalette p, bool rtl) {
+    final isCoupon = design == 'coupon';
+    final isPoster = design == 'poster';
+    final leadW = isPoster ? 74.0 : 60.0;
+
+    Widget lead() {
+      final inner = _hasBadge
+          ? FittedBox(
+              fit: BoxFit.scaleDown,
+              child: _ltr(
+                  badge.trim(),
+                  TextStyle(
+                      color: p.on, fontSize: 18, fontWeight: FontWeight.w700, height: 1)))
+          : Icon(announcementKindIcon(kind), color: p.on, size: 24);
+      final box = Container(
+        width: leadW,
+        color: p.acc,
+        alignment: Alignment.center,
+        padding: EdgeInsetsDirectional.fromSTEB(6, 4, isPoster ? 14 : 6, 4),
+        child: inner,
+      );
+      return isPoster ? ClipPath(clipper: _DiagonalClipper(rtl: rtl), child: box) : box;
+    }
+
+    final text = Expanded(
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(12, 6, 4, 6),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(p, 13.5, bold: true, h: 1.3)),
+              if (_countdown)
+                _count(p, compact: true)
+              else
+                Text(body,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _t(p, 12, c: p.sub, h: 1.3)),
+            ]),
+      ),
+    );
+
+    final cta = _hasCta
+        ? Semantics(
+            button: true,
+            label: ctaLabel,
+            child: Material(
+              color: p.acc,
+              shape: const CircleBorder(),
+              child: InkWell(
+                onTap: onCta,
+                customBorder: const CircleBorder(),
+                child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Icon(Icons.arrow_back_rounded, color: p.on, size: 20)),
+              ),
+            ),
+          )
+        : const SizedBox.shrink();
+
+    final tail = <Widget>[
+      if (_hasCta) cta,
+      if (onClose != null) _close(p.ink) else const SizedBox(width: 8),
+    ];
+
+    final row = IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: isCoupon
+            ? [text, ...tail.map((w) => Center(child: w)), lead()]
+            : [lead(), text, ...tail.map((w) => Center(child: w))],
+      ),
+    );
+
+    final tappable = onTap == null
+        ? row
+        : InkWell(onTap: onTap, child: row);
+
+    Widget framed;
+    switch (design) {
+      case 'poster':
+        framed = ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Container(color: p.paper, child: tappable));
+      case 'glass':
+        framed = ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: CustomPaint(
+                painter: _NotebookPainter(
+                    paper: p.paper, rule: p.rule, margin: p.acc, rtl: rtl),
+                child: tappable));
+      case 'strip':
+        framed = ClipRRect(
+            borderRadius: const BorderRadiusDirectional.horizontal(
+                start: Radius.circular(4), end: Radius.circular(14)),
+            child: Container(color: p.paper, child: tappable));
+      case 'coupon':
+        framed = ClipPath(
+            clipper: _TicketClipper(stubWidth: leadW, rtl: rtl),
+            child: Container(color: p.paper, child: tappable));
+      case 'minimal':
+        framed = Container(
+            decoration: BoxDecoration(
+                border: BorderDirectional(start: BorderSide(color: p.acc, width: 3))),
+            child: tappable);
+      default:
+        framed = ClipPath(
+            clipper: const _ScallopClipper(),
+            child: Container(
+                color: p.paper,
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Container(height: 4, color: p.acc),
+                  tappable,
+                ])));
+    }
+    return ConstrainedBox(constraints: const BoxConstraints(minHeight: 60), child: framed);
   }
 
   // ── 1) إيصال: شريط لون + حافة مسنّنة + ختم ───────────────────────────
