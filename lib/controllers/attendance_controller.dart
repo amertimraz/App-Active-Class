@@ -344,6 +344,9 @@ class AttendanceController extends GetxController {
     await _dbService.updateAttendance(updated);
     _replaceLocal(updated);
     _applyFilter();
+    // بوابة أولياء الأمور: ملخص الطالب فيه متوسط التسميع وآخر الدرجات، فلازم
+    // يتنشر بعد أي تغيير (زي الحضور والواجب) — من غير كده الدرجة ما بتظهرش.
+    unawaited(ParentPortalService().pushStudentSummary(studentId));
   }
 
   /// يحفظ درجات تسميع مجموعة كاملة ليوم معيّن بدرجة عظمى واحدة للمجموعة
