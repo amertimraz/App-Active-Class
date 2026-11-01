@@ -166,6 +166,7 @@ void main() {
       'مكتبة QR',
       'الامتحانات',
       'الحجوزات',
+      'بوابة أولياء الأمور',
     ]) {
       expect(find.text(label), findsOneWidget, reason: label);
     }

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -38,8 +37,6 @@ import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/services/auth_service.dart';
 import 'package:active_class/controllers/google_drive_backup_controller.dart';
 import 'package:active_class/services/google_drive_backup_service.dart';
-import 'package:active_class/services/parent_portal_service.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/views/license/trial_banner.dart';

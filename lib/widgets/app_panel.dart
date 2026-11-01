@@ -276,3 +276,53 @@ class BoardIconButton extends StatelessWidget {
     );
   }
 }
+
+/// شريحة تصفية بلون الحالة: المختارة بإطار ولون خفيف، وارتفاع لمس 40.
+class AppFilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  const AppFilterChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Material(
+      color: selected ? color.withValues(alpha: 0.12) : t.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        side: BorderSide(color: selected ? color : t.line),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 40, minWidth: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+            // Row مش Center: Center كان بيمطّ الشريحة جوه الـWrap.
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(label,
+                    style: AppType.body.copyWith(
+                        color: selected ? color : t.inkSoft,
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w400)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

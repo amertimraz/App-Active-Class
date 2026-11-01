@@ -168,6 +168,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         label: 'الحجوزات',
         onTap: () => Get.toNamed(ROUTE_BOOKINGS),
       ),
+      // الإضافة دي بتتحكّم في الرابط والنشر على حساب المدرس نفسه، فالمساعد
+      // ما يديرهاش.
+      _DashboardMenuItem(
+        icon: Icons.family_restroom_rounded,
+        label: 'بوابة أولياء الأمور',
+        locked: team.isEnabled.value && !team.isOwner.value,
+        onTap: () => team.isEnabled.value && !team.isOwner.value
+            ? showLockedPermissionHint()
+            : Get.toNamed(ROUTE_PARENT_PORTAL),
+      ),
     ];
   }
 
@@ -1104,6 +1114,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     onTap: () {
                       Navigator.pop(context);
                       Get.toNamed(ROUTE_BOOKINGS);
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.family_restroom_rounded,
+                    title: 'بوابة أولياء الأمور',
+                    onTap: () {
+                      Navigator.pop(context);
+                      if (TeamModeService().isEnabled.value &&
+                          !TeamModeService().isOwner.value) {
+                        showLockedPermissionHint();
+                        return;
+                      }
+                      Get.toNamed(ROUTE_PARENT_PORTAL);
                     },
                   ),
                   _DrawerItem(
