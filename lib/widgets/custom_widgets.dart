@@ -428,17 +428,14 @@ class CustomSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hintColor = isDark ? Colors.grey[400] : Colors.grey[500];
+    final t = context.tokens;
+    final hintColor = t.inkFaint;
     return Container(
-      constraints: const BoxConstraints(minHeight: 42),
+      constraints: const BoxConstraints(minHeight: 44),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-          width: 1,
-        ),
+        color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        border: Border.all(color: t.line, width: 1),
       ),
       child: TextField(
         controller: controller,
@@ -447,10 +444,12 @@ class CustomSearchBar extends StatelessWidget {
         style: TextStyle(
           fontFamily: 'Cairo',
           fontSize: 13.5,
-          color: isDark ? Colors.white : const Color(0xFF0F172A),
+          color: t.ink,
         ),
         decoration: InputDecoration(
           isDense: true,
+          // الثيم بيفرض تعبئة مربعة، وكانت بتبان في زوايا الحقل المدوّر.
+          filled: false,
           hintText: hintText,
           hintStyle: TextStyle(
               fontFamily: 'Cairo', fontSize: 13, color: hintColor),

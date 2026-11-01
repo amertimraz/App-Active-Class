@@ -1,5 +1,6 @@
 import 'package:active_class/config/theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 PreferredSizeWidget buildGradientAppBar({
@@ -60,6 +61,38 @@ PreferredSizeWidget buildGradientAppBar({
         ],
       ),
     ),
+  );
+}
+
+/// شريط علوي بلون السبورة (نفس رأس الشاشة الرئيسية): بيكمّل مع أي كتلة
+/// سبورة تحته، وعليه التابات لو فيه.
+PreferredSizeWidget buildBoardAppBar(
+  BuildContext context, {
+  required String title,
+  List<Widget>? actions,
+  PreferredSizeWidget? bottom,
+  Widget? leading,
+}) {
+  final t = context.tokens;
+  return AppBar(
+    centerTitle: true,
+    title: Text(
+      title,
+      // اسم المجموعة الطويل ياخد سطرين بدل ما يتقص.
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
+      style: AppType.title.copyWith(fontSize: 18, color: t.boardInk),
+    ),
+    actions: actions,
+    leading: leading,
+    bottom: bottom,
+    elevation: 0,
+    scrolledUnderElevation: 0,
+    backgroundColor: t.board,
+    foregroundColor: t.boardInk,
+    // أيقونات شريط الحالة فاتحة لأنها فوق السبورة في الوضعين.
+    systemOverlayStyle: SystemUiOverlayStyle.light,
   );
 }
 

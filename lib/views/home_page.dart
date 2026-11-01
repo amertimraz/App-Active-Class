@@ -6,6 +6,7 @@ import 'package:active_class/views/web/web_session.dart';
 import 'package:active_class/utils/responsive.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
+import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/controllers/at_risk_controller.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
@@ -32,6 +33,7 @@ import 'package:active_class/widgets/announcement_popup.dart';
 import 'package:active_class/widgets/rate_prompt_dialog.dart';
 import 'package:active_class/services/rate_prompt_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 class HomePage extends StatefulWidget {
@@ -110,31 +112,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _DashboardMenuItem(
         icon: Icons.groups_rounded,
         label: 'المجموعات',
-        color: const Color(0xFFFF4D7A),
         onTap: () => Get.toNamed(ROUTE_GROUPS),
       ),
       _DashboardMenuItem(
         icon: Icons.person_rounded,
         label: 'الطلاب',
-        color: const Color(0xFF23A6F0),
         onTap: () => Get.toNamed(ROUTE_STUDENTS),
       ),
       _DashboardMenuItem(
         icon: Icons.how_to_reg_rounded,
         label: 'الحضور',
-        color: const Color(0xFFFFA31A),
         onTap: () => Get.toNamed(ROUTE_ATTENDANCE),
       ),
       _DashboardMenuItem(
         icon: Icons.calendar_month_rounded,
         label: 'جدول الحصص',
-        color: const Color(0xFF14B8A6),
         onTap: () => Get.toNamed(ROUTE_SCHEDULE),
       ),
       _DashboardMenuItem(
         icon: Icons.payments_rounded,
         label: 'المدفوعات',
-        color: const Color(0xFF5B67F1),
         locked: !team.canSeeFinancials,
         onTap: () => team.canSeeFinancials
             ? Get.toNamed(ROUTE_PAYMENTS)
@@ -143,13 +140,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _DashboardMenuItem(
         icon: Icons.menu_book_rounded,
         label: 'الملازم',
-        color: const Color(0xFFF97316),
         onTap: () => Get.toNamed(ROUTE_BOOKLETS),
       ),
       _DashboardMenuItem(
         icon: Icons.receipt_long_rounded,
         label: 'التقارير',
-        color: const Color(0xFF8B5CF6),
         locked: !team.canSeeFinancials,
         onTap: () => team.canSeeFinancials
             ? Get.toNamed(ROUTE_REPORTS)
@@ -158,13 +153,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _DashboardMenuItem(
         icon: Icons.qr_code_2_rounded,
         label: 'مكتبة QR',
-        color: const Color(0xFF10B981),
         onTap: () => Get.toNamed(ROUTE_QR_GALLERY),
       ),
       _DashboardMenuItem(
         icon: Icons.assignment_rounded,
         label: 'الامتحانات',
-        color: const Color(0xFFEF4444),
         locked: !team.canSeeAcademics,
         onTap: () => team.canSeeAcademics
             ? Get.toNamed(ROUTE_EXAMS)
@@ -173,7 +166,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _DashboardMenuItem(
         icon: Icons.event_available_rounded,
         label: 'الحجوزات',
-        color: const Color(0xFF0EA5E9),
         onTap: () => Get.toNamed(ROUTE_BOOKINGS),
       ),
     ];
@@ -181,236 +173,191 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
 
-    return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0B1020) : const Color(0xFFF7F8FF),
-      drawer: _buildDrawer(),
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: isDark
-                      ? const [
-                          Color(0xFF08101F),
-                          Color(0xFF10192F),
-                          Color(0xFF121A2D),
-                        ]
-                      : const [
-                          Color(0xFFFDFDFF),
-                          Color(0xFFF7F8FF),
-                          Color(0xFFEEF4FF),
-                        ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      // أيقونات شريط الحالة فاتحة لأنها فوق السبورة في الوضعين.
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: t.page,
+        drawer: _buildDrawer(),
+        body: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              // ── السبورة: رأس الشاشة والإجراء الأساسي ──
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.only(
+                  top: MediaQuery.paddingOf(context).top + AppSpace.xs,
                 ),
-              ),
-            ),
-          ),
-          _buildBackgroundGlow(
-            top: -110,
-            right: -80,
-            size: 250,
-            colors: isDark
-                ? const [Color(0x334F46E5), Color(0x004F46E5)]
-                : const [Color(0x55F9A8D4), Color(0x00F9A8D4)],
-          ),
-          _buildBackgroundGlow(
-            top: 260,
-            left: -100,
-            size: 220,
-            colors: isDark
-                ? const [Color(0x3322C55E), Color(0x0022C55E)]
-                : const [Color(0x55BFDBFE), Color(0x00BFDBFE)],
-          ),
-          _buildBackgroundGlow(
-            bottom: 120,
-            right: -90,
-            size: 280,
-            colors: isDark
-                ? const [Color(0x33E879F9), Color(0x00E879F9)]
-                : const [Color(0x55DDD6FE), Color(0x00DDD6FE)],
-          ),
-          SafeArea(
-            child: Column(
-              children: [
-                const TrialBanner(),
-                const PortalExpiryBanner(),
-                const AnnouncementSlot(placement: AnnouncementPlacement.home),
-                _buildAppBar(),
-                _buildQuickActionsPinned(),
-                Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: () => _dashboardController.loadDashboardData(),
-                    color: AppTheme.primaryColor,
-                    child: CustomScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      slivers: [
-                        SliverToBoxAdapter(child: _buildStatsGrid()),
-                        SliverToBoxAdapter(child: _buildMainMenuGrid()),
-                        SliverToBoxAdapter(child: _buildRecentActivity()),
-                        const SliverToBoxAdapter(child: SizedBox(height: 120)),
-                      ],
-                    ),
+                decoration: BoxDecoration(
+                  color: t.board,
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(AppRadius.board),
                   ),
                 ),
-              ],
-            ),
+                child: Column(
+                  children: [
+                    _buildAppBar(),
+                    _buildQuickActionsPinned(),
+                  ],
+                ),
+              ),
+              const TrialBanner(),
+              const PortalExpiryBanner(),
+              const AnnouncementSlot(placement: AnnouncementPlacement.home),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () => _dashboardController.loadDashboardData(),
+                  color: t.brand,
+                  child: CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverToBoxAdapter(child: _buildStatsGrid()),
+                      SliverToBoxAdapter(child: _buildMainMenuGrid()),
+                      SliverToBoxAdapter(child: _buildRecentActivity()),
+                      const SliverToBoxAdapter(
+                          child: SizedBox(height: AppSpace.xl)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildAppBar() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Row(
-        children: [
-          Builder(
-            builder: (ctx) => _AppBarIcon(
-              icon: Icons.menu_rounded,
-              isDark: isDark,
-              onTap: () => Scaffold.of(ctx).openDrawer(),
-            ),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: Image.asset('assets/icon/logo.png',
-                          width: 20, height: 20),
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        APP_NAME,
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color:
-                              isDark ? Colors.white : const Color(0xFF111827),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Row(
-            children: [
-              _AppBarIcon(
-                icon: Icons.search_rounded,
-                isDark: isDark,
-                onTap: () => showSearch(
-                  context: context,
-                  delegate: StudentSearchDelegate(),
-                ),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm),
+      child: LayoutBuilder(builder: (context, box) {
+        return Row(
+          children: [
+            Builder(
+              builder: (ctx) => _AppBarIcon(
+                icon: Icons.menu_rounded,
+                label: 'القائمة',
+                onTap: () => Scaffold.of(ctx).openDrawer(),
               ),
-              const SizedBox(width: 6),
-              // spec 021 — نقطة دخول مؤقتة لشاشة "محتاجين متابعة" (بديل
-              // كارت لوحة التحكم الكامل الجاي في US3).
-              Obx(() {
-                final n = _atRiskController.count.value;
-                return Badge(
-                  label: Text('$n'),
-                  isLabelVisible: n > 0,
-                  backgroundColor: const Color(0xFFEF4444),
-                  child: _AppBarIcon(
-                    icon: Icons.groups_rounded,
-                    isDark: isDark,
-                    onTap: () => Get.toNamed(ROUTE_AT_RISK_STUDENTS),
-                  ),
-                );
-              }),
-              const SizedBox(width: 6),
-              Obx(() {
-                final tc = Get.find<ThemeController>();
-                return _AppBarIcon(
-                  icon: tc.isDarkMode.value
-                      ? Icons.light_mode_rounded
-                      : Icons.dark_mode_rounded,
-                  isDark: isDark,
-                  onTap: () => tc.setTheme(!tc.isDarkMode.value),
-                );
-              }),
-              const SizedBox(width: 6),
-              _AppBarIcon(
-                icon: Icons.settings_rounded,
-                isDark: isDark,
-                onTap: () => Get.toNamed(ROUTE_SETTINGS),
+            ),
+            const SizedBox(width: AppSpace.xs),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child:
+                  Image.asset('assets/icon/logo.png', width: 22, height: 22),
+            ),
+            // على الشاشات الضيقة الأيقونات مش سايبة مكان للاسم كامل.
+            const SizedBox(width: 6),
+            Expanded(
+              child: box.maxWidth >= 340
+                  ? Text(
+                      APP_NAME,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.label.copyWith(color: t.boardInk),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            _AppBarIcon(
+              icon: Icons.search_rounded,
+              label: 'بحث',
+              onTap: () => showSearch(
+                context: context,
+                delegate: StudentSearchDelegate(),
               ),
-              // spec 055: زرار خروج ظاهر على الويب فقط.
-              if (kIsWeb) ...[
-                const SizedBox(width: 6),
-                Tooltip(
-                  message: 'تسجيل الخروج',
-                  child: _AppBarIcon(
-                    icon: Icons.logout_rounded,
-                    isDark: isDark,
-                    onTap: () => confirmAndSignOutWeb(context),
-                  ),
+            ),
+            // spec 021 — نقطة دخول مؤقتة لشاشة "محتاجين متابعة" (بديل
+            // كارت لوحة التحكم الكامل الجاي في US3).
+            Obx(() {
+              final n = _atRiskController.count.value;
+              return Badge(
+                label: Text('$n'),
+                isLabelVisible: n > 0,
+                backgroundColor: t.chalk,
+                textColor: t.onChalk,
+                offset: const Offset(-2, 2),
+                child: _AppBarIcon(
+                  icon: Icons.groups_rounded,
+                  label: 'محتاجين متابعة',
+                  onTap: () => Get.toNamed(ROUTE_AT_RISK_STUDENTS),
                 ),
-              ],
-            ],
-          ),
-        ],
-      ),
+              );
+            }),
+            Obx(() {
+              final tc = Get.find<ThemeController>();
+              return _AppBarIcon(
+                icon: tc.isDarkMode.value
+                    ? Icons.light_mode_rounded
+                    : Icons.dark_mode_rounded,
+                label: tc.isDarkMode.value ? 'الوضع الفاتح' : 'الوضع الداكن',
+                onTap: () => tc.setTheme(!tc.isDarkMode.value),
+              );
+            }),
+            _AppBarIcon(
+              icon: Icons.settings_rounded,
+              label: 'الإعدادات',
+              onTap: () => Get.toNamed(ROUTE_SETTINGS),
+            ),
+            // spec 055: زرار خروج ظاهر على الويب فقط.
+            if (kIsWeb)
+              _AppBarIcon(
+                icon: Icons.logout_rounded,
+                label: 'تسجيل الخروج',
+                onTap: () => confirmAndSignOutWeb(context),
+              ),
+          ],
+        );
+      }),
     );
   }
 
   Widget _buildMainMenuGrid() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // ارتفاع الخلية يكبر مع مقاس خط النظام، عشان سطرين الاسم ما يتقصوش.
+    final cellHeight = 58 + MediaQuery.textScalerOf(context).scale(34);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SectionHeader(
-            title: 'الأقسام الرئيسية',
-            isDark: isDark,
-          ),
+          const _SectionHeader(title: 'الأقسام الرئيسية'),
+          const SizedBox(height: AppSpace.sm),
           Obx(() {
             final entries = _menuEntries;
-            return LayoutBuilder(
-              builder: (context, box) => GridView.builder(
+            return LayoutBuilder(builder: (context, box) {
+              final columns = adaptiveColumns(box.maxWidth,
+                  phone: 3, minTileWidth: 170, max: 6);
+              return GridView.builder(
                 shrinkWrap: true,
+                padding: EdgeInsets.zero,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: entries.length,
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: adaptiveColumns(box.maxWidth,
-                      phone: 3, minTileWidth: 170, max: 6),
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: 0.92,
+                  crossAxisCount: columns,
+                  mainAxisSpacing: AppSpace.sm,
+                  crossAxisSpacing: AppSpace.sm,
+                  mainAxisExtent: cellHeight,
                 ),
                 itemBuilder: (context, index) {
                   final item = entries[index];
                   return _MenuGridItem(
                     icon: item.icon,
                     label: item.label,
-                    color: item.color,
                     onTap: item.onTap,
                     locked: item.locked,
                   );
                 },
-              ),
-            );
+              );
+            });
           }),
         ],
       ),
@@ -418,10 +365,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Widget _buildQuickActionsPinned() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
       child: Obx(() {
         final team = TeamModeService();
         final isAssistant = team.isEnabled.value && !team.isOwner.value;
@@ -443,173 +390,143 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         final isFemale = genderSource == 'female';
         final displayName = teacherName.isNotEmpty ? teacherName : 'المعلم';
 
-        return Container(
-          decoration: BoxDecoration(
-            color: isDark
-                ? const Color(0xFF131D31).withValues(alpha: 0.96)
-                : Colors.white.withValues(alpha: 0.96),
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.white.withValues(alpha: 0.92),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.18)
-                    : const Color(0xFFD8E0F0).withValues(alpha: 0.42),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              // ── بطاقة المعلم ───────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
-                child: Row(
-                  children: [
-                    // الصورة الرمزية
-                    _buildTeacherAvatar(
-                      radius: 22,
-                      isDark: isDark,
-                      avatarPath: teacherAvatar,
-                      isFemale: isFemale,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            isAssistant
-                                ? 'مساعد $title $displayName'
-                                : 'أهلا $title $displayName',
-                            style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 15,
-                              fontWeight: FontWeight.w900,
-                              color: isDark
-                                  ? Colors.white
-                                  : const Color(0xFF111827),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 3),
-                          Row(
-                            children: [
-                              Icon(Icons.calendar_today_rounded,
-                                  size: 11,
-                                  color: isDark
-                                      ? Colors.grey[400]
-                                      : const Color(0xFF6366F1)),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  _formatFullDate(DateTime.now()),
-                                  style: TextStyle(
-                                    fontFamily: 'Cairo',
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: isDark
-                                        ? Colors.grey[400]
-                                        : const Color(0xFF64748B),
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Icon(Icons.access_time_rounded,
-                                  size: 11,
-                                  color: isDark
-                                      ? Colors.grey[400]
-                                      : const Color(0xFF6366F1)),
-                              const SizedBox(width: 4),
-                              _LiveClock(isDark: isDark),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    // إشارة الجنس
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: (isFemale
-                                ? const Color(0xFFE91E8C)
-                                : const Color(0xFF4F46E5))
-                            .withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        isFemale ? Icons.female_rounded : Icons.male_rounded,
-                        size: 18,
-                        color: isFemale
-                            ? const Color(0xFFE91E8C)
-                            : const Color(0xFF4F46E5),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // فاصل
-              Divider(
-                height: 1,
-                thickness: 1,
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.06)
-                    : const Color(0xFFF1F3F9),
-              ),
-              // ── أزرار الإجراءات السريعة ─────────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _QuickActionButton(
-                        icon: Icons.qr_code_scanner_rounded,
-                        label: 'تسجيل حضور',
-                        color: AppTheme.successColor,
-                        onTap: () => Get.toNamed(ROUTE_QR_SCANNER_ATTENDANCE),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: LockBadge(
-                        locked: !team.canSeeFinancials,
-                        child: _QuickActionButton(
-                          icon: Icons.payment_rounded,
-                          label: 'تسجيل دفع',
-                          color: const Color(0xFFF59E0B),
-                          onTap: () => team.canSeeFinancials
-                              ? Get.toNamed(ROUTE_QR_SCANNER_PAYMENT)
-                              : showLockedPermissionHint(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _QuickActionButton(
-                        icon: Icons.person_add_rounded,
-                        label: 'إضافة طالب',
-                        color: const Color(0xFF8B5CF6),
-                        onTap: () => showAddStudentSheet(
-                          context,
-                          controller: Get.put(StudentController()),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+        final scan = _BoardAction(
+          icon: Icons.qr_code_scanner_rounded,
+          label: 'تسجيل حضور',
+          primary: true,
+          onTap: () => Get.toNamed(ROUTE_QR_SCANNER_ATTENDANCE),
+        );
+        final pay = LockBadge(
+          locked: !team.canSeeFinancials,
+          child: _BoardAction(
+            icon: Icons.payment_rounded,
+            label: 'تسجيل دفع',
+            onTap: () => team.canSeeFinancials
+                ? Get.toNamed(ROUTE_QR_SCANNER_PAYMENT)
+                : showLockedPermissionHint(),
           ),
         );
+        final addStudent = _BoardAction(
+          icon: Icons.person_add_rounded,
+          label: 'إضافة طالب',
+          onTap: () => showAddStudentSheet(
+            context,
+            controller: Get.put(StudentController()),
+          ),
+        );
+
+        return Column(
+          children: [
+            // ── بطاقة المعلم ───────────────────────────────────
+            Row(
+              children: [
+                _buildTeacherAvatar(
+                  radius: 20,
+                  isDark: false,
+                  avatarPath: teacherAvatar,
+                  isFemale: isFemale,
+                ),
+                const SizedBox(width: AppSpace.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isAssistant
+                            ? 'مساعد $title $displayName'
+                            : 'أهلا $title $displayName',
+                        style: AppType.greeting.copyWith(color: t.boardInk),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _formatFullDate(DateTime.now()),
+                              style: AppType.caption
+                                  .copyWith(color: t.boardInkSoft),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: AppSpace.md),
+                          _LiveClock(color: t.boardInkSoft),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpace.lg),
+            // ── أزرار الإجراءات السريعة ─────────────────────────
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: scan),
+                  const SizedBox(width: AppSpace.sm),
+                  Expanded(child: pay),
+                  const SizedBox(width: AppSpace.sm),
+                  Expanded(child: addStudent),
+                ],
+              ),
+            ),
+          ],
+        );
       }),
+    );
+  }
+
+  Widget _buildSummaryHeader() {
+    final faint = context.tokens.inkFaint;
+    return Row(
+      children: [
+        Expanded(
+          child: _SectionHeader(
+              title: 'ملخص سريع', color: context.tokens.rosterInk),
+        ),
+        // زر تحديث
+        Obx(() => _dashboardController.isLoading.value
+            ? const SizedBox(
+                width: 44,
+                height: 44,
+                child: Center(
+                  child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                ))
+            : IconButton(
+                tooltip: 'تحديث',
+                onPressed: _dashboardController.loadDashboardData,
+                icon: const Icon(Icons.refresh_rounded),
+                iconSize: 20,
+                color: faint,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                    width: 44, height: 44),
+              )),
+        IconButton(
+          tooltip: _statsVisible ? 'إخفاء الأرقام' : 'إظهار الأرقام',
+          onPressed: () => setState(() => _statsVisible = !_statsVisible),
+          icon: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: Icon(
+              _statsVisible
+                  ? Icons.visibility_rounded
+                  : Icons.visibility_off_rounded,
+              key: ValueKey(_statsVisible),
+            ),
+          ),
+          iconSize: 20,
+          color: faint,
+          padding: EdgeInsets.zero,
+          constraints:
+              const BoxConstraints.tightFor(width: 44, height: 44),
+        ),
+      ],
     );
   }
 
@@ -617,46 +534,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _SectionHeader(title: 'ملخص سريع', isDark: isDark),
-              ),
-              // زر تحديث
-              Obx(() => _dashboardController.isLoading.value
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : GestureDetector(
-                      onTap: _dashboardController.loadDashboardData,
-                      child: Icon(Icons.refresh_rounded,
-                          size: 18,
-                          color:
-                              isDark ? Colors.white38 : Colors.grey.shade500),
-                    )),
-              const SizedBox(width: 10),
-              GestureDetector(
-                onTap: () => setState(() => _statsVisible = !_statsVisible),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: Icon(
-                    _statsVisible
-                        ? Icons.visibility_rounded
-                        : Icons.visibility_off_rounded,
-                    key: ValueKey(_statsVisible),
-                    size: 20,
-                    color: isDark ? Colors.white54 : Colors.grey.shade500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
           Obx(() {
             final canSeeFinancials = TeamModeService().canSeeFinancials;
             final currency = _settingsController.currencyCode.value;
@@ -703,150 +584,155 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ? '${(v / 1000).toStringAsFixed(1)}k $currency'
                 : '${v.toStringAsFixed(0)} $currency';
 
+            final t = context.tokens;
             return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── صف 1: مجموعات / طلاب / معفيين ──
-                Row(
-                  children: [
-                    Expanded(
-                      child: _StatCard(
-                        icon: Icons.groups_rounded,
-                        value: _statsVisible
-                            ? _dashboardController.totalGroups.value.toString()
-                            : '••',
-                        label: 'المجموعات',
-                        gradient: const [Color(0xFFFF4D7A), Color(0xFFFF6B9D)],
-                        onTap: () => Get.toNamed(ROUTE_GROUPS),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _StatCard(
-                        icon: Icons.people_rounded,
-                        value: _statsVisible
-                            ? _dashboardController.totalStudents.value
-                                .toString()
-                            : '••',
-                        label: 'الطلاب',
-                        gradient: const [Color(0xFF4F46E5), Color(0xFF6366F1)],
-                        onTap: () => Get.toNamed(ROUTE_STUDENTS),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _StatCard(
-                        icon: Icons.card_giftcard_rounded,
-                        value: _statsVisible ? '$exempt' : '••',
-                        label: 'معفيون',
-                        gradient: const [Color(0xFF2E7D32), Color(0xFF43A047)],
-                        onTap: () => _showStudentsListDialog(context, isDark,
-                            exemptOnly: true),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // ── صف 2: بار الدفع الشهري ──
-                LockBadge(
-                  locked: !canSeeFinancials,
-                  child: _PaymentProgressCard(
-                    paid: paid,
-                    expected: expected,
-                    rate: rate,
-                    unpaidCount: unpaidCount,
-                    month: paymentCardMonth,
-                    monthIndex: paymentMonthIndex,
-                    monthsCount: paymentMonthsCount,
-                    busy: paymentCardBusy,
-                    onSwipe: (d) =>
-                        _dashboardController.shiftPaymentCardMonth(d),
-                    locked: !canSeeFinancials,
-                    fmtPaid: !canSeeFinancials
-                        ? '🔒'
-                        : (_statsVisible ? fmtMoney(paid) : '••••'),
-                    fmtExpected: !canSeeFinancials
-                        ? '🔒'
-                        : (_statsVisible ? fmtMoney(expected) : '••••'),
-                    onTapUnpaid: canSeeFinancials
-                        ? () => _showUnpaidSheet(context)
-                        : showLockedPermissionHint,
-                    onTapSummary: canSeeFinancials
-                        ? () => _showPaymentMonthSummarySheet(context)
-                        : showLockedPermissionHint,
-                  ),
-                ),
-                // spec 021 — كارت "محتاجين متابعة" (FR-012): يظهر بس لو
-                // فيه طلاب مرصودين، ويفتح الشاشة المخصّصة عند الضغط.
-                Obx(() {
-                  final n = _atRiskController.count.value;
-                  if (n == 0) return const SizedBox.shrink();
-                  return Column(children: [
-                    const SizedBox(height: 8),
-                    _AtRiskDashboardCard(
-                      count: n,
-                      onTap: () => Get.toNamed(ROUTE_AT_RISK_STUDENTS),
-                    ),
-                  ]);
-                }),
-                const SizedBox(height: 8),
-                // ── صف 3: حضور اليوم + مدفوعات اليوم جنب بعض ──
-                IntrinsicHeight(
-                  child: Row(
+                // ── ملخص سريع: أعداد + متابعة + حضور اليوم ──
+                AppTray(
+                  color: t.rosterTint,
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: _AttendanceCard(
-                          present: present,
-                          absent: absent,
-                          expected: todayExpected,
-                          rate: attRate,
-                          visible: _statsVisible,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: LockBadge(
-                          locked: !canSeeFinancials,
-                          child: _TodayPaymentsCard(
-                            total: todayPaymentsTotal,
-                            count: todayPaymentsCount,
-                            locked: !canSeeFinancials,
-                            fmtTotal: !canSeeFinancials
-                                ? '🔒'
-                                : (_statsVisible
-                                    ? fmtMoney(todayPaymentsTotal)
-                                    : '••••'),
-                            onTap: !canSeeFinancials
-                                ? showLockedPermissionHint
-                                : (todayPaymentsCount == 0
-                                    ? null
-                                    : () => _showTodayPaymentsSheet(context)),
+                      _buildSummaryHeader(),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _StatCard(
+                              value: _statsVisible
+                                  ? _dashboardController.totalGroups.value
+                                      .toString()
+                                  : '••',
+                              label: 'المجموعات',
+                              onTap: () => Get.toNamed(ROUTE_GROUPS),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: AppSpace.sm),
+                          Expanded(
+                            child: _StatCard(
+                              value: _statsVisible
+                                  ? _dashboardController.totalStudents.value
+                                      .toString()
+                                  : '••',
+                              label: 'الطلاب',
+                              onTap: () => Get.toNamed(ROUTE_STUDENTS),
+                            ),
+                          ),
+                          const SizedBox(width: AppSpace.sm),
+                          Expanded(
+                            child: _StatCard(
+                              value: _statsVisible ? '$exempt' : '••',
+                              label: 'معفيون',
+                              onTap: () => _showStudentsListDialog(
+                                  context, isDark,
+                                  exemptOnly: true),
+                            ),
+                          ),
+                        ],
+                      ),
+                      // spec 021 — كارت "محتاجين متابعة" (FR-012): يظهر بس
+                      // لو فيه طلاب مرصودين، ويفتح الشاشة المخصّصة عند الضغط.
+                      Obx(() {
+                        final n = _atRiskController.count.value;
+                        if (n == 0) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: AppSpace.sm),
+                          child: _AtRiskDashboardCard(
+                            count: n,
+                            onTap: () => Get.toNamed(ROUTE_AT_RISK_STUDENTS),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: AppSpace.sm),
+                      _AttendanceCard(
+                        present: present,
+                        absent: absent,
+                        expected: todayExpected,
+                        rate: attRate,
+                        visible: _statsVisible,
                       ),
                     ],
                   ),
                 ),
-                if (sessionRevenue > 0 || sessionRevenueExpected > 0) ...[
-                  const SizedBox(height: 8),
-                  // ── هنت: إيراد اليوم من المجموعات بالحصة (فعلي + متوقع) ──
-                  LockBadge(
-                    locked: !canSeeFinancials,
-                    child: _SessionRevenueHint(
-                      locked: !canSeeFinancials,
-                      actualLabel: !canSeeFinancials
-                          ? '🔒'
-                          : (_statsVisible ? fmtMoney(sessionRevenue) : '••••'),
-                      actualCount: sessionRevenueCount,
-                      expectedLabel: !canSeeFinancials
-                          ? '🔒'
-                          : (_statsVisible
-                              ? fmtMoney(sessionRevenueExpected)
-                              : '••••'),
-                      expectedCount: sessionRevenueExpectedCount,
-                    ),
+                const SizedBox(height: AppSpace.lg),
+                // ── الدفعات: الشهر + مدفوعات اليوم + إيراد الحصص ──
+                AppTray(
+                  color: t.moneyTint,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpace.sm),
+                        child:
+                            _SectionHeader(title: 'الدفعات', color: t.moneyInk),
+                      ),
+                      LockBadge(
+                        locked: !canSeeFinancials,
+                        child: _PaymentProgressCard(
+                          paid: paid,
+                          expected: expected,
+                          rate: rate,
+                          unpaidCount: unpaidCount,
+                          month: paymentCardMonth,
+                          monthIndex: paymentMonthIndex,
+                          monthsCount: paymentMonthsCount,
+                          busy: paymentCardBusy,
+                          onSwipe: (d) =>
+                              _dashboardController.shiftPaymentCardMonth(d),
+                          locked: !canSeeFinancials,
+                          fmtPaid: !canSeeFinancials || !_statsVisible
+                              ? '••••'
+                              : fmtMoney(paid),
+                          fmtExpected: !canSeeFinancials || !_statsVisible
+                              ? '••••'
+                              : fmtMoney(expected),
+                          onTapUnpaid: canSeeFinancials
+                              ? () => _showUnpaidSheet(context)
+                              : showLockedPermissionHint,
+                          onTapSummary: canSeeFinancials
+                              ? () => _showPaymentMonthSummarySheet(context)
+                              : showLockedPermissionHint,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpace.sm),
+                      LockBadge(
+                        locked: !canSeeFinancials,
+                        child: _TodayPaymentsCard(
+                          total: todayPaymentsTotal,
+                          count: todayPaymentsCount,
+                          locked: !canSeeFinancials,
+                          fmtTotal: !canSeeFinancials || !_statsVisible
+                              ? '••••'
+                              : fmtMoney(todayPaymentsTotal),
+                          onTap: !canSeeFinancials
+                              ? showLockedPermissionHint
+                              : (todayPaymentsCount == 0
+                                  ? null
+                                  : () => _showTodayPaymentsSheet(context)),
+                        ),
+                      ),
+                      if (sessionRevenue > 0 || sessionRevenueExpected > 0) ...[
+                        const SizedBox(height: AppSpace.sm),
+                        // ── هنت: إيراد اليوم من المجموعات بالحصة ──
+                        LockBadge(
+                          locked: !canSeeFinancials,
+                          child: _SessionRevenueHint(
+                            locked: !canSeeFinancials,
+                            actualLabel: !canSeeFinancials || !_statsVisible
+                                ? '••••'
+                                : fmtMoney(sessionRevenue),
+                            actualCount: sessionRevenueCount,
+                            expectedLabel: !canSeeFinancials || !_statsVisible
+                                ? '••••'
+                                : fmtMoney(sessionRevenueExpected),
+                            expectedCount: sessionRevenueExpectedCount,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
+                ),
               ],
             );
           }),
@@ -856,7 +742,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Widget _buildRecentActivity() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
 
     return Obx(() {
       final all = _dashboardController.recentActivities;
@@ -865,23 +751,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
       if (isLoading && all.isEmpty) {
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: _buildActivitySkeleton(isDark),
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+          child: _buildActivitySkeleton(),
         );
       }
 
       if (all.isEmpty) {
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
           child: _buildEmptyState(),
         );
       }
 
       final canSeeFinancials = TeamModeService().canSeeFinancials;
       final attendance =
-          all.where((a) => a.type == ActivityType.attendance).take(3).toList();
+          all.where((a) => a.type == ActivityType.attendance).toList();
       final payments =
-          all.where((a) => a.type == ActivityType.payment).take(3).toList();
+          all.where((a) => a.type == ActivityType.payment).toList();
 
       // وقت آخر تحديث
       final diff = DateTime.now().difference(lastUpdate);
@@ -892,260 +778,176 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               : 'منذ ${diff.inHours} س';
 
       return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header مع "آخر تحديث"
             Row(children: [
-              _SectionHeader(title: 'النشاط الأخير', isDark: isDark),
+              const _SectionHeader(title: 'النشاط الأخير'),
               const Spacer(),
-              Icon(Icons.update_rounded,
-                  size: 12,
-                  color: isDark ? Colors.white30 : Colors.grey.shade400),
-              const SizedBox(width: 4),
-              Text(updLabel,
-                  style: TextStyle(
-                      fontSize: 10,
-                      color: isDark ? Colors.white30 : Colors.grey.shade400)),
+              Text('آخر تحديث: $updLabel',
+                  style: AppType.caption.copyWith(color: t.inkFaint)),
             ]),
-            if (attendance.isNotEmpty) ...[
-              _buildActivityGroup(
-                isDark,
-                title: 'آخر الحضور',
-                icon: Icons.how_to_reg_rounded,
-                color: AppTheme.successColor,
-                items: attendance,
-                onMore: () => Get.toNamed(ROUTE_ATTENDANCE),
-              ),
-              const SizedBox(height: 14),
-            ],
-            if (payments.isNotEmpty)
-              canSeeFinancials
-                  ? _buildActivityGroup(
-                      isDark,
-                      title: 'آخر المدفوعات',
-                      icon: Icons.payments_rounded,
-                      color: const Color(0xFF4F46E5),
-                      items: payments,
-                      onMore: () => Get.toNamed(ROUTE_PAYMENTS),
-                    )
-                  : _buildLockedActivityGroup(
-                      isDark,
-                      title: 'آخر المدفوعات',
-                      icon: Icons.payments_rounded,
-                      color: const Color(0xFF4F46E5),
+            const SizedBox(height: AppSpace.sm),
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _ActivityButton(
+                      icon: Icons.how_to_reg_rounded,
+                      label: 'آخر الحضور',
+                      color: t.positive,
+                      background: t.positiveSoft,
+                      onTap: attendance.isEmpty
+                          ? null
+                          : () => _showActivitySheet(
+                                title: 'آخر الحضور',
+                                items: attendance,
+                                route: ROUTE_ATTENDANCE,
+                              ),
                     ),
+                  ),
+                  const SizedBox(width: AppSpace.md),
+                  Expanded(
+                    child: _ActivityButton(
+                      icon: Icons.payments_rounded,
+                      label: 'آخر المدفوعات',
+                      color: t.brand,
+                      background: t.brand.withValues(alpha: 0.12),
+                      locked: !canSeeFinancials,
+                      onTap: !canSeeFinancials
+                          ? showLockedPermissionHint
+                          : payments.isEmpty
+                              ? null
+                              : () => _showActivitySheet(
+                                    title: 'آخر المدفوعات',
+                                    items: payments,
+                                    route: ROUTE_PAYMENTS,
+                                  ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       );
     });
   }
 
-  Widget _buildActivitySkeleton(bool isDark) {
-    final base = isDark ? const Color(0xFF1E2D45) : const Color(0xFFEEF0F5);
+  Widget _buildActivitySkeleton() {
+    final t = context.tokens;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: List.generate(
           3,
           (i) => Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                height: 64,
+                margin: const EdgeInsets.only(bottom: AppSpace.sm),
+                height: 60,
                 decoration: BoxDecoration(
-                  color: base,
-                  borderRadius: BorderRadius.circular(22),
+                  color: t.line,
+                  borderRadius: BorderRadius.circular(AppRadius.panel),
                 ),
               )),
     );
   }
 
-  Widget _buildActivityGroup(
-    bool isDark, {
+  void _showActivitySheet({
     required String title,
-    required IconData icon,
-    required Color color,
     required List<RecentActivity> items,
-    required VoidCallback onMore,
+    required String route,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: 14, color: color),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: isDark ? Colors.white70 : const Color(0xFF374151),
-              ),
-            ),
-            const Spacer(),
-            TextButton(
-              onPressed: onMore,
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: Text(
-                'عرض الكل',
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: color,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        ...items.map((a) => _ActivityItem(activity: a)),
-      ],
-    );
-  }
-
-  /// نفس شكل _buildActivityGroup (العنوان بارز)، بس بدل عرض الصفوف
-  /// الحقيقية (اسم الطالب + المبلغ) بنعرض كارت مقفول واحد — القسم يفضل
-  /// موجود وواضح إنه فيه نشاط، بس التفاصيل الفعلية مخفية.
-  Widget _buildLockedActivityGroup(
-    bool isDark, {
-    required String title,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: 14, color: color),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: isDark ? Colors.white70 : const Color(0xFF374151),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: showLockedPermissionHint,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF131D31).withValues(alpha: 0.94)
-                  : Colors.white.withValues(alpha: 0.94),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.06)
-                    : Colors.grey.shade200,
-              ),
-            ),
-            child: Row(
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheet) {
+        final t = sheet.tokens;
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(sheet).size.height * 0.7,
+          ),
+          decoration: BoxDecoration(
+            color: t.surface,
+            borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppRadius.board)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.lock_rounded,
-                    size: 16,
-                    color: isDark ? Colors.white38 : Colors.grey.shade500),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'الصلاحية دي مقفولة من المدرس',
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: isDark ? Colors.white38 : Colors.grey.shade500,
-                    ),
+                Container(
+                  margin: const EdgeInsets.only(top: 10, bottom: AppSpace.xs),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: t.line,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                      AppSpace.lg, 0, AppSpace.sm, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(title,
+                            style: AppType.title.copyWith(color: t.ink)),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(sheet).pop();
+                          Get.toNamed(route);
+                        },
+                        child: Text(
+                          'عرض الكل',
+                          style: AppType.body.copyWith(
+                              color: t.brand, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, thickness: 1, color: t.line),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) =>
+                        Divider(height: 1, thickness: 1, color: t.line),
+                    itemBuilder: (_, i) => _ActivityItem(activity: items[i]),
                   ),
                 ),
               ],
             ),
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 
   Widget _buildEmptyState() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 40),
-      decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF131D31).withValues(alpha: 0.94)
-            : Colors.white.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.06)
-              : Colors.white.withValues(alpha: 0.92),
+    return AppPanel(
+      padding: const EdgeInsets.symmetric(
+          vertical: AppSpace.xl, horizontal: AppSpace.lg),
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          children: [
+            Icon(Icons.inbox_rounded, size: 32, color: t.inkFaint),
+            const SizedBox(height: AppSpace.sm),
+            Text(
+              'لا توجد عمليات حديثة',
+              style: AppType.label.copyWith(color: t.inkSoft),
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: isDark
-                ? Colors.black.withValues(alpha: 0.18)
-                : const Color(0xFFD8E0F0).withValues(alpha: 0.5),
-            blurRadius: 22,
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : const Color(0xFFF3F4F6),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.inbox_rounded,
-              size: 34,
-              color: isDark ? Colors.grey[500] : Colors.grey[500],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'لا توجد عمليات حديثة',
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: isDark ? Colors.grey[300] : const Color(0xFF64748B),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1779,32 +1581,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildBackgroundGlow({
-    double? top,
-    double? right,
-    double? bottom,
-    double? left,
-    required double size,
-    required List<Color> colors,
-  }) {
-    return Positioned(
-      top: top,
-      right: right,
-      bottom: bottom,
-      left: left,
-      child: IgnorePointer(
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(colors: colors),
-          ),
-        ),
-      ),
-    );
-  }
-
   String _formatFullDate(DateTime date) {
     const months = [
       'يناير',
@@ -1834,157 +1610,159 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final bool isDark;
+/// رقم كبير بيصغر بدل ما يتقص في الكروت الضيقة.
+class _FitFigure extends StatelessWidget {
+  final String text;
+  final Color color;
 
-  const _SectionHeader({
-    required this.title,
-    required this.isDark,
+  const _FitFigure(this.text, {required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: AlignmentDirectional.centerStart,
+      child: Text(text, style: AppType.figure.copyWith(color: color)),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color background;
+  final VoidCallback? onTap;
+
+  const _StatusChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.background,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: isDark ? Colors.white : AppTheme.textPrimary,
-            ),
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(AppRadius.chip),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: AppSpace.md, vertical: AppSpace.sm),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: AppSpace.xs),
+              Text(
+                label,
+                style: AppType.caption
+                    .copyWith(fontWeight: FontWeight.w700, color: color),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final Color? color;
+
+  const _SectionHeader({required this.title, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: AppType.title.copyWith(color: color ?? context.tokens.ink),
     );
   }
 }
 
 class _AppBarIcon extends StatelessWidget {
   final IconData icon;
-  final bool isDark;
+  final String label;
   final VoidCallback onTap;
 
   const _AppBarIcon({
     required this.icon,
-    required this.isDark,
+    required this.label,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(9),
-          decoration: BoxDecoration(
-            color: isDark
-                ? const Color(0xFF131D31).withValues(alpha: 0.94)
-                : Colors.white.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.white.withValues(alpha: 0.9),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.16)
-                    : const Color(0xFFD9E1F2).withValues(alpha: 0.5),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Icon(
-            icon,
-            color: isDark ? Colors.white : const Color(0xFF111827),
-            size: 19,
-          ),
-        ),
-      ),
+    return IconButton(
+      tooltip: label,
+      onPressed: onTap,
+      icon: Icon(icon),
+      iconSize: 22,
+      color: context.tokens.boardInk,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+      // الافتراضي بيفرض 48؛ الـ44 كفاية للمس وبتسيب مكان لاسم التطبيق.
+      style: IconButton.styleFrom(
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap),
     );
   }
 }
 
-class _QuickActionButton extends StatelessWidget {
+/// زرار على السبورة: أيقونة فوق الاسم. [primary] بلون الطباشير للإجراء
+/// الأساسي، والباقي بحد رفيع.
+class _BoardAction extends StatelessWidget {
   final IconData icon;
   final String label;
-  final Color color;
   final VoidCallback onTap;
+  final bool primary;
 
-  const _QuickActionButton({
+  const _BoardAction({
     required this.icon,
     required this.label,
-    required this.color,
     required this.onTap,
+    this.primary = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
+    final fg = primary ? t.onChalk : t.boardInk;
 
     return Material(
-      color: Colors.transparent,
+      color: primary ? t.chalk : Colors.transparent,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        side: primary ? BorderSide.none : BorderSide(color: t.boardLine),
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-          decoration: BoxDecoration(
-            color: isDark
-                ? const Color(0xFF131D31).withValues(alpha: 0.94)
-                : Colors.white.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.white.withValues(alpha: 0.88),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 76),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.xs, vertical: AppSpace.sm),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: fg, size: 26),
+                const SizedBox(height: AppSpace.xs),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.body
+                      .copyWith(color: fg, fontWeight: FontWeight.w700),
+                ),
+              ],
             ),
-            boxShadow: [
-              BoxShadow(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.16)
-                    : color.withValues(alpha: 0.12),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(9),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: isDark ? Colors.white : const Color(0xFF111827),
-                ),
-              ),
-            ],
           ),
         ),
       ),
@@ -1992,13 +1770,12 @@ class _QuickActionButton extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════════════════
 //  _LiveClock — ساعة حية تتحدث كل ثانية
 // ══════════════════════════════════════════════════════════════════
 class _LiveClock extends StatefulWidget {
-  final bool isDark;
-  const _LiveClock({required this.isDark});
+  final Color color;
+  const _LiveClock({required this.color});
 
   @override
   State<_LiveClock> createState() => _LiveClockState();
@@ -2030,19 +1807,14 @@ class _LiveClockState extends State<_LiveClock> {
     final s = _now.second.toString().padLeft(2, '0');
     return Text(
       '$h:$m:$s',
-      style: TextStyle(
-        fontFamily: 'Cairo',
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        color: widget.isDark ? Colors.grey[400] : const Color(0xFF64748B),
+      style: AppType.caption.copyWith(
+        color: widget.color,
         fontFeatures: const [FontFeature.tabularFigures()],
       ),
     );
   }
 }
 
-//  _AttendanceCard — بطاقة حضور اليوم
-// ══════════════════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════════════════
 //  _SessionRevenueHint — هنت إيراد اليوم من المجموعات المسعّرة بالحصة
 // ══════════════════════════════════════════════════════════════════
@@ -2063,35 +1835,20 @@ class _SessionRevenueHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    const color = Color(0xFF10B981);
+    final t = context.tokens;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: isDark ? 0.12 : 0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-      ),
+    return AppPanel(
+      lineColor: Colors.transparent,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.payments_rounded, size: 16, color: color),
-              const SizedBox(width: 8),
-              Text(
-                'إيراد اليوم من المجموعات بالحصة',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white70 : const Color(0xFF111827),
-                ),
-              ),
-            ],
+          Text(
+            'إيراد اليوم من المجموعات بالحصة',
+            style: AppType.label.copyWith(color: t.ink),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpace.sm),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: _RevenueMiniStat(
@@ -2099,18 +1856,18 @@ class _SessionRevenueHint extends StatelessWidget {
                       ? 'محصّل فعليًا'
                       : 'محصّل فعليًا ($actualCount دفعة)',
                   value: actualLabel,
-                  color: color,
+                  color: t.moneyInk,
                 ),
               ),
               if (locked || expectedCount > 0) ...[
-                const SizedBox(width: 10),
+                const SizedBox(width: AppSpace.md),
                 Expanded(
                   child: _RevenueMiniStat(
                     label: locked
                         ? 'متوقع اليوم'
                         : 'متوقع اليوم ($expectedCount طالب)',
                     value: expectedLabel,
-                    color: isDark ? Colors.white54 : Colors.grey.shade600,
+                    color: t.inkSoft,
                   ),
                 ),
               ],
@@ -2138,18 +1895,9 @@ class _RevenueMiniStat extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.85)),
-        ),
+        Text(value, style: AppType.title.copyWith(color: color)),
+        Text(label,
+            style: AppType.caption.copyWith(color: context.tokens.inkSoft)),
       ],
     );
   }
@@ -2172,120 +1920,70 @@ class _AttendanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     final pct = (rate * 100).toInt();
 
     // لو مفيش مجموعات اليوم يبان باللون المحايد
     final barColor = expected == 0
-        ? const Color(0xFF6366F1)
+        ? t.inkFaint
         : rate >= 0.8
-            ? const Color(0xFF10B981)
+            ? t.positive
             : rate >= 0.5
-                ? const Color(0xFFF59E0B)
-                : const Color(0xFFEF4444);
+                ? t.caution
+                : t.danger;
 
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () => Get.toNamed(ROUTE_ATTENDANCE),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF131D31) : Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.grey.shade200,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return AppPanel(
+      onTap: () => Get.toNamed(ROUTE_ATTENDANCE),
+      lineColor: Colors.transparent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Icon(Icons.how_to_reg_rounded, size: 16, color: barColor),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'حضور اليوم',
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: isDark ? Colors.white : const Color(0xFF111827),
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: barColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      expected == 0 ? '—' : '$pct%',
-                      style: TextStyle(
-                        color: barColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ],
+              Expanded(
+                child: Text('حضور اليوم',
+                    style: AppType.label.copyWith(color: t.ink)),
               ),
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: expected == 0 ? 0 : rate.clamp(0.0, 1.0),
-                  minHeight: 8,
-                  backgroundColor:
-                      isDark ? Colors.white12 : Colors.grey.shade200,
-                  valueColor: AlwaysStoppedAnimation<Color>(barColor),
-                ),
+              Text(expected == 0 ? '—' : '$pct%',
+                  style: AppType.figure.copyWith(color: barColor)),
+            ],
+          ),
+          const SizedBox(height: AppSpace.xs),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.chip),
+            child: LinearProgressIndicator(
+              value: expected == 0 ? 0 : rate.clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: t.line,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                  barColor == t.caution ? t.cautionBar : barColor),
+            ),
+          ),
+          const SizedBox(height: AppSpace.sm),
+          Wrap(
+            spacing: AppSpace.md,
+            runSpacing: AppSpace.xs,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _AttStat(
+                icon: Icons.check_circle_outline_rounded,
+                color: t.positive,
+                label: visible ? '$present حضر' : '••',
               ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 14,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  _AttStat(
-                    icon: Icons.check_circle_outline_rounded,
-                    color: const Color(0xFF10B981),
-                    label: visible ? '$present حضر' : '••',
-                  ),
-                  _AttStat(
-                    icon: Icons.cancel_outlined,
-                    color: const Color(0xFFEF4444),
-                    label: visible ? '$absent غاب' : '••',
-                  ),
-                  Text(
-                    expected == 0
-                        ? 'لا مجموعات اليوم'
-                        : (visible ? 'من $expected طالب' : '••'),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white38 : Colors.grey.shade500,
-                    ),
-                  ),
-                ],
+              _AttStat(
+                icon: Icons.cancel_outlined,
+                color: t.danger,
+                label: visible ? '$absent غاب' : '••',
+              ),
+              Text(
+                expected == 0
+                    ? 'لا مجموعات اليوم'
+                    : (visible ? 'من $expected طالب' : '••'),
+                style: AppType.caption.copyWith(color: t.inkSoft),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -2301,70 +1999,43 @@ class _AtRiskDashboardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    const color = Color(0xFFEF4444);
+    final t = context.tokens;
 
-    return GestureDetector(
+    return AppPanel(
       onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF131D31) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.35)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
+      lineColor: Colors.transparent,
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: t.dangerSoft,
+              borderRadius: BorderRadius.circular(AppRadius.chip),
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(Icons.warning_amber_rounded,
-                  size: 20, color: color),
+            child:
+                Icon(Icons.warning_amber_rounded, size: 22, color: t.danger),
+          ),
+          const SizedBox(width: AppSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  count == 1
+                      ? 'طالب واحد محتاج متابعة'
+                      : '$count طلاب محتاجين متابعة',
+                  style: AppType.label.copyWith(color: t.ink),
+                ),
+                Text(
+                  'غياب متتالي، واجب ناقص، هبوط درجات، أو تأخّر دفع',
+                  style: AppType.caption.copyWith(color: t.inkSoft),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    count == 1
-                        ? 'طالب واحد محتاج متابعة'
-                        : '$count طلاب محتاجين متابعة',
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13.5,
-                      color: isDark ? Colors.white : const Color(0xFF111827),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'غياب متتالي، واجب ناقص، هبوط درجات، أو تأخّر دفع',
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 10.5,
-                      color: isDark ? Colors.white38 : Colors.grey.shade500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_left_rounded,
-                size: 20,
-                color: isDark ? Colors.white38 : Colors.grey.shade400),
-          ],
-        ),
+          ),
+          Icon(Icons.chevron_left_rounded, size: 20, color: t.inkFaint),
+        ],
       ),
     );
   }
@@ -2387,76 +2058,42 @@ class _TodayPaymentsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    const color = Color(0xFF10B981);
+    final t = context.tokens;
 
-    return GestureDetector(
+    return AppPanel(
       onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF131D31) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.06)
-                : Colors.grey.shade200,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      lineColor: Colors.transparent,
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.payments_rounded, size: 16, color: color),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'مدفوعات اليوم',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: isDark ? Colors.white : const Color(0xFF111827),
-                    ),
-                  ),
+                Text(
+                  'مدفوعات اليوم',
+                  style: AppType.label.copyWith(color: t.ink),
                 ),
-                if (onTap != null)
-                  Icon(Icons.chevron_left_rounded,
-                      size: 18,
-                      color: isDark ? Colors.white38 : Colors.grey.shade400),
+                Text(
+                  locked
+                      ? 'مقفول'
+                      : (count == 0
+                          ? 'لا يوجد مدفوعات بعد'
+                          : '$count دفعة اليوم'),
+                  style: AppType.caption.copyWith(color: t.inkSoft),
+                ),
               ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              fmtTotal,
-              style: const TextStyle(
-                color: color,
-                fontWeight: FontWeight.bold,
-                fontSize: 20,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              locked
-                  ? 'مقفول'
-                  : (count == 0 ? 'لا يوجد مدفوعات بعد' : '$count دفعة اليوم'),
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white38 : Colors.grey.shade500,
-              ),
-            ),
+          ),
+          const SizedBox(width: AppSpace.sm),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 150),
+            child: _FitFigure(fmtTotal, color: t.moneyInk),
+          ),
+          if (onTap != null) ...[
+            const SizedBox(width: AppSpace.xs),
+            Icon(Icons.chevron_left_rounded, size: 18, color: t.inkSoft),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -2471,12 +2108,12 @@ class _AttStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
+    return Row(mainAxisSize: MainAxisSize.min, children: [
       Icon(icon, size: 14, color: color),
-      const SizedBox(width: 4),
+      const SizedBox(width: AppSpace.xs),
       Text(label,
-          style: TextStyle(
-              fontWeight: FontWeight.bold, fontSize: 11, color: color)),
+          style: AppType.caption
+              .copyWith(fontWeight: FontWeight.w700, color: color)),
     ]);
   }
 }
@@ -2519,23 +2156,21 @@ class _PaymentProgressCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF131D31) : Colors.white;
+    final t = context.tokens;
     final pct = (rate * 100).toInt();
 
     // لو مقفول، الأرقام كلها (النسبة/البار/عدد اللي لسه ما دفعوش) لازم
     // تتقفل مع بعض — مش بس نص المبلغ. عرض المبلغ مقفول والباقي فاضح
     // نفس المعلومة بطريقة غير مباشرة (شكل البار، لونه، النسبة).
     final barColor = locked
-        ? (isDark ? Colors.white24 : Colors.grey.shade400)
+        ? t.inkFaint
         : (rate >= 0.8
-            ? const Color(0xFF10B981)
+            ? t.positive
             : rate >= 0.5
-                ? const Color(0xFFF59E0B)
-                : const Color(0xFFEF4444));
+                ? t.caution
+                : t.danger);
 
     return GestureDetector(
-      onTap: onTapSummary,
       onHorizontalDragEnd: (d) {
         final v = d.primaryVelocity ?? 0;
         if (v < -140) {
@@ -2544,24 +2179,10 @@ class _PaymentProgressCard extends StatelessWidget {
           onSwipe(-1); // سحب لليمين → الشهر السابق (أقدم)
         }
       },
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.06)
-                : Colors.grey.shade200,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
+      child: AppPanel(
+        onTap: onTapSummary,
+        padding: const EdgeInsets.all(AppSpace.lg),
+        lineColor: Colors.transparent,
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 220),
           transitionBuilder: (child, anim) => FadeTransition(
@@ -2578,175 +2199,85 @@ class _PaymentProgressCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(Icons.bar_chart_rounded, size: 16, color: barColor),
-                  const SizedBox(width: 6),
-                  Text(
-                    'دفعات ${_arabicMonth(month.month)}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: isDark ? Colors.white : const Color(0xFF111827),
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: barColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                  Expanded(
                     child: Text(
-                      locked ? '🔒' : '$pct%',
-                      style: TextStyle(
-                        color: barColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
+                      'دفعات ${_arabicMonth(month.month)}',
+                      style: AppType.label.copyWith(color: t.ink),
                     ),
                   ),
+                  if (locked)
+                    Icon(Icons.lock_rounded, size: 16, color: barColor)
+                  else
+                    Text(
+                      '$pct%',
+                      style: AppType.label.copyWith(color: barColor),
+                    ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: AppSpace.sm),
               AnimatedOpacity(
                 duration: const Duration(milliseconds: 150),
                 opacity: busy ? 0.35 : 1.0,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Progress bar
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(AppRadius.chip),
                       child: LinearProgressIndicator(
                         value: locked ? 0 : rate.clamp(0.0, 1.0),
                         minHeight: 8,
-                        backgroundColor:
-                            isDark ? Colors.white12 : Colors.grey.shade200,
-                        valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                        backgroundColor: t.line,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                            !locked && barColor == t.caution
+                                ? t.cautionBar
+                                : barColor),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: AppSpace.md),
                     Row(
                       children: [
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                fmtPaid,
-                                style: TextStyle(
-                                  color: barColor,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
+                              _FitFigure(fmtPaid, color: t.moneyInk),
                               Text(
                                 'من $fmtExpected',
-                                style: TextStyle(
-                                  color: isDark
-                                      ? Colors.white38
-                                      : Colors.grey.shade500,
-                                  fontSize: 11,
-                                ),
+                                style:
+                                    AppType.caption.copyWith(color: t.inkSoft),
                               ),
                             ],
                           ),
                         ),
+                        const SizedBox(width: AppSpace.sm),
                         // "لم يدفع" badge — قابل للضغط
                         if (locked)
-                          GestureDetector(
+                          _StatusChip(
+                            icon: Icons.lock_rounded,
+                            label: 'مقفول',
+                            color: t.inkSoft,
+                            background: t.line,
                             onTap: onTapUnpaid,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: (isDark ? Colors.white : Colors.grey)
-                                    .withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color:
-                                        (isDark ? Colors.white24 : Colors.grey)
-                                            .withValues(alpha: 0.35)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.lock_rounded,
-                                      size: 13,
-                                      color: isDark
-                                          ? Colors.white38
-                                          : Colors.grey.shade600),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'مقفول',
-                                    style: TextStyle(
-                                      color: isDark
-                                          ? Colors.white38
-                                          : Colors.grey.shade600,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                           )
                         else if (unpaidCount > 0)
-                          GestureDetector(
+                          _StatusChip(
+                            icon: Icons.warning_amber_rounded,
+                            label: '$unpaidCount لم يدفع',
+                            color: t.danger,
+                            background: t.dangerSoft,
                             onTap: onTapUnpaid,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEF4444)
-                                    .withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color: const Color(0xFFEF4444)
-                                        .withValues(alpha: 0.35)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.warning_amber_rounded,
-                                      size: 13, color: Color(0xFFEF4444)),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '$unpaidCount لم يدفع',
-                                    style: const TextStyle(
-                                      color: Color(0xFFEF4444),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                           )
                         else if (expected <= 0)
                           Text(
                             'لا مستحقات للشهر ده',
-                            style: TextStyle(
-                                color: isDark
-                                    ? Colors.white38
-                                    : Colors.grey.shade500,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11),
+                            style: AppType.caption.copyWith(color: t.inkSoft),
                           )
                         else
-                          Row(
-                            children: const [
-                              Icon(Icons.check_circle_rounded,
-                                  size: 14, color: Color(0xFF10B981)),
-                              SizedBox(width: 4),
-                              Text(
-                                'الكل دفع ✓',
-                                style: TextStyle(
-                                    color: Color(0xFF10B981),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 11),
-                              ),
-                            ],
+                          _StatusChip(
+                            icon: Icons.check_circle_rounded,
+                            label: 'الكل دفع',
+                            color: t.positive,
+                            background: t.positiveSoft,
                           ),
                       ],
                     ),
@@ -2754,13 +2285,12 @@ class _PaymentProgressCard extends StatelessWidget {
                 ),
               ),
               if (monthsCount > 1) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: AppSpace.md),
                 Center(
                   child: _MonthDots(
                     count: monthsCount,
                     index: monthIndex,
-                    color: barColor,
-                    isDark: isDark,
+                    color: t.moneyInk,
                   ),
                 ),
               ],
@@ -2797,24 +2327,19 @@ class _MonthDots extends StatelessWidget {
   final int count;
   final int index;
   final Color color;
-  final bool isDark;
   const _MonthDots({
     required this.count,
     required this.index,
     required this.color,
-    required this.isDark,
   });
 
   @override
   Widget build(BuildContext context) {
-    final dim = isDark ? Colors.white24 : Colors.grey.shade300;
+    final dim = context.tokens.line;
     if (count > 12) {
       return Text(
         '${index + 1} / $count',
-        style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: isDark ? Colors.white54 : Colors.grey.shade500),
+        style: AppType.caption.copyWith(color: context.tokens.inkSoft),
       );
     }
     return Row(
@@ -2837,88 +2362,40 @@ class _MonthDots extends StatelessWidget {
 }
 
 class _StatCard extends StatelessWidget {
-  final IconData icon;
   final String value;
   final String label;
-  final List<Color> gradient;
   final VoidCallback? onTap;
 
   const _StatCard({
-    required this.icon,
     required this.value,
     required this.label,
-    required this.gradient,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
 
-    final card = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-      decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF131D31).withValues(alpha: 0.94)
-            : Colors.white.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.06)
-              : Colors.white.withValues(alpha: 0.88),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: isDark
-                ? Colors.black.withValues(alpha: 0.16)
-                : gradient.first.withValues(alpha: 0.1),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
+    return AppPanel(
+      onTap: onTap,
+      lineColor: Colors.transparent,
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.xs, vertical: AppSpace.md),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-              color: gradient.first.withValues(alpha: 0.11),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: gradient.first, size: 15),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
-              foreground: Paint()
-                ..shader = LinearGradient(colors: gradient)
-                    .createShader(const Rect.fromLTWH(0, 0, 200, 0)),
-            ),
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
+          Text(value, style: AppType.figure.copyWith(color: t.rosterInk)),
+          // بيصغر مع الخط الكبير بدل ما الكلمة تتكسر في نصها.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              maxLines: 1,
+              style: AppType.caption.copyWith(color: t.inkSoft),
             ),
           ),
         ],
       ),
-    );
-
-    if (onTap == null) return card;
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: card,
     );
   }
 }
@@ -2926,81 +2403,115 @@ class _StatCard extends StatelessWidget {
 class _MenuGridItem extends StatelessWidget {
   final IconData icon;
   final String label;
-  final Color color;
   final VoidCallback onTap;
   final bool locked;
 
   const _MenuGridItem({
     required this.icon,
     required this.label,
-    required this.color,
     required this.onTap,
     this.locked = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
 
-    return LockBadge(locked: locked, child: _buildCard(isDark));
-  }
-
-  Widget _buildCard(bool isDark) {
+    // القفل جوه البلاطة نفسها بدل شارة LockBadge البارزة عن الحواف.
     return Material(
-      color: Colors.transparent,
+      color: t.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.panel),
+        side: BorderSide(color: t.line),
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(26),
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(8, 12, 8, 10),
-          decoration: BoxDecoration(
-            color: isDark
-                ? const Color(0xFF131D31).withValues(alpha: 0.94)
-                : Colors.white.withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.white.withValues(alpha: 0.92),
+        child: Stack(
+          children: [
+            Center(
+              child: Opacity(
+                opacity: locked ? 0.5 : 1,
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpace.sm),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon, color: t.brand, size: 26),
+                      const SizedBox(height: AppSpace.sm),
+                      Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppType.body.copyWith(
+                          color: t.ink,
+                          fontWeight: FontWeight.w700,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.22)
-                    : color.withValues(alpha: 0.12),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
+            if (locked)
+              PositionedDirectional(
+                top: AppSpace.sm,
+                end: AppSpace.sm,
+                child: Icon(Icons.lock_rounded, size: 14, color: t.inkFaint),
               ),
-            ],
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 21),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// زرار "آخر الحضور"/"آخر المدفوعات": الأسماء بتظهر في قائمة عند الضغط.
+class _ActivityButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color background;
+  final VoidCallback? onTap;
+  final bool locked;
+
+  const _ActivityButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.background,
+    required this.onTap,
+    this.locked = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+
+    return Opacity(
+      opacity: onTap == null ? 0.5 : 1,
+      child: AppPanel(
+        onTap: onTap,
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: background,
+                borderRadius: BorderRadius.circular(AppRadius.chip),
               ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
-                  color: isDark ? Colors.white : const Color(0xFF101828),
-                  height: 1.1,
-                ),
-              ),
-            ],
-          ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: AppSpace.sm),
+            Expanded(
+              child: Text(label, style: AppType.label.copyWith(color: t.ink)),
+            ),
+            if (locked)
+              Icon(Icons.lock_rounded, size: 16, color: t.inkFaint),
+          ],
         ),
       ),
     );
@@ -3014,90 +2525,46 @@ class _ActivityItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF131D31).withValues(alpha: 0.94)
-            : Colors.white.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.06)
-              : Colors.white.withValues(alpha: 0.9),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: isDark
-                ? Colors.black.withValues(alpha: 0.14)
-                : activity.color.withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: const EdgeInsets.all(AppSpace.md),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: activity.color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(AppRadius.chip),
             ),
             child: Icon(activity.icon, color: activity.color, size: 20),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpace.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  activity.title,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: isDark ? Colors.white : const Color(0xFF111827),
-                  ),
-                ),
-                const SizedBox(height: 2),
+                Text(activity.title,
+                    style: AppType.label.copyWith(color: t.ink)),
                 if (activity.type == ActivityType.payment &&
                     activity.amount != null)
                   CurrencyText(
                     activity.amount,
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color:
-                          isDark ? Colors.grey[400] : const Color(0xFF64748B),
-                    ),
+                    style: AppType.caption.copyWith(color: t.inkSoft),
                   )
                 else
                   Text(
                     activity.subtitle,
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color:
-                          isDark ? Colors.grey[400] : const Color(0xFF64748B),
-                    ),
+                    style: AppType.caption.copyWith(color: t.inkSoft),
                   ),
               ],
             ),
           ),
+          const SizedBox(width: AppSpace.sm),
           Text(
             activity.timeLabel,
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: isDark ? Colors.grey[500] : const Color(0xFF64748B),
-            ),
+            style: AppType.caption.copyWith(color: t.inkFaint),
           ),
         ],
       ),
@@ -3169,14 +2636,12 @@ class _DrawerItem extends StatelessWidget {
 class _DashboardMenuItem {
   final IconData icon;
   final String label;
-  final Color color;
   final VoidCallback onTap;
   final bool locked;
 
   const _DashboardMenuItem({
     required this.icon,
     required this.label,
-    required this.color,
     required this.onTap,
     this.locked = false,
   });

@@ -23,19 +23,9 @@ import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/views/attendance/attendance_page.dart'
     show showAttendanceSheet;
 import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
-
-const _kPresentColor = Color(0xFF10B981);
-const _kLateColor = Color(0xFFF59E0B);
-const _kAbsentColor = Color(0xFFEF4444);
-const _kUnrecordedColor = Color(0xFF6B7280);
-
-// ألوان الخلفية للزرار المختار — أغمق عشان النص الأبيض يعدّي تباين 4.5:1
-// (الأصفر بنص غامق بدل الأبيض).
-const _kPresentFill = Color(0xFF047857);
-const _kLateFill = Color(0xFFF59E0B);
-const _kAbsentFill = Color(0xFFDC2626);
 
 T _find<T extends GetxController>(T Function() create) =>
     Get.isRegistered<T>() ? Get.find<T>() : Get.put(create());
@@ -210,11 +200,13 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     final dateLabel = DateFormat('EEEE d MMMM yyyy', 'ar').format(_day);
     final time = _att.sessionTimeForGroupOnDay(widget.group, _day);
     return Scaffold(
-      appBar: buildGradientAppBar(
+      backgroundColor: t.page,
+      appBar: buildBoardAppBar(
+        context,
         title: widget.group.name,
         actions: [
           IconButton(
@@ -224,354 +216,468 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
           ),
         ],
       ),
-      body: buildSoftBackground(
-        context: context,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : Obx(() {
-                // تبعيات Obx: السجلات + الطلاب (تحديث فوري بعد كل ضغطة).
-                final rows = _allRows();
-                final cancelled = _overrideType == SessionOverrideType.cancelled;
-                final summary = summarizeSession(rows);
-                final shown =
-                    filterSessionRows(rows, _filter, query: _query);
-                final editable = !_isFuture && !cancelled;
-                final unrecorded =
-                    rows.where((r) => r.status == null).toList();
-                final absentShown = _filter == SessionFilter.absent;
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Obx(() {
+              // تبعيات Obx: السجلات + الطلاب (تحديث فوري بعد كل ضغطة).
+              final rows = _allRows();
+              final cancelled = _overrideType == SessionOverrideType.cancelled;
+              final summary = summarizeSession(rows);
+              final shown = filterSessionRows(rows, _filter, query: _query);
+              final editable = !_isFuture && !cancelled;
+              final unrecorded = rows.where((r) => r.status == null).toList();
+              final absentShown = _filter == SessionFilter.absent;
 
-                return Column(children: [
-                  _header(dateLabel, time, _overrideType, isDark),
-                  if (cancelled)
-                    _banner('الحصة دي ملغاة — مفيش حضور ليها', _kAbsentColor)
-                  else if (_isFuture)
-                    _banner('لسه ما بدأتش — للعرض فقط', _kUnrecordedColor)
-                  else
-                    _summaryCard(summary, isDark),
-                  if (!cancelled) _filters(summary),
-                  if (!cancelled)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                      child: CustomSearchBar(
-                        controller: _search,
-                        hintText: 'ابحث باسم الطالب أو الكود',
-                        onChanged: (v) => setState(() => _query = v),
-                        onClear: () => setState(() {
-                          _query = '';
-                          _search.clear();
-                        }),
-                      ),
+              // كل حاجة فوق القايمة بتتحرك معاها (CustomScrollView): على
+              // الشاشة الصغيرة مع الخط الكبير الأدوات مش بتاكل مكان القايمة.
+              // شريط الأسفل بس هو الثابت.
+              return Column(children: [
+                Expanded(
+                  child: CustomScrollView(slivers: [
+                    SliverToBoxAdapter(
+                      child: Column(children: [
+                        _board(dateLabel, time, _overrideType, summary,
+                            showSummary: !cancelled && !_isFuture),
+                        if (cancelled)
+                          _banner('الحصة دي ملغاة — مفيش حضور ليها',
+                              Icons.event_busy_rounded, t.danger, t.dangerSoft)
+                        else if (_isFuture)
+                          _banner('لسه ما بدأتش — للعرض فقط',
+                              Icons.schedule_rounded, t.inkSoft, t.line),
+                        if (!cancelled) _filters(summary),
+                        if (!cancelled)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(AppSpace.lg,
+                                AppSpace.sm, AppSpace.lg, AppSpace.xs),
+                            child: CustomSearchBar(
+                              controller: _search,
+                              hintText: 'ابحث باسم الطالب أو الكود',
+                              onChanged: (v) => setState(() => _query = v),
+                              onClear: () => setState(() {
+                                _query = '';
+                                _search.clear();
+                              }),
+                            ),
+                          ),
+                        if (absentShown && shown.isNotEmpty) _absentBar(shown),
+                      ]),
                     ),
-                  if (absentShown && shown.isNotEmpty) _absentBar(shown),
-                  Expanded(
-                    child: cancelled
-                        ? const SizedBox.shrink()
-                        : shown.isEmpty
-                            ? EmptyState(
-                                icon: Icons.groups_rounded,
-                                title: rows.isEmpty
-                                    ? 'مفيش طلاب'
-                                    : 'مفيش طلاب مطابقين',
-                                subtitle: rows.isEmpty
-                                    ? 'المجموعة دي مفيهاش طلاب في الحصة دي'
-                                    : 'غيّر التصفية أو البحث')
-                            : ListView.builder(
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                                itemCount: shown.length,
-                                itemBuilder: (_, i) =>
-                                    _row(shown[i], editable, absentShown),
-                              ),
-                  ),
-                  if (editable) _bottomBar(unrecorded),
-                ]);
-              }),
-      ),
+                    if (cancelled)
+                      const SliverToBoxAdapter(child: SizedBox.shrink())
+                    else if (shown.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: EmptyState(
+                            icon: Icons.groups_rounded,
+                            title: rows.isEmpty
+                                ? 'مفيش طلاب'
+                                : 'مفيش طلاب مطابقين',
+                            subtitle: rows.isEmpty
+                                ? 'المجموعة دي مفيهاش طلاب في الحصة دي'
+                                : 'غيّر التصفية أو البحث'),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(AppSpace.lg,
+                            AppSpace.sm, AppSpace.lg, AppSpace.lg),
+                        sliver: SliverList.builder(
+                          itemCount: shown.length,
+                          itemBuilder: (_, i) =>
+                              _row(shown[i], editable, absentShown),
+                        ),
+                      ),
+                  ]),
+                ),
+                if (editable) _bottomBar(unrecorded),
+              ]);
+            }),
     );
   }
 
-  Widget _header(String date, String? time, SessionOverrideType? o, bool dark) {
+  /// سبورة الصفحة: التاريخ والميعاد ووسم الحصة، وتحتها شريط الحضور
+  /// والأرقام (نفس سبورة تبويب التسجيل).
+  Widget _board(String date, String? time, SessionOverrideType? o,
+      SessionSummary s,
+      {required bool showSummary}) {
+    final t = context.tokens;
+    // ألوان الحالات فوق السبورة: درجات الوضع الداكن لأن خلفيتها غامقة دايمًا.
+    final on = AppTokens.dark;
     String? tag;
-    Color tagColor = _kUnrecordedColor;
+    Color tagInk = t.inkSoft;
+    Color tagSoft = t.line;
     switch (o) {
       case SessionOverrideType.cancelled:
         tag = 'ملغاة';
-        tagColor = _kAbsentColor;
+        tagInk = t.danger;
+        tagSoft = t.dangerSoft;
       case SessionOverrideType.makeup:
         tag = 'تعويضية';
-        tagColor = _kPresentColor;
+        tagInk = t.positive;
+        tagSoft = t.positiveSoft;
       case SessionOverrideType.extra:
         tag = 'إضافية';
-        tagColor = const Color(0xFF6366F1);
+        tagInk = t.brand;
+        tagSoft = t.brand.withValues(alpha: 0.12);
       case null:
         break;
     }
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Row(children: [
-        const Icon(Icons.event_rounded, size: 18),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(time == null ? date : '$date • $time',
-              style:
-                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-        ),
-        if (tag != null)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: tagColor.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(tag,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: tagColor)),
-          ),
-      ]),
-    );
-  }
-
-  Widget _banner(String text, Color color) => Container(
-        width: double.infinity,
-        margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Text(text,
-            style: TextStyle(fontWeight: FontWeight.w700, color: color)),
-      );
-
-  Widget _summaryCard(SessionSummary s, bool dark) {
-    Widget stat(String label, int n, Color c) => Expanded(
-          child: Column(children: [
-            Text('$n',
-                style: TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.w900, color: c)),
-            Text(label,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-          ]),
-        );
     final rate = s.total == 0 ? 0.0 : s.attended / s.total;
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(
+          AppSpace.lg, AppSpace.xs, AppSpace.lg, AppSpace.lg),
       decoration: BoxDecoration(
-        color: dark ? const Color(0xFF131D31) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: t.board,
+        borderRadius: const BorderRadius.vertical(
+            bottom: Radius.circular(AppRadius.board)),
       ),
-      child: Column(children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          stat('حاضر', s.present, _kPresentColor),
-          stat('متأخر', s.late, _kLateColor),
-          stat('غائب', s.absent, _kAbsentColor),
-          stat('لم يُسجَّل', s.unrecorded, _kUnrecordedColor),
+          Icon(Icons.event_rounded, size: 20, color: t.boardInkSoft),
+          const SizedBox(width: AppSpace.sm),
+          Expanded(
+            child: Wrap(
+              spacing: AppSpace.sm,
+              runSpacing: AppSpace.xs,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(date, style: AppType.label.copyWith(color: t.boardInk)),
+                if (time != null)
+                  Text(time,
+                      style: AppType.caption.copyWith(color: t.boardInkSoft)),
+              ],
+            ),
+          ),
+          if (tag != null)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpace.sm, vertical: 2),
+              decoration: BoxDecoration(
+                color: tagSoft,
+                borderRadius: BorderRadius.circular(AppRadius.chip),
+              ),
+              child: Text(tag,
+                  style: AppType.caption
+                      .copyWith(fontWeight: FontWeight.w700, color: tagInk)),
+            ),
         ]),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(children: [
+        if (showSummary) ...[
+          const SizedBox(height: AppSpace.lg),
+          Row(children: [
             Expanded(
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(AppRadius.chip),
                 child: LinearProgressIndicator(
                     value: rate,
                     minHeight: 6,
-                    backgroundColor: _kAbsentColor.withValues(alpha: 0.2),
-                    color: _kPresentColor),
+                    backgroundColor: t.boardLine,
+                    color: on.positive),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpace.sm),
             Text('${s.attended}/${s.total}',
-                style: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w700)),
+                style: AppType.caption.copyWith(
+                    fontWeight: FontWeight.w700, color: t.boardInk)),
           ]),
-        ),
+          const SizedBox(height: AppSpace.md),
+          Row(children: [
+            Expanded(
+                child: BoardStat(
+                    label: 'حاضر', value: '${s.present}', color: on.positive)),
+            Expanded(
+                child: BoardStat(
+                    label: 'متأخر', value: '${s.late}', color: t.chalk)),
+            Expanded(
+                child: BoardStat(
+                    label: 'غائب', value: '${s.absent}', color: on.danger)),
+            Expanded(
+                child: BoardStat(
+                    label: 'لم يُسجَّل',
+                    value: '${s.unrecorded}',
+                    color: t.boardInkSoft)),
+          ]),
+        ],
       ]),
     );
   }
 
-  Widget _filters(SessionSummary s) {
-    Widget chip(String label, int n, SessionFilter f, Color c) => Padding(
-          padding: const EdgeInsetsDirectional.only(end: 6),
-          child: ChoiceChip(
-            label: Text('$label ($n)',
-                style: const TextStyle(fontSize: 12.5)),
-            selected: _filter == f,
-            selectedColor: c.withValues(alpha: 0.2),
-            onSelected: (_) => setState(() {
-              _filter = f;
-              _selected.clear();
-            }),
+  Widget _banner(String text, IconData icon, Color ink, Color soft) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+            AppSpace.lg, AppSpace.md, AppSpace.lg, AppSpace.xs),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(AppSpace.md),
+          decoration: BoxDecoration(
+            color: soft,
+            borderRadius: BorderRadius.circular(AppRadius.control),
           ),
+          child: Row(children: [
+            Icon(icon, size: 20, color: ink),
+            const SizedBox(width: AppSpace.sm),
+            Expanded(
+              child: Text(text,
+                  style: AppType.label.copyWith(color: ink)),
+            ),
+          ]),
+        ),
+      );
+
+  Widget _filters(SessionSummary s) {
+    final t = context.tokens;
+    Widget chip(String label, int n, SessionFilter f, Color c) => _FilterChip(
+          label: '$label ($n)',
+          selected: _filter == f,
+          color: c,
+          onTap: () => setState(() {
+            _filter = f;
+            _selected.clear();
+          }),
         );
-    return SizedBox(
-      height: 44,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+    // Wrap بدل قائمة أفقية: كل الشرائح باينة، وتنزل سطر تاني لو مفيش مكان.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpace.lg, AppSpace.md, AppSpace.lg, AppSpace.xs),
+      child: Wrap(
+        spacing: AppSpace.sm,
+        runSpacing: AppSpace.sm,
         children: [
-          chip('الكل', s.total, SessionFilter.all, AppTheme.primaryColor),
-          chip('غائب', s.absent, SessionFilter.absent, _kAbsentColor),
+          chip('الكل', s.total, SessionFilter.all, t.brand),
+          chip('غائب', s.absent, SessionFilter.absent, t.danger),
           chip('لم يُسجَّل', s.unrecorded, SessionFilter.unrecorded,
-              _kUnrecordedColor),
-          chip('حاضر', s.present, SessionFilter.present, _kPresentColor),
-          chip('متأخر', s.late, SessionFilter.late, _kLateColor),
+              t.inkSoft),
+          chip('حاضر', s.present, SessionFilter.present, t.positive),
+          chip('متأخر', s.late, SessionFilter.late, t.caution),
         ],
       ),
     );
   }
 
   Widget _absentBar(List<SessionRow> shown) {
+    final t = context.tokens;
     final ids = [for (final r in shown) r.student.id!];
     final all = ids.isNotEmpty && ids.every(_selected.contains);
     final n = shown.where((r) => _selected.contains(r.student.id)).length;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-      child: Row(children: [
-        TextButton.icon(
-          onPressed: () => setState(() {
-            if (all) {
-              _selected.removeAll(ids);
-            } else {
-              _selected.addAll(ids);
-            }
-          }),
-          icon: Icon(
-              all ? Icons.deselect_rounded : Icons.select_all_rounded,
-              size: 18),
-          label: Text(all ? 'إلغاء التحديد' : 'تحديد الكل'),
-        ),
-        const Spacer(),
-        FilledButton.icon(
-          onPressed: n == 0 ? null : () => _sendAbsences(shown),
-          icon: const Icon(Icons.chat_rounded, size: 18),
-          label: Text('واتساب للغايبين ($n)'),
-        ),
-      ]),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpace.lg, AppSpace.xs, AppSpace.lg, AppSpace.xs),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: AppSpace.sm,
+        children: [
+          TextButton.icon(
+            onPressed: () => setState(() {
+              if (all) {
+                _selected.removeAll(ids);
+              } else {
+                _selected.addAll(ids);
+              }
+            }),
+            style: TextButton.styleFrom(
+                foregroundColor: t.brand, minimumSize: const Size(48, 44)),
+            icon: Icon(
+                all ? Icons.deselect_rounded : Icons.select_all_rounded,
+                size: 20),
+            label: Text(all ? 'إلغاء التحديد' : 'تحديد الكل',
+                style: AppType.body.copyWith(fontWeight: FontWeight.w700)),
+          ),
+          FilledButton.icon(
+            onPressed: n == 0 ? null : () => _sendAbsences(shown),
+            style: FilledButton.styleFrom(
+              backgroundColor: t.positive,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(48, 48),
+            ),
+            icon: const Icon(Icons.chat_rounded, size: 20),
+            label: Text('واتساب للغايبين ($n)', style: AppType.label),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _row(SessionRow r, bool editable, bool selectable) {
+    final t = context.tokens;
     final s = r.student;
-    Widget seg(String label, String target, Color c) {
-      final on = r.status == target;
-      final fg = !on
-          ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)
-          : (target == ATTENDANCE_LATE ? Colors.black87 : Colors.white);
-      return Expanded(
-        child: Semantics(
-          button: true,
-          selected: on,
-          label: '$label — ${s.name}',
-          excludeSemantics: true,
-          child: InkWell(
-            onTap: editable ? () => _setStatus(s, r.status, target) : null,
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              alignment: Alignment.center,
-              // ارتفاع ≥ 44 عشان هدف اللمس
-              constraints: const BoxConstraints(minHeight: 44),
-              decoration: BoxDecoration(
-                color: on ? c : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                    color: on ? c : Colors.grey.withValues(alpha: 0.5)),
-              ),
-              child: Text(label,
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: fg)),
-            ),
-          ),
-        ),
-      );
-    }
+    final norm = r.status;
+    final ink = switch (norm) {
+      ATTENDANCE_PRESENT => t.positive,
+      ATTENDANCE_LATE => t.caution,
+      ATTENDANCE_ABSENT => t.danger,
+      _ => t.inkFaint,
+    };
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        color: Theme.of(context).colorScheme.surface,
-        border: Border.all(
-            color: switch (r.status) {
-          ATTENDANCE_PRESENT => _kPresentColor.withValues(alpha: 0.4),
-          ATTENDANCE_LATE => _kLateColor.withValues(alpha: 0.5),
-          ATTENDANCE_ABSENT => _kAbsentColor.withValues(alpha: 0.5),
-          _ => Colors.grey.withValues(alpha: 0.2),
-        }),
-      ),
-      child: Column(children: [
-        Row(children: [
-          if (selectable)
-            Checkbox(
-              value: _selected.contains(s.id),
-              onChanged: (v) => setState(() {
-                if (v == true) {
-                  _selected.add(s.id!);
-                } else {
-                  _selected.remove(s.id);
-                }
-              }),
-            ),
-          Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(s.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 14)),
-                  Text(s.code,
-                      style: TextStyle(
-                          fontSize: 12, color: Colors.grey.shade600)),
-                ]),
-          ),
-          if (r.status == null)
-            Text('لم يُسجَّل',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-        ]),
-        if (editable) ...[
-          const SizedBox(height: 8),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.sm),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.md, vertical: AppSpace.sm),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          color: t.surface,
+          border: Border.all(
+              color: norm == null ? t.line : ink, width: norm == null ? 1 : 1.5),
+        ),
+        child: Column(children: [
           Row(children: [
-            seg('حاضر', ATTENDANCE_PRESENT, _kPresentFill),
-            const SizedBox(width: 8),
-            seg('متأخر', ATTENDANCE_LATE, _kLateFill),
-            const SizedBox(width: 8),
-            seg('غائب', ATTENDANCE_ABSENT, _kAbsentFill),
+            if (selectable)
+              Checkbox(
+                value: _selected.contains(s.id),
+                activeColor: t.danger,
+                checkColor: Colors.white,
+                onChanged: (v) => setState(() {
+                  if (v == true) {
+                    _selected.add(s.id!);
+                  } else {
+                    _selected.remove(s.id);
+                  }
+                }),
+              ),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(s.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppType.label.copyWith(color: t.ink)),
+                    Text(s.code,
+                        style: AppType.caption.copyWith(color: t.inkSoft)),
+                  ]),
+            ),
+            if (norm == null)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.sm, vertical: 2),
+                decoration: BoxDecoration(
+                  color: t.line,
+                  borderRadius: BorderRadius.circular(AppRadius.chip),
+                ),
+                child: Text('لم يُسجَّل',
+                    style: AppType.caption.copyWith(color: t.inkSoft)),
+              ),
           ]),
-        ],
-      ]),
+          if (editable) ...[
+            const SizedBox(height: AppSpace.sm),
+            AppSegmented(
+              dense: true,
+              value: norm,
+              subject: s.name,
+              // الضغط على المختار تاني بيرجّع null → نلغي السجل.
+              onSelect: (v) => _setStatus(s, norm, v ?? norm ?? ''),
+              items: [
+                AppSegmentItem(ATTENDANCE_PRESENT, 'حاضر', Icons.check_rounded,
+                    t.positive),
+                AppSegmentItem(ATTENDANCE_LATE, 'متأخر', Icons.schedule_rounded,
+                    t.caution),
+                AppSegmentItem(ATTENDANCE_ABSENT, 'غائب', Icons.close_rounded,
+                    t.danger),
+              ],
+            ),
+          ],
+        ]),
+      ),
     );
   }
 
-  Widget _bottomBar(List<SessionRow> unrecorded) => SafeArea(
+  Widget _bottomBar(List<SessionRow> unrecorded) {
+    final t = context.tokens;
+    return Container(
+      decoration: BoxDecoration(
+        color: t.surface,
+        border: Border(top: BorderSide(color: t.line)),
+      ),
+      child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          padding: const EdgeInsets.fromLTRB(
+              AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.sm),
           child: Row(children: [
             Expanded(
+              flex: 5,
               child: FilledButton.icon(
                 onPressed:
                     unrecorded.isEmpty ? null : () => _markUnrecorded(unrecorded),
-                icon: const Icon(Icons.done_all_rounded, size: 18),
-                label: Text('تحضير غير المسجَّلين (${unrecorded.length})'),
+                style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpace.md)),
+                icon: const Icon(Icons.done_all_rounded, size: 20),
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('تحضير غير المسجَّلين (${unrecorded.length})'),
+                ),
               ),
             ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _openFullSheet,
-              icon: const Icon(Icons.edit_note_rounded, size: 18),
-              label: const Text('الورقة الكاملة'),
+            const SizedBox(width: AppSpace.sm),
+            Expanded(
+              flex: 4,
+              child: OutlinedButton.icon(
+                onPressed: _openFullSheet,
+                style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+                    foregroundColor: t.brand,
+                    side: BorderSide(color: t.line)),
+                icon: const Icon(Icons.edit_note_rounded, size: 20),
+                label: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('الورقة الكاملة'),
+                ),
+              ),
             ),
           ]),
         ),
-      );
+      ),
+    );
+  }
+}
+
+/// شريحة تصفية بلون الحالة (المختارة بإطار ولون خفيف).
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Material(
+      color: selected ? color.withValues(alpha: 0.12) : t.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        side: BorderSide(color: selected ? color : t.line),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 40, minWidth: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+            // Row مش Center: Center كان بيمطّ الشريحة جوه الـWrap.
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(label,
+                    style: AppType.body.copyWith(
+                        color: selected ? color : t.inkSoft,
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w400)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

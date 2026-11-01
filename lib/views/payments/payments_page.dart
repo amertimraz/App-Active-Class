@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:active_class/config/theme.dart';
+import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
@@ -66,9 +68,13 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
+    // ألوان الحالات فوق السبورة: درجات الوضع الداكن لأن خلفيتها غامقة دايمًا.
+    final on = AppTokens.dark;
     return Scaffold(
-      appBar: buildGradientAppBar(
+      backgroundColor: t.page,
+      appBar: buildBoardAppBar(
+        context,
         title: 'المدفوعات',
         actions: [
           IconButton(
@@ -86,11 +92,13 @@ class _PaymentsPageState extends State<PaymentsPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () =>
             _showAddPaymentDialog(context, controller, studentController),
+        backgroundColor: t.chalk,
+        foregroundColor: t.onChalk,
         icon: const Icon(Icons.add),
         label: const Text('تسجيل دفعة'),
       ),
-      body: buildSoftBackground(
-        context: context,
+      body: ColoredBox(
+        color: t.page,
         child: Obx(() {
           final studentById = {
             for (final s in studentController.students)
@@ -193,152 +201,136 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
           return Column(
             children: [
-              // ─── Header card (مضغوط: كان بياخد ~ثلثي الشاشة) ──────────
-              Padding(
+              // ─── سبورة: الشهر + المحصّل + أعداد الحالات ─────────────────
+              Container(
+                width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(
-                    PADDING_NORMAL, 10, PADDING_NORMAL, 0),
-                child: buildSoftPanel(
-                  context: context,
-                  radius: 20,
-                  padding: const EdgeInsets.fromLTRB(6, 4, 6, 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // الشهر: تنقّل + اختيار + أيقونة شرح (بدل البانر الطويل)
-                      Row(
-                        children: [
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            icon: const Icon(Icons.chevron_right_rounded),
-                            tooltip: 'الشهر السابق',
-                            onPressed: () {
-                              final prev =
-                                  DateTime(month.year, month.month - 1, 1);
-                              controller.setMonth(prev);
+                    AppSpace.sm, 0, AppSpace.sm, AppSpace.lg),
+                decoration: BoxDecoration(
+                  color: t.board,
+                  borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(AppRadius.board)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // الشهر: تنقّل + اختيار + أيقونة شرح (بدل البانر الطويل)
+                    Row(
+                      children: [
+                        BoardIconButton(
+                          icon: Icons.chevron_right_rounded,
+                          tooltip: 'الشهر السابق',
+                          onPressed: () {
+                            final prev =
+                                DateTime(month.year, month.month - 1, 1);
+                            controller.setMonth(prev);
+                          },
+                        ),
+                        Expanded(
+                          child: InkWell(
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.control),
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: month,
+                                firstDate: DateTime(2020, 1, 1),
+                                lastDate: DateTime.now()
+                                    .add(const Duration(days: 365)),
+                                helpText: 'اختر شهرًا',
+                              );
+                              if (picked != null) {
+                                controller.setMonth(
+                                    DateTime(picked.year, picked.month, 1));
+                              }
                             },
-                          ),
-                          Expanded(
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: month,
-                                  firstDate: DateTime(2020, 1, 1),
-                                  lastDate: DateTime.now()
-                                      .add(const Duration(days: 365)),
-                                  helpText: 'اختر شهرًا',
-                                );
-                                if (picked != null) {
-                                  controller.setMonth(
-                                      DateTime(picked.year, picked.month, 1));
-                                }
-                              },
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(minHeight: 48),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    dateFmt.format(month),
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium
-                                        ?.copyWith(fontWeight: FontWeight.w800),
+                                  Flexible(
+                                    child: Text(
+                                      dateFmt.format(month),
+                                      style: AppType.title.copyWith(
+                                          fontSize: 18, color: t.boardInk),
+                                    ),
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: AppSpace.xs),
                                   Icon(Icons.expand_more_rounded,
-                                      size: 18,
-                                      color:
-                                          Theme.of(context).colorScheme.primary),
+                                      size: 20, color: t.boardInkSoft),
                                 ],
                               ),
                             ),
                           ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            icon: const Icon(Icons.chevron_left_rounded),
-                            tooltip: 'الشهر التالي',
-                            onPressed: () {
-                              final next =
-                                  DateTime(month.year, month.month + 1, 1);
-                              controller.setMonth(next);
-                            },
-                          ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            icon: Icon(Icons.info_outline_rounded,
-                                size: 20,
-                                color: Theme.of(context).colorScheme.primary),
-                            tooltip: 'إزاي بتتعرض الدفعات؟',
-                            onPressed: () => _showMonthInfo(context, month),
-                          ),
-                        ],
-                      ),
-                      // إجمالي المحصّل في سطر واحد
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
+                        ),
+                        BoardIconButton(
+                          icon: Icons.chevron_left_rounded,
+                          tooltip: 'الشهر التالي',
+                          onPressed: () {
+                            final next =
+                                DateTime(month.year, month.month + 1, 1);
+                            controller.setMonth(next);
+                          },
+                        ),
+                        BoardIconButton(
+                          icon: Icons.info_outline_rounded,
+                          tooltip: 'إزاي بتتعرض الدفعات؟',
+                          onPressed: () => _showMonthInfo(context, month),
+                        ),
+                      ],
+                    ),
+                    // إجمالي المحصّل
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpace.md),
+                      child: Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: AppSpace.sm,
                         children: [
-                          Text(
-                            'محصّل الشهر',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: Colors.grey.shade600),
-                          ),
-                          const SizedBox(width: 8),
+                          Text('محصّل الشهر',
+                              style: AppType.caption
+                                  .copyWith(color: t.boardInkSoft)),
                           CurrencyText(
                             totalPaidInScope,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
-                                ?.copyWith(
-                                  color: Colors.green.shade700,
-                                  fontWeight: FontWeight.w900,
-                                ),
+                            style:
+                                AppType.figure.copyWith(color: on.positive),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      // Status summary pills (مصغّرة)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _SummaryPill(
-                            label: 'مدفوع',
-                            value: fullyPaidCount,
-                            color: Colors.green,
-                            icon: Icons.check_circle_outline,
-                          ),
-                          _SummaryPill(
-                            label: 'جزئي',
-                            value: partialCount,
-                            color: Colors.orange,
-                            icon: Icons.timelapse_rounded,
-                          ),
-                          _SummaryPill(
-                            label: 'متأخر',
-                            value: lateCount,
-                            color: Colors.red,
-                            icon: Icons.warning_amber_rounded,
-                          ),
-                          _SummaryPill(
-                            label: 'الكل',
-                            value: allRows.length,
-                            color: Theme.of(context).colorScheme.primary,
-                            icon: Icons.people_outline,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: AppSpace.md),
+                    Row(children: [
+                      Expanded(
+                          child: BoardStat(
+                              label: 'مدفوع',
+                              value: '$fullyPaidCount',
+                              color: on.positive)),
+                      Expanded(
+                          child: BoardStat(
+                              label: 'جزئي',
+                              value: '$partialCount',
+                              color: t.chalk)),
+                      Expanded(
+                          child: BoardStat(
+                              label: 'متأخر',
+                              value: '$lateCount',
+                              color: on.danger)),
+                      Expanded(
+                          child: BoardStat(
+                              label: 'الكل',
+                              value: '${allRows.length}',
+                              color: t.boardInk)),
+                    ]),
+                  ],
                 ),
               ),
 
-              // ─── Filters ───────────────────────────────────────────────
+              // ─── بحث + مجموعة ──────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(
-                    PADDING_NORMAL, 8, PADDING_NORMAL, 0),
+                    AppSpace.lg, AppSpace.md, AppSpace.lg, 0),
                 child: Row(
                   children: [
                     Expanded(
@@ -352,13 +344,12 @@ class _PaymentsPageState extends State<PaymentsPage> {
                         },
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: AppSpace.sm),
                     _FilterButton(
                       label: selectedGroupId == null
                           ? 'المجموعة'
                           : groupById[selectedGroupId]?.name ?? 'المجموعة',
                       icon: Icons.group_outlined,
-                      isDark: isDark,
                       onTap: () => _showGroupFilter(
                           context, groupController.groups, selectedGroupId),
                     ),
@@ -366,13 +357,15 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 ),
               ),
 
-              // ─── Status filter tabs ────────────────────────────────────
+              // ─── شرائح الحالة: Wrap عشان كلها باينة من غير سحب ────────────
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: PADDING_NORMAL, vertical: 6),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.sm),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Wrap(
+                    spacing: AppSpace.sm,
+                    runSpacing: AppSpace.sm,
                     children: [
                       for (final s in const [
                         'الكل',
@@ -382,9 +375,11 @@ class _PaymentsPageState extends State<PaymentsPage> {
                         'مُعفى'
                       ])
                         _StatusTab(
-                          label: s,
+                          // الشريحة بتتسمّى «مدفوع» (قصيرة) والقيمة المصفّى بيها
+                          // لسه 'مدفوع بالكامل'.
+                          label: s == 'مدفوع بالكامل' ? 'مدفوع' : s,
                           selected: selectedStatus == s,
-                          color: _statusColor(s),
+                          color: _statusInk(t, s),
                           onTap: () => controller.setStatusFilter(s),
                         ),
                     ],
@@ -392,30 +387,26 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 ),
               ),
 
-              // ─── Student list ──────────────────────────────────────────
+              // ─── قايمة الطلاب ──────────────────────────────────────────
               Expanded(
                 child: controller.isLoading.value
                     ? const Center(child: CircularProgressIndicator())
                     : rows.isEmpty
-                        ? buildSoftPanel(
-                            context: context,
-                            child: const EmptyState(
-                              icon: Icons.payment,
-                              title: 'لا توجد سجلات',
-                              subtitle: 'عدّل المرشحات أو سجّل دفعة جديدة',
-                            ),
+                        ? const EmptyState(
+                            icon: Icons.payment,
+                            title: 'لا توجد سجلات',
+                            subtitle: 'عدّل المرشحات أو سجّل دفعة جديدة',
                           )
                         : ListView.separated(
                             padding: const EdgeInsets.fromLTRB(
-                                PADDING_NORMAL, 0, PADDING_NORMAL, 80),
+                                AppSpace.lg, 0, AppSpace.lg, 88),
                             itemCount: rows.length,
                             separatorBuilder: (_, __) =>
-                                const SizedBox(height: 8),
+                                const SizedBox(height: AppSpace.sm),
                             itemBuilder: (context, i) {
                               final r = rows[i];
                               return _StudentPaymentCard(
                                 row: r,
-                                isDark: isDark,
                                 onAddPayment: () {
                                   final now = DateTime.now();
                                   DateTime safeDate;
@@ -487,21 +478,6 @@ class _PaymentsPageState extends State<PaymentsPage> {
     );
   }
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'مدفوع بالكامل':
-        return Colors.green;
-      case 'جزئي':
-        return Colors.orange;
-      case 'متأخر':
-        return Colors.red;
-      case 'مُعفى':
-        return Colors.blueGrey;
-      default:
-        return Colors.grey;
-    }
-  }
-
   void _showGroupFilter(
       BuildContext context, List<Group> groups, int? current) {
     showModalBottomSheet(
@@ -565,101 +541,211 @@ class _PaymentsPageState extends State<PaymentsPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.55,
-        maxChildSize: 0.9,
-        builder: (_, scrollCtrl) => Column(
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: Colors.grey.shade400,
-                  borderRadius: BorderRadius.circular(2)),
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        final t = sheetCtx.tokens;
+        // ألوان الحالات فوق السبورة: درجات الوضع الداكن لأن خلفيتها غامقة دايمًا.
+        final on = AppTokens.dark;
+        final monthLabel = DateFormat('MMMM yyyy', 'ar').format(month);
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.92,
+          builder: (_, scrollCtrl) => Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: t.surface,
+              borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(AppRadius.board)),
             ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
+            child: Obx(() {
+              final payments = ctrl.payments
+                  .where((p) =>
+                      p.studentId == student.id &&
+                      p.date.year == month.year &&
+                      p.date.month == month.month)
+                  .toList()
+                ..sort((a, b) => b.date.compareTo(a.date));
+              // إجمالي الشهر بدون إسقاط المديونية (مش فلوس اتحصّلت فعلًا).
+              final total = payments
+                  .where((p) => p.note != kDebtWriteOffNote)
+                  .fold<double>(0.0, (sum, p) => sum + p.amount);
+
+              return Column(
                 children: [
-                  const Icon(Icons.history_rounded),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'دفعات ${student.name} هذا الشهر',
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            Expanded(
-              child: Obx(() {
-                final payments = ctrl.payments
-                    .where((p) =>
-                        p.studentId == student.id &&
-                        p.date.year == month.year &&
-                        p.date.month == month.month)
-                    .toList()
-                  ..sort((a, b) => b.date.compareTo(a.date));
-                if (payments.isEmpty) {
-                  return const Center(child: Text('لا توجد دفعات هذا الشهر'));
-                }
-                return ListView.builder(
-                  controller: scrollCtrl,
-                  itemCount: payments.length,
-                  itemBuilder: (_, i) {
-                    final p = payments[i];
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: Colors.green.withValues(alpha: 0.12),
-                        child: const Icon(Icons.payments_rounded,
-                            color: Colors.green, size: 18),
-                      ),
-                      title: CurrencyText(
-                        p.amount,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      subtitle: ClockPaymentDateText(p.date),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (p.note?.isNotEmpty == true)
-                            Tooltip(
-                              message: p.note!,
-                              child: const Padding(
-                                padding: EdgeInsets.only(left: 4),
-                                child: Icon(Icons.notes_rounded,
-                                    size: 18, color: Colors.grey),
+                  // رأس السبورة: اسم الطالب والشهر وملخص الدفعات
+                  Container(
+                    color: t.board,
+                    padding: const EdgeInsetsDirectional.fromSTEB(
+                        AppSpace.lg, AppSpace.sm, AppSpace.xs, AppSpace.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: t.boardLine,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                        Row(children: [
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: AppSpace.sm),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('دفعات ${student.name}',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppType.title.copyWith(
+                                          fontSize: 18, color: t.boardInk)),
+                                  Text(monthLabel,
+                                      style: AppType.caption
+                                          .copyWith(color: t.boardInkSoft)),
+                                ],
                               ),
                             ),
-                          IconButton(
-                            icon: const Icon(Icons.edit_rounded, size: 18),
-                            tooltip: 'تعديل',
-                            onPressed: () => _editPayment(context, p, ctrl),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete_rounded,
-                                size: 18, color: Colors.red),
-                            tooltip: 'حذف',
-                            onPressed: () =>
-                                _confirmDeletePayment(context, p, ctrl),
+                            icon: const Icon(Icons.close_rounded),
+                            color: t.boardInk,
+                            tooltip: 'إغلاق',
+                            constraints: const BoxConstraints(
+                                minWidth: 44, minHeight: 44),
+                            onPressed: () => Navigator.of(sheetCtx).pop(),
                           ),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              }),
-            ),
-          ],
-        ),
-      ),
+                        ]),
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(
+                              end: AppSpace.md, top: AppSpace.xs),
+                          child: Row(children: [
+                            Expanded(
+                                child: BoardStat(
+                                    label: 'عدد الدفعات',
+                                    value: '${payments.length}',
+                                    color: t.boardInk)),
+                            Expanded(
+                                child: BoardStat(
+                                    label: 'إجمالي الشهر',
+                                    value: FormatHelper.formatCurrency(total),
+                                    color: on.positive)),
+                          ]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: payments.isEmpty
+                        ? ListView(
+                            controller: scrollCtrl,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(AppSpace.xl),
+                                child: Column(children: [
+                                  Icon(Icons.receipt_long_rounded,
+                                      size: 36, color: t.inkFaint),
+                                  const SizedBox(height: AppSpace.sm),
+                                  Text('لا توجد دفعات هذا الشهر',
+                                      style: AppType.label
+                                          .copyWith(color: t.inkSoft)),
+                                ]),
+                              ),
+                            ],
+                          )
+                        : ListView.separated(
+                            controller: scrollCtrl,
+                            padding: const EdgeInsets.all(AppSpace.md),
+                            itemCount: payments.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: AppSpace.sm),
+                            itemBuilder: (_, i) {
+                              final p = payments[i];
+                              final writeOff = p.note == kDebtWriteOffNote;
+                              final ink = writeOff ? t.caution : t.positive;
+                              final soft =
+                                  writeOff ? t.cautionSoft : t.positiveSoft;
+                              return AppPanel(
+                                padding: const EdgeInsetsDirectional.fromSTEB(
+                                    AppSpace.md,
+                                    AppSpace.sm,
+                                    AppSpace.xs,
+                                    AppSpace.sm),
+                                child: Row(children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: soft,
+                                      borderRadius: BorderRadius.circular(
+                                          AppRadius.chip),
+                                    ),
+                                    child: Icon(
+                                        writeOff
+                                            ? Icons.remove_circle_outline_rounded
+                                            : Icons.payments_rounded,
+                                        color: ink,
+                                        size: 20),
+                                  ),
+                                  const SizedBox(width: AppSpace.md),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        CurrencyText(
+                                          p.amount,
+                                          style: AppType.label
+                                              .copyWith(color: t.ink),
+                                        ),
+                                        ClockPaymentDateText(
+                                          p.date,
+                                          style: AppType.caption
+                                              .copyWith(color: t.inkSoft),
+                                        ),
+                                        if (p.note?.isNotEmpty == true)
+                                          Text(p.note!,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: AppType.caption.copyWith(
+                                                  color: t.inkFaint)),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.edit_rounded,
+                                        size: 20, color: t.inkSoft),
+                                    tooltip: 'تعديل',
+                                    constraints: const BoxConstraints(
+                                        minWidth: 44, minHeight: 44),
+                                    onPressed: () =>
+                                        _editPayment(context, p, ctrl),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.delete_rounded,
+                                        size: 20, color: t.danger),
+                                    tooltip: 'حذف',
+                                    constraints: const BoxConstraints(
+                                        minWidth: 44, minHeight: 44),
+                                    onPressed: () =>
+                                        _confirmDeletePayment(context, p, ctrl),
+                                  ),
+                                ]),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              );
+            }),
+          ),
+        );
+      },
     );
   }
 
@@ -902,249 +988,178 @@ class _PaymentsPageState extends State<PaymentsPage> {
 // Student payment card
 // ─────────────────────────────────────────────────────────────────────────────
 
+// حالة الدفع → لون الحبر واللون الخفيف (توكنز الثيم).
+Color _statusInk(AppTokens t, String status) {
+  switch (status) {
+    case 'مدفوع بالكامل':
+      return t.positive;
+    case 'جزئي':
+      return t.caution;
+    case 'متأخر':
+      return t.danger;
+    case 'مُعفى':
+      return t.inkSoft;
+    default:
+      return t.brand;
+  }
+}
+
+Color _statusSoft(AppTokens t, String status) {
+  switch (status) {
+    case 'مدفوع بالكامل':
+      return t.positiveSoft;
+    case 'جزئي':
+      return t.cautionSoft;
+    case 'متأخر':
+      return t.dangerSoft;
+    case 'مُعفى':
+      return t.line;
+    default:
+      return t.brand.withValues(alpha: 0.12);
+  }
+}
+
+/// صف الطالب: شريط حالة + الاسم والمجموعة والحالة + المتبقي + زرار دفعة.
+/// الضغط على الصف يفتح سجل دفعاته.
 class _StudentPaymentCard extends StatelessWidget {
   final _StudentMonthRow row;
-  final bool isDark;
   final VoidCallback onAddPayment;
   final VoidCallback onViewHistory;
 
   const _StudentPaymentCard({
     required this.row,
-    required this.isDark,
     required this.onAddPayment,
     required this.onViewHistory,
   });
 
-  Color get _statusColor {
-    switch (row.status) {
-      case 'مدفوع بالكامل':
-        return Colors.green;
-      case 'جزئي':
-        return Colors.orange;
-      case 'متأخر':
-        return Colors.red;
-      case 'مُعفى':
-        return Colors.blueGrey;
-      default:
-        return Colors.grey;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final color = _statusColor;
+    final t = context.tokens;
+    final ink = _statusInk(t, row.status);
+    final soft = _statusSoft(t, row.status);
     final progress = row.due > 0 ? (row.paid / row.due).clamp(0.0, 1.0) : 1.0;
+    final exempt = row.status == 'مُعفى';
+    final owes = row.remaining > 0;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: color.withValues(alpha: 0.25),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Name + status
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: color.withValues(alpha: 0.14),
-                  child: Text(
-                    row.student.name.isNotEmpty ? row.student.name[0] : '؟',
-                    style: TextStyle(color: color, fontWeight: FontWeight.w800),
-                  ),
+    return AppPanel(
+      onTap: onViewHistory,
+      padding: const EdgeInsetsDirectional.fromSTEB(
+          AppSpace.md, AppSpace.md, AppSpace.sm, AppSpace.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: ink,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        row.student.name,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 15),
-                      ),
-                      if (row.group != null)
-                        Text(
-                          row.group!.name,
-                          style: TextStyle(
-                              fontSize: 12, color: Colors.grey.shade500),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(row.student.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppType.label.copyWith(color: t.ink)),
+                    const SizedBox(height: 2),
+                    Wrap(
+                      spacing: AppSpace.sm,
+                      runSpacing: AppSpace.xs,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (row.group != null)
+                          Text(row.group!.name,
+                              style: AppType.caption
+                                  .copyWith(color: t.inkSoft)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpace.sm, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: soft,
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.chip),
+                          ),
+                          child: Text(row.status,
+                              style: AppType.caption.copyWith(
+                                  fontWeight: FontWeight.w700, color: ink)),
                         ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (!exempt) ...[
+                const SizedBox(width: AppSpace.sm),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 110),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(owes ? 'المتبقي' : 'مدفوع',
+                          style:
+                              AppType.caption.copyWith(color: t.inkSoft)),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: CurrencyText(
+                          owes ? row.remaining : row.paid,
+                          style: AppType.title
+                              .copyWith(color: owes ? ink : t.positive),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: color.withValues(alpha: 0.3)),
-                  ),
-                  child: Text(
-                    row.status,
-                    style: TextStyle(
-                        color: color,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700),
+                IconButton.filledTonal(
+                  tooltip: 'تسجيل دفعة',
+                  onPressed: onAddPayment,
+                  icon: const Icon(Icons.add_rounded),
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(44, 44),
+                    foregroundColor: t.brand,
+                    backgroundColor: t.brand.withValues(alpha: 0.12),
                   ),
                 ),
               ],
-            ),
-
-            const SizedBox(height: 12),
-
-            // Amounts row
-            Row(
-              children: [
-                _AmountBox(
-                  label: 'المستحق',
-                  amount: row.due,
-                  color: Colors.grey.shade600,
-                ),
-                const SizedBox(width: 8),
-                _AmountBox(
-                  label: 'المدفوع',
-                  amount: row.paid,
-                  color: Colors.green,
-                ),
-                const SizedBox(width: 8),
-                _AmountBox(
-                  label: 'المتبقي',
-                  amount: row.remaining,
-                  color: row.remaining > 0 ? Colors.red : Colors.grey,
-                ),
-              ],
-            ),
-
-            if (row.due > 0) ...[
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 6,
-                  backgroundColor: color.withValues(alpha: 0.12),
-                  valueColor: AlwaysStoppedAnimation<Color>(color),
+            ],
+          ),
+          if (row.due > 0) ...[
+            const SizedBox(height: AppSpace.sm),
+            Row(children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.chip),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 5,
+                    backgroundColor: t.line,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                        ink == t.caution ? t.cautionBar : ink),
+                  ),
                 ),
               ),
-            ],
-
-            const SizedBox(height: 10),
-
-            // Actions
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton.icon(
-                  onPressed: onViewHistory,
-                  icon: const Icon(Icons.history_rounded, size: 16),
-                  label: const Text('السجل'),
-                  style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact),
-                ),
-                const SizedBox(width: 6),
-                FilledButton.tonalIcon(
-                  onPressed: onAddPayment,
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('تسجيل دفعة'),
-                  style: FilledButton.styleFrom(
-                      visualDensity: VisualDensity.compact),
-                ),
-              ],
-            ),
+              const SizedBox(width: AppSpace.sm),
+              CurrencyText(
+                row.due,
+                style: AppType.caption.copyWith(color: t.inkSoft),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              // الصف كله بيفتح سجل الدفعات: الأيقونة بتقول كده.
+              Tooltip(
+                message: 'سجل الدفعات',
+                child: Icon(Icons.history_rounded, size: 18, color: t.inkFaint),
+              ),
+            ]),
           ],
-        ),
+        ],
       ),
-    );
-  }
-}
-
-class _AmountBox extends StatelessWidget {
-  final String label;
-  final double amount;
-  final Color color;
-  const _AmountBox(
-      {required this.label, required this.amount, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          children: [
-            Text(label,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-            const SizedBox(height: 2),
-            CurrencyText(
-              amount,
-              style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w800, color: color),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Small widgets
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _SummaryPill extends StatelessWidget {
-  final String label;
-  final int value;
-  final Color color;
-  final IconData icon;
-  const _SummaryPill(
-      {required this.label,
-      required this.value,
-      required this.color,
-      required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-            border: Border.all(color: color.withValues(alpha: 0.3)),
-          ),
-          child: Center(
-            child: Text(
-              value.toString(),
-              style: TextStyle(
-                  color: color, fontWeight: FontWeight.w900, fontSize: 13),
-            ),
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(label,
-            style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
-      ],
     );
   }
 }
@@ -1162,29 +1177,31 @@ class _StatusTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 6),
-      child: GestureDetector(
+    final t = context.tokens;
+    return Material(
+      color: selected ? color.withValues(alpha: 0.12) : t.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        side: BorderSide(color: selected ? color : t.line),
+      ),
+      child: InkWell(
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          decoration: BoxDecoration(
-            color:
-                selected ? color.withValues(alpha: 0.15) : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected
-                  ? color.withValues(alpha: 0.6)
-                  : Colors.grey.withValues(alpha: 0.3),
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: selected ? color : Colors.grey.shade600,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-              fontSize: 13,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 40, minWidth: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            // Row مش Center: Center كان بيمطّ الشريحة جوه الـWrap.
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(label,
+                    style: AppType.body.copyWith(
+                        color: selected ? color : t.inkSoft,
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w400)),
+              ],
             ),
           ),
         ),
@@ -1196,35 +1213,41 @@ class _StatusTab extends StatelessWidget {
 class _FilterButton extends StatelessWidget {
   final String label;
   final IconData icon;
-  final bool isDark;
   final VoidCallback onTap;
   const _FilterButton(
-      {required this.label,
-      required this.icon,
-      required this.isDark,
-      required this.onTap});
+      {required this.label, required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: Colors.grey.shade600),
-            const SizedBox(width: 6),
-            Text(label,
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
-            const SizedBox(width: 4),
-            Icon(Icons.arrow_drop_down, size: 16, color: Colors.grey.shade500),
-          ],
+    final t = context.tokens;
+    return Material(
+      color: t.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        side: BorderSide(color: t.line),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44, maxWidth: 150),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 18, color: t.inkSoft),
+                const SizedBox(width: AppSpace.xs + 2),
+                Flexible(
+                  child: Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.body.copyWith(color: t.inkSoft)),
+                ),
+                Icon(Icons.arrow_drop_down, size: 20, color: t.inkSoft),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1271,8 +1294,10 @@ class _AttendanceHintChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     final hasAbsences = absentDates.isNotEmpty;
-    final color = hasAbsences ? Colors.orange : Colors.green;
+    final ink = hasAbsences ? t.caution : t.positive;
+    final soft = hasAbsences ? t.cautionSoft : t.positiveSoft;
     final icon =
         hasAbsences ? Icons.event_busy_rounded : Icons.event_available_rounded;
     final text = hasAbsences
@@ -1282,30 +1307,33 @@ class _AttendanceHintChip extends StatelessWidget {
             : 'لا يوجد سجل حضور هذا الشهر');
 
     return Material(
-      color: color.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(12),
+      color: soft,
+      borderRadius: BorderRadius.circular(AppRadius.control),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
         onTap: hasAbsences
             ? () => _showAbsenceDatesSheet(context, studentName, absentDates)
             : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              Icon(icon, size: 18, color: color),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  text,
-                  style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w700, color: color),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.md, vertical: AppSpace.sm),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: ink),
+                const SizedBox(width: AppSpace.md),
+                Expanded(
+                  child: Text(
+                    text,
+                    style: AppType.body
+                        .copyWith(fontWeight: FontWeight.w700, color: ink),
+                  ),
                 ),
-              ),
-              if (hasAbsences)
-                Icon(Icons.chevron_left_rounded,
-                    size: 18, color: color.withValues(alpha: 0.7)),
-            ],
+                if (hasAbsences)
+                  Icon(Icons.chevron_left_rounded, size: 20, color: ink),
+              ],
+            ),
           ),
         ),
       ),
@@ -1317,61 +1345,72 @@ void _showAbsenceDatesSheet(
     BuildContext context, String studentName, List<DateTime> absentDates) {
   showModalBottomSheet(
     context: context,
-    shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-    builder: (_) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 8),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-                color: Colors.grey.shade400,
-                borderRadius: BorderRadius.circular(2)),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: Row(
-              children: [
-                Icon(Icons.event_busy_rounded, color: Colors.orange.shade700),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    studentName.isEmpty
-                        ? 'أيام الغياب هذا الشهر'
-                        : 'أيام غياب $studentName هذا الشهر',
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700),
-                  ),
+    backgroundColor: Colors.transparent,
+    builder: (sheetCtx) {
+      final t = sheetCtx.tokens;
+      return Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: t.surface,
+          borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(AppRadius.board)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: AppSpace.sm),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: t.line, borderRadius: BorderRadius.circular(2)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpace.lg, AppSpace.md, AppSpace.lg, AppSpace.sm),
+                child: Row(
+                  children: [
+                    Icon(Icons.event_busy_rounded, color: t.caution),
+                    const SizedBox(width: AppSpace.sm),
+                    Expanded(
+                      child: Text(
+                        studentName.isEmpty
+                            ? 'أيام الغياب هذا الشهر'
+                            : 'أيام غياب $studentName هذا الشهر',
+                        style: AppType.title.copyWith(color: t.ink),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              Divider(height: 1, color: t.line),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: AppSpace.xs),
+                  itemCount: absentDates.length,
+                  separatorBuilder: (_, __) =>
+                      Divider(height: 1, color: t.line),
+                  itemBuilder: (_, i) {
+                    final d = absentDates[i];
+                    return ListTile(
+                      dense: true,
+                      leading:
+                          Icon(Icons.close_rounded, color: t.danger, size: 18),
+                      title: Text(FormatHelper.formatDate(d),
+                          style: AppType.body.copyWith(color: t.ink)),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: AppSpace.sm),
+            ],
           ),
-          const Divider(height: 1),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 320),
-            child: ListView.separated(
-              shrinkWrap: true,
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              itemCount: absentDates.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (_, i) {
-                final d = absentDates[i];
-                return ListTile(
-                  dense: true,
-                  leading: Icon(Icons.close_rounded,
-                      color: Colors.orange.shade700, size: 18),
-                  title: Text(FormatHelper.formatDate(d)),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    ),
+        ),
+      );
+    },
   );
 }
 
@@ -1507,201 +1546,201 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    // ألوان الحالات فوق السبورة: درجات الوضع الداكن لأن خلفيتها غامقة دايمًا.
+    final on = AppTokens.dark;
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-    final surface = Theme.of(context).colorScheme.surface;
-    final primary = Theme.of(context).colorScheme.primary;
+    final remaining = _remainingDebt();
+    final paidUp = remaining != null && remaining <= 0.01;
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottom),
       child: Container(
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          color: t.surface,
+          borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(AppRadius.board)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Handle
-            Center(
-              child: Container(
-                margin: const EdgeInsets.only(top: 10, bottom: 6),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 6, 12, 14),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child:
-                        Icon(Icons.payments_rounded, color: primary, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('تسجيل دفعة',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 16)),
-                        if (widget.studentName.isNotEmpty)
-                          Text(widget.studentName,
-                              style: TextStyle(
-                                  color: Colors.grey.shade500, fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-
-            // تنبيه معلوماتي بحالة المديونية — قبل ما المدرس يكتب أي
-            // مبلغ، يعرف على طول لو الطالب دافع بالفعل أو لسه عليه فلوس.
-            Builder(builder: (context) {
-              final remaining = _remainingDebt();
-              if (remaining == null) return const SizedBox.shrink();
-              final paidUp = remaining <= 0.01;
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: (paidUp ? Colors.green : Colors.orange)
-                        .withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: (paidUp ? Colors.green : Colors.orange)
-                            .withValues(alpha: 0.3)),
-                  ),
-                  child: Row(children: [
-                    Icon(
-                        paidUp
-                            ? Icons.check_circle_rounded
-                            : Icons.info_rounded,
-                        size: 18,
-                        color: paidUp ? Colors.green : Colors.orange),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        paidUp
-                            ? 'الطالب مفيهوش أي مديونية حاليًا'
-                            : 'متبقي عليه: ${FormatHelper.formatCurrency(remaining)}',
-                        style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: paidUp
-                                ? Colors.green.shade800
-                                : Colors.orange.shade800),
-                      ),
-                    ),
-                  ]),
-                ),
-              );
-            }),
-
-            // Form
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // ملخص الحضور هذا الشهر
-                  Obx(() {
-                    final summary = widget.attendanceController
-                        .getStudentMonthAttendance(
-                            widget.studentId, widget.initialDate);
-                    return _AttendanceHintChip(
-                      presentCount: summary.presentCount,
-                      absentDates: summary.absentDates,
-                      studentName: widget.studentName,
-                    );
-                  }),
-                  const SizedBox(height: 12),
-
-                  // Date picker
-                  GestureDetector(
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _date.isAfter(DateTime.now())
-                            ? DateTime.now()
-                            : _date,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime.now().add(const Duration(days: 30)),
-                        helpText: 'اختر التاريخ',
-                        confirmText: 'تأكيد',
-                      );
-                      if (picked != null) setState(() => _date = picked);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 13),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(children: [
-                        Icon(Icons.calendar_today_rounded,
-                            size: 18, color: primary),
-                        const SizedBox(width: 10),
-                        Text(
-                          FormatHelper.formatDate(_date),
-                          style: const TextStyle(fontSize: 14),
+        // SingleChildScrollView: لوحة المفاتيح والشاشات الصغيرة.
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // رأس السبورة: العنوان واسم الطالب والمتبقي عليه
+              Container(
+                color: t.board,
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                    AppSpace.lg, AppSpace.sm, AppSpace.xs, AppSpace.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: t.boardLine,
+                          borderRadius: BorderRadius.circular(2),
                         ),
-                        const Spacer(),
-                        Icon(Icons.edit_calendar_rounded,
-                            size: 16, color: Colors.grey.shade400),
-                      ]),
+                      ),
                     ),
-                  ),
+                    Row(children: [
+                      Expanded(
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: AppSpace.sm),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('تسجيل دفعة',
+                                  style: AppType.title.copyWith(
+                                      fontSize: 18, color: t.boardInk)),
+                              if (widget.studentName.isNotEmpty)
+                                Text(widget.studentName,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppType.body
+                                        .copyWith(color: t.boardInkSoft)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                        color: t.boardInk,
+                        tooltip: 'إغلاق',
+                        constraints:
+                            const BoxConstraints(minWidth: 44, minHeight: 44),
+                      ),
+                    ]),
+                    // حالة المديونية — قبل ما المدرس يكتب أي مبلغ، يعرف على
+                    // طول لو الطالب دافع بالفعل أو لسه عليه فلوس.
+                    if (remaining != null)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(
+                            end: AppSpace.md, top: AppSpace.xs),
+                        child: paidUp
+                            ? Row(children: [
+                                Icon(Icons.check_circle_rounded,
+                                    size: 20, color: on.positive),
+                                const SizedBox(width: AppSpace.sm),
+                                Expanded(
+                                  child: Text(
+                                      'الطالب مفيهوش أي مديونية حاليًا',
+                                      style: AppType.body
+                                          .copyWith(color: on.positive)),
+                                ),
+                              ])
+                            : Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: AppSpace.sm,
+                                children: [
+                                  Text('متبقي عليه',
+                                      style: AppType.caption
+                                          .copyWith(color: t.boardInkSoft)),
+                                  Text(
+                                      FormatHelper.formatCurrency(remaining),
+                                      style: AppType.figure
+                                          .copyWith(color: on.danger)),
+                                ],
+                              ),
+                      ),
+                  ],
+                ),
+              ),
 
-                  const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.all(AppSpace.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ملخص الحضور هذا الشهر
+                    Obx(() {
+                      final summary = widget.attendanceController
+                          .getStudentMonthAttendance(
+                              widget.studentId, widget.initialDate);
+                      return _AttendanceHintChip(
+                        presentCount: summary.presentCount,
+                        absentDates: summary.absentDates,
+                        studentName: widget.studentName,
+                      );
+                    }),
+                    const SizedBox(height: AppSpace.md),
 
-                  // Amount
-                  CustomTextField(
-                    controller: _amountCtrl,
-                    label: 'المبلغ *',
-                    keyboardType: TextInputType.number,
-                  ),
+                    // التاريخ
+                    Material(
+                      color: t.surface,
+                      clipBehavior: Clip.antiAlias,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.control),
+                        side: BorderSide(color: t.line),
+                      ),
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _date.isAfter(DateTime.now())
+                                ? DateTime.now()
+                                : _date,
+                            firstDate: DateTime(2020),
+                            lastDate:
+                                DateTime.now().add(const Duration(days: 30)),
+                            helpText: 'اختر التاريخ',
+                            confirmText: 'تأكيد',
+                          );
+                          if (picked != null) setState(() => _date = picked);
+                        },
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 48),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpace.md),
+                            child: Row(children: [
+                              Icon(Icons.calendar_today_rounded,
+                                  size: 20, color: t.brand),
+                              const SizedBox(width: AppSpace.md),
+                              Text(FormatHelper.formatDate(_date),
+                                  style:
+                                      AppType.body.copyWith(color: t.ink)),
+                              const Spacer(),
+                              Icon(Icons.edit_calendar_rounded,
+                                  size: 20, color: t.inkFaint),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ),
 
-                  const SizedBox(height: 12),
+                    const SizedBox(height: AppSpace.md),
 
-                  // Note
-                  CustomTextField(
-                    controller: _noteCtrl,
-                    label: 'ملاحظات (اختياري)',
-                    maxLines: 2,
-                  ),
+                    // المبلغ
+                    CustomTextField(
+                      controller: _amountCtrl,
+                      label: 'المبلغ *',
+                      keyboardType: TextInputType.number,
+                    ),
 
-                  const SizedBox(height: 20),
+                    const SizedBox(height: AppSpace.md),
 
-                  // Save button
-                  SizedBox(
-                    height: 52,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primary,
-                        foregroundColor: Colors.white,
+                    // ملاحظات
+                    CustomTextField(
+                      controller: _noteCtrl,
+                      label: 'ملاحظات (اختياري)',
+                      maxLines: 2,
+                    ),
+
+                    const SizedBox(height: AppSpace.lg),
+
+                    // زرار الحفظ
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.control)),
                       ),
                       onPressed: _saving ? null : _save,
                       icon: _saving
@@ -1712,14 +1751,13 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
                                   strokeWidth: 2, color: Colors.white))
                           : const Icon(Icons.check_rounded),
                       label: Text(_saving ? 'جاري الحفظ...' : 'تسجيل الدفعة',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 15)),
+                          style: AppType.label.copyWith(color: Colors.white)),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
