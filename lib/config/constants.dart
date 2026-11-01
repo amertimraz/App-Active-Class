@@ -264,6 +264,7 @@ const String ROUTE_HOME = '/';
 const String ROUTE_GROUPS = '/groups';
 const String ROUTE_STUDENTS = '/students';
 const String ROUTE_ATTENDANCE = '/attendance';
+const String ROUTE_RECITATION = '/recitation';
 const String ROUTE_PAYMENTS = '/payments';
 const String ROUTE_QR_SCANNER_ATTENDANCE = '/qr_scanner_attendance';
 const String ROUTE_QR_SCANNER_PAYMENT = '/qr_scanner_payment';

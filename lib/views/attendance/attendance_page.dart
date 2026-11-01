@@ -33,6 +33,8 @@ import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/archive_history.dart';
 import 'package:active_class/utils/recitation.dart';
+import 'package:active_class/utils/recitation_session.dart';
+import 'package:active_class/services/database_service.dart';
 import 'package:active_class/widgets/archive_event_tile.dart';
 import 'package:intl/intl.dart';
 
@@ -114,6 +116,12 @@ class _AttendancePageState extends State<AttendancePage>
           ],
         ),
         actions: [
+          if (Get.find<SettingsController>().showRecitation.value)
+            IconButton(
+              icon: const Icon(Icons.record_voice_over_rounded),
+              tooltip: 'قائمة التسميع',
+              onPressed: () => Get.toNamed(ROUTE_RECITATION),
+            ),
           IconButton(
             icon: const Icon(Icons.qr_code_scanner_rounded),
             tooltip: 'تسجيل حضور بالـQR',
@@ -881,6 +889,19 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
     super.initState();
     _reportSent = widget.alreadySentReport;
     if (_payCtrl.payments.isEmpty) _payCtrl.loadPayments();
+    _loadGroupRecitationMax();
+  }
+
+  /// آخر درجة عظمى اتحفظت للمجموعة من قائمة التسميع (إعداد محلي اختياري).
+  int? _savedGroupMax;
+  Future<void> _loadGroupRecitationMax() async {
+    final id = widget.group.id;
+    if (id == null) return;
+    try {
+      final v = await DatabaseService().getSetting(recitationGroupMaxKey(id));
+      final n = int.tryParse(v ?? '');
+      if (n != null && mounted) setState(() => _savedGroupMax = n);
+    } catch (_) {}
   }
 
   @override
@@ -921,7 +942,15 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       final showHomework = cfg.showHomework.value;
       final showRecitation = cfg.showRecitation.value;
       final showInteraction = cfg.showInteraction.value;
-      final recitationMaxNow = cfg.recitationMax.value;
+      // نفس مقياس درجات المجموعة اللي في قائمة التسميع (مش القيمة العامة بس).
+      final groupIds = groupStudents.map((s) => s.id).toSet();
+      final scaleRec = dayRecords
+          .where((a) => groupIds.contains(a.studentId) && recitationGradeOf(a) != null)
+          .firstOrNull;
+      final recitationMaxNow = resolveGroupRecitationMax(
+          recordMax: scaleRec == null ? null : recitationMaxOf(scaleRec),
+          savedMax: _savedGroupMax,
+          settingsMax: cfg.recitationMax.value);
       final hasSecondTab = showHomework || showRecitation;
       // spec 040 — تفاعل الطالب لنفس اليوم.
       final Map<int, (int, int)?> recitationMap = {
@@ -1436,7 +1465,14 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                               recitationMap: recitationMap,
                               recitationMaxNow: recitationMaxNow,
                               onRecitation: (id, v) => controller
-                                  .setRecitation(id, selectedDay, v),
+                                  .setRecitation(id, selectedDay, v,
+                                      groupMax: recitationMaxNow),
+                              onOpenRecitationList: () => Get.toNamed(
+                                  ROUTE_RECITATION,
+                                  arguments: {
+                                    'groupId': group.id,
+                                    'day': selectedDay,
+                                  }),
                             ),
                         ]),
                       ),
@@ -2114,6 +2150,7 @@ class _HomeworkTabBody extends StatelessWidget {
   final Map<int, (int, int)?> recitationMap;
   final int recitationMaxNow;
   final void Function(int studentId, int? value) onRecitation;
+  final VoidCallback onOpenRecitationList;
 
   const _HomeworkTabBody({
     required this.students,
@@ -2125,6 +2162,7 @@ class _HomeworkTabBody extends StatelessWidget {
     required this.recitationMap,
     required this.recitationMaxNow,
     required this.onRecitation,
+    required this.onOpenRecitationList,
   });
 
   @override
@@ -2198,6 +2236,25 @@ class _HomeworkTabBody extends StatelessWidget {
               ]),
             ),
           ],
+          if (showRecitation)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpace.md, AppSpace.sm, AppSpace.md, 0),
+              child: Row(children: [
+                Expanded(
+                  child: Text('التسميع من $recitationMaxNow',
+                      style: AppType.label.copyWith(color: t.ink)),
+                ),
+                TextButton.icon(
+                  onPressed: onOpenRecitationList,
+                  icon: const Icon(Icons.record_voice_over_rounded, size: 18),
+                  label: const Text('قائمة التسميع'),
+                  style: TextButton.styleFrom(
+                      foregroundColor: t.brand,
+                      minimumSize: const Size(48, 44)),
+                ),
+              ]),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(
                 AppSpace.sm, AppSpace.sm, AppSpace.sm, AppSpace.md),

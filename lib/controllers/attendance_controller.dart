@@ -319,10 +319,14 @@ class AttendanceController extends GetxController {
   /// حضور يوم معيّن. [value] == null → مسح. بيتجاهل بهدوء لو السجل غير
   /// موجود أو الحالة غير مؤهَّلة (غائب/بلا حضور) أو القيمة خارج النطاق.
   /// الدرجة العظمى وقت التسجيل بتتحفظ مع السجل.
-  Future<void> setRecitation(int studentId, DateTime day, int? value) async {
-    final max = currentRecitationMax(Get.isRegistered<SettingsController>()
-        ? Get.find<SettingsController>().recitationMax.value
-        : null);
+  Future<void> setRecitation(int studentId, DateTime day, int? value,
+      {int? groupMax}) async {
+    // [groupMax]: درجة عظمى مخصّصة للمجموعة (شاشة قائمة التسميع)؛ الافتراضي من الإعدادات.
+    final max = groupMax != null
+        ? currentRecitationMax(groupMax)
+        : currentRecitationMax(Get.isRegistered<SettingsController>()
+            ? Get.find<SettingsController>().recitationMax.value
+            : null);
     if (value != null && normalizeRecitation(value, max: max) == null) return;
     final dayStart = DateTime(day.year, day.month, day.day);
     final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
@@ -340,6 +344,32 @@ class AttendanceController extends GetxController {
     await _dbService.updateAttendance(updated);
     _replaceLocal(updated);
     _applyFilter();
+  }
+
+  /// يحفظ درجات تسميع مجموعة كاملة ليوم معيّن بدرجة عظمى واحدة للمجموعة
+  /// (شاشة قائمة التسميع). [grades]: studentId → درجة (null = مسح). بيرجّع
+  /// عدد الطلاب اللي اتحفظ لهم فعلاً (الغائب/بلا حضور أو درجة خارج النطاق
+  /// بيتخطّى بهدوء). كل تعديل بيعدّي على updateAttendance فيدخل طابور المزامنة.
+  Future<int> saveRecitationGrades(
+      DateTime day, Map<int, int?> grades, int groupMax) async {
+    var saved = 0;
+    for (final e in grades.entries) {
+      final before = _recitationOf(e.key, day);
+      await setRecitation(e.key, day, e.value, groupMax: groupMax);
+      final after = _recitationOf(e.key, day);
+      if (before != after) saved++;
+    }
+    return saved;
+  }
+
+  (int?, int?) _recitationOf(int studentId, DateTime day) {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
+    final a = attendance.firstWhereOrNull((a) =>
+        a.studentId == studentId &&
+        !a.date.isBefore(dayStart) &&
+        !a.date.isAfter(dayEnd));
+    return (a?.recitation, a?.recitationMax);
   }
 
   /// يطبّق مستوى تفاعل واحد على كل الطلاب المؤهَّلين (حاضر/متأخر) في

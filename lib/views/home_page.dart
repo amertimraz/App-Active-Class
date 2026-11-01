@@ -150,6 +150,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             ? Get.toNamed(ROUTE_REPORTS)
             : showLockedPermissionHint(),
       ),
+      if (Get.find<SettingsController>().showRecitation.value)
+        _DashboardMenuItem(
+          icon: Icons.record_voice_over_rounded,
+          label: 'التسميع',
+          onTap: () => Get.toNamed(ROUTE_RECITATION),
+        ),
       _DashboardMenuItem(
         icon: Icons.qr_code_2_rounded,
         label: 'مكتبة QR',

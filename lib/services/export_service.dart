@@ -23,6 +23,7 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/debtors_report.dart';
 import 'package:active_class/utils/recitation.dart';
+import 'package:active_class/utils/recitation_session.dart';
 import 'package:active_class/utils/performance.dart';
 import 'package:active_class/utils/pdf_text.dart';
 import 'package:active_class/controllers/settings_controller.dart';
@@ -738,6 +739,94 @@ class ExportService {
   // ─────────────────────────────────────────────────────────────────
   //  مشاركة ملف PDF
   // ─────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────
+  //  تقرير التسميع لليوم (شاشة قائمة التسميع): صفحة لكل مجموعة
+  // ─────────────────────────────────────────────────────────────────
+  Future<ExportResult> exportRecitationPDF({
+    required DateTime date,
+    required List<RecitationReportGroup> groups,
+  }) async {
+    try {
+      await _loadFonts();
+      final doc = pw.Document();
+      final dateLabel = DateFormat('EEEE d MMMM yyyy', 'ar').format(date);
+
+      for (final g in groups) {
+        final avg = g.averageFraction;
+        doc.addPage(pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          textDirection: pw.TextDirection.rtl,
+          margin: const pw.EdgeInsets.all(24),
+          header: (_) => _pageHeader('تقرير التسميع — ${g.groupName} — $dateLabel'),
+          footer: (ctx) => _pageFooter(ctx),
+          build: (ctx) => [
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceEvenly,
+              children: [
+                _statBox('الدرجة العظمى', '${g.max}', _primary),
+                _statBox('سمّع', '${g.graded.length} / ${g.rows.length}', _success),
+                _statBox(
+                    'المتوسط',
+                    avg == null ? '—' : (avg * g.max).toStringAsFixed(1),
+                    _accent),
+                _statBox('تراجع', '${g.lowCount}', _error),
+                _statBox('نجوم', '${g.starCount}', _warning),
+              ],
+            ),
+            pw.SizedBox(height: 12),
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              columnWidths: {
+                0: const pw.FlexColumnWidth(4),
+                1: const pw.FlexColumnWidth(2),
+                2: const pw.FlexColumnWidth(2),
+                3: const pw.FlexColumnWidth(2),
+              },
+              children: [
+                pw.TableRow(children: [
+                  _th('الطالب'),
+                  _th('الحضور'),
+                  _th('الدرجة'),
+                  _th('التقييم'),
+                ]),
+                for (var i = 0; i < g.rows.length; i++)
+                  _recitationPdfRow(g, g.rows[i], i.isEven),
+              ],
+            ),
+          ],
+        ));
+      }
+
+      return _savePdf(doc, 'recitation_${DateFormat('yyyyMMdd').format(date)}');
+    } catch (e) {
+      return ExportResult.fail('فشل إنشاء PDF: $e');
+    }
+  }
+
+  pw.TableRow _recitationPdfRow(
+      RecitationReportGroup g, RecitationReportRow r, bool even) {
+    final lvl = recitationLevelOf(r.grade, g.max);
+    final label = switch (lvl) {
+      RecitationLevel.star => 'نجمة تميّز',
+      RecitationLevel.low => 'تراجع مستوى',
+      RecitationLevel.ok => 'جيد',
+      RecitationLevel.none => '—',
+    };
+    final color = switch (lvl) {
+      RecitationLevel.star => _warning,
+      RecitationLevel.low => _error,
+      RecitationLevel.ok => _success,
+      RecitationLevel.none => _grey,
+    };
+    return pw.TableRow(children: [
+      _td(r.studentName, isEven: even),
+      _td(r.attendanceLabel, isEven: even),
+      _td(r.grade == null ? '—' : '${r.grade} / ${g.max}',
+          isEven: even, bold: r.grade != null),
+      _td(label, isEven: even, color: color, bold: lvl != RecitationLevel.none),
+    ]);
+  }
+
   Future<void> sharePDF(String path) async {
     try {
       await Share.shareXFiles(
