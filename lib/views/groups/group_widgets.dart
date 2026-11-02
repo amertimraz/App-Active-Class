@@ -7,7 +7,9 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/config/theme.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/widgets/clock_text.dart';
 
 class FormLabel extends StatelessWidget {
@@ -191,7 +193,8 @@ String _fmtScheduleRange(String rawRange) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Group card widget
+// Group card widget — لوحة مسطّحة بنفس لغة الرئيسية. لون المجموعة (اللي
+// المدرس اختاره) بيظهر في مربع الأيقونة بس؛ باقي الكارت بالتوكنز.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class GroupCard extends StatelessWidget {
@@ -227,258 +230,191 @@ class GroupCard extends StatelessWidget {
     }
   }
 
+  void _confirmDelete() {
+    final totalToDelete = studentCount + archivedCount;
+    Get.defaultDialog(
+      title: 'حذف المجموعة',
+      middleText: totalToDelete > 0
+          ? 'هل تريد حذف مجموعة "${group.name}"؟\n'
+              'تحذير: هيتحذف معاها $totalToDelete طالب'
+              '${archivedCount > 0 ? ' (منهم $archivedCount من الأرشيف)' : ''} '
+              'وكل سجلات حضورهم ودفعاتهم ودرجات امتحاناتهم '
+              'نهائياً — الإجراء ده لا يمكن التراجع عنه.'
+          : 'هل تريد حذف مجموعة "${group.name}"؟ '
+              'لا يمكن التراجع عن هذا الإجراء.',
+      textCancel: 'إلغاء',
+      textConfirm: 'حذف',
+      confirmTextColor: Colors.white,
+      buttonColor: Colors.red,
+      onConfirm: () async {
+        Get.back(); // أغلق الـ dialog
+        await Future.delayed(const Duration(milliseconds: 80));
+        onDelete();
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = group.color != null ? Color(group.color!) : Colors.indigo;
+    final t = context.tokens;
+    final color = group.color != null ? Color(group.color!) : t.brand;
     final slots = group.schedule != null && group.schedule!.isNotEmpty
         ? parseSlots(group.schedule!)
         : <Map<String, String>>[];
+    final hasPrice = group.price != null && group.price! > 0;
 
-    return GestureDetector(
-      onTap: () => Get.toNamed(ROUTE_GROUP_DETAILS, arguments: group),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF131D31).withValues(alpha: 0.94) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.06)
-                : color.withValues(alpha: 0.15),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: isDark ? 0.1 : 0.08),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            // ── Header ───────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
-              child: Row(
-                children: [
-                  // أيقونة المجموعة
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(_icon, color: color, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-
-                  // اسم + كود
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          group.name,
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w800),
-                        ),
-                        if (group.code != null && group.code!.isNotEmpty)
-                          Text(
-                            'الكود: ${group.code}',
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey.shade500),
-                          ),
-                      ],
-                    ),
-                  ),
-
-                  // عدد الطلاب badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: color.withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.person_rounded, size: 13, color: color),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$studentCount',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: color),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // قائمة الخيارات
-                  PopupMenuButton<String>(
-                    onSelected: (v) {
-                      if (v == 'edit') onEdit();
-                      if (v == 'delete') {
-                        final totalToDelete = studentCount + archivedCount;
-                        Get.defaultDialog(
-                          title: 'حذف المجموعة',
-                          middleText: totalToDelete > 0
-                              ? 'هل تريد حذف مجموعة "${group.name}"؟\n'
-                                  'تحذير: هيتحذف معاها $totalToDelete طالب'
-                                  '${archivedCount > 0 ? ' (منهم $archivedCount من الأرشيف)' : ''} '
-                                  'وكل سجلات حضورهم ودفعاتهم ودرجات امتحاناتهم '
-                                  'نهائياً — الإجراء ده لا يمكن التراجع عنه.'
-                              : 'هل تريد حذف مجموعة "${group.name}"؟ '
-                                  'لا يمكن التراجع عن هذا الإجراء.',
-                          textCancel: 'إلغاء',
-                          textConfirm: 'حذف',
-                          confirmTextColor: Colors.white,
-                          buttonColor: Colors.red,
-                          onConfirm: () async {
-                            Get.back(); // أغلق الـ dialog
-                            await Future.delayed(
-                                const Duration(milliseconds: 80));
-                            onDelete();
-                          },
-                        );
-                      }
-                    },
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: Row(children: [
-                          Icon(Icons.edit_rounded, size: 18),
-                          SizedBox(width: 8),
-                          Text('تعديل'),
-                        ]),
-                      ),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(children: [
-                          Icon(Icons.delete_rounded, size: 18, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text('حذف', style: TextStyle(color: Colors.red)),
-                        ]),
-                      ),
-                    ],
-                    child: const Icon(Icons.more_vert_rounded, size: 20),
-                  ),
-                ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.md),
+      child: AppPanel(
+        padding: EdgeInsets.zero,
+        onTap: () => Get.toNamed(ROUTE_GROUP_DETAILS, arguments: group),
+        child: Column(children: [
+          // ── الرأس: أيقونة + اسم/كود + عدد الطلاب + قائمة ──────────────
+          Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                AppSpace.md, AppSpace.md, AppSpace.xs, AppSpace.sm),
+            child: Row(children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
+                ),
+                child: Icon(_icon, color: color, size: 24),
               ),
-            ),
-
-            // ── Divider ──────────────────────────────────────────
-            Divider(
-              height: 1,
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : color.withValues(alpha: 0.1),
-            ),
-
-            // ── Footer: سعر + مواعيد ─────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // المواعيد
-                  Expanded(
-                    child: slots.isEmpty
-                        ? Text('لا توجد مواعيد',
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey.shade400))
-                        : ClockBuilder(
-                            builder: (_) => Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: slots.map((s) {
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: color.withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    '${s['day']} ${_fmtScheduleRange(s['time'] ?? '')}',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: color,
-                                        fontWeight: FontWeight.w600),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                  ),
-
-                  // السعر
-                  if (group.price != null && group.price! > 0) ...[
-                    const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
+              const SizedBox(width: AppSpace.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(group.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppType.title.copyWith(color: t.ink)),
+                    if ((group.code != null && group.code!.isNotEmpty) ||
+                        hasPrice)
+                      Wrap(
+                        spacing: AppSpace.sm,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          if (group.code != null && group.code!.isNotEmpty)
+                            Text('الكود: ${group.code}',
+                                style: AppType.caption
+                                    .copyWith(color: t.inkSoft)),
+                          if (hasPrice)
+                            Obx(() {
+                              final currency = Get.find<SettingsController>()
+                                  .currencyCode
+                                  .value;
+                              return Text(
+                                '${FormatHelper.formatCurrency(group.price)} $currency',
+                                style: AppType.caption.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: t.positive),
+                              );
+                            }),
+                        ],
                       ),
-                      child: Obx(() {
-                        final currency =
-                            Get.find<SettingsController>().currencyCode.value;
-                        return Text(
-                          '${FormatHelper.formatCurrency(group.price)} $currency',
-                          style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.green),
-                        );
-                      }),
-                    ),
                   ],
-                ],
+                ),
               ),
+              const SizedBox(width: AppSpace.sm),
+              Semantics(
+                label: '$studentCount طالب',
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpace.sm, vertical: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
+                    border: Border.all(color: t.line),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.person_rounded, size: 14, color: t.inkSoft),
+                    const SizedBox(width: 4),
+                    Text('$studentCount',
+                        style: AppType.label.copyWith(color: t.ink)),
+                  ]),
+                ),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'خيارات المجموعة',
+                onSelected: (v) {
+                  if (v == 'edit') onEdit();
+                  if (v == 'delete') _confirmDelete();
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: Row(children: [
+                      Icon(Icons.edit_rounded, size: 18),
+                      SizedBox(width: 8),
+                      Text('تعديل'),
+                    ]),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(children: [
+                      Icon(Icons.delete_rounded, size: 18, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('حذف', style: TextStyle(color: Colors.red)),
+                    ]),
+                  ),
+                ],
+                icon: Icon(Icons.more_vert_rounded, color: t.inkSoft),
+              ),
+            ]),
+          ),
+          Divider(height: 1, thickness: 1, color: t.line),
+
+          // ── التذييل: المواعيد + السعر ───────────────────────────────
+          Padding(
+            padding: const EdgeInsets.all(AppSpace.md),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: slots.isEmpty
+                      ? Text('لا توجد مواعيد',
+                          style: AppType.caption.copyWith(color: t.inkFaint))
+                      : ClockBuilder(
+                          builder: (_) => Wrap(
+                            spacing: AppSpace.sm,
+                            runSpacing: AppSpace.sm,
+                            children: slots.map((s) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpace.sm, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: t.page,
+                                  borderRadius:
+                                      BorderRadius.circular(AppRadius.chip),
+                                ),
+                                child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.schedule_rounded,
+                                          size: 13, color: t.inkSoft),
+                                      const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          '${s['day']} \u2066${_fmtScheduleRange(s['time'] ?? '')}\u2069',
+                                          style: AppType.caption.copyWith(
+                                              color: t.ink,
+                                              fontWeight: FontWeight.w700),
+                                        ),
+                                      ),
+                                    ]),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ]),
       ),
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Summary pill
-// ─────────────────────────────────────────────────────────────────────────────
-
-class SummaryPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  const SummaryPill({super.key, required this.icon, required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 5),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w700, color: color)),
-        ],
-      ),
-    );
-  }
-}
-

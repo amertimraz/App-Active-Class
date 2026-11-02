@@ -6,6 +6,8 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/config/theme.dart';
+import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -82,21 +84,44 @@ class _GroupsPageState extends State<GroupsPage> {
         .toList();
   }
 
+  void _onAdd(BuildContext context) {
+    final lic = Get.find<LicenseController>();
+    final err = lic.checkCanCreateGroup(controller.groups.length);
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(err, style: const TextStyle(fontFamily: 'Cairo')),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 4),
+        persist:
+            false, // Flutter ≥3.29: SnackBar فيه action مابيختفيش لوحده من غير ده
+        action: SnackBarAction(
+          label: 'ترقية',
+          textColor: Colors.white,
+          onPressed: () => Get.toNamed(ROUTE_PLANS),
+        ),
+      ));
+      return;
+    }
+    _showGroupFormDialog(context);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    // ألوان الأرقام فوق السبورة: درجات الوضع الداكن لأن خلفيتها غامقة دايمًا.
+    final on = AppTokens.dark;
     return Scaffold(
-      appBar: buildGradientAppBar(
-        title: 'المجموعات',
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_rounded),
-            tooltip: 'مجموعة جديدة',
-            onPressed: () => _showGroupFormDialog(context),
-          ),
-        ],
+      backgroundColor: t.page,
+      appBar: buildBoardAppBar(context, title: 'المجموعات'),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _onAdd(context),
+        backgroundColor: t.chalk,
+        foregroundColor: t.onChalk,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('مجموعة جديدة'),
       ),
-      body: buildSoftBackground(
-        context: context,
+      body: ColoredBox(
+        color: t.page,
         child: Obx(() {
           if (controller.isLoading.value) {
             return const Center(child: CircularProgressIndicator());
@@ -113,72 +138,83 @@ class _GroupsPageState extends State<GroupsPage> {
           }).toList();
 
           final totalStudents = studentController.students.length;
+          final emptyGroups = controller.groups
+              .where((g) => _studentCount(g.id) == 0)
+              .length;
 
           return Column(
             children: [
-              // ── شريط البحث + ملخص ──────────────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                child: Column(
-                  children: [
-                    // ملخص سريع
-                    Row(
-                      children: [
-                        SummaryPill(
-                          icon: Icons.groups_rounded,
-                          label: '${controller.groups.length} مجموعة',
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 10),
-                        SummaryPill(
-                          icon: Icons.person_rounded,
-                          label: '$totalStudents طالب',
-                          color: Colors.green,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    CustomSearchBar(
-                      controller: _searchController,
-                      hintText: 'ابحث بالاسم أو الكود...',
-                      onChanged: (_) => setState(() {}),
-                      onClear: () {
-                        _searchController.clear();
-                        setState(() {});
-                      },
-                    ),
-                  ],
+              // ── السبورة: أرقام سريعة ─────────────────────────────
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpace.lg, AppSpace.xs, AppSpace.lg, AppSpace.lg),
+                decoration: BoxDecoration(
+                  color: t.board,
+                  borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(AppRadius.board)),
                 ),
+                child: Row(children: [
+                  Expanded(
+                      child: BoardStat(
+                          label: 'مجموعة',
+                          value: '${controller.groups.length}',
+                          color: t.boardInk)),
+                  Expanded(
+                      child: BoardStat(
+                          label: 'طالب',
+                          value: '$totalStudents',
+                          color: on.positive)),
+                  Expanded(
+                      child: BoardStat(
+                          label: 'بدون طلاب',
+                          value: '$emptyGroups',
+                          color: emptyGroups > 0 ? t.chalk : t.boardInkSoft)),
+                ]),
               ),
 
-              const SizedBox(height: 8),
+              // ── البحث ────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpace.lg, AppSpace.md, AppSpace.lg, AppSpace.xs),
+                child: CustomSearchBar(
+                  controller: _searchController,
+                  hintText: 'ابحث بالاسم أو الكود...',
+                  onChanged: (_) => setState(() {}),
+                  onClear: () {
+                    _searchController.clear();
+                    setState(() {});
+                  },
+                ),
+              ),
 
               // ── القائمة ─────────────────────────────────────────
               Expanded(
                 child: controller.groups.isEmpty
                     ? Padding(
-                        padding: const EdgeInsets.all(PADDING_LARGE),
-                        child: buildSoftPanel(
-                          context: context,
+                        padding: const EdgeInsets.all(AppSpace.lg),
+                        child: AppPanel(
                           child: EmptyState(
                             icon: Icons.group_off,
                             title: 'لا توجد مجموعات',
                             subtitle: 'ابدأ بإضافة مجموعة جديدة',
                             actionLabel: 'إضافة مجموعة',
-                            onActionPressed: () =>
-                                _showGroupFormDialog(context),
+                            onActionPressed: () => _onAdd(context),
                           ),
                         ),
                       )
                     : items.isEmpty
                         ? Center(
                             child: Text('لا نتائج لـ "$query"',
-                                style: TextStyle(color: Colors.grey.shade500)),
+                                style: AppType.body
+                                    .copyWith(color: t.inkSoft)),
                           )
                         : ListView.builder(
-                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+                            padding: const EdgeInsets.fromLTRB(
+                                AppSpace.lg, AppSpace.sm, AppSpace.lg, 100),
                             itemCount: items.length,
                             itemBuilder: (_, i) => GroupCard(
+                              key: ValueKey('group-${items[i].id}'),
                               group: items[i],
                               studentCount: _studentCount(items[i].id),
                               archivedCount: _archivedStudentCount(items[i].id),
@@ -190,8 +226,9 @@ class _GroupsPageState extends State<GroupsPage> {
                                     TeamModeService().canDeleteStudentsNow)) {
                                   return;
                                 }
-                                if (items[i].id != null)
+                                if (items[i].id != null) {
                                   controller.deleteGroup(items[i].id!);
+                                }
                               },
                               parseSlots: _parseScheduleSlots,
                             ),
@@ -200,30 +237,6 @@ class _GroupsPageState extends State<GroupsPage> {
             ],
           );
         }),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          final lic = Get.find<LicenseController>();
-          final err = lic.checkCanCreateGroup(controller.groups.length);
-          if (err != null) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(err, style: const TextStyle(fontFamily: 'Cairo')),
-              backgroundColor: Colors.red.shade700,
-              duration: const Duration(seconds: 4),
-              persist:
-                  false, // Flutter ≥3.29: SnackBar فيه action مابيختفيش لوحده من غير ده
-              action: SnackBarAction(
-                label: 'ترقية',
-                textColor: Colors.white,
-                onPressed: () => Get.toNamed(ROUTE_PLANS),
-              ),
-            ));
-            return;
-          }
-          _showGroupFormDialog(context);
-        },
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('مجموعة جديدة'),
       ),
     );
   }
