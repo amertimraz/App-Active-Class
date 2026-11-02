@@ -16,6 +16,7 @@ import 'package:active_class/models/student_model.dart' show Student;
 import 'package:active_class/models/group_model.dart' show Group;
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/custom_dialogs.dart' as custom_dialogs;
+import 'package:active_class/views/help/help_widgets.dart';
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -77,6 +78,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
         context,
         title: 'المدفوعات',
         actions: [
+          const HelpButton(topicId: 'payments'),
           IconButton(
             tooltip: 'تحديث',
             icon: const Icon(Icons.refresh),

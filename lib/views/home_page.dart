@@ -32,6 +32,7 @@ import 'package:active_class/widgets/announcement_slot.dart';
 import 'package:active_class/widgets/announcement_popup.dart';
 import 'package:active_class/widgets/rate_prompt_dialog.dart';
 import 'package:active_class/services/rate_prompt_service.dart';
+import 'package:active_class/views/help/getting_started_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -168,6 +169,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         label: 'الحجوزات',
         onTap: () => Get.toNamed(ROUTE_BOOKINGS),
       ),
+      _DashboardMenuItem(
+        icon: Icons.help_outline_rounded,
+        label: 'المساعدة',
+        onTap: () => Get.toNamed(ROUTE_HELP),
+      ),
       // الإضافة دي بتتحكّم في الرابط والنشر على حساب المدرس نفسه، فالمساعد
       // ما يديرهاش.
       _DashboardMenuItem(
@@ -229,6 +235,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     physics: const AlwaysScrollableScrollPhysics(),
                     slivers: [
                       SliverToBoxAdapter(child: _buildStatsGrid()),
+                      if (!(TeamModeService().isEnabled.value &&
+                          !TeamModeService().isOwner.value))
+                        const SliverToBoxAdapter(child: GettingStartedCard()),
                       SliverToBoxAdapter(child: _buildMainMenuGrid()),
                       SliverToBoxAdapter(child: _buildRecentActivity()),
                       const SliverToBoxAdapter(
@@ -1148,6 +1157,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Divider(),
+                  ),
+                  _DrawerItem(
+                    icon: Icons.help_outline_rounded,
+                    title: 'المساعدة',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_HELP);
+                    },
                   ),
                   _DrawerItem(
                     icon: Icons.settings_rounded,

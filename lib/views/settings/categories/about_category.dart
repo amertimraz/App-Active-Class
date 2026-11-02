@@ -127,26 +127,7 @@ Future<void> _openPrivacyPolicy() async {
   }
 }
 
-Future<void> _openSupportWhatsApp() async {
-  const supportPhone = '201096066818';
-  final settings = Get.find<SettingsController>();
-  final teacherName = settings.teacherFullName.value.trim();
-
-  final message = StringBuffer()
-    ..writeln(
-        'مرحبًا، أنا مدرس بستخدم تطبيق Active Class وعايز مساعدة/دعم فني.');
-  if (teacherName.isNotEmpty) {
-    message.writeln('الاسم: $teacherName');
-  }
-
-  final uri = Uri.parse(
-      'https://wa.me/$supportPhone?text=${Uri.encodeComponent(message.toString())}');
-  try {
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  } catch (_) {
-    ToastHelper.error('تعذر فتح واتساب');
-  }
-}
+Future<void> _openSupportWhatsApp() => openSupportWhatsApp();
 
 // ─── Tile Builders ────────────────────────────────────────────────────────
 

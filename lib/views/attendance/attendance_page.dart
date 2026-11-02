@@ -33,6 +33,7 @@ import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/archive_history.dart';
 import 'package:active_class/utils/recitation.dart';
+import 'package:active_class/views/help/help_widgets.dart';
 import 'package:active_class/utils/recitation_session.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/widgets/archive_event_tile.dart';
@@ -116,6 +117,7 @@ class _AttendancePageState extends State<AttendancePage>
           ],
         ),
         actions: [
+          const HelpButton(topicId: 'attendance'),
           if (Get.find<SettingsController>().showRecitation.value)
             IconButton(
               icon: const Icon(Icons.record_voice_over_rounded),

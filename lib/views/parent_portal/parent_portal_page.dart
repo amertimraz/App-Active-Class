@@ -20,6 +20,7 @@ import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/parent_portal_helper.dart';
 import 'package:active_class/views/license/trial_banner.dart'
     show openRenewalWhatsApp;
+import 'package:active_class/views/help/help_widgets.dart';
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/app_panel.dart';
 
@@ -153,6 +154,7 @@ class _ParentPortalPageState extends State<ParentPortalPage> {
         context,
         title: 'بوابة أولياء الأمور',
         actions: [
+          const HelpButton(topicId: 'portal'),
           IconButton(
             tooltip: 'تحديث الرابط',
             icon: const Icon(Icons.refresh_rounded),

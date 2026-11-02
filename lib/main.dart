@@ -21,6 +21,8 @@ import 'package:active_class/views/booklets/booklet_details_page.dart';
 import 'package:active_class/controllers/booklet_controller.dart';
 import 'package:active_class/views/attendance/attendance_page.dart';
 import 'package:active_class/views/attendance/recitation_page.dart';
+import 'package:active_class/views/help/help_center_page.dart';
+import 'package:active_class/views/help/help_topic_page.dart';
 import 'package:active_class/views/payments/payments_page.dart';
 import 'package:active_class/views/qr_scanner/qr_scanner_attendance_page.dart';
 import 'package:active_class/views/qr_scanner/qr_scanner_payment_page.dart';
@@ -270,6 +272,8 @@ class MyApp extends StatelessWidget {
                 page: () => const StudentDetailsPage()),
             GetPage(name: ROUTE_ATTENDANCE, page: () => const AttendancePage()),
             GetPage(name: ROUTE_RECITATION, page: () => const RecitationPage()),
+            GetPage(name: ROUTE_HELP, page: () => const HelpCenterPage()),
+            GetPage(name: ROUTE_HELP_TOPIC, page: () => const HelpTopicPage()),
             GetPage(name: ROUTE_PAYMENTS, page: () => const PaymentsPage()),
             GetPage(
                 name: ROUTE_QR_SCANNER_ATTENDANCE,

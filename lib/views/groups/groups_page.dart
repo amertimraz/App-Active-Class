@@ -18,6 +18,7 @@ import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/views/groups/group_form/group_form_sheet.dart';
 import 'package:active_class/views/groups/group_widgets.dart';
+import 'package:active_class/views/help/help_widgets.dart';
 
 class GroupsPage extends StatefulWidget {
   const GroupsPage({super.key});
@@ -112,7 +113,9 @@ class _GroupsPageState extends State<GroupsPage> {
     final on = AppTokens.dark;
     return Scaffold(
       backgroundColor: t.page,
-      appBar: buildBoardAppBar(context, title: 'المجموعات'),
+      appBar: buildBoardAppBar(context, title: 'المجموعات', actions: const [
+        HelpButton(topicId: 'groups'),
+      ]),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _onAdd(context),
         backgroundColor: t.chalk,

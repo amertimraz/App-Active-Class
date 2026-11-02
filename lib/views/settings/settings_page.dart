@@ -31,6 +31,7 @@ import 'package:active_class/widgets/custom_dialogs.dart';
 import 'package:active_class/widgets/progress_dialog.dart';
 import 'package:active_class/utils/booklet_message.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/support_contact.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/backup_service.dart';
 import 'package:active_class/services/team_mode_service.dart';

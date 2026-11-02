@@ -27,6 +27,7 @@ import 'package:active_class/utils/recitation.dart';
 import 'package:active_class/utils/recitation_session.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/views/exams/certificates_sheet.dart';
+import 'package:active_class/views/help/help_widgets.dart';
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/app_panel.dart';
 
@@ -473,7 +474,9 @@ class _RecitationPageState extends State<RecitationPage> {
       },
       child: Scaffold(
         backgroundColor: t.page,
-        appBar: buildBoardAppBar(context, title: 'قائمة التسميع'),
+        appBar: buildBoardAppBar(context, title: 'قائمة التسميع', actions: const [
+          HelpButton(topicId: 'recitation'),
+        ]),
         bottomNavigationBar: _bottomBar(t),
         body: Obx(() {
           // اعتماد على القوائم الـRx عشان الصفحة تتحدّث لما الحضور يتحمّل.
