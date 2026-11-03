@@ -26,6 +26,7 @@ import 'package:active_class/views/groups/group_details_widgets.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
+import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/clock_text.dart';
 import 'package:active_class/utils/booklet_message.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -130,7 +131,12 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   /// "بالحصة" يبقى صحيح.
   Future<void> _loadPaidStudents() async {
     await attendanceController.loadAttendance();
-    final allPayments = await DatabaseService().getAllPayments();
+    final List<Payment> allPayments;
+    try {
+      allPayments = await DatabaseService().getAllPayments();
+    } catch (_) {
+      return; // القاعدة مش جاهزة — شارة "لم يدفع" بتفضل زي ما هي
+    }
     final g = group;
     final graceDays = Get.find<SettingsController>().paymentGraceDays.value;
     final fullyPaid = <int>{};
@@ -263,7 +269,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       if (times.length != 2) return txt;
       final from = parse(times[0].trim()), to = parse(times[1].trim());
       if (from == null || to == null) return txt;
-      return '$day ${fmt(from)}-${fmt(to)}';
+      // عزل اتجاه الأرقام (LTR) عشان نطاق الوقت ما ينعكسش جوه جملة عربي.
+      return '$day \u2066${fmt(from)}-${fmt(to)}\u2069';
     }).join('  •  ');
   }
 
@@ -280,18 +287,15 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = _groupColor;
+    final t = context.tokens;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0D1520) : const Color(0xFFF5F7FA),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: isDark ? Colors.white : Colors.black87,
+      backgroundColor: t.page,
+      appBar: buildBoardAppBar(
+        context,
         title: _isSelectionMode
-            ? Text('${_selectedStudents.length} محدد')
-            : Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        centerTitle: true,
+            ? '${_selectedStudents.length} محدد'
+            : 'تفاصيل المجموعة',
         leading: _isSelectionMode
             ? IconButton(
                 icon: const Icon(Icons.close_rounded),
@@ -335,7 +339,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                     content:
                         Text(err, style: const TextStyle(fontFamily: 'Cairo')),
-                    backgroundColor: Colors.red.shade700,
+                    backgroundColor: t.danger,
                     duration: const Duration(seconds: 4),
                     persist:
                         false, // Flutter ≥3.29: SnackBar فيه action مابيختفيش لوحده من غير ده
@@ -349,11 +353,11 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                 }
                 _showAddStudentSheet(context, g);
               },
-              backgroundColor: primary,
-              icon: const Icon(Icons.person_add_rounded, color: Colors.white),
-              label: const Text('إضافة طالب',
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w700)),
+              backgroundColor: t.chalk,
+              foregroundColor: t.onChalk,
+              icon: const Icon(Icons.person_add_rounded),
+              label: Text('إضافة طالب',
+                  style: AppType.label.copyWith(color: t.onChalk)),
             ),
       bottomNavigationBar:
           _isSelectionMode ? _buildSelectionBar(primary) : null,
@@ -427,22 +431,22 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             // ── Student list header ─────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
                 child: Row(
                   children: [
-                    Text('قائمة الطلاب',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w900)),
-                    const Spacer(),
+                    Expanded(
+                      child: Text('قائمة الطلاب',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.title.copyWith(color: t.ink)),
+                    ),
                     if (!_isSelectionMode && allStudents.isNotEmpty)
                       TextButton.icon(
                         onPressed: () =>
                             setState(() => _isSelectionMode = true),
                         icon: const Icon(Icons.checklist_rounded, size: 18),
-                        label: const Text('تحديد متعدد'),
-                        style: TextButton.styleFrom(foregroundColor: primary),
+                        label: const Text('تحديد متعدد', maxLines: 1),
+                        style: TextButton.styleFrom(foregroundColor: t.brand),
                       ),
                   ],
                 ),
@@ -546,140 +550,123 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       List<GDSessionDay> sessionDays,
       Color primary,
       bool isDark) {
+    final t = context.tokens;
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpace.lg, AppSpace.xs, AppSpace.lg, AppSpace.lg),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [primary, primary.withValues(alpha: 0.7)],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-              color: primary.withValues(alpha: 0.35),
-              blurRadius: 16,
-              offset: const Offset(0, 6)),
-        ],
+        color: t.board,
+        borderRadius: const BorderRadius.vertical(
+            bottom: Radius.circular(AppRadius.board)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // أيقونة + اسم
-            Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Icon(_groupIcon, color: Colors.white, size: 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // أيقونة (بلون المجموعة) + اسم + كود
+          Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: primary,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(g.name,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(g.code ?? '-',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600)),
+                child: Icon(_groupIcon, color: Colors.white, size: 26),
+              ),
+              const SizedBox(width: AppSpace.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(g.name,
+                        style: AppType.greeting.copyWith(color: t.boardInk),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 2),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(AppRadius.chip),
+                        border: Border.all(color: t.boardLine),
                       ),
-                    ],
-                  ),
+                      child: Text(g.code ?? '-',
+                          textDirection: ui.TextDirection.ltr,
+                          style:
+                              AppType.caption.copyWith(color: t.boardInkSoft)),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-
-            // مواعيد
-            if ((g.schedule?.isNotEmpty ?? false)) ...[
-              const SizedBox(height: 14),
-              ClockBuilder(
-                builder: (_) => Text(_formatSchedule(g.schedule),
-                    style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 12),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
               ),
             ],
+          ),
 
-            const SizedBox(height: 16),
-
-            // إحصائيات — رجعنا لصف واحد بـ4 خانات (بدل شبكة 2×2) بخط أصغر
-            // للقيمة تحديدًا، عشان الكارت ميكبرش طولاً. راجع _HeaderStat
-            // لتفاصيل حجم الخط الجديد.
-            // IntrinsicHeight + stretch — من غيرهم كل خانة كانت بتاخد ارتفاع
-            // مستقل حسب عدد أسطر تسميتها ("حصص مسجلة"/"إجمالي الرسوم" بتلف
-            // سطرين أحيانًا بعكس "اشتراك"/"الطلاب")، فكانت الخانات تبان مش
-            // متساوية الطول رغم إنها متساوية العرض.
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  HeaderStat(
-                      label: 'الطلاب',
-                      value: '${students.length}',
-                      icon: Icons.people_rounded),
-                  const SizedBox(width: 10),
-                  HeaderStat(
-                      // بدون اسم العملة هنا — الأيقونة والتسمية تحت الرقم
-                      // ("إجمالي الرسوم") بتوضّح إنه مبلغ مالي أصلاً، فمفيش
-                      // داعي نكرر "جنيه"/"ريال"/... جنب كل رقم في مساحة ضيقة.
-                      label: 'إجمالي الرسوم',
-                      value: _canSeeFinancials
-                          ? FormatHelper.formatCurrencyCompact(totalFees)
-                          : '🔒',
-                      icon: Icons.payments_rounded,
-                      locked: !_canSeeFinancials,
-                      onTap: students.isEmpty
-                          ? null
-                          : () =>
-                              _gdShowFeesBreakdownDialog(context, students, g)),
-                  const SizedBox(width: 10),
-                  HeaderStat(
-                      label: 'اشتراك',
-                      value: !_canSeeFinancials
-                          ? '🔒'
-                          : (g.price != null
-                              ? FormatHelper.formatCurrencyCompact(g.price!)
-                              : '-'),
-                      icon: Icons.monetization_on_rounded,
-                      locked: !_canSeeFinancials),
-                  const SizedBox(width: 10),
-                  HeaderStat(
-                      label: 'حصص مسجلة',
-                      value: '${sessionDays.length}',
-                      icon: Icons.event_available_rounded,
-                      onTap: sessionDays.isEmpty
-                          ? null
-                          : () => _gdShowSessionsDialog(
-                              context, g.name, sessionDays)),
-                ],
-              ),
+          // مواعيد
+          if ((g.schedule?.isNotEmpty ?? false)) ...[
+            const SizedBox(height: AppSpace.md),
+            ClockBuilder(
+              builder: (_) => Row(children: [
+                Icon(Icons.schedule_rounded, size: 16, color: t.chalk),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(_formatSchedule(g.schedule),
+                      style: AppType.caption.copyWith(color: t.boardInkSoft),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
+                ),
+              ]),
             ),
           ],
-        ),
+
+          const SizedBox(height: AppSpace.md),
+
+          // IntrinsicHeight + stretch — عشان الخانات تتساوى في الطول حتى لو
+          // تسمية بعضها لفّت سطرين.
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                HeaderStat(
+                    label: 'الطلاب',
+                    value: '${students.length}',
+                    icon: Icons.people_rounded),
+                const SizedBox(width: 8),
+                HeaderStat(
+                    // بدون اسم العملة — الأيقونة والتسمية بتوضّح إنه مبلغ.
+                    label: 'إجمالي الرسوم',
+                    value: _canSeeFinancials
+                        ? FormatHelper.formatCurrencyCompact(totalFees)
+                        : '🔒',
+                    icon: Icons.payments_rounded,
+                    locked: !_canSeeFinancials,
+                    onTap: students.isEmpty
+                        ? null
+                        : () =>
+                            _gdShowFeesBreakdownDialog(context, students, g)),
+                const SizedBox(width: 8),
+                HeaderStat(
+                    label: 'اشتراك',
+                    value: !_canSeeFinancials
+                        ? '🔒'
+                        : (g.price != null
+                            ? FormatHelper.formatCurrencyCompact(g.price!)
+                            : '-'),
+                    icon: Icons.monetization_on_rounded,
+                    locked: !_canSeeFinancials),
+                const SizedBox(width: 8),
+                HeaderStat(
+                    label: 'حصص مسجلة',
+                    value: '${sessionDays.length}',
+                    icon: Icons.event_available_rounded,
+                    onTap: sessionDays.isEmpty
+                        ? null
+                        : () => _gdShowSessionsDialog(
+                            context, g.name, sessionDays)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -688,7 +675,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   Widget _buildActionRow(
       BuildContext context, Group g, List<Student> students, Color primary) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
       child: Row(
         children: [
           // ── زر الواتساب (يتحكم في ظهوره من الإعدادات) ───────────
@@ -701,7 +688,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             return GroupActionChip(
               icon: Icons.chat_rounded,
               label: 'واتساب',
-              color: reached ? Colors.green : Colors.grey,
+              color:
+                  reached ? context.tokens.positive : context.tokens.inkFaint,
               onTap: reached
                   ? () => _startGroupWhatsappBatchSend(context, g.id!)
                   : () => ToastHelper.info('زر الواتساب يظهر يوم '
@@ -712,7 +700,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
           GroupActionChip(
             icon: Icons.picture_as_pdf_rounded,
             label: 'تصدير PDF',
-            color: const Color(0xFF8B5CF6),
+            color: context.tokens.brand,
             onTap: students.isEmpty
                 ? () => ToastHelper.info('لا يوجد طلاب في هذه المجموعة')
                 : () => _exportGroupRosterPdf(g, students),
@@ -721,14 +709,14 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
           GroupActionChip(
             icon: Icons.clear_all_rounded,
             label: 'تصفير الطلاب',
-            color: Colors.orange,
+            color: context.tokens.caution,
             onTap: () => _confirmResetStudents(g),
           ),
           const SizedBox(width: 8),
           GroupActionChip(
             icon: Icons.delete_rounded,
             label: 'حذف',
-            color: Colors.red,
+            color: context.tokens.danger,
             onTap: () => _confirmDeleteGroup(g),
           ),
         ],
@@ -738,34 +726,50 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
 
   // ─── Selection bottom bar ─────────────────────────────────────────────────
   Widget _buildSelectionBar(Color primary) {
+    final t = context.tokens;
+    final onInk =
+        Theme.of(context).brightness == Brightness.dark ? t.page : Colors.white;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))
-        ],
+        color: t.surface,
+        border: Border(top: BorderSide(color: t.line)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: Colors.green),
-              onPressed: () => _recordBulkAttendance(ATTENDANCE_PRESENT),
-              icon: const Icon(Icons.check_rounded),
-              label: const Text('حضور'),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    backgroundColor: t.positive,
+                    foregroundColor: onInk,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppRadius.control))),
+                onPressed: () => _recordBulkAttendance(ATTENDANCE_PRESENT),
+                icon: const Icon(Icons.check_rounded),
+                label: const Text('حضور'),
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () => _recordBulkAttendance(ATTENDANCE_ABSENT),
-              icon: const Icon(Icons.close_rounded),
-              label: const Text('غياب'),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    backgroundColor: t.danger,
+                    foregroundColor: onInk,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppRadius.control))),
+                onPressed: () => _recordBulkAttendance(ATTENDANCE_ABSENT),
+                icon: const Icon(Icons.close_rounded),
+                label: const Text('غياب'),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1835,8 +1839,7 @@ void _gdShowFeesBreakdownDialog(
                                                 studentName: s.name,
                                                 studentCode: s.code,
                                                 groupName: group.name,
-                                                monthLabel:
-                                                    '${data['month']}',
+                                                monthLabel: '${data['month']}',
                                                 teacherName: settings
                                                     .teacherFullName.value
                                                     .trim(),

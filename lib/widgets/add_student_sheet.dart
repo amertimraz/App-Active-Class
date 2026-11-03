@@ -533,9 +533,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                           : (_codeIsManual
                               ? Icons.qr_code_2_rounded
                               : Icons.qr_code_rounded),
-                      chipText: _nextCode.isEmpty
-                          ? 'اختر مجموعة لتوليد الكود'
-                          : 'الكود: $_nextCode',
+                      chipText: _nextCode.isEmpty ? '—' : _nextCode,
                       displayText: _nextCode.isEmpty
                           ? 'اختر مجموعة لتوليد الكود تلقائياً'
                           : 'الكود التلقائي: $_nextCode',

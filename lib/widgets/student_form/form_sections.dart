@@ -22,12 +22,19 @@ class FormSectionTitle extends StatelessWidget {
       child: Row(children: [
         Icon(icon, size: 16, color: t.inkSoft),
         const SizedBox(width: 6),
-        Text(text, style: AppType.label.copyWith(color: t.inkSoft)),
+        // flex كبير للنص: الخط الفاصل ياخد الباقي بس، والنص مايتقصش إلا لو ضاق المكان.
+        Flexible(
+          flex: 8,
+          child: Text(text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppType.label.copyWith(color: t.inkSoft)),
+        ),
         const SizedBox(width: AppSpace.sm),
         Expanded(child: Divider(height: 1, color: t.line)),
         if (trailing != null) ...[
           const SizedBox(width: AppSpace.sm),
-          Flexible(child: trailing!),
+          Flexible(flex: 8, child: trailing!),
         ],
       ]),
     );
@@ -83,7 +90,7 @@ class _NameWithCodeRowState extends State<NameWithCodeRow> {
         Expanded(child: widget.nameField),
         const SizedBox(width: 8),
         ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 120),
+          constraints: const BoxConstraints(maxWidth: 150),
           child: InkWell(
             borderRadius: BorderRadius.circular(AppRadius.control),
             onTap: () => setState(() => _open = !_open),
@@ -100,6 +107,7 @@ class _NameWithCodeRowState extends State<NameWithCodeRow> {
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(widget.chipText,
+                      textDirection: TextDirection.ltr,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppType.caption

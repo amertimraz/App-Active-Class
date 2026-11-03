@@ -18,10 +18,9 @@ class FormLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-    );
+    return Text(text,
+        style: AppType.caption.copyWith(
+            color: context.tokens.inkSoft, fontWeight: FontWeight.w700));
   }
 }
 
@@ -38,32 +37,35 @@ class PricingTypeChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).primaryColor;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.control),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        constraints: const BoxConstraints(minHeight: 44),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected
-              ? primary.withValues(alpha: 0.12)
-              : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100),
-          borderRadius: BorderRadius.circular(12),
+          color: selected ? t.brand.withValues(alpha: 0.12) : t.page,
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(
-            color: selected ? primary : Colors.grey.withValues(alpha: 0.25),
+            color: selected ? t.brand : t.line,
             width: selected ? 1.5 : 1,
           ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 13,
-            color: selected ? primary : null,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (selected) ...[
+            Icon(Icons.check_rounded, size: 16, color: t.brand),
+            const SizedBox(width: 4),
+          ],
+          Flexible(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    AppType.label.copyWith(color: selected ? t.brand : t.ink)),
           ),
-        ),
+        ]),
       ),
     );
   }
@@ -84,33 +86,30 @@ class AppearancePreviewTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.control),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.1)
-                : Colors.grey.withValues(alpha: 0.2),
-          ),
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          border: Border.all(color: t.line),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             child,
             const SizedBox(width: 8),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? Colors.white70 : Colors.grey.shade700)),
+            Flexible(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.body.copyWith(color: t.ink)),
+            ),
             const SizedBox(width: 4),
-            Icon(Icons.unfold_more_rounded,
-                size: 16, color: Colors.grey.shade400),
+            Icon(Icons.unfold_more_rounded, size: 16, color: t.inkFaint),
           ],
         ),
       ),
@@ -126,21 +125,21 @@ class PickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     return SafeArea(
       child: Container(
         margin: const EdgeInsets.all(12),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1A1F2E) : Colors.white,
-          borderRadius: BorderRadius.circular(24),
+          color: t.surface,
+          borderRadius: BorderRadius.circular(AppRadius.board),
+          border: Border.all(color: t.line),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+            Text(title, style: AppType.title.copyWith(color: t.ink)),
             const SizedBox(height: 16),
             child,
           ],
@@ -156,16 +155,17 @@ class ErrorText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Padding(
-      padding: const EdgeInsets.only(top: 4, right: 4),
+      padding: const EdgeInsets.only(top: 4, right: 4, left: 4),
       child: Row(children: [
-        const Icon(Icons.error_outline_rounded, size: 13, color: Colors.red),
+        Icon(Icons.error_outline_rounded, size: 14, color: t.danger),
         const SizedBox(width: 4),
-        Text(text,
-            style: const TextStyle(
-                color: Colors.red,
-                fontSize: 11,
-                fontWeight: FontWeight.w600)),
+        Expanded(
+          child: Text(text,
+              style: AppType.caption
+                  .copyWith(color: t.danger, fontWeight: FontWeight.w700)),
+        ),
       ]),
     );
   }
@@ -219,14 +219,22 @@ class GroupCard extends StatelessWidget {
 
   IconData get _icon {
     switch (group.icon) {
-      case 'class': return Icons.class_;
-      case 'book': return Icons.menu_book;
-      case 'math': return Icons.calculate;
-      case 'science': return Icons.science;
-      case 'language': return Icons.language;
-      case 'code': return Icons.code;
-      case 'star': return Icons.star;
-      default: return Icons.groups_rounded;
+      case 'class':
+        return Icons.class_;
+      case 'book':
+        return Icons.menu_book;
+      case 'math':
+        return Icons.calculate;
+      case 'science':
+        return Icons.science;
+      case 'language':
+        return Icons.language;
+      case 'code':
+        return Icons.code;
+      case 'star':
+        return Icons.star;
+      default:
+        return Icons.groups_rounded;
     }
   }
 
@@ -300,8 +308,8 @@ class GroupCard extends StatelessWidget {
                         children: [
                           if (group.code != null && group.code!.isNotEmpty)
                             Text('الكود: ${group.code}',
-                                style: AppType.caption
-                                    .copyWith(color: t.inkSoft)),
+                                style:
+                                    AppType.caption.copyWith(color: t.inkSoft)),
                           if (hasPrice)
                             Obx(() {
                               final currency = Get.find<SettingsController>()

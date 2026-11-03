@@ -435,7 +435,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                       icon: changed
                           ? Icons.qr_code_2_rounded
                           : Icons.qr_code_rounded,
-                      chipText: changed ? 'كود جديد: $_code' : 'الكود: $_code',
+                      chipText: _code,
                       displayText: changed
                           ? 'كود من كرت مطبوع: $_code'
                           : 'الكود: $_code',

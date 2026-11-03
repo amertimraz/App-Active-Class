@@ -5,12 +5,14 @@
 // وgroup_details_page.dart معًا بدل نسختين منفصلتين (spec 039،
 // راجع research.md #2).
 import 'package:flutter/material.dart';
+import 'package:active_class/config/theme.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/views/groups/group_form/group_schedule_conflict.dart';
 import 'package:active_class/views/groups/group_form/group_schedule_editor.dart';
 import 'package:active_class/views/groups/group_widgets.dart';
+import 'package:active_class/widgets/student_form/form_sections.dart';
 
 class GroupFormSheet extends StatefulWidget {
   final Group? group;
@@ -91,7 +93,8 @@ class GroupFormSheetState extends State<GroupFormSheet> {
     if (g?.icon != null && _iconOptions.containsKey(g!.icon)) {
       _selectedIcon = g.icon!;
     } else {
-      final usedIcons = widget.existingGroups.map((x) => x.icon).whereType<String>().toSet();
+      final usedIcons =
+          widget.existingGroups.map((x) => x.icon).whereType<String>().toSet();
       _selectedIcon = _iconOptions.keys.firstWhere(
         (k) => !usedIcons.contains(k),
         orElse: () => 'group',
@@ -101,7 +104,8 @@ class GroupFormSheetState extends State<GroupFormSheet> {
     if (g?.color != null) {
       _selectedColor = g!.color!;
     } else {
-      final usedColors = widget.existingGroups.map((x) => x.color).whereType<int>().toSet();
+      final usedColors =
+          widget.existingGroups.map((x) => x.color).whereType<int>().toSet();
       _selectedColor = _colorOptions.firstWhere(
         (c) => !usedColors.contains(c),
         orElse: () => _colorOptions.first,
@@ -119,10 +123,11 @@ class GroupFormSheetState extends State<GroupFormSheet> {
   }
 
   Future<void> _submit() async {
-    final name      = _nameCtrl.text.trim();
-    final code      = _codeCtrl.text.trim();
+    final name = _nameCtrl.text.trim();
+    final code = _codeCtrl.text.trim();
     final priceText = _priceCtrl.text.trim();
-    final slots     = _scheduleCtrl.text.split(',').where((e) => e.trim().isNotEmpty).length;
+    final slots =
+        _scheduleCtrl.text.split(',').where((e) => e.trim().isNotEmpty).length;
 
     // تحقق مبدئي من التكرار قبل ما نلجأ لقاعدة البيانات — بيدّي رسالة
     // أوضح فوراً بدل ما ننتظر خطأ UNIQUE constraint من الـDB.
@@ -135,31 +140,43 @@ class GroupFormSheetState extends State<GroupFormSheet> {
             (g.code?.trim().toLowerCase() ?? '') == code.toLowerCase());
 
     // تعارض مع ميعاد مجموعة أخرى (نفس اليوم ونطاق وقت متداخل)
-    final otherGroups = widget.existingGroups.where((g) => g.id != widget.group?.id).toList();
-    final conflictingGroup = slots >= 1 && !hasScheduleOverlap(_scheduleCtrl.text)
-        ? findConflictingGroup(_scheduleCtrl.text, otherGroups)
-        : null;
+    final otherGroups =
+        widget.existingGroups.where((g) => g.id != widget.group?.id).toList();
+    final conflictingGroup =
+        slots >= 1 && !hasScheduleOverlap(_scheduleCtrl.text)
+            ? findConflictingGroup(_scheduleCtrl.text, otherGroups)
+            : null;
 
     // Inline validation
     setState(() {
-      _nameError     = name.isEmpty      ? 'مطلوب'
-                     : nameTaken          ? 'الاسم ده مستخدم بالفعل'
-                     : null;
-      _codeError     = code.isEmpty      ? 'مطلوب'
-                     : codeTaken          ? 'الكود ده مستخدم بالفعل'
-                     : null;
-      _priceError    = priceText.isEmpty ? 'مطلوب'
-                     : double.tryParse(priceText) == null ? 'رقم غير صالح' : null;
-      _scheduleError = slots < 1         ? 'أضف موعد واحد على الأقل'
-                     : hasScheduleOverlap(_scheduleCtrl.text)
-                                           ? 'فيه موعدين متداخلين في نفس اليوم'
-                     : conflictingGroup != null
-                                           ? 'الميعاد ده متعارض مع ميعاد مجموعة "${conflictingGroup.name}"'
-                     : null;
+      _nameError = name.isEmpty
+          ? 'مطلوب'
+          : nameTaken
+              ? 'الاسم ده مستخدم بالفعل'
+              : null;
+      _codeError = code.isEmpty
+          ? 'مطلوب'
+          : codeTaken
+              ? 'الكود ده مستخدم بالفعل'
+              : null;
+      _priceError = priceText.isEmpty
+          ? 'مطلوب'
+          : double.tryParse(priceText) == null
+              ? 'رقم غير صالح'
+              : null;
+      _scheduleError = slots < 1
+          ? 'أضف موعد واحد على الأقل'
+          : hasScheduleOverlap(_scheduleCtrl.text)
+              ? 'فيه موعدين متداخلين في نفس اليوم'
+              : conflictingGroup != null
+                  ? 'الميعاد ده متعارض مع ميعاد مجموعة "${conflictingGroup.name}"'
+                  : null;
     });
 
-    if (_nameError != null || _codeError != null ||
-        _priceError != null || _scheduleError != null) return;
+    if (_nameError != null ||
+        _codeError != null ||
+        _priceError != null ||
+        _scheduleError != null) return;
 
     final price = double.parse(priceText);
     setState(() => _saving = true);
@@ -171,7 +188,9 @@ class GroupFormSheetState extends State<GroupFormSheet> {
         price: price,
         color: _selectedColor,
         icon: _selectedIcon,
-        schedule: _scheduleCtrl.text.trim().isEmpty ? null : _scheduleCtrl.text.trim(),
+        schedule: _scheduleCtrl.text.trim().isEmpty
+            ? null
+            : _scheduleCtrl.text.trim(),
         createdAt: widget.group?.createdAt,
         pricingType: _pricingType,
       ));
@@ -203,7 +222,8 @@ class GroupFormSheetState extends State<GroupFormSheet> {
             return GestureDetector(
               onTap: () => Navigator.of(context).pop(c),
               child: Container(
-                width: 44, height: 44,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: Color(c),
                   shape: BoxShape.circle,
@@ -211,9 +231,12 @@ class GroupFormSheetState extends State<GroupFormSheet> {
                       ? Border.all(color: Colors.white, width: 2.5)
                       : null,
                   boxShadow: selected
-                      ? [BoxShadow(
-                          color: Color(c).withValues(alpha: 0.5),
-                          blurRadius: 8, spreadRadius: 1)]
+                      ? [
+                          BoxShadow(
+                              color: Color(c).withValues(alpha: 0.5),
+                              blurRadius: 8,
+                              spreadRadius: 1)
+                        ]
                       : null,
                 ),
                 child: selected
@@ -245,19 +268,21 @@ class GroupFormSheetState extends State<GroupFormSheet> {
             return GestureDetector(
               onTap: () => Navigator.of(context).pop(e.key),
               child: Container(
-                width: 52, height: 52,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
                   color: selected
                       ? primary.withValues(alpha: 0.15)
-                      : Colors.grey.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(14),
+                      : context.tokens.page,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                   border: Border.all(
-                    color: selected ? primary : Colors.grey.withValues(alpha: 0.2),
+                    color: selected ? primary : context.tokens.line,
                     width: selected ? 1.5 : 1,
                   ),
                 ),
                 child: Icon(e.value,
-                    color: selected ? primary : Colors.grey.shade500, size: 24),
+                    color: selected ? primary : context.tokens.inkSoft,
+                    size: 24),
               ),
             );
           }).toList(),
@@ -269,83 +294,121 @@ class GroupFormSheetState extends State<GroupFormSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     final primary = Color(_selectedColor);
     final isEdit = widget.group != null;
 
     return Container(
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF131D31) : Colors.white,
-          borderRadius: BorderRadius.circular(28),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // ── Header مع أيقونة المجموعة ────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Row(
-                children: [
-                  // أيقونة المجموعة (preview)
-                  Container(
-                    width: 52, height: 52,
-                    decoration: BoxDecoration(
-                      color: primary.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(_iconOptions[_selectedIcon]!, color: primary, size: 26),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isEdit ? 'تعديل المجموعة' : 'مجموعة جديدة',
-                          style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w900),
-                        ),
-                        Text(
-                          isEdit ? widget.group!.name : 'أدخل بيانات المجموعة',
-                          style: TextStyle(
-                              fontSize: 12, color: Colors.grey.shade500),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.board),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // الهيدر: شريط سبورة، وأيقونة المجموعة بلونها (معاينة حيّة)
+          Container(
+            color: t.board,
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                AppSpace.lg, AppSpace.md, AppSpace.xs, AppSpace.md),
+            child: Row(children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: primary,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
+                ),
+                child: Icon(_iconOptions[_selectedIcon]!,
+                    color: Colors.white, size: 24),
               ),
-            ),
-
-            const Divider(height: 24),
-
-            // ── Form ─────────────────────────────────────────────
-            // Flexible+SingleChildScrollView بدل Expanded+ListView — كده
-            // القسم ده بياخد بس المساحة اللي محتاجها فورم قصير، ويبقى
-            // قابل للتمرير بس لو المحتوى فعلاً أطول من المساحة المتاحة.
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              const SizedBox(width: AppSpace.md),
+              Expanded(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(isEdit ? 'تعديل المجموعة' : 'مجموعة جديدة',
+                        style: AppType.title.copyWith(color: t.boardInk)),
+                    Text(
+                      isEdit ? widget.group!.name : 'أدخل بيانات المجموعة',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.caption.copyWith(color: t.boardInkSoft),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'إغلاق',
+                onPressed: () => Navigator.of(context).pop(),
+                icon: Icon(Icons.close_rounded, color: t.boardInk),
+              ),
+            ]),
+          ),
+
+          // Flexible+SingleChildScrollView: الشيت ياخد حجم محتواه، ويتمرّر
+          // بس لو المحتوى أطول من المساحة المتاحة.
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpace.lg, AppSpace.md, AppSpace.lg, AppSpace.lg),
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // اسم المجموعة
-                  FormLabel('اسم المجموعة *'),
-                  const SizedBox(height: 6),
+                  const FormSectionTitle('الأساسي', icon: Icons.badge_rounded),
                   CustomTextField(
+                    dense: true,
                     controller: _nameCtrl,
-                    label: 'مثال: الرابعة الابتدائي أ',
+                    label: 'اسم المجموعة *',
                   ),
                   if (_nameError != null) ErrorText(_nameError!),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+
+                  // بادئة الكود والسعر في صف
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CustomTextField(
+                              dense: true,
+                              controller: _codeCtrl,
+                              label: 'بادئة الكود *',
+                              hint: 'مثال: G4A',
+                              textDirection: TextDirection.ltr,
+                              textAlign: TextAlign.left,
+                            ),
+                            if (_codeError != null) ErrorText(_codeError!),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CustomTextField(
+                              dense: true,
+                              controller: _priceCtrl,
+                              label: _pricingType == GroupPricingType.perSession
+                                  ? 'سعر الحصة *'
+                                  : 'سعر الاشتراك *',
+                              keyboardType: TextInputType.number,
+                            ),
+                            if (_priceError != null) ErrorText(_priceError!),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
 
                   // نوع التسعير — شهري أو بالحصة
-                  FormLabel('نوع التسعير'),
+                  const FormLabel('نوع التسعير'),
                   const SizedBox(height: 6),
                   Row(children: [
                     Expanded(
@@ -366,123 +429,108 @@ class GroupFormSheetState extends State<GroupFormSheet> {
                       ),
                     ),
                   ]),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
 
-                  // بادئة الكود والسعر في صف
+                  // مظهر المجموعة — لون وأيقونة (معاينة مدمجة تفتح منتقي)
+                  const FormSectionTitle('مظهر المجموعة',
+                      icon: Icons.palette_rounded),
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            FormLabel('بادئة الكود *'),
-                            const SizedBox(height: 6),
-                            CustomTextField(
-                              controller: _codeCtrl,
-                              label: 'مثال: G4A',
+                        child: AppearancePreviewTile(
+                          label: 'اللون',
+                          onTap: _pickColor,
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: t.line, width: 1),
                             ),
-                            if (_codeError != null) ErrorText(_codeError!),
-                          ],
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            FormLabel(_pricingType == GroupPricingType.perSession
-                                ? 'سعر الحصة الواحدة *'
-                                : 'سعر الاشتراك الشهري *'),
-                            const SizedBox(height: 6),
-                            CustomTextField(
-                              controller: _priceCtrl,
-                              label: '0',
-                              keyboardType: TextInputType.number,
+                        child: AppearancePreviewTile(
+                          label: 'الأيقونة',
+                          onTap: _pickIcon,
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: primary.withValues(alpha: 0.15),
+                              borderRadius:
+                                  BorderRadius.circular(AppRadius.chip),
                             ),
-                            if (_priceError != null) ErrorText(_priceError!),
-                          ],
+                            child: Icon(_iconOptions[_selectedIcon]!,
+                                color: primary, size: 18),
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-
-                  // مظهر المجموعة — لون وأيقونة (معاينة مدمجة، تفتح
-                  // منتقي منبثق بدل ما ياخدوا مساحة تابتة في الفورم)
-                  FormLabel('مظهر المجموعة'),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      AppearancePreviewTile(
-                        label: 'اللون',
-                        onTap: _pickColor,
-                        child: Container(
-                          width: 34, height: 34,
-                          decoration: BoxDecoration(
-                            color: primary,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                            boxShadow: [BoxShadow(
-                                color: primary.withValues(alpha: 0.4),
-                                blurRadius: 6)],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      AppearancePreviewTile(
-                        label: 'الأيقونة',
-                        onTap: _pickIcon,
-                        child: Container(
-                          width: 34, height: 34,
-                          decoration: BoxDecoration(
-                            color: primary.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(_iconOptions[_selectedIcon]!,
-                              color: primary, size: 18),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
 
                   // المواعيد
                   GroupScheduleEditor(
                     controller: _scheduleCtrl,
                     onChanged: () {
-                      if (_scheduleError != null) setState(() => _scheduleError = null);
+                      if (_scheduleError != null) {
+                        setState(() => _scheduleError = null);
+                      }
                     },
                   ),
                   if (_scheduleError != null) ErrorText(_scheduleError!),
                 ],
-                ),
               ),
             ),
+          ),
 
-            // ── زر الحفظ ─────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 6, 20, 16),
-              child: FilledButton.icon(
-                onPressed: _saving ? null : _submit,
-                style: FilledButton.styleFrom(
-                  backgroundColor: primary,
-                  minimumSize: const Size.fromHeight(46),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-                icon: _saving
-                    ? const SizedBox(
-                        width: 18, height: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : Icon(isEdit ? Icons.save_rounded : Icons.add_rounded),
-                label: Text(
-                  isEdit ? 'حفظ التعديلات' : 'إضافة المجموعة',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          // شريط ثابت: إغلاق + حفظ
+          Padding(
+            padding: EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.sm, AppSpace.lg,
+                MediaQuery.of(context).viewInsets.bottom + AppSpace.lg),
+            child: Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: t.ink,
+                    side: BorderSide(color: t.line),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.control)),
+                  ),
+                  child: const Text('إغلاق'),
                 ),
               ),
-            ),
+              const SizedBox(width: AppSpace.md),
+              Expanded(
+                flex: 2,
+                child: FilledButton.icon(
+                  onPressed: _saving ? null : _submit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: t.chalk,
+                    foregroundColor: t.onChalk,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.control)),
+                  ),
+                  icon: _saving
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: t.onChalk))
+                      : Icon(isEdit ? Icons.save_rounded : Icons.add_rounded),
+                  label: Text(isEdit ? 'حفظ التعديلات' : 'إضافة المجموعة',
+                      style: AppType.label.copyWith(color: t.onChalk)),
+                ),
+              ),
+            ]),
+          ),
         ],
       ),
     );

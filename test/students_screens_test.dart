@@ -367,8 +367,8 @@ void main() {
                     controller: Get.find<StudentController>()),
             size: size,
             scale: 1.6);
-        await t.ensureVisible(find.textContaining('الكود:').first);
-        await t.tap(find.textContaining('الكود:').first);
+        await t.ensureVisible(find.byIcon(Icons.qr_code_rounded).first);
+        await t.tap(find.byIcon(Icons.qr_code_rounded).first);
         await t.pump(const Duration(milliseconds: 400));
         expect(find.byType(Switch), findsWidgets); // لوحة الكود اتفتحت
         await t.ensureVisible(find.byTooltip('واتساب مختلف؟ (اختياري)'));

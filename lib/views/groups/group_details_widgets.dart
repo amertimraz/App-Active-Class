@@ -2,6 +2,7 @@
 // ويدجتس مساعدة صغيرة خاصة بشاشة "تفاصيل المجموعة" — استُخرِجت من
 // group_details_page.dart لتقصير الملف الرئيسي (spec 039).
 import 'package:flutter/material.dart';
+import 'package:active_class/config/theme.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/widgets/guardian_phone_line.dart';
 import 'package:active_class/widgets/locked_feature.dart';
@@ -26,41 +27,41 @@ class HeaderStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Expanded(
       child: LockBadge(
         locked: locked,
-        child: GestureDetector(
-        onTap: locked ? showLockedPermissionHint : onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          onTap: locked ? showLockedPermissionHint : onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadius.control),
+              border: Border.all(color: t.boardLine),
+            ),
+            child: Column(
+              children: [
+                Icon(icon, color: t.boardInkSoft, size: 16),
+                const SizedBox(height: 2),
+                // القيم من غير اسم العملة (formatCurrencyCompact) فبتفضل
+                // في صف واحد؛ FittedBox شبكة أمان للأرقام الكبيرة.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(value,
+                      textAlign: TextAlign.center,
+                      style: AppType.title.copyWith(color: t.boardInk)),
+                ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      style: AppType.caption.copyWith(color: t.boardInkSoft)),
+                ),
+              ],
+            ),
           ),
-          child: Column(
-            children: [
-              Icon(icon, color: Colors.white, size: 17),
-              const SizedBox(height: 4),
-              // القيم بقت من غير اسم العملة (راجع formatCurrencyCompact)
-              // فبقت قصيرة كفاية تفضل في صف واحد بخط مقروء عادي —
-              // maxLines:2 يبقى شبكة أمان بس لأرقام كبيرة جدًا مستقبلاً.
-              Text(value,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 12),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
-              Text(label,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.8), fontSize: 10),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
-            ],
-          ),
-        ),
         ),
       ),
     );
@@ -85,30 +86,31 @@ class GroupActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.25)),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(height: 3),
-              // maxLines:2 بدل 1 — تسميات زي "تصفير الطلاب" أطول من باقي
-              // الأزرار جنبها ("حذف"، "واتساب") في نفس المساحة المتساوية،
-              // فبتلف سطرين بدل ما تتقص.
-              Text(label,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: color, fontSize: 11, fontWeight: FontWeight.w700),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
-            ],
+      child: Material(
+        color: t.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          side: BorderSide(color: t.line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+            child: Column(
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(height: 3),
+                // maxLines:2 — "تصفير الطلاب" أطول من باقي التسميات.
+                Text(label,
+                    textAlign: TextAlign.center,
+                    style: AppType.caption.copyWith(color: t.ink),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+              ],
+            ),
           ),
         ),
       ),
@@ -149,7 +151,7 @@ class StudentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     final initials =
         student.name.trim().isNotEmpty ? student.name.trim()[0] : '؟';
 
@@ -160,21 +162,12 @@ class StudentCard extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
-          color: isSelected
-              ? groupColor.withValues(alpha: 0.12)
-              : (isDark ? const Color(0xFF1A2540) : Colors.white),
-          borderRadius: BorderRadius.circular(16),
+          color: isSelected ? groupColor.withValues(alpha: 0.12) : t.surface,
+          borderRadius: BorderRadius.circular(AppRadius.panel),
           border: Border.all(
-            color: isSelected ? groupColor : Colors.transparent,
-            width: 1.5,
+            color: isSelected ? groupColor : t.line,
+            width: isSelected ? 1.5 : 1,
           ),
-          boxShadow: [
-            if (!isDark)
-              BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2)),
-          ],
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -192,7 +185,7 @@ class StudentCard extends StatelessWidget {
                       color: isSelected ? groupColor : Colors.transparent,
                       shape: BoxShape.circle,
                       border: Border.all(
-                          color: isSelected ? groupColor : Colors.grey.shade400,
+                          color: isSelected ? groupColor : t.inkFaint,
                           width: 2),
                     ),
                     child: isSelected
@@ -229,8 +222,7 @@ class StudentCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(student.name,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 14),
+                        style: AppType.label.copyWith(color: t.ink),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 3),
@@ -240,8 +232,7 @@ class StudentCard extends StatelessWidget {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(student.code,
-                            style: TextStyle(
-                                color: Colors.grey.shade500, fontSize: 12)),
+                            style: AppType.caption.copyWith(color: t.inkSoft)),
                         if (!canSeeFinancials)
                           // مبنفرقش هنا بين دفع/مادفعش — عرض الشارة بس
                           // لما "لم يدفع" كانت هتبقى هي نفسها تسريب
@@ -251,24 +242,24 @@ class StudentCard extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.grey.withValues(alpha: 0.15),
+                              color: t.line,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Icon(Icons.lock_rounded,
-                                size: 10, color: Colors.grey.shade600),
+                                size: 12, color: t.inkSoft),
                           )
                         else if (!hasPaid)
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.red.withValues(alpha: 0.1),
+                              color: t.dangerSoft,
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child: const Text('لم يدفع',
-                                style: TextStyle(
-                                    color: Colors.red,
-                                    fontSize: 9,
+                            child: Text('لم يدفع',
+                                style: AppType.caption.copyWith(
+                                    color: t.danger,
+                                    fontSize: 11,
                                     fontWeight: FontWeight.w700)),
                           ),
                       ],
@@ -290,7 +281,7 @@ class StudentCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     PopupMenuButton<String>(
                       icon: Icon(Icons.more_vert_rounded,
-                          color: Colors.grey.shade500, size: 20),
+                          color: t.inkSoft, size: 20),
                       onSelected: (v) {
                         if (v == 'edit') onEdit();
                         if (v == 'archive') onArchive();
@@ -303,13 +294,13 @@ class StudentCard extends StatelessWidget {
                               SizedBox(width: 8),
                               Text('تعديل')
                             ])),
-                        const PopupMenuItem(
+                        PopupMenuItem(
                             value: 'archive',
                             child: Row(children: [
                               Icon(Icons.delete_outline_rounded,
-                                  size: 18, color: Colors.red),
-                              SizedBox(width: 8),
-                              Text('حذف', style: TextStyle(color: Colors.red))
+                                  size: 18, color: t.danger),
+                              const SizedBox(width: 8),
+                              Text('حذف', style: TextStyle(color: t.danger))
                             ])),
                       ],
                     ),
@@ -328,7 +319,10 @@ class IconBtn extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
   const IconBtn(
-      {super.key, required this.icon, required this.color, required this.onTap});
+      {super.key,
+      required this.icon,
+      required this.color,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -393,7 +387,6 @@ class GDSessionDay {
       required this.totalMarked,
       required this.recordIds});
 }
-
 
 class GDResumeObserver extends WidgetsBindingObserver {
   final void Function() onResume;

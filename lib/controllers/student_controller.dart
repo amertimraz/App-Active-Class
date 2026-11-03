@@ -26,9 +26,9 @@ class StudentController extends GetxController {
   /// الطلاب المؤرشفين بس — لشاشة الأرشيف فقط
   final RxList<Student> archivedStudents = <Student>[].obs;
 
-  final RxBool    isLoading    = false.obs;
-  final RxString  searchQuery  = ''.obs;
-  final Rxn<int>  selectedGroupId = Rxn<int>();
+  final RxBool isLoading = false.obs;
+  final RxString searchQuery = ''.obs;
+  final Rxn<int> selectedGroupId = Rxn<int>();
 
   /// عدد كل الطلاب (نشط + مؤرشف) — لفحص حد الباقة بس (راجع
   /// LicenseController.checkCanAddStudent). لا يُستخدم لعرض أي رقم
@@ -88,7 +88,7 @@ class StudentController extends GetxController {
       totalStudentCount = all.length;
       students.assignAll(all.where((s) => !s.isArchived));
       archivedStudents.assignAll(all.where((s) => s.isArchived));
-      selectedGroupId.value = groupId;     // ضع فلتر المجموعة
+      selectedGroupId.value = groupId; // ضع فلتر المجموعة
       filterStudents();
     } catch (e) {
       ToastHelper.error('حدث خطأ في تحميل الطلاب');
@@ -143,7 +143,10 @@ class StudentController extends GetxController {
   /// توليد كود الطالب التالي بناءً على بادئة كود المجموعة
   Future<String> generateNextStudentCode(
       {required String groupPrefix, required int groupId}) async {
-    final existing = await _dbService.getStudentsByGroup(groupId);
+    // الكود فريد على مستوى كل الطلاب (نشط + مؤرشف + كل المجموعات)، مش
+    // جوّه المجموعة بس — طالب اتنقل من مجموعة تانية أو مجموعتين ليهم نفس
+    // البادئة كانوا بيخلّوا المولّد يرجّع كود محجوز ويفضل يتكرر.
+    final existing = await _dbService.getAllStudents();
     int maxSuffix = 0;
     for (final s in existing) {
       if (s.code.startsWith(groupPrefix)) {
@@ -152,8 +155,13 @@ class StudentController extends GetxController {
         if (numVal != null && numVal > maxSuffix) maxSuffix = numVal;
       }
     }
-    final next = maxSuffix + 1;
-    return '$groupPrefix${next.toString().padLeft(2, '0')}';
+    var next = maxSuffix + 1;
+    String code() => '$groupPrefix${next.toString().padLeft(2, '0')}';
+    // أمان إضافي: لو الكود لسه محجوز (مثلاً بلاحقة مش رقمية) نكمّل للتالي.
+    while (await _dbService.getStudentByCode(code()) != null) {
+      next++;
+    }
+    return code();
   }
 
   /// عدد الطلاب في المجموعة اللي سعرهم لسه مطابق للسعر العام القديم
@@ -265,8 +273,8 @@ class StudentController extends GetxController {
       for (final s in members) {
         final index = students.indexWhere((x) => x.id == s.id);
         if (index != -1) {
-          students[index] = s.copyWith(
-              siblingGroupId: groupId, siblingGroupUuid: groupUuid);
+          students[index] =
+              s.copyWith(siblingGroupId: groupId, siblingGroupUuid: groupUuid);
         }
       }
       filterStudents();
@@ -341,7 +349,7 @@ class StudentController extends GetxController {
 
   // ── تطبيق الفلتر (يعمل دائماً على students النشطين) ─────────────
   void filterStudents() {
-    final q   = searchQuery.value.trim().toLowerCase();
+    final q = searchQuery.value.trim().toLowerCase();
     final gid = selectedGroupId.value;
 
     filteredStudents.assignAll(

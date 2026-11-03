@@ -16,6 +16,9 @@ import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/billing_period.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/widgets/clock_text.dart';
+import 'package:active_class/config/theme.dart';
+import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/widgets/app_panel.dart';
 
 class PaymentsReportPage extends StatefulWidget {
   const PaymentsReportPage({super.key});
@@ -49,13 +52,14 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('تقرير المدفوعات'),
-          centerTitle: true,
-          elevation: 0,
+        backgroundColor: t.page,
+        appBar: buildBoardAppBar(
+          context,
+          title: 'تقرير المدفوعات',
           actions: [
             IconButton(
               tooltip: 'تحديث',
@@ -68,11 +72,11 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
             ),
           ],
           bottom: TabBar(
-            labelColor: Theme.of(context).colorScheme.onSurface,
-            unselectedLabelColor:
-                Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-            indicatorColor: Theme.of(context).colorScheme.primary,
-            labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+            labelColor: t.boardInk,
+            unselectedLabelColor: t.boardInkSoft,
+            indicatorColor: t.chalk,
+            dividerColor: Colors.transparent,
+            labelStyle: AppType.label,
             tabs: const [
               Tab(text: 'تقرير شهري'),
               Tab(text: 'تقرير يومي'),
@@ -162,7 +166,7 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Card(
+            _RPanel(
               child: Padding(
                 padding: const EdgeInsets.all(PADDING_NORMAL),
                 child: Column(
@@ -181,6 +185,13 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                                   DateTime(picked.year, picked.month, 1));
                             }
                           },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: context.tokens.brand,
+                            side: BorderSide(color: context.tokens.line),
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.control)),
+                          ),
                           icon: const Icon(Icons.calendar_month),
                           label: Text(dateFmt.format(month)),
                         ),
@@ -224,7 +235,7 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
 
             const SizedBox(height: SPACING_NORMAL),
 
-            Card(
+            _RPanel(
               child: Padding(
                 padding: const EdgeInsets.all(PADDING_NORMAL),
                 child: Column(
@@ -381,7 +392,7 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Card(
+            _RPanel(
               child: Padding(
                 padding: const EdgeInsets.all(PADDING_NORMAL),
                 child: Wrap(
@@ -404,6 +415,13 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                               DateTime(picked.year, picked.month, picked.day));
                         }
                       },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: context.tokens.brand,
+                        side: BorderSide(color: context.tokens.line),
+                        shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.control)),
+                      ),
                       icon: const Icon(Icons.event),
                       label: Text(dateLabel),
                     ),
@@ -417,7 +435,7 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
               ),
             ),
             const SizedBox(height: SPACING_NORMAL),
-            Card(
+            _RPanel(
               child: Padding(
                 padding: const EdgeInsets.all(PADDING_NORMAL),
                 child: Column(
@@ -457,7 +475,8 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                                 isWriteOff
                                     ? Icons.remove_circle_outline_rounded
                                     : Icons.payment,
-                                color: isWriteOff ? Colors.orange : null),
+                                color:
+                                    isWriteOff ? context.tokens.caution : null),
                             title: Text(student?.name ?? 'طالب غير معروف'),
                             subtitle: ClockBuilder(
                                 builder: (_) => Text(
@@ -466,7 +485,7 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                             trailing: Text(
                               FormatHelper.formatCurrency(p.amount),
                               style: isWriteOff
-                                  ? const TextStyle(color: Colors.orange)
+                                  ? TextStyle(color: context.tokens.caution)
                                   : null,
                             ),
                           );
@@ -481,6 +500,16 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
       );
     });
   }
+}
+
+/// لوحة مسطحة بحد رفيع (بدل Card بألوانه الثابتة). الحشو من اللي جواها.
+class _RPanel extends StatelessWidget {
+  final Widget child;
+  const _RPanel({required this.child});
+
+  @override
+  Widget build(BuildContext context) =>
+      AppPanel(padding: EdgeInsets.zero, child: child);
 }
 
 class _ProgressBar extends StatelessWidget {
@@ -498,9 +527,12 @@ class _ProgressBar extends StatelessWidget {
           value: v,
           minHeight: 8,
           borderRadius: BorderRadius.circular(6),
+          color: context.tokens.positive,
+          backgroundColor: context.tokens.line,
         ),
         const SizedBox(height: 6),
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(label,
+            style: AppType.caption.copyWith(color: context.tokens.inkSoft)),
       ],
     );
   }
@@ -560,18 +592,18 @@ class _SummaryStatsState extends State<_SummaryStats> {
       runSpacing: 8,
       children: [
         _miniStat('عدد الطلاب', widget.totalStudents.toString(),
-            Icons.people_alt, Colors.blueGrey),
+            Icons.people_alt, context.tokens.inkSoft),
         _miniStat('المطلوب', FormatHelper.formatCurrency(widget.totalDue),
-            Icons.request_page, Colors.orange),
+            Icons.request_page, context.tokens.caution),
         _miniStat('المدفوع', FormatHelper.formatCurrency(widget.totalPaid),
-            Icons.attach_money, Colors.green),
+            Icons.attach_money, context.tokens.positive),
         _miniStat('مدفوعين بالكامل', widget.fullyPaidCount.toString(),
-            Icons.verified, Colors.teal),
+            Icons.verified, context.tokens.positive),
         _miniStat('غير مدفوعين', widget.unpaidCount.toString(), Icons.pending,
-            Colors.red,
+            context.tokens.danger,
             onTap: widget.onTapUnpaid),
         _miniStat('المتبقي', FormatHelper.formatCurrency(widget.remaining),
-            Icons.account_balance_wallet, Colors.purple),
+            Icons.account_balance_wallet, context.tokens.brand),
       ],
     );
   }
@@ -591,7 +623,7 @@ class _SummaryStatsState extends State<_SummaryStats> {
           Icon(icon, color: color, size: 16),
           const SizedBox(width: 6),
           Text(title,
-              style: const TextStyle(fontSize: 12, color: Colors.black54)),
+              style: TextStyle(fontSize: 12, color: context.tokens.inkSoft)),
           const SizedBox(width: 6),
           Text(value,
               style: TextStyle(
@@ -634,6 +666,7 @@ class _GroupRowState extends State<_GroupRow> {
   bool expanded = false;
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Column(
       children: [
         Row(
@@ -644,14 +677,19 @@ class _GroupRowState extends State<_GroupRow> {
                 children: [
                   Row(
                     children: [
-                      Text(widget.groupName,
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Flexible(
+                        child: Text(widget.groupName,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.bold)),
+                      ),
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.grey.withValues(alpha: 0.1),
+                          color: context.tokens.line,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text('${widget.studentCount} طالب',
@@ -661,11 +699,15 @@ class _GroupRowState extends State<_GroupRow> {
                   ),
                   const SizedBox(height: 6),
                   LinearProgressIndicator(
-                      value: widget.progress.clamp(0.0, 1.0), minHeight: 6),
+                      value: widget.progress.clamp(0.0, 1.0),
+                      minHeight: 6,
+                      color: context.tokens.positive,
+                      backgroundColor: context.tokens.line),
                   const SizedBox(height: 4),
                   Text(
                       'التقدم: ${FormatHelper.formatPercentage(widget.progress * 100)}',
-                      style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      style: TextStyle(
+                          fontSize: 11, color: context.tokens.inkSoft)),
                 ],
               ),
             ),
@@ -685,14 +727,14 @@ class _GroupRowState extends State<_GroupRow> {
               runSpacing: 8,
               children: [
                 _mini('المطلوب', FormatHelper.formatCurrency(widget.totalDue),
-                    Colors.orange),
+                    t.caution),
                 _mini('المدفوع', FormatHelper.formatCurrency(widget.totalPaid),
-                    Colors.green),
+                    t.positive),
                 _mini('المتبقي', FormatHelper.formatCurrency(widget.remaining),
-                    Colors.purple),
+                    t.brand),
                 _mini('مدفوعين بالكامل', widget.fullyPaidCount.toString(),
-                    Colors.teal),
-                _mini('غير مدفوعين', widget.unpaidCount.toString(), Colors.red,
+                    t.positive),
+                _mini('غير مدفوعين', widget.unpaidCount.toString(), t.danger,
                     onTap: widget.onTapUnpaid),
               ],
             ),
@@ -714,7 +756,7 @@ class _GroupRowState extends State<_GroupRow> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(title,
-              style: const TextStyle(fontSize: 12, color: Colors.black54)),
+              style: TextStyle(fontSize: 12, color: context.tokens.inkSoft)),
           const SizedBox(width: 6),
           Text(value,
               style: TextStyle(
@@ -764,10 +806,9 @@ extension on _PaymentsReportPageState {
                 return Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.05),
+                    color: context.tokens.page,
                     borderRadius: BorderRadius.circular(8),
-                    border:
-                        Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+                    border: Border.all(color: context.tokens.line),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -787,8 +828,9 @@ extension on _PaymentsReportPageState {
                             const SizedBox(height: 4),
                             Text(
                                 'الكود: ${s.code} • المجموعة: ${g?.name ?? '-'}',
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.black54)),
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: context.tokens.inkSoft)),
                           ],
                         ),
                       ),
@@ -797,8 +839,8 @@ extension on _PaymentsReportPageState {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(FormatHelper.formatCurrency(remaining),
-                              style: const TextStyle(
-                                  color: Colors.red,
+                              style: TextStyle(
+                                  color: context.tokens.danger,
                                   fontWeight: FontWeight.bold)),
                           _WhatsButton(
                               student: s,
@@ -841,7 +883,7 @@ class _WhatsButton extends StatelessWidget {
         (student.guardianWhatsapp ?? '').trim().isNotEmpty;
     return IconButton(
       tooltip: enabled ? 'إرسال تذكير واتساب' : 'لا يوجد رقم أو واتساب',
-      icon: const Icon(Icons.chat, color: Colors.green),
+      icon: Icon(Icons.chat, color: context.tokens.positive),
       onPressed: !enabled
           ? null
           : () async {
@@ -888,6 +930,7 @@ class _ExemptStudentsCardState extends State<_ExemptStudentsCard> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     final scheme = Theme.of(context).colorScheme;
     const exemptColor = Color(0xFF2E7D32);
     final fullCount = widget.students.where((s) => s.isFullyExempt).length;
@@ -1009,12 +1052,12 @@ class _ExemptStudentsCardState extends State<_ExemptStudentsCard> {
                   decoration: BoxDecoration(
                     color: s.isFullyExempt
                         ? exemptColor.withValues(alpha: 0.12)
-                        : Colors.orange.withValues(alpha: 0.1),
+                        : t.caution.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: s.isFullyExempt
                           ? exemptColor.withValues(alpha: 0.4)
-                          : Colors.orange.withValues(alpha: 0.4),
+                          : t.caution.withValues(alpha: 0.4),
                     ),
                   ),
                   child: Text(
@@ -1022,7 +1065,7 @@ class _ExemptStudentsCardState extends State<_ExemptStudentsCard> {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
-                      color: s.isFullyExempt ? exemptColor : Colors.orange,
+                      color: s.isFullyExempt ? exemptColor : t.caution,
                     ),
                   ),
                 ),

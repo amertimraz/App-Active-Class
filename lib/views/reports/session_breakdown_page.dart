@@ -6,8 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
+import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/report_controller.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 
 class SessionBreakdownPage extends StatelessWidget {
@@ -17,14 +20,11 @@ class SessionBreakdownPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ctrl = Get.find<ReportController>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('تفصيل حصص ${group.name}'),
-        centerTitle: true,
-        elevation: 0,
-      ),
+      backgroundColor: t.page,
+      appBar: buildBoardAppBar(context, title: 'تفصيل حصص ${group.name}'),
       body: Obx(() {
         final days = ctrl.sessionBreakdownForGroup(group.id!);
         final totalExpected =
@@ -32,60 +32,63 @@ class SessionBreakdownPage extends StatelessWidget {
 
         if (days.isEmpty) {
           return Center(
-            child: Text(
-              'لسه مفيش حصص متسجّلة للمجموعة دي الشهر ده',
-              style: TextStyle(
-                  fontSize: 14,
-                  color: isDark ? Colors.white60 : Colors.black45),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpace.lg),
+              child: Text(
+                'لسه مفيش حصص متسجّلة للمجموعة دي الشهر ده',
+                textAlign: TextAlign.center,
+                style: AppType.body.copyWith(color: t.inkSoft),
+              ),
             ),
           );
         }
 
         return Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('إجمالي المتوقع (${days.length} حصة)',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 14)),
-                    CurrencyText(
-                      totalExpected,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                          color: Colors.blue),
-                    ),
-                  ],
-                ),
+            // سبورة: عدد الحصص وإجمالي المتوقع
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpace.lg, AppSpace.xs, AppSpace.lg, AppSpace.lg),
+              decoration: BoxDecoration(
+                color: t.board,
+                borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(AppRadius.board)),
               ),
+              child: Row(children: [
+                Expanded(
+                    child: BoardStat(
+                        label: 'حصة',
+                        value: '${days.length}',
+                        color: t.boardInk)),
+                Expanded(
+                  flex: 2,
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: CurrencyText(
+                        totalExpected,
+                        style: AppType.figure.copyWith(color: t.chalk),
+                      ),
+                    ),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('إجمالي المتوقع',
+                          style:
+                              AppType.caption.copyWith(color: t.boardInkSoft)),
+                    ),
+                  ]),
+                ),
+              ]),
             ),
             Expanded(
               child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.all(AppSpace.lg),
                 itemCount: days.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (_, i) {
                   final d = days[days.length - 1 - i]; // الأحدث فوق
-                  return Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: Colors.grey.withValues(alpha: 0.15)),
-                    ),
+                  return AppPanel(
                     child: Row(
                       children: [
                         Expanded(
@@ -93,27 +96,19 @@ class SessionBreakdownPage extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                DateFormat('EEEE، d MMMM', 'ar')
-                                    .format(d.date),
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w700, fontSize: 13),
+                                DateFormat('EEEE، d MMMM', 'ar').format(d.date),
+                                style: AppType.label.copyWith(color: t.ink),
                               ),
-                              const SizedBox(height: 3),
+                              const SizedBox(height: 2),
                               Text('${d.presentCount} حاضر',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDark
-                                          ? Colors.white54
-                                          : Colors.black45)),
+                                  style: AppType.caption
+                                      .copyWith(color: t.inkSoft)),
                             ],
                           ),
                         ),
                         CurrencyText(
                           d.expectedAmount,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
-                              color: Colors.blue),
+                          style: AppType.label.copyWith(color: t.ink),
                         ),
                       ],
                     ),
