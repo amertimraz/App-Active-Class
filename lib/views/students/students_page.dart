@@ -17,6 +17,8 @@ import 'package:active_class/utils/student_sort_helper.dart';
 import 'package:active_class/widgets/student_sort_bar.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/widgets/app_panel.dart';
+import 'package:active_class/views/help/help_widgets.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
@@ -111,23 +113,18 @@ class _StudentsPageState extends State<StudentsPage>
   // ── build ────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Scaffold(
-      appBar: buildGradientAppBar(
+      backgroundColor: t.page,
+      appBar: buildBoardAppBar(
+        context,
         title: 'الطلاب',
         actions: [
-          IconButton(
-            tooltip: 'استيراد من إكسل',
-            icon: const Icon(Icons.upload_file_rounded),
-            onPressed: () => showImportStudentsDialog(
-              context,
-              controller: controller,
-              groups: _groups,
-              onImported: () => controller.loadAllStudents(),
-            ),
-          ),
+          const HelpButton(topicId: 'students'),
           IconButton(
             tooltip: _gridMode ? 'عرض قائمة' : 'عرض شبكة',
-            icon: Icon(_gridMode ? Icons.view_list_rounded : Icons.grid_view_rounded),
+            icon: Icon(
+                _gridMode ? Icons.view_list_rounded : Icons.grid_view_rounded),
             onPressed: () => setState(() => _gridMode = !_gridMode),
           ),
           IconButton(
@@ -135,25 +132,62 @@ class _StudentsPageState extends State<StudentsPage>
             icon: const Icon(Icons.qr_code_2_rounded),
             onPressed: () => Get.toNamed(ROUTE_QR_GALLERY),
           ),
-          IconButton(
-            tooltip: 'الإخوة',
-            icon: const Icon(Icons.family_restroom_rounded),
-            onPressed: () => Get.toNamed(ROUTE_SIBLINGS),
-          ),
-          IconButton(
-            tooltip: 'الأرشيف',
-            icon: const Icon(Icons.archive_rounded),
-            onPressed: () => Get.toNamed(ROUTE_ARCHIVED_STUDENTS),
+          PopupMenuButton<String>(
+            tooltip: 'المزيد',
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (v) {
+              switch (v) {
+                case 'import':
+                  showImportStudentsDialog(
+                    context,
+                    controller: controller,
+                    groups: _groups,
+                    onImported: () => controller.loadAllStudents(),
+                  );
+                case 'siblings':
+                  Get.toNamed(ROUTE_SIBLINGS);
+                case 'archive':
+                  Get.toNamed(ROUTE_ARCHIVED_STUDENTS);
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'import',
+                child: Row(children: [
+                  Icon(Icons.upload_file_rounded, size: 20),
+                  SizedBox(width: 10),
+                  Text('استيراد من إكسل'),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'siblings',
+                child: Row(children: [
+                  Icon(Icons.family_restroom_rounded, size: 20),
+                  SizedBox(width: 10),
+                  Text('الإخوة'),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'archive',
+                child: Row(children: [
+                  Icon(Icons.archive_rounded, size: 20),
+                  SizedBox(width: 10),
+                  Text('الأرشيف'),
+                ]),
+              ),
+            ],
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showAddStudentSheet(context, controller: controller),
+        backgroundColor: t.chalk,
+        foregroundColor: t.onChalk,
         icon: const Icon(Icons.person_add_rounded),
         label: const Text('إضافة طالب'),
       ),
-      body: buildSoftBackground(
-        context: context,
+      body: ColoredBox(
+        color: t.page,
         child: Obx(() {
           final students = sortStudents(
             students: controller.filteredStudents,
@@ -168,9 +202,8 @@ class _StudentsPageState extends State<StudentsPage>
           if (controller.students.isEmpty) {
             return Center(
               child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: buildSoftPanel(
-                  context: context,
+                padding: const EdgeInsets.all(AppSpace.xl),
+                child: AppPanel(
                   child: EmptyState(
                     icon: Icons.person_off_rounded,
                     title: 'لا يوجد طلاب',
@@ -186,7 +219,7 @@ class _StudentsPageState extends State<StudentsPage>
 
           return Column(
             children: [
-              // ── Stats + Search + Filter ──────────────────────────
+              // ── السبورة + بحث + فلتر المجموعات ───────────────────
               _buildTopSection(context),
 
               // ── List / Grid ──────────────────────────────────────
@@ -195,7 +228,7 @@ class _StudentsPageState extends State<StudentsPage>
                     ? Center(
                         child: Text(
                           'لا نتائج للبحث',
-                          style: TextStyle(color: Colors.grey.shade500),
+                          style: AppType.body.copyWith(color: t.inkSoft),
                         ),
                       )
                     : _gridMode
@@ -211,31 +244,47 @@ class _StudentsPageState extends State<StudentsPage>
 
   // ── Top section ──────────────────────────────────────────────────
   Widget _buildTopSection(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-      child: Column(
-        children: [
-          // Stats pills
-          Obx(() {
-            final total = controller.students.length;
-            return Row(
-              children: [
-                _StatPill(
-                  icon: Icons.person_rounded,
-                  label: '$total طالب',
-                  color: AppTheme.primaryColor,
-                ),
-                const SizedBox(width: 10),
-                _StatPill(
-                  icon: Icons.groups_rounded,
-                  label: '${_groups.length} مجموعة',
-                  color: Colors.teal,
-                ),
-              ],
-            );
-          }),
-          const SizedBox(height: 12),
+    final t = context.tokens;
+    // ألوان الأرقام فوق السبورة: درجات الوضع الداكن لأن خلفيتها غامقة دايمًا.
+    final on = AppTokens.dark;
+    final total = controller.students.length;
+    // طلاب مالهمش أي وسيلة تواصل مع ولي الأمر (مهم لواتساب وبوابة الأهالي).
+    final noContact = controller.students
+        .where((s) =>
+            guardianPhoneForDisplay(s) == null &&
+            (s.guardianWhatsapp ?? '').trim().isEmpty)
+        .length;
 
+    return Column(children: [
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(
+            AppSpace.lg, AppSpace.xs, AppSpace.lg, AppSpace.lg),
+        decoration: BoxDecoration(
+          color: t.board,
+          borderRadius: const BorderRadius.vertical(
+              bottom: Radius.circular(AppRadius.board)),
+        ),
+        child: Row(children: [
+          Expanded(
+              child: BoardStat(
+                  label: 'طالب', value: '$total', color: t.boardInk)),
+          Expanded(
+              child: BoardStat(
+                  label: 'مجموعة',
+                  value: '${_groups.length}',
+                  color: on.positive)),
+          Expanded(
+              child: BoardStat(
+                  label: 'بدون رقم ولي أمر',
+                  value: '$noContact',
+                  color: noContact > 0 ? t.chalk : t.boardInkSoft)),
+        ]),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+            AppSpace.lg, AppSpace.md, AppSpace.lg, 0),
+        child: Column(children: [
           // Search bar + ترتيب (السيرش قابل للانكماش عشان الأيقونات تفضل
           // ظاهرة كاملة على الشاشات الضيقة بدل ما يحصل overflow)
           Row(
@@ -251,7 +300,7 @@ class _StudentsPageState extends State<StudentsPage>
                   },
                 ),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: AppSpace.xs),
               StudentSortBar(
                 sortBy: _sortBy,
                 ascending: _sortAscending,
@@ -262,31 +311,35 @@ class _StudentsPageState extends State<StudentsPage>
 
           // Group filter chips
           if (_groups.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: AppSpace.sm),
             SizedBox(
-              height: 36,
+              height: 44,
               child: Obx(() {
                 final sel = controller.selectedGroupId.value;
                 return ListView(
                   scrollDirection: Axis.horizontal,
                   children: [
-                    _FilterChip(
-                      label: 'الكل',
-                      selected: sel == null,
-                      color: AppTheme.primaryColor,
-                      onTap: () => controller.setGroupFilter(null),
+                    Center(
+                      child: AppFilterChip(
+                        label: 'الكل',
+                        selected: sel == null,
+                        color: t.brand,
+                        onTap: () => controller.setGroupFilter(null),
+                      ),
                     ),
-                    const SizedBox(width: 6),
                     ..._groups.map((g) {
                       final color =
-                          g.color != null ? Color(g.color!) : AppTheme.primaryColor;
+                          g.color != null ? Color(g.color!) : t.brand;
                       return Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: _FilterChip(
-                          label: g.name,
-                          selected: sel == g.id,
-                          color: color,
-                          onTap: () => controller.setGroupFilter(g.id),
+                        padding:
+                            const EdgeInsetsDirectional.only(start: AppSpace.sm),
+                        child: Center(
+                          child: AppFilterChip(
+                            label: g.name,
+                            selected: sel == g.id,
+                            color: color,
+                            onTap: () => controller.setGroupFilter(g.id),
+                          ),
                         ),
                       );
                     }),
@@ -295,17 +348,17 @@ class _StudentsPageState extends State<StudentsPage>
               }),
             ),
           ],
-
-          const SizedBox(height: 12),
-        ],
+          const SizedBox(height: AppSpace.sm),
+        ]),
       ),
-    );
+    ]);
   }
 
   // ── List ─────────────────────────────────────────────────────────
   Widget _buildList(BuildContext context, List<Student> students) {
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpace.lg, AppSpace.xs, AppSpace.lg, 100),
       itemCount: students.length,
       itemBuilder: (_, i) => _StudentCard(
         student: students[i],
@@ -323,13 +376,16 @@ class _StudentsPageState extends State<StudentsPage>
   Widget _buildGrid(BuildContext context, List<Student> students) {
     return LayoutBuilder(
       builder: (context, box) => GridView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+        padding: const EdgeInsets.fromLTRB(
+            AppSpace.lg, AppSpace.xs, AppSpace.lg, 100),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount:
               adaptiveColumns(box.maxWidth, phone: 2, minTileWidth: 230, max: 5),
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
-          childAspectRatio: 0.85,
+          // ارتفاع ثابت بيكبر مع حجم الخط بدل نسبة ثابتة (عشان الاسم لسطرين).
+          mainAxisExtent: 112 +
+              105 * MediaQuery.textScalerOf(context).scale(14) / 14,
         ),
         itemCount: students.length,
         itemBuilder: (_, i) => _StudentGridTile(
@@ -582,6 +638,116 @@ class _StudentsPageState extends State<StudentsPage>
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  عناصر مشتركة بين كارت القايمة وبلاطة الشبكة
+// ══════════════════════════════════════════════════════════════════
+class _Avatar extends StatelessWidget {
+  const _Avatar({required this.name, required this.color, this.size = 46});
+  final String name;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = name.trim().isNotEmpty ? name.trim()[0] : '?';
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        shape: BoxShape.circle,
+      ),
+      child: Center(
+        child: Text(initials,
+            style: AppType.title.copyWith(color: color, fontSize: size * 0.4)),
+      ),
+    );
+  }
+}
+
+class _GroupTag extends StatelessWidget {
+  const _GroupTag({required this.group, required this.color});
+  final Group group;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: 2),
+      decoration: BoxDecoration(
+        color: t.page,
+        borderRadius: BorderRadius.circular(AppRadius.chip),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(group.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppType.caption
+                  .copyWith(color: t.ink, fontWeight: FontWeight.w700)),
+        ),
+      ]),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  قايمة خيارات الطالب (عرض QR / تعديل / حذف) — مشتركة بين القايمة والشبكة
+// ══════════════════════════════════════════════════════════════════
+class _StudentMenu extends StatelessWidget {
+  const _StudentMenu(
+      {required this.onQr, required this.onEdit, required this.onArchive});
+  final VoidCallback onQr, onEdit, onArchive;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return PopupMenuButton<String>(
+      tooltip: 'خيارات الطالب',
+      onSelected: (v) {
+        if (v == 'qr') onQr();
+        if (v == 'edit') onEdit();
+        if (v == 'archive') onArchive();
+      },
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control)),
+      icon: Icon(Icons.more_vert_rounded, color: t.inkSoft),
+      itemBuilder: (_) => [
+        const PopupMenuItem(
+          value: 'qr',
+          child: Row(children: [
+            Icon(Icons.qr_code_rounded, size: 18),
+            SizedBox(width: 10),
+            Text('عرض QR'),
+          ]),
+        ),
+        const PopupMenuItem(
+          value: 'edit',
+          child: Row(children: [
+            Icon(Icons.edit_rounded, size: 18),
+            SizedBox(width: 10),
+            Text('تعديل'),
+          ]),
+        ),
+        PopupMenuItem(
+          value: 'archive',
+          child: Row(children: [
+            Icon(Icons.delete_outline_rounded, size: 18, color: t.danger),
+            const SizedBox(width: 10),
+            Text('حذف', style: TextStyle(color: t.danger)),
+          ]),
+        ),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  _StudentCard  (list mode)
 // ══════════════════════════════════════════════════════════════════
 class _StudentCard extends StatelessWidget {
@@ -605,178 +771,53 @@ class _StudentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials = student.name.trim().isNotEmpty ? student.name.trim()[0] : '?';
-    final surface = Theme.of(context).colorScheme.surface;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final shadowColor = isDark ? Colors.black26 : Colors.black12;
-    final moreIconBg = isDark
-        ? Theme.of(context).colorScheme.surfaceContainerHighest
-        : Colors.grey.shade100;
-    final moreIconColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
-    final subtitleColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: shadowColor,
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
+    final t = context.tokens;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.sm),
+      child: AppPanel(
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            AppSpace.md, AppSpace.md, AppSpace.xs, AppSpace.md),
+        onTap: onTap,
+        child: Row(
           children: [
-            // ── Main row ──────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-              child: Row(
+            _Avatar(name: student.name, color: groupColor),
+            const SizedBox(width: AppSpace.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Avatar
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: groupColor.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: groupColor.withValues(alpha: 0.4), width: 1.5),
+                  Row(children: [
+                    Expanded(
+                      child: Text(student.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppType.label.copyWith(color: t.ink)),
                     ),
-                    child: Center(
-                      child: Text(
-                        initials,
-                        style: TextStyle(
-                          color: groupColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Info
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                student.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                  color: onSurface,
-                                ),
-                              ),
-                            ),
-                            if (student.isExempt) ...[
-                              const SizedBox(width: 6),
-                              ExemptBadge(student: student, compact: true),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            if (group != null) ...[
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: groupColor.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  group!.name,
-                                  style: TextStyle(
-                                    color: groupColor,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                            ],
-                            Text(
-                              student.code,
-                              style: TextStyle(
-                                color: subtitleColor,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                        GuardianPhoneLine(
-                            student: student, color: subtitleColor),
-                      ],
-                    ),
-                  ),
-                  // Popup menu
-                  PopupMenuButton<String>(
-                    onSelected: (v) {
-                      if (v == 'qr') onQr();
-                      if (v == 'edit') onEdit();
-                      if (v == 'archive') onArchive();
-                    },
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: 'qr',
-                        child: Row(children: [
-                          Icon(Icons.qr_code_rounded, size: 18),
-                          SizedBox(width: 10),
-                          Text('عرض QR'),
-                        ]),
-                      ),
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: Row(children: [
-                          Icon(Icons.edit_rounded, size: 18),
-                          SizedBox(width: 10),
-                          Text('تعديل'),
-                        ]),
-                      ),
-                      PopupMenuItem(
-                        value: 'archive',
-                        child: Row(children: [
-                          Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red.shade400),
-                          const SizedBox(width: 10),
-                          Text('حذف', style: TextStyle(color: Colors.red.shade400)),
-                        ]),
+                    if (student.isExempt) ...[
+                      const SizedBox(width: AppSpace.sm),
+                      ExemptBadge(student: student, compact: true),
+                    ],
+                  ]),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: AppSpace.sm,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (group != null)
+                        _GroupTag(group: group!, color: groupColor),
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Text(student.code,
+                            style: AppType.caption.copyWith(color: t.inkSoft)),
                       ),
                     ],
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: moreIconBg,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(Icons.more_vert_rounded,
-                          size: 18, color: moreIconColor),
-                    ),
                   ),
+                  GuardianPhoneLine(student: student, color: t.inkSoft),
                 ],
               ),
             ),
-            // ── Bottom accent bar ──────────────────────────────────
-            Container(
-              height: 3,
-              decoration: BoxDecoration(
-                color: groupColor.withValues(alpha: 0.35),
-                borderRadius:
-                    const BorderRadius.vertical(bottom: Radius.circular(18)),
-              ),
-            ),
+            _StudentMenu(onQr: onQr, onEdit: onEdit, onArchive: onArchive),
           ],
         ),
       ),
@@ -808,239 +849,49 @@ class _StudentGridTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials = student.name.trim().isNotEmpty ? student.name.trim()[0] : '?';
-    final surface = Theme.of(context).colorScheme.surface;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final shadowColor = isDark ? Colors.black26 : Colors.black12;
-    final subtitleColor = isDark ? Colors.grey.shade400 : Colors.grey.shade500;
-
-    return GestureDetector(
+    final t = context.tokens;
+    return AppPanel(
+      padding: EdgeInsets.zero,
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: shadowColor,
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            // Color header
-            Container(
-              height: 8,
-              decoration: BoxDecoration(
-                color: groupColor,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(18)),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                child: Column(
-                  children: [
-                    // Avatar
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: groupColor.withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                            color: groupColor.withValues(alpha: 0.4), width: 1.5),
-                      ),
-                      child: Center(
-                        child: Text(
-                          initials,
-                          style: TextStyle(
-                            color: groupColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 20,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      student.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                          color: onSurface),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      student.code,
-                      style: TextStyle(color: subtitleColor, fontSize: 11),
-                    ),
-                    if (student.isExempt) ...[
-                      const SizedBox(height: 4),
-                      ExemptBadge(student: student, compact: true),
-                    ],
-                    if (group != null) ...[
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: groupColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          group!.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              color: groupColor,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                    const Spacer(),
-                    // Quick actions
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _GridAction(
-                            icon: Icons.qr_code_rounded,
-                            color: groupColor,
-                            onTap: onQr),
-                        _GridAction(
-                            icon: Icons.edit_rounded,
-                            color: Colors.orange,
-                            onTap: onEdit),
-                        _GridAction(
-                            icon: Icons.delete_outline_rounded,
-                            color: Colors.red,
-                            onTap: onArchive),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _GridAction extends StatelessWidget {
-  const _GridAction(
-      {required this.icon, required this.color, required this.onTap});
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, size: 16, color: color),
-      ),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  _StatPill
-// ══════════════════════════════════════════════════════════════════
-class _StatPill extends StatelessWidget {
-  const _StatPill(
-      {required this.icon, required this.label, required this.color});
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Stack(
         children: [
-          Icon(icon, size: 15, color: color),
-          const SizedBox(width: 6),
-          Text(label,
-              style: TextStyle(
-                  color: color, fontSize: 12, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  _FilterChip
-// ══════════════════════════════════════════════════════════════════
-class _FilterChip extends StatelessWidget {
-  const _FilterChip(
-      {required this.label,
-      required this.selected,
-      required this.color,
-      required this.onTap});
-  final String label;
-  final bool selected;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final unselectedBg = Theme.of(context).colorScheme.surface;
-    final unselectedBorder = isDark ? Colors.grey.shade700 : Colors.grey.shade300;
-    final unselectedText = isDark ? Colors.grey.shade300 : Colors.grey.shade700;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? color : unselectedBg,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: selected ? color : unselectedBorder, width: 1.2),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                      color: color.withValues(alpha: 0.25),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2))
-                ]
-              : [],
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : unselectedText,
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppSpace.md, AppSpace.lg, AppSpace.md, AppSpace.md),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _Avatar(name: student.name, color: groupColor, size: 52),
+                const SizedBox(height: AppSpace.sm),
+                Text(student.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: AppType.label.copyWith(color: t.ink)),
+                const SizedBox(height: 2),
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Text(student.code,
+                      style: AppType.caption.copyWith(color: t.inkSoft)),
+                ),
+                if (student.isExempt) ...[
+                  const SizedBox(height: 4),
+                  ExemptBadge(student: student, compact: true),
+                ],
+                if (group != null) ...[
+                  const SizedBox(height: AppSpace.sm),
+                  _GroupTag(group: group!, color: groupColor),
+                ],
+              ],
+            ),
           ),
-        ),
+          PositionedDirectional(
+            top: 0,
+            end: 0,
+            child:
+                _StudentMenu(onQr: onQr, onEdit: onEdit, onArchive: onArchive),
+          ),
+        ],
       ),
     );
   }

@@ -28,7 +28,7 @@ class StudentSortBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: StudentSort.values.map((s) {
@@ -48,19 +48,17 @@ class StudentSortBar extends StatelessWidget {
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: active
-                      ? AppTheme.primaryColor.withValues(alpha: isDark ? 0.25 : 0.12)
+                      ? t.brand.withValues(alpha: 0.14)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(_icons[s],
                       size: 18,
-                      color: active
-                          ? AppTheme.primaryColor
-                          : (isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
+                      color: active ? t.brand : t.inkSoft),
                   if (active) ...[
                     const SizedBox(width: 2),
-                    Icon(dirIcon, size: 12, color: AppTheme.primaryColor),
+                    Icon(dirIcon, size: 12, color: t.brand),
                   ],
                 ]),
               ),

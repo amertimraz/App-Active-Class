@@ -2,6 +2,7 @@
 // ويدجتات الإعفاء المشتركة بين صفحات الإضافة والتعديل والتقارير
 
 import 'package:flutter/material.dart';
+import 'package:active_class/config/theme.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/models/student_model.dart';
 
@@ -301,28 +302,29 @@ class ExemptBadge extends StatelessWidget {
         : (compact
             ? '${student.exemptPercent.toInt()}%'
             : 'معفى ${student.exemptPercent.toInt()}%');
+    final t = context.tokens;
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 6 : 8,
         vertical: compact ? 2 : 3,
       ),
       decoration: BoxDecoration(
-        color: exemptColor.withValues(alpha: 0.12),
+        color: t.positiveSoft,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: exemptColor.withValues(alpha: 0.4)),
+        border: Border.all(color: t.positive.withValues(alpha: 0.5)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.volunteer_activism_rounded,
-              size: compact ? 10 : 12, color: exemptColor),
+              size: compact ? 10 : 12, color: t.positive),
           SizedBox(width: compact ? 3 : 4),
           Text(
             label,
             style: TextStyle(
               fontSize: compact ? 10 : 11,
               fontWeight: FontWeight.bold,
-              color: exemptColor,
+              color: t.positive,
             ),
           ),
         ],
