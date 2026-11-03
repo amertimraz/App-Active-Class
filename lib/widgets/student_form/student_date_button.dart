@@ -14,6 +14,8 @@ class StudentDateButton extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
   final bool dense;
+  // لو متحدد: الزر بيتعرض كحقل بعنوان صغير فوق الإطار زي باقي الحقول.
+  final String? fieldLabel;
 
   const StudentDateButton({
     super.key,
@@ -23,11 +25,46 @@ class StudentDateButton extends StatelessWidget {
     required this.color,
     required this.onTap,
     this.dense = false,
+    this.fieldLabel,
   });
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
+    if (fieldLabel != null) {
+      return InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        onTap: onTap,
+        child: InputDecorator(
+          isEmpty: false,
+          decoration: InputDecoration(
+            isDense: true,
+            labelText: fieldLabel,
+            labelStyle: const TextStyle(fontSize: 13),
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.control),
+                borderSide: BorderSide(color: color.withValues(alpha: 0.45))),
+            enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.control),
+                borderSide: BorderSide(color: color.withValues(alpha: 0.45))),
+          ),
+          child: Row(children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(label,
+                  style: AppType.body.copyWith(
+                      fontSize: 14, color: color, fontWeight: FontWeight.w700),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+            ),
+          ]),
+        ),
+      );
+    }
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadius.control),
       onTap: onTap,

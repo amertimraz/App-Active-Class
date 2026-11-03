@@ -4,7 +4,6 @@ import 'package:get/get.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
-import 'package:active_class/widgets/phone_field.dart';
 import 'package:active_class/utils/phone_helper.dart';
 import 'package:active_class/widgets/code_scanner_page.dart';
 import 'package:active_class/models/group_model.dart';
@@ -517,11 +516,34 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                                       ]),
                                 ),
                               )),
-                    CustomTextField(
-                      dense: true,
-                      controller: _nameCtrl,
-                      label: 'اسم الطالب *',
-                      focusNode: _nameFocus,
+                    NameWithCodeRow(
+                      nameField: CustomTextField(
+                        dense: true,
+                        controller: _nameCtrl,
+                        label: 'اسم الطالب *',
+                        focusNode: _nameFocus,
+                      ),
+                      codeController: _codeCtrl,
+                      isManual: _codeIsManual,
+                      boxColor: _nextCode.isEmpty
+                          ? t.caution
+                          : (_codeIsManual ? t.brand : t.positive),
+                      icon: _nextCode.isEmpty
+                          ? Icons.warning_amber_rounded
+                          : (_codeIsManual
+                              ? Icons.qr_code_2_rounded
+                              : Icons.qr_code_rounded),
+                      chipText: _nextCode.isEmpty
+                          ? 'اختر مجموعة لتوليد الكود'
+                          : 'الكود: $_nextCode',
+                      displayText: _nextCode.isEmpty
+                          ? 'اختر مجموعة لتوليد الكود تلقائياً'
+                          : 'الكود التلقائي: $_nextCode',
+                      manualHint: 'اكتب كود الطالب يدوياً',
+                      onManualChanged: _onManualSwitchChanged,
+                      onCodeChanged: (v) =>
+                          setState(() => _nextCode = v.trim()),
+                      onScanQr: _scanPrintedCode,
                     ),
                     // هنت النجاح أسفل حقل الاسم مباشرة
                     if (_savedName != null) ...[
@@ -609,38 +631,15 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                       ),
                       const SizedBox(height: 14),
                     ],
-                    CollapsibleCodeField(
-                      codeController: _codeCtrl,
-                      isManual: _codeIsManual,
-                      boxColor: _nextCode.isEmpty
-                          ? t.caution
-                          : (_codeIsManual ? t.brand : t.positive),
-                      icon: _nextCode.isEmpty
-                          ? Icons.warning_amber_rounded
-                          : (_codeIsManual
-                              ? Icons.qr_code_2_rounded
-                              : Icons.qr_code_rounded),
-                      chipText: _nextCode.isEmpty
-                          ? 'اختر مجموعة لتوليد الكود'
-                          : 'الكود: $_nextCode',
-                      displayText: _nextCode.isEmpty
-                          ? 'اختر مجموعة لتوليد الكود تلقائياً'
-                          : 'الكود التلقائي: $_nextCode',
-                      manualHint: 'اكتب كود الطالب يدوياً',
-                      onManualChanged: _onManualSwitchChanged,
-                      onCodeChanged: (v) =>
-                          setState(() => _nextCode = v.trim()),
-                      onScanQr: _scanPrintedCode,
-                    ),
 
                     const SizedBox(height: 14),
 
                     // ── ولي الأمر ───────────────────────────────────────
                     const FormSectionTitle('ولي الأمر',
                         icon: Icons.family_restroom_rounded),
-                    PhoneField(
-                      dense: true,
-                      controller: _phoneCtrl,
+                    GuardianPhoneSection(
+                      phoneController: _phoneCtrl,
+                      whatsappController: _whatsappCtrl,
                       dialCode: _dialCode,
                       label: 'رقم ولي الأمر',
                       onContactPick: () async {
@@ -650,14 +649,6 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                           setState(() => _phoneCtrl.text = phone);
                         }
                       },
-                    ),
-                    const SizedBox(height: 12),
-                    CustomTextField(
-                      dense: true,
-                      controller: _whatsappCtrl,
-                      label: 'واتساب مختلف؟ (اختياري)',
-                      textDirection: TextDirection.ltr,
-                      textAlign: TextAlign.left,
                     ),
 
                     const SizedBox(height: 14),
@@ -689,6 +680,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               StudentDateButton(
+                                fieldLabel: 'تاريخ بداية الحضور',
                                 dense: true,
                                 icon: Icons.date_range_rounded,
                                 label: _attendanceStart != null
@@ -715,24 +707,6 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    StudentDateButton(
-                      dense: true,
-                      icon: Icons.cake_rounded,
-                      label: _birthDate != null
-                          ? '${_birthDate!.day}/${_birthDate!.month}/${_birthDate!.year}'
-                          : 'تاريخ الميلاد',
-                      hasValue: _birthDate != null,
-                      color: primary,
-                      onTap: () async {
-                        final p = await showDatePicker(
-                          context: context,
-                          firstDate: DateTime(1990),
-                          lastDate: DateTime.now(),
-                          initialDate: _birthDate ?? DateTime(2012),
-                        );
-                        if (p != null) setState(() => _birthDate = p);
-                      },
-                    ),
 
                     const SizedBox(height: 14),
 
@@ -744,6 +718,25 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                           'إخوة ${_siblings.length + 1}',
                       ],
                       children: [
+                        StudentDateButton(
+                          dense: true,
+                          icon: Icons.cake_rounded,
+                          label: _birthDate != null
+                              ? '${_birthDate!.day}/${_birthDate!.month}/${_birthDate!.year}'
+                              : 'تاريخ الميلاد',
+                          hasValue: _birthDate != null,
+                          color: primary,
+                          onTap: () async {
+                            final p = await showDatePicker(
+                              context: context,
+                              firstDate: DateTime(1990),
+                              lastDate: DateTime.now(),
+                              initialDate: _birthDate ?? DateTime(2012),
+                            );
+                            if (p != null) setState(() => _birthDate = p);
+                          },
+                        ),
+                        const SizedBox(height: 12),
                         Container(
                           decoration: BoxDecoration(
                             color: t.page,

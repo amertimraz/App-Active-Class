@@ -30,6 +30,7 @@ class PhoneField extends StatelessWidget {
   final VoidCallback? onContactPick;
   final String label;
   final bool dense;
+  final List<Widget> extraActions;
 
   const PhoneField({
     super.key,
@@ -38,6 +39,7 @@ class PhoneField extends StatelessWidget {
     this.onContactPick,
     this.label = '01xxxxxxxxx',
     this.dense = false,
+    this.extraActions = const [],
   });
 
   @override
@@ -73,6 +75,10 @@ class PhoneField extends StatelessWidget {
                 onPressed: onContactPick,
               ),
             ),
+            for (final a in extraActions) ...[
+              const SizedBox(width: 8),
+              a,
+            ],
           ]),
         ValueListenableBuilder<TextEditingValue>(
           valueListenable: controller,

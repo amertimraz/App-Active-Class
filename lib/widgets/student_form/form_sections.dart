@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:active_class/config/theme.dart';
+import 'package:active_class/widgets/custom_widgets.dart';
+import 'package:active_class/widgets/phone_field.dart';
 import 'package:active_class/widgets/student_form/student_code_field.dart';
 
 /// عنوان قسم داخل فورم الطالب ("الأساسي" / "ولي الأمر" / "الاشتراك").
@@ -32,10 +34,11 @@ class FormSectionTitle extends StatelessWidget {
   }
 }
 
-/// كود الطالب كشريحة صغيرة؛ الضغط عليها يفتح [StudentCodeField] الكامل
-/// (سويتش يدوي + مسح QR). الحالة (لون/نص/أيقونة) بتيجي من الشاشة
-/// المستدعية زي ما كانت.
-class CollapsibleCodeField extends StatefulWidget {
+/// سطر اسم الطالب وجنبه شريحة الكود؛ الضغط على الشريحة يفتح
+/// [StudentCodeField] الكامل (سويتش يدوي + مسح QR) تحت السطر. الحالة
+/// (لون/نص/أيقونة) بتيجي من الشاشة المستدعية.
+class NameWithCodeRow extends StatefulWidget {
+  final Widget nameField;
   final TextEditingController codeController;
   final bool isManual;
   final Color boxColor;
@@ -48,8 +51,9 @@ class CollapsibleCodeField extends StatefulWidget {
   final VoidCallback onScanQr;
   final VoidCallback? onReset;
 
-  const CollapsibleCodeField({
+  const NameWithCodeRow({
     super.key,
+    required this.nameField,
     required this.codeController,
     required this.isManual,
     required this.boxColor,
@@ -64,17 +68,53 @@ class CollapsibleCodeField extends StatefulWidget {
   });
 
   @override
-  State<CollapsibleCodeField> createState() => _CollapsibleCodeFieldState();
+  State<NameWithCodeRow> createState() => _NameWithCodeRowState();
 }
 
-class _CollapsibleCodeFieldState extends State<CollapsibleCodeField> {
+class _NameWithCodeRowState extends State<NameWithCodeRow> {
   bool _open = false;
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    if (_open) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    final c = widget.boxColor;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: widget.nameField),
+        const SizedBox(width: 8),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 120),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.control),
+            onTap: () => setState(() => _open = !_open),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 46),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: c.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AppRadius.control),
+                border: Border.all(color: c.withValues(alpha: 0.4)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(widget.icon, size: 16, color: c),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(widget.chipText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.caption
+                          .copyWith(color: c, fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(width: 4),
+                Icon(_open ? Icons.expand_less_rounded : Icons.edit_rounded,
+                    size: 14, color: t.inkSoft),
+              ]),
+            ),
+          ),
+        ),
+      ]),
+      if (_open) ...[
+        const SizedBox(height: 8),
         StudentCodeField(
           codeController: widget.codeController,
           isManual: widget.isManual,
@@ -87,44 +127,71 @@ class _CollapsibleCodeFieldState extends State<CollapsibleCodeField> {
           onScanQr: widget.onScanQr,
           onReset: widget.onReset,
         ),
-        Align(
-          alignment: AlignmentDirectional.centerEnd,
-          child: TextButton(
-            onPressed: () => setState(() => _open = false),
-            child: const Text('تم'),
-          ),
-        ),
-      ]);
-    }
-    return Align(
-      alignment: AlignmentDirectional.centerStart,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadius.chip),
-        onTap: () => setState(() => _open = true),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 36),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: widget.boxColor.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(AppRadius.chip),
-            border: Border.all(color: widget.boxColor.withValues(alpha: 0.4)),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(widget.icon, size: 16, color: widget.boxColor),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(widget.chipText,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppType.caption.copyWith(
-                      color: widget.boxColor, fontWeight: FontWeight.w700)),
+      ],
+    ]);
+  }
+}
+
+/// رقم ولي الأمر + زر جهات الاتصال + زر واتساب؛ الضغط على الواتساب
+/// بيظهر حقل «واتساب مختلف؟ (اختياري)» تحت الرقم.
+class GuardianPhoneSection extends StatefulWidget {
+  final TextEditingController phoneController;
+  final TextEditingController whatsappController;
+  final String dialCode;
+  final String label;
+  final VoidCallback onContactPick;
+
+  const GuardianPhoneSection({
+    super.key,
+    required this.phoneController,
+    required this.whatsappController,
+    required this.dialCode,
+    required this.label,
+    required this.onContactPick,
+  });
+
+  @override
+  State<GuardianPhoneSection> createState() => _GuardianPhoneSectionState();
+}
+
+class _GuardianPhoneSectionState extends State<GuardianPhoneSection> {
+  late bool _open = widget.whatsappController.text.trim().isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      PhoneField(
+        dense: true,
+        controller: widget.phoneController,
+        dialCode: widget.dialCode,
+        label: widget.label,
+        onContactPick: widget.onContactPick,
+        extraActions: [
+          Container(
+            decoration: BoxDecoration(
+              color: t.positive.withValues(alpha: _open ? 0.22 : 0.1),
+              borderRadius: BorderRadius.circular(AppRadius.control),
             ),
-            const SizedBox(width: 6),
-            Icon(Icons.edit_rounded, size: 14, color: t.inkSoft),
-          ]),
-        ),
+            child: IconButton(
+              tooltip: 'واتساب مختلف؟ (اختياري)',
+              icon: Icon(Icons.chat_rounded, color: t.positive),
+              onPressed: () => setState(() => _open = !_open),
+            ),
+          ),
+        ],
       ),
-    );
+      if (_open) ...[
+        const SizedBox(height: 10),
+        CustomTextField(
+          dense: true,
+          controller: widget.whatsappController,
+          label: 'واتساب مختلف؟ (اختياري)',
+          textDirection: TextDirection.ltr,
+          textAlign: TextAlign.left,
+        ),
+      ],
+    ]);
   }
 }
 

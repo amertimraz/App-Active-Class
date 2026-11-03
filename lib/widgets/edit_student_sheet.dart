@@ -9,7 +9,6 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/contact_picker_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
-import 'package:active_class/widgets/phone_field.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
 import 'package:active_class/widgets/code_scanner_page.dart';
@@ -422,8 +421,31 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const FormSectionTitle('الأساسي', icon: Icons.badge_rounded),
-                  CustomTextField(
-                      dense: true, controller: _nameCtrl, label: 'اسم الطالب'),
+                  Builder(builder: (context) {
+                    final changed = _code != widget.student.code;
+                    final boxColor = changed ? t.brand : t.positive;
+                    return NameWithCodeRow(
+                      nameField: CustomTextField(
+                          dense: true,
+                          controller: _nameCtrl,
+                          label: 'اسم الطالب'),
+                      codeController: _codeCtrl,
+                      isManual: _codeIsManual,
+                      boxColor: boxColor,
+                      icon: changed
+                          ? Icons.qr_code_2_rounded
+                          : Icons.qr_code_rounded,
+                      chipText: changed ? 'كود جديد: $_code' : 'الكود: $_code',
+                      displayText: changed
+                          ? 'كود من كرت مطبوع: $_code'
+                          : 'الكود: $_code',
+                      manualHint: 'اكتب كود الطالب',
+                      onManualChanged: _onManualSwitchChanged,
+                      onCodeChanged: (v) => setState(() => _code = v.trim()),
+                      onScanQr: _scanPrintedCode,
+                      onReset: changed ? _resetCode : null,
+                    );
+                  }),
                   const SizedBox(height: 12),
                   if (widget.groups != null && widget.groups!.isNotEmpty) ...[
                     DropdownButtonFormField<Group>(
@@ -474,33 +496,12 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                     ),
                     const SizedBox(height: 12),
                   ],
-                  Builder(builder: (context) {
-                    final changed = _code != widget.student.code;
-                    final boxColor = changed ? t.brand : t.positive;
-                    return CollapsibleCodeField(
-                      codeController: _codeCtrl,
-                      isManual: _codeIsManual,
-                      boxColor: boxColor,
-                      icon: changed
-                          ? Icons.qr_code_2_rounded
-                          : Icons.qr_code_rounded,
-                      chipText: changed ? 'كود جديد: $_code' : 'الكود: $_code',
-                      displayText: changed
-                          ? 'كود من كرت مطبوع: $_code'
-                          : 'الكود: $_code',
-                      manualHint: 'اكتب كود الطالب',
-                      onManualChanged: _onManualSwitchChanged,
-                      onCodeChanged: (v) => setState(() => _code = v.trim()),
-                      onScanQr: _scanPrintedCode,
-                      onReset: changed ? _resetCode : null,
-                    );
-                  }),
                   const SizedBox(height: 14),
                   const FormSectionTitle('ولي الأمر',
                       icon: Icons.family_restroom_rounded),
-                  PhoneField(
-                    dense: true,
-                    controller: _phoneCtrl,
+                  GuardianPhoneSection(
+                    phoneController: _phoneCtrl,
+                    whatsappController: _whatsappCtrl,
                     dialCode: _dialCode,
                     label: 'رقم الهاتف',
                     onContactPick: () async {
@@ -510,14 +511,6 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                         setState(() => _phoneCtrl.text = phone);
                       }
                     },
-                  ),
-                  const SizedBox(height: 12),
-                  CustomTextField(
-                    dense: true,
-                    controller: _whatsappCtrl,
-                    label: 'واتساب مختلف؟ (اختياري)',
-                    textDirection: TextDirection.ltr,
-                    textAlign: TextAlign.left,
                   ),
                   const SizedBox(height: 14),
                   const FormSectionTitle('الاشتراك',
@@ -533,6 +526,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: StudentDateButton(
+                        fieldLabel: 'تاريخ بداية الحضور',
                         dense: true,
                         icon: Icons.date_range_rounded,
                         label: _attendanceStart != null
@@ -553,24 +547,6 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                     ),
                   ]),
                   const SizedBox(height: 12),
-                  StudentDateButton(
-                    dense: true,
-                    icon: Icons.cake_rounded,
-                    label: _birthDate != null
-                        ? '${_birthDate!.day}/${_birthDate!.month}/${_birthDate!.year}'
-                        : 'تاريخ الميلاد',
-                    hasValue: _birthDate != null,
-                    color: primary,
-                    onTap: () async {
-                      final p = await showDatePicker(
-                        context: context,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime.now(),
-                        initialDate: _birthDate ?? DateTime(2010),
-                      );
-                      if (p != null) setState(() => _birthDate = p);
-                    },
-                  ),
                   const SizedBox(height: 14),
                   MoreOptionsPanel(
                     initiallyOpen: _isExempt || _siblings.isNotEmpty,
@@ -579,6 +555,25 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                       if (_siblings.isNotEmpty) 'إخوة ${_siblings.length + 1}',
                     ],
                     children: [
+                      StudentDateButton(
+                        dense: true,
+                        icon: Icons.cake_rounded,
+                        label: _birthDate != null
+                            ? '${_birthDate!.day}/${_birthDate!.month}/${_birthDate!.year}'
+                            : 'تاريخ الميلاد',
+                        hasValue: _birthDate != null,
+                        color: primary,
+                        onTap: () async {
+                          final p = await showDatePicker(
+                            context: context,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime.now(),
+                            initialDate: _birthDate ?? DateTime(2010),
+                          );
+                          if (p != null) setState(() => _birthDate = p);
+                        },
+                      ),
+                      const SizedBox(height: 12),
                       GestureDetector(
                         onTap: _siblings.length >= 2 ? null : _pickSibling,
                         child: Container(

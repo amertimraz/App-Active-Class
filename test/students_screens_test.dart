@@ -370,16 +370,20 @@ void main() {
         await t.ensureVisible(find.textContaining('الكود:').first);
         await t.tap(find.textContaining('الكود:').first);
         await t.pump(const Duration(milliseconds: 400));
-        expect(find.text('تم'), findsOneWidget);
-        await t.tap(find.text('تم'));
+        expect(find.byType(Switch), findsWidgets); // لوحة الكود اتفتحت
+        await t.ensureVisible(find.byTooltip('واتساب مختلف؟ (اختياري)'));
+        await t.tap(find.byTooltip('واتساب مختلف؟ (اختياري)'));
         await t.pump(const Duration(milliseconds: 400));
+        expect(find.text('واتساب مختلف؟ (اختياري)'), findsWidgets);
         await t.ensureVisible(find.text('خيارات إضافية'));
         // التعديل بيفتح الخيارات لوحده لو الطالب معفى أو عنده إخوة.
+        expect(find.text('تاريخ بداية الحضور'), findsWidgets);
         if (find.text('إعفاء من الرسوم').evaluate().isEmpty) {
           await t.tap(find.text('خيارات إضافية'));
           await t.pump(const Duration(milliseconds: 400));
         }
         expect(find.text('إعفاء من الرسوم'), findsOneWidget);
+        expect(find.text('تاريخ الميلاد'), findsOneWidget);
         expect(t.takeException(), isNull);
       });
     }

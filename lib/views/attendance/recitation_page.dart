@@ -40,9 +40,17 @@ class RecitationPage extends StatefulWidget {
 }
 
 class _RecitationPageState extends State<RecitationPage> {
-  final _att = Get.find<AttendanceController>();
-  final _groups = Get.find<GroupController>();
-  final _students = Get.find<StudentController>();
+  // بتتفتح من مركز المساعدة مباشرةً من غير ما شاشة الحضور تكون سجّلت
+  // الكنترولرز — فنسجّلها هنا لو مش موجودة.
+  final _att = Get.isRegistered<AttendanceController>()
+      ? Get.find<AttendanceController>()
+      : Get.put(AttendanceController());
+  final _groups = Get.isRegistered<GroupController>()
+      ? Get.find<GroupController>()
+      : Get.put(GroupController());
+  final _students = Get.isRegistered<StudentController>()
+      ? Get.find<StudentController>()
+      : Get.put(StudentController());
   final _db = DatabaseService();
 
   DateTime _day = _today();
@@ -109,10 +117,9 @@ class _RecitationPageState extends State<RecitationPage> {
         a.studentId == studentId && !a.date.isBefore(s) && !a.date.isAfter(e));
   }
 
-  List<Student> _studentsOf(Group g) => _students.students
-      .where((s) => s.groupId == g.id)
-      .toList()
-    ..sort((a, b) => a.name.compareTo(b.name));
+  List<Student> _studentsOf(Group g) =>
+      _students.students.where((s) => s.groupId == g.id).toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
 
   int _maxOf(Group g) {
     final id = g.id!;
@@ -222,7 +229,8 @@ class _RecitationPageState extends State<RecitationPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('الدرجة العظمى لـ ${g.name}',
-            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+            style: const TextStyle(
+                fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
         content: TextField(
           controller: c,
           autofocus: true,
@@ -232,11 +240,10 @@ class _RecitationPageState extends State<RecitationPage> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('إلغاء')),
+              onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
           FilledButton(
-              onPressed: () =>
-                  Navigator.pop(ctx, parseRecitationInput(c.text, kRecitationMaxCap)),
+              onPressed: () => Navigator.pop(
+                  ctx, parseRecitationInput(c.text, kRecitationMaxCap)),
               child: const Text('تم')),
         ],
       ),
@@ -351,7 +358,8 @@ class _RecitationPageState extends State<RecitationPage> {
       ToastHelper.info('مفيش مجموعات للتقرير');
       return;
     }
-    final res = await ExportService().exportRecitationPDF(date: _day, groups: groups);
+    final res =
+        await ExportService().exportRecitationPDF(date: _day, groups: groups);
     if (!mounted) return;
     if (res.success && res.path != null) {
       await ExportService().sharePDF(res.path!);
@@ -397,7 +405,8 @@ class _RecitationPageState extends State<RecitationPage> {
     }
     Get.to(() => CertificatesSheet(
           title: 'شهادات التميّز في التسميع',
-          fileName: 'recitation_certificates_${DateFormat('yyyyMMdd').format(_day)}',
+          fileName:
+              'recitation_certificates_${DateFormat('yyyyMMdd').format(_day)}',
           items: items,
         ));
   }
@@ -470,11 +479,13 @@ class _RecitationPageState extends State<RecitationPage> {
       canPop: !_hasDraft,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        if (await _confirmDiscard() && context.mounted) Navigator.of(context).pop();
+        if (await _confirmDiscard() && context.mounted)
+          Navigator.of(context).pop();
       },
       child: Scaffold(
         backgroundColor: t.page,
-        appBar: buildBoardAppBar(context, title: 'قائمة التسميع', actions: const [
+        appBar:
+            buildBoardAppBar(context, title: 'قائمة التسميع', actions: const [
           HelpButton(topicId: 'recitation'),
         ]),
         bottomNavigationBar: _bottomBar(t),
@@ -633,11 +644,13 @@ class _RecitationPageState extends State<RecitationPage> {
                         if (low > 0)
                           Text('$low تراجع',
                               style: AppType.caption.copyWith(
-                                  color: t.danger, fontWeight: FontWeight.w700)),
+                                  color: t.danger,
+                                  fontWeight: FontWeight.w700)),
                         if (star > 0)
                           Text('$star نجمة',
                               style: AppType.caption.copyWith(
-                                  color: t.caution, fontWeight: FontWeight.w700)),
+                                  color: t.caution,
+                                  fontWeight: FontWeight.w700)),
                       ]),
                     ]),
               ),
@@ -701,7 +714,8 @@ class _RecitationPageState extends State<RecitationPage> {
           horizontal: AppSpace.md, vertical: AppSpace.sm),
       child: Row(children: [
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(s.name,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -714,7 +728,8 @@ class _RecitationPageState extends State<RecitationPage> {
               _chip(t, 'تراجع مستوى', Icons.trending_down_rounded, t.danger,
                   t.dangerSoft)
             else if (lvl == RecitationLevel.star)
-              _chip(t, 'نجمة تميّز', Icons.star_rounded, t.caution, t.cautionSoft)
+              _chip(
+                  t, 'نجمة تميّز', Icons.star_rounded, t.caution, t.cautionSoft)
             else if (otherScale)
               Text(
                   'سُجّلت ${recitationGradeOf(r)}/${recitationMaxOf(r)} — اكتب درجة جديدة للاستبدال',
@@ -724,7 +739,8 @@ class _RecitationPageState extends State<RecitationPage> {
                   style: AppType.caption.copyWith(color: t.inkSoft)),
           ]),
         ),
-        if (canRecord && (lvl == RecitationLevel.low || lvl == RecitationLevel.star))
+        if (canRecord &&
+            (lvl == RecitationLevel.low || lvl == RecitationLevel.star))
           IconButton(
             tooltip: lvl == RecitationLevel.low
                 ? 'إرسال تنبيه لولي الأمر'
@@ -802,8 +818,8 @@ class _DayBar extends StatelessWidget {
     final label = DateFormat('EEEE d MMMM yyyy', 'ar').format(day);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(
-          AppSpace.sm, 0, AppSpace.sm, AppSpace.lg),
+      padding:
+          const EdgeInsets.fromLTRB(AppSpace.sm, 0, AppSpace.sm, AppSpace.lg),
       decoration: BoxDecoration(
         color: t.board,
         borderRadius: const BorderRadius.vertical(
@@ -820,7 +836,8 @@ class _DayBar extends StatelessWidget {
             onTap: onPick,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpace.sm),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              child:
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Icon(Icons.calendar_month_rounded,
                     color: t.boardInkSoft, size: 18),
                 const SizedBox(width: AppSpace.sm),
@@ -865,8 +882,7 @@ class _MaxStepper extends StatelessWidget {
           onPressed: f,
           icon: Icon(icon, color: t.brand),
           style: IconButton.styleFrom(
-              minimumSize: const Size(44, 44),
-              side: BorderSide(color: t.line)),
+              minimumSize: const Size(44, 44), side: BorderSide(color: t.line)),
         );
     return Row(children: [
       Text('الدرجة من', style: AppType.body.copyWith(color: t.inkSoft)),
