@@ -1,6 +1,7 @@
 // lib/widgets/edit_student_sheet.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
@@ -14,7 +15,7 @@ import 'package:active_class/widgets/exempt_widgets.dart';
 import 'package:active_class/widgets/code_scanner_page.dart';
 import 'package:active_class/widgets/student_form/student_date_button.dart';
 import 'package:active_class/widgets/student_form/sibling_picker.dart';
-import 'package:active_class/widgets/student_form/student_code_field.dart';
+import 'package:active_class/widgets/student_form/form_sections.dart';
 
 /// يفتح bottom sheet لتعديل بيانات طالب.
 /// يرجع الطالب المُحدَّث عند الحفظ، أو null لو اتلغى.
@@ -168,8 +169,13 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   Future<void> _loadSibling() async {
     final groupId = widget.student.siblingGroupId;
     if (groupId != null) {
-      final members = await DatabaseService()
-          .getStudentsInSiblingGroup(groupId, excludeId: widget.student.id);
+      final List<Student> members;
+      try {
+        members = await DatabaseService()
+            .getStudentsInSiblingGroup(groupId, excludeId: widget.student.id);
+      } catch (_) {
+        return; // نفتح النافذة من غير الإخوة بدل ما تقع.
+      }
       if (mounted) {
         setState(() {
           _siblings = members;
@@ -305,8 +311,9 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
         attendanceStart: _attendanceStart,
         guardianPhone:
             _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
-        guardianWhatsapp:
-            _whatsappCtrl.text.trim().isEmpty ? null : _whatsappCtrl.text.trim(),
+        guardianWhatsapp: _whatsappCtrl.text.trim().isEmpty
+            ? null
+            : _whatsappCtrl.text.trim(),
         clearGuardianWhatsapp: _whatsappCtrl.text.trim().isEmpty,
         birthDate: _birthDate,
         exemptPercent: _isExempt ? _exemptPercent : 0,
@@ -318,13 +325,12 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
       // فك ربط الأعضاء اللي اتشالوا من القائمة (فك جزئي — عضو ده بس،
       // مش هيأثر على باقي المجموعة لو فيها أكتر من واحد).
       final currentIds = _siblings.map((s) => s.id).toSet();
-      final removed =
-          _initialSiblings.where((s) => !currentIds.contains(s.id));
+      final removed = _initialSiblings.where((s) => !currentIds.contains(s.id));
       for (final r in removed) {
         final fresh = await db.getStudent(r.id!);
         if (fresh == null) continue;
-        final cleared = fresh.copyWith(
-            clearSiblingsTotal: true, clearSiblingGroupId: true);
+        final cleared =
+            fresh.copyWith(clearSiblingsTotal: true, clearSiblingGroupId: true);
         await db.updateStudent(cleared);
         final idx = _sc.students.indexWhere((s) => s.id == cleared.id);
         if (idx != -1) _sc.students[idx] = cleared;
@@ -359,290 +365,353 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = widget.accentColor;
+    final t = context.tokens;
+    final primary = t.brand;
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF131D31) : Colors.white,
-        borderRadius: BorderRadius.circular(28),
+        color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.board),
       ),
-      padding: EdgeInsets.fromLTRB(
-          20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 24),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(children: [
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // الهيدر: شريط سبورة
+          Container(
+            color: t.board,
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                AppSpace.lg, AppSpace.md, AppSpace.xs, AppSpace.md),
+            child: Row(children: [
               Container(
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  color: t.chalk,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
-                child: Icon(Icons.edit_rounded, color: primary, size: 22),
+                child: Icon(Icons.edit_rounded, color: t.onChalk),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpace.md),
               Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    const Text('تعديل بيانات الطالب',
-                        style: TextStyle(
-                            fontSize: 17, fontWeight: FontWeight.w900)),
-                  ])),
-              IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close_rounded)),
-            ]),
-
-            const SizedBox(height: 16),
-
-            // ── كود الطالب (QR) ────────────────────────────────────
-            Builder(builder: (context) {
-              final changed = _code != widget.student.code;
-              final boxColor = changed ? Colors.purple : primary;
-              return StudentCodeField(
-                codeController: _codeCtrl,
-                isManual: _codeIsManual,
-                boxColor: boxColor,
-                icon: changed ? Icons.qr_code_2_rounded : Icons.qr_code_rounded,
-                displayText:
-                    changed ? 'كود من كرت مطبوع: $_code' : 'الكود: $_code',
-                manualHint: 'اكتب كود الطالب',
-                onManualChanged: _onManualSwitchChanged,
-                onCodeChanged: (v) => setState(() => _code = v.trim()),
-                onScanQr: _scanPrintedCode,
-                onReset: changed ? _resetCode : null,
-              );
-            }),
-
-            const SizedBox(height: 12),
-            CustomTextField(controller: _nameCtrl, label: 'اسم الطالب'),
-            const SizedBox(height: 12),
-            CustomTextField(
-                controller: _priceCtrl,
-                label: 'الرسوم',
-                keyboardType: TextInputType.number),
-            const SizedBox(height: 12),
-            PhoneField(
-              controller: _phoneCtrl,
-              dialCode: _dialCode,
-              label: 'ولي الأمر',
-              onContactPick: () async {
-                final phone =
-                    await ContactPickerService.pickPhoneNumber(context);
-                if (phone != null && mounted) {
-                  setState(() => _phoneCtrl.text = phone);
-                }
-              },
-            ),
-            const SizedBox(height: 12),
-            CustomTextField(
-              controller: _whatsappCtrl,
-              label: 'واتساب ولي الأمر (رابط/اسم مستخدم — اختياري)',
-              textDirection: TextDirection.ltr,
-              textAlign: TextAlign.left,
-            ),
-            const SizedBox(height: 12),
-
-            // المجموعة (لو الشاشة المستدعية بعتت قائمة المجموعات)
-            if (widget.groups != null && widget.groups!.isNotEmpty) ...[
-              DropdownButtonFormField<Group>(
-                isExpanded: true,
-                initialValue: _selectedGroup,
-                decoration: InputDecoration(
-                  labelText: 'المجموعة',
-                  isDense: true,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                items: widget.groups!
-                    .map((g) => DropdownMenuItem(
-                          value: g,
-                          child: Text(g.name,
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ))
-                    .toList(),
-                onChanged: (g) {
-                  setState(() => _selectedGroup = g);
-                  // بنفصل بس (مش بنغيّر الرسوم تلقائي) عشان معندناش أي
-                  // فكرة هل الرسوم الحالية مخصصة عمدًا أو كانت افتراضية
-                  // من المجموعة القديمة — لو غيّرناها من غير تنبيه ممكن
-                  // نمسح سعر مخصص المدرّس حطه بنفسه.
-                  final newPrice = g?.price;
-                  final currentPrice = double.tryParse(_priceCtrl.text.trim());
-                  if (g != null &&
-                      newPrice != null &&
-                      currentPrice != null &&
-                      newPrice != currentPrice) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(
-                          'سعر مجموعة "${g.name}" مختلف — راجع خانة الرسوم قبل الحفظ'),
-                      duration: const Duration(seconds: 3),
-                    ));
-                  }
-                },
-              ),
-              const SizedBox(height: 12),
-            ],
-
-            // التواريخ
-            Row(children: [
-              Expanded(
-                child: StudentDateButton(
-                  icon: Icons.cake_rounded,
-                  label: _birthDate != null
-                      ? '${_birthDate!.day}/${_birthDate!.month}/${_birthDate!.year}'
-                      : 'تاريخ الميلاد',
-                  hasValue: _birthDate != null,
-                  color: primary,
-                  onTap: () async {
-                    final p = await showDatePicker(
-                      context: context,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime.now(),
-                      initialDate: _birthDate ?? DateTime(2010),
-                    );
-                    if (p != null) setState(() => _birthDate = p);
-                  },
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: StudentDateButton(
-                  icon: Icons.date_range_rounded,
-                  label: _attendanceStart != null
-                      ? '${_attendanceStart!.day}/${_attendanceStart!.month}/${_attendanceStart!.year}'
-                      : 'بداية الحضور',
-                  hasValue: true,
-                  color: primary,
-                  onTap: () async {
-                    final p = await showDatePicker(
-                      context: context,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2100),
-                      initialDate: _attendanceStart ?? DateTime.now(),
-                    );
-                    if (p != null) setState(() => _attendanceStart = p);
-                  },
-                ),
-              ),
-            ]),
-
-            const SizedBox(height: 16),
-
-            // ربط إخوة (حتى 3 أعضاء، شامل الطالب الحالي)
-            GestureDetector(
-              onTap: _siblings.length >= 2 ? null : _pickSibling,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.04)
-                      : Colors.grey.shade50,
-                  border: Border.all(color: Theme.of(context).dividerColor),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(children: [
-                  Icon(Icons.group_rounded,
-                      color: _siblings.isNotEmpty ? primary : Colors.grey,
-                      size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      _siblings.isNotEmpty
-                          ? 'الإخوة (${_siblings.length + 1}/3)'
-                          : 'ربط بطالب آخر (أخ / أخت)',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: _siblings.isNotEmpty
-                              ? Theme.of(context).colorScheme.onSurface
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.55)),
-                    ),
-                  ),
-                  if (_siblings.length < 2)
-                    Icon(Icons.add_circle_outline_rounded,
-                        color: Colors.grey.shade400, size: 18),
-                ]),
-              ),
-            ),
-            if (_siblings.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              ..._siblings.map((s) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Row(children: [
-                      Expanded(
-                        child: Text('${s.name} (${s.code})',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13)),
-                      ),
-                      GestureDetector(
-                        onTap: () => setState(() => _siblings = _siblings
-                            .where((x) => x.id != s.id)
-                            .toList()),
-                        child: const Icon(Icons.close_rounded,
-                            size: 18, color: Colors.red),
-                      ),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('تعديل بيانات الطالب',
+                          style: AppType.title.copyWith(color: t.boardInk)),
+                      Text(widget.student.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              AppType.caption.copyWith(color: t.boardInkSoft)),
                     ]),
-                  )),
-              const SizedBox(height: 8),
-              CustomTextField(
-                controller: _sibTotalCtrl,
-                label: 'الإجمالي المشترك للإخوة للشهر',
-                keyboardType: TextInputType.number,
               ),
-            ],
-
-            const SizedBox(height: 16),
-
-            // الإعفاء
-            ExemptionSection(
-              isExempt: _isExempt,
-              exemptPercent: _exemptPercent,
-              selectedPreset: _exemptPreset,
-              customCtrl: _exemptCustomCtrl,
-              accentColor: primary,
-              onToggle: (v) => setState(() => _isExempt = v),
-              onPercentChanged: (v) => setState(() => _exemptPercent = v),
-              onPresetChanged: (v) => setState(() => _exemptPreset = v),
-            ),
-
-            const SizedBox(height: 20),
-
-            FilledButton.icon(
-              onPressed: _saving ? null : _save,
-              style: FilledButton.styleFrom(
-                backgroundColor: primary,
-                minimumSize: const Size.fromHeight(46),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
+              IconButton(
+                  tooltip: 'إغلاق',
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: Icon(Icons.close_rounded, color: t.boardInk)),
+            ]),
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpace.lg, AppSpace.md, AppSpace.lg, AppSpace.lg),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const FormSectionTitle('الأساسي', icon: Icons.badge_rounded),
+                  CustomTextField(
+                      dense: true, controller: _nameCtrl, label: 'اسم الطالب'),
+                  const SizedBox(height: 12),
+                  if (widget.groups != null && widget.groups!.isNotEmpty) ...[
+                    DropdownButtonFormField<Group>(
+                      isExpanded: true,
+                      initialValue: _selectedGroup,
+                      decoration: InputDecoration(
+                        labelText: 'المجموعة',
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 14),
+                        border: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.control),
+                            borderSide: BorderSide(color: t.line)),
+                        enabledBorder: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.control),
+                            borderSide: BorderSide(color: t.line)),
+                      ),
+                      items: widget.groups!
+                          .map((g) => DropdownMenuItem(
+                                value: g,
+                                child: Text(g.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
+                      onChanged: (g) {
+                        setState(() => _selectedGroup = g);
+                        // بنفصل بس (مش بنغيّر الرسوم تلقائي) عشان معندناش أي
+                        // فكرة هل الرسوم الحالية مخصصة عمدًا أو كانت افتراضية
+                        // من المجموعة القديمة — لو غيّرناها من غير تنبيه ممكن
+                        // نمسح سعر مخصص المدرّس حطه بنفسه.
+                        final newPrice = g?.price;
+                        final currentPrice =
+                            double.tryParse(_priceCtrl.text.trim());
+                        if (g != null &&
+                            newPrice != null &&
+                            currentPrice != null &&
+                            newPrice != currentPrice) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(
+                                'سعر مجموعة "${g.name}" مختلف — راجع خانة الرسوم قبل الحفظ'),
+                            duration: const Duration(seconds: 3),
+                          ));
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  Builder(builder: (context) {
+                    final changed = _code != widget.student.code;
+                    final boxColor = changed ? t.brand : t.positive;
+                    return CollapsibleCodeField(
+                      codeController: _codeCtrl,
+                      isManual: _codeIsManual,
+                      boxColor: boxColor,
+                      icon: changed
+                          ? Icons.qr_code_2_rounded
+                          : Icons.qr_code_rounded,
+                      chipText: changed ? 'كود جديد: $_code' : 'الكود: $_code',
+                      displayText: changed
+                          ? 'كود من كرت مطبوع: $_code'
+                          : 'الكود: $_code',
+                      manualHint: 'اكتب كود الطالب',
+                      onManualChanged: _onManualSwitchChanged,
+                      onCodeChanged: (v) => setState(() => _code = v.trim()),
+                      onScanQr: _scanPrintedCode,
+                      onReset: changed ? _resetCode : null,
+                    );
+                  }),
+                  const SizedBox(height: 14),
+                  const FormSectionTitle('ولي الأمر',
+                      icon: Icons.family_restroom_rounded),
+                  PhoneField(
+                    dense: true,
+                    controller: _phoneCtrl,
+                    dialCode: _dialCode,
+                    label: 'رقم الهاتف',
+                    onContactPick: () async {
+                      final phone =
+                          await ContactPickerService.pickPhoneNumber(context);
+                      if (phone != null && mounted) {
+                        setState(() => _phoneCtrl.text = phone);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  CustomTextField(
+                    dense: true,
+                    controller: _whatsappCtrl,
+                    label: 'واتساب مختلف؟ (اختياري)',
+                    textDirection: TextDirection.ltr,
+                    textAlign: TextAlign.left,
+                  ),
+                  const SizedBox(height: 14),
+                  const FormSectionTitle('الاشتراك',
+                      icon: Icons.payments_rounded),
+                  Row(children: [
+                    Expanded(
+                      child: CustomTextField(
+                          dense: true,
+                          controller: _priceCtrl,
+                          label: 'الرسوم',
+                          keyboardType: TextInputType.number),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: StudentDateButton(
+                        dense: true,
+                        icon: Icons.date_range_rounded,
+                        label: _attendanceStart != null
+                            ? '${_attendanceStart!.day}/${_attendanceStart!.month}/${_attendanceStart!.year}'
+                            : 'بداية الحضور',
+                        hasValue: true,
+                        color: primary,
+                        onTap: () async {
+                          final p = await showDatePicker(
+                            context: context,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2100),
+                            initialDate: _attendanceStart ?? DateTime.now(),
+                          );
+                          if (p != null) setState(() => _attendanceStart = p);
+                        },
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 12),
+                  StudentDateButton(
+                    dense: true,
+                    icon: Icons.cake_rounded,
+                    label: _birthDate != null
+                        ? '${_birthDate!.day}/${_birthDate!.month}/${_birthDate!.year}'
+                        : 'تاريخ الميلاد',
+                    hasValue: _birthDate != null,
+                    color: primary,
+                    onTap: () async {
+                      final p = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime.now(),
+                        initialDate: _birthDate ?? DateTime(2010),
+                      );
+                      if (p != null) setState(() => _birthDate = p);
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  MoreOptionsPanel(
+                    initiallyOpen: _isExempt || _siblings.isNotEmpty,
+                    summary: [
+                      if (_isExempt) 'إعفاء ${_exemptPercent.round()}%',
+                      if (_siblings.isNotEmpty) 'إخوة ${_siblings.length + 1}',
+                    ],
+                    children: [
+                      GestureDetector(
+                        onTap: _siblings.length >= 2 ? null : _pickSibling,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: t.page,
+                            border: Border.all(color: t.line),
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.control),
+                          ),
+                          child: Row(children: [
+                            Icon(Icons.group_rounded,
+                                color:
+                                    _siblings.isNotEmpty ? primary : t.inkSoft,
+                                size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _siblings.isNotEmpty
+                                    ? 'الإخوة (${_siblings.length + 1}/3)'
+                                    : 'ربط بطالب آخر (أخ / أخت)',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: _siblings.isNotEmpty
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withValues(alpha: 0.55)),
+                              ),
+                            ),
+                            if (_siblings.length < 2)
+                              Icon(Icons.add_circle_outline_rounded,
+                                  color: t.inkSoft, size: 20),
+                          ]),
+                        ),
+                      ),
+                      if (_siblings.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        ..._siblings.map((s) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Row(children: [
+                                Expanded(
+                                  child: Text('${s.name} (${s.code})',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 13)),
+                                ),
+                                GestureDetector(
+                                  onTap: () => setState(() => _siblings =
+                                      _siblings
+                                          .where((x) => x.id != s.id)
+                                          .toList()),
+                                  child: Icon(Icons.close_rounded,
+                                      size: 20, color: t.danger),
+                                ),
+                              ]),
+                            )),
+                        const SizedBox(height: 8),
+                        CustomTextField(
+                          dense: true,
+                          controller: _sibTotalCtrl,
+                          label: 'الإجمالي المشترك للإخوة للشهر',
+                          keyboardType: TextInputType.number,
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      ExemptionSection(
+                        isExempt: _isExempt,
+                        exemptPercent: _exemptPercent,
+                        selectedPreset: _exemptPreset,
+                        customCtrl: _exemptCustomCtrl,
+                        accentColor: primary,
+                        onToggle: (v) => setState(() => _isExempt = v),
+                        onPercentChanged: (v) =>
+                            setState(() => _exemptPercent = v),
+                        onPresetChanged: (v) =>
+                            setState(() => _exemptPreset = v),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              icon: _saving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.save_rounded),
-              label: const Text('حفظ التعديلات',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
             ),
-          ],
-        ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.sm, AppSpace.lg,
+                MediaQuery.of(context).viewInsets.bottom + AppSpace.lg),
+            child: Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: t.ink,
+                    side: BorderSide(color: t.line),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.control)),
+                  ),
+                  child: const Text('إغلاق'),
+                ),
+              ),
+              const SizedBox(width: AppSpace.md),
+              Expanded(
+                flex: 2,
+                child: FilledButton.icon(
+                  onPressed: _saving ? null : _save,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: t.chalk,
+                    foregroundColor: t.onChalk,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.control)),
+                  ),
+                  icon: _saving
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: t.onChalk))
+                      : const Icon(Icons.save_rounded),
+                  label: Text('حفظ التعديلات',
+                      style: AppType.label.copyWith(color: t.onChalk)),
+                ),
+              ),
+            ]),
+          ),
+        ],
       ),
     );
   }
 }
-

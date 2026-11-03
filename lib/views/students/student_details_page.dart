@@ -20,6 +20,8 @@ import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/widgets/app_panel.dart';
+import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/clock_text.dart';
 import 'package:active_class/utils/booklet_message.dart';
@@ -113,10 +115,15 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
   Future<void> _loadGroup() async {
     final s = student;
     if (s == null) return;
-    final results = await Future.wait([
-      DatabaseService().getGroup(s.groupId),
-      DatabaseService().getAllGroups(),
-    ]);
+    final List<Object?> results;
+    try {
+      results = await Future.wait([
+        DatabaseService().getGroup(s.groupId),
+        DatabaseService().getAllGroups(),
+      ]);
+    } catch (_) {
+      return; // نكمّل من غير بيانات المجموعة بدل ما الشاشة تقع.
+    }
     if (mounted) {
       setState(() {
         _group = results[0] as Group?;
@@ -442,29 +449,21 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
       );
     }
 
+    final t = context.tokens;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = _accentColor;
+    final primary = t.brand;
     final initials = s.name.trim().isNotEmpty ? s.name.trim()[0] : '؟';
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0D1520) : const Color(0xFFF5F7FA),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: isDark ? Colors.white : Colors.black87,
-        title: Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        centerTitle: true,
+      backgroundColor: t.page,
+      appBar: buildBoardAppBar(
+        context,
+        title: 'بيانات الطالب',
         actions: [
           IconButton(
             tooltip: 'تعديل بيانات الطالب',
             icon: const Icon(Icons.edit_rounded),
             onPressed: () => _editStudent(s),
-          ),
-          IconButton(
-            tooltip: 'عرض QR',
-            icon: const Icon(Icons.qr_code_rounded),
-            onPressed: () => _showQRDialog(context, s),
           ),
           if (_canSeeAcademics)
             IconButton(
@@ -472,12 +471,34 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
               icon: const Icon(Icons.workspace_premium_rounded),
               onPressed: () => _openStudentCertificate(s),
             ),
-          if (!s.isArchived)
-            IconButton(
-              tooltip: 'حذف الطالب',
-              icon: const Icon(Icons.delete_outline_rounded),
-              onPressed: () => _confirmRemove(s),
-            ),
+          PopupMenuButton<String>(
+            tooltip: 'المزيد',
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (v) {
+              if (v == 'qr') _showQRDialog(context, s);
+              if (v == 'delete') _confirmRemove(s);
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'qr',
+                child: Row(children: [
+                  Icon(Icons.qr_code_rounded, size: 20),
+                  SizedBox(width: 10),
+                  Text('عرض QR'),
+                ]),
+              ),
+              if (!s.isArchived)
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(children: [
+                    Icon(Icons.delete_outline_rounded,
+                        size: 20, color: t.danger),
+                    const SizedBox(width: 10),
+                    Text('حذف الطالب', style: TextStyle(color: t.danger)),
+                  ]),
+                ),
+            ],
+          ),
         ],
       ),
       body: Obx(() {
@@ -597,66 +618,58 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
       int absentCount,
       double attRate,
       double totalPaid) {
+    final t = context.tokens;
+    // ألوان الأرقام فوق السبورة: درجات الوضع الداكن لأن خلفيتها غامقة دايمًا.
+    final on = AppTokens.dark;
+    final rateColor = attRate >= 75
+        ? on.positive
+        : attRate >= 50
+            ? t.chalk
+            : on.danger;
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      width: double.infinity,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [primary, primary.withValues(alpha: 0.7)],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-              color: primary.withValues(alpha: 0.35),
-              blurRadius: 16,
-              offset: const Offset(0, 6)),
-        ],
+        color: t.board,
+        borderRadius: const BorderRadius.vertical(
+            bottom: Radius.circular(AppRadius.board)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(
+            AppSpace.lg, AppSpace.xs, AppSpace.lg, AppSpace.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Avatar + اسم
             Row(children: [
               Container(
-                width: 60,
-                height: 60,
+                width: 56,
+                height: 56,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.25),
+                  color: t.chalk,
                   shape: BoxShape.circle,
                 ),
                 child: Center(
                   child: Text(initials,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900)),
+                      style: AppType.greeting.copyWith(color: t.onChalk)),
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: AppSpace.md),
               Expanded(
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                     Text(s.name,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900),
-                        maxLines: 1,
+                        style: AppType.greeting.copyWith(color: t.boardInk),
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 4),
-                    Row(children: [
+                    Wrap(spacing: AppSpace.sm, runSpacing: 4, children: [
                       _HeaderBadge(Icons.qr_code_rounded, s.code),
-                      if (_group != null) ...[
-                        const SizedBox(width: 8),
+                      if (_group != null)
                         _HeaderBadge(
                             _kGroupIconMap[_group!.icon ?? ''] ??
                                 Icons.groups_rounded,
                             _group!.name),
-                      ],
                     ]),
                   ])),
             ]),
@@ -665,8 +678,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
             if ((s.guardianPhone?.isNotEmpty ?? false) ||
                 s.birthDate != null ||
                 s.attendanceStart != null) ...[
-              const SizedBox(height: 12),
-              Wrap(spacing: 12, runSpacing: 6, children: [
+              const SizedBox(height: AppSpace.md),
+              Wrap(spacing: AppSpace.md, runSpacing: 6, children: [
                 if (s.guardianPhone?.isNotEmpty ?? false)
                   _InfoChip(Icons.phone_rounded, s.guardianPhone!),
                 if (s.attendanceStart != null)
@@ -678,31 +691,32 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
               ]),
             ],
 
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
 
-            // Stats
+            // أرقام (من غير خلفيات ملوّنة، اللون على الرقم بس)
             Row(children: [
-              _HeaderStat(
-                  label: 'نسبة الحضور',
-                  value: '${attRate.toStringAsFixed(0)}%',
-                  icon: Icons.show_chart_rounded),
-              const SizedBox(width: 8),
-              _HeaderStat(
-                  label: 'حضور',
-                  value: '$presentCount',
-                  icon: Icons.check_circle_rounded),
-              const SizedBox(width: 8),
-              _HeaderStat(
-                  label: 'غياب',
-                  value: '$absentCount',
-                  icon: Icons.cancel_rounded),
-              const SizedBox(width: 8),
-              _HeaderStat(
-                  label: 'مدفوع',
-                  value: _canSeeFinancials
-                      ? FormatHelper.formatCurrency(totalPaid)
-                      : '🔒',
-                  icon: Icons.payments_rounded),
+              Expanded(
+                  child: BoardStat(
+                      label: 'نسبة الحضور',
+                      value: '${attRate.toStringAsFixed(0)}%',
+                      color: rateColor)),
+              Expanded(
+                  child: BoardStat(
+                      label: 'حضور',
+                      value: '$presentCount',
+                      color: on.positive)),
+              Expanded(
+                  child: BoardStat(
+                      label: 'غياب',
+                      value: '$absentCount',
+                      color: absentCount > 0 ? on.danger : t.boardInkSoft)),
+              Expanded(
+                  child: BoardStat(
+                      label: 'مدفوع',
+                      value: _canSeeFinancials
+                          ? FormatHelper.formatCurrency(totalPaid)
+                          : '🔒',
+                      color: t.boardInk)),
             ]),
           ],
         ),
@@ -712,13 +726,15 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
 
   // ─── Actions ──────────────────────────────────────────────────────────────
   Widget _buildActions(BuildContext context, Student s, Color primary) {
+    final t = context.tokens;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpace.lg, AppSpace.md, AppSpace.lg, 0),
       child: Row(children: [
         _ActionChip(
           icon: Icons.chat_rounded,
           label: 'تقرير واتساب',
-          color: Colors.green,
+          color: t.positive,
           onTap: () => _shareMonthlyReport(s),
         ),
         const SizedBox(width: 8),
@@ -732,7 +748,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
         _ActionChip(
           icon: Icons.assignment_rounded,
           label: 'الامتحانات',
-          color: const Color(0xFF8B5CF6),
+          color: primary,
           locked: !_canSeeAcademics,
           onTap: () => Get.to(() =>
               StudentExamHistoryPage(studentId: s.id!, studentName: s.name)),
@@ -742,7 +758,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
           _ActionChip(
             icon: Icons.phone_rounded,
             label: 'اتصال',
-            color: Colors.blue,
+            color: primary,
             onTap: () async {
               final uri = Uri(scheme: 'tel', path: s.guardianPhone);
               if (await canLaunchUrl(uri)) await launchUrl(uri);
@@ -755,25 +771,30 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
 
   // ─── TabBar ───────────────────────────────────────────────────────────────
   Widget _buildTabBar(Color primary, bool isDark) {
+    final t = context.tokens;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpace.lg, AppSpace.md, AppSpace.lg, 0),
       child: Container(
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1A2540) : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(14),
+          color: t.surface,
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          border: Border.all(color: t.line),
         ),
+        padding: const EdgeInsets.all(4),
         child: TabBar(
           controller: _tabController,
           indicator: BoxDecoration(
-            color: primary,
-            borderRadius: BorderRadius.circular(12),
+            color: t.board,
+            borderRadius: BorderRadius.circular(AppRadius.control - 4),
           ),
           indicatorSize: TabBarIndicatorSize.tab,
           dividerColor: Colors.transparent,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.grey,
-          labelStyle:
-              const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+          labelColor: t.boardInk,
+          unselectedLabelColor: t.inkSoft,
+          labelStyle: AppType.caption.copyWith(fontWeight: FontWeight.w700),
+          unselectedLabelStyle: AppType.caption,
+          labelPadding: const EdgeInsets.symmetric(horizontal: 4),
           tabs: [
             const Tab(text: 'سجل الحضور'),
             const Tab(text: 'الأداء'),
@@ -787,7 +808,9 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text('المدفوعات'),
+                  const Flexible(
+                      child: FittedBox(
+                          fit: BoxFit.scaleDown, child: Text('المدفوعات'))),
                   if (!_canSeeFinancials) ...[
                     const SizedBox(width: 4),
                     const Icon(Icons.lock_rounded, size: 12),
@@ -839,7 +862,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
               ),
             const SizedBox(height: 10),
             Text(s.code,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                style: TextStyle(color: context.tokens.inkSoft, fontSize: 13)),
           ]),
         ),
         actions: [
@@ -858,7 +881,9 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                       ToastHelper.error('تعذر حفظ صورة QR');
                     }
                   },
-            style: FilledButton.styleFrom(backgroundColor: _accentColor),
+            style: FilledButton.styleFrom(
+                backgroundColor: context.tokens.brand,
+                minimumSize: const Size(44, 44)),
             icon: const Icon(Icons.download_rounded),
             label: const Text('حفظ'),
           ),
@@ -989,17 +1014,17 @@ class _HeaderBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(20),
+        color: context.tokens.boardLine,
+        borderRadius: BorderRadius.circular(AppRadius.chip),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, color: Colors.white, size: 12),
+        Icon(icon, color: Colors.white, size: 13),
         const SizedBox(width: 4),
         Flexible(
           child: Text(label,
               style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600),
               maxLines: 1,
               overflow: TextOverflow.ellipsis),
@@ -1026,43 +1051,6 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-class _HeaderStat extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  const _HeaderStat(
-      {required this.label, required this.value, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(children: [
-          Icon(icon, color: Colors.white, size: 16),
-          const SizedBox(height: 3),
-          Text(value,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-          Text(label,
-              style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.8), fontSize: 9),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-        ]),
-      ),
-    );
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Action chip
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1081,27 +1069,34 @@ class _ActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Expanded(
       child: LockBadge(
         locked: locked,
-        child: GestureDetector(
-          onTap: locked ? showLockedPermissionHint : onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: color.withValues(alpha: 0.25)),
+        child: Material(
+          color: t.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
+            side: BorderSide(color: t.line),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: locked ? showLockedPermissionHint : onTap,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 56),
+              padding: const EdgeInsets.symmetric(vertical: AppSpace.sm),
+              child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, color: color, size: 22),
+                    const SizedBox(height: 2),
+                    Text(label,
+                        style: AppType.caption.copyWith(
+                            color: t.ink, fontWeight: FontWeight.w700),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ]),
             ),
-            child: Column(children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(height: 3),
-              Text(label,
-                  style: TextStyle(
-                      color: color, fontSize: 11, fontWeight: FontWeight.w700),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
-            ]),
           ),
         ),
       ),
@@ -1151,12 +1146,12 @@ class _AttendanceTab extends StatelessWidget {
     final months = byMonth.keys.toList();
 
     if (sorted.isEmpty) {
-      return const Center(
-        child: EmptyState(
+      return Center(
+        child: SingleChildScrollView(child: EmptyState(
           icon: Icons.calendar_today_rounded,
           title: 'لا توجد سجلات حضور',
           subtitle: 'سيظهر هنا سجل الحضور عند التسجيل',
-        ),
+        )),
       );
     }
 
@@ -1167,29 +1162,23 @@ class _AttendanceTab extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1A2540) : Colors.white,
+            color: context.tokens.surface,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: isDark
-                ? []
-                : [
-                    BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 8)
-                  ],
+            border: Border.all(color: context.tokens.line),
           ),
           child: Column(children: [
             Row(children: [
-              Expanded(child: _MiniStat('حضور', '$presentCount', Colors.green)),
-              Expanded(child: _MiniStat('غياب', '$absentCount', Colors.red)),
+              Expanded(child: _MiniStat('حضور', '$presentCount', context.tokens.positive)),
+              Expanded(child: _MiniStat('غياب', '$absentCount', context.tokens.danger)),
               Expanded(
                   child: _MiniStat(
                       'النسبة',
                       '${attRate.toStringAsFixed(0)}%',
                       attRate >= 75
-                          ? Colors.green
+                          ? context.tokens.positive
                           : attRate >= 50
-                              ? Colors.orange
-                              : Colors.red)),
+                              ? context.tokens.caution
+                              : context.tokens.danger)),
             ]),
             const SizedBox(height: 12),
             ClipRRect(
@@ -1197,12 +1186,12 @@ class _AttendanceTab extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: attendance.isEmpty ? 0 : attRate / 100,
                 minHeight: 8,
-                backgroundColor: Colors.red.withValues(alpha: 0.15),
+                backgroundColor: context.tokens.danger.withValues(alpha: 0.15),
                 valueColor: AlwaysStoppedAnimation(attRate >= 75
-                    ? Colors.green
+                    ? context.tokens.positive
                     : attRate >= 50
-                        ? Colors.orange
-                        : Colors.red),
+                        ? context.tokens.cautionBar
+                        : context.tokens.danger),
               ),
             ),
           ]),
@@ -1238,7 +1227,7 @@ class _AttendanceTab extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.1),
+                        color: context.tokens.positive.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text('$mPresent/${recordsOnly.length}',
@@ -1251,15 +1240,9 @@ class _AttendanceTab extends StatelessWidget {
                 ),
                 Container(
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1A2540) : Colors.white,
+                    color: context.tokens.surface,
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: isDark
-                        ? []
-                        : [
-                            BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.05),
-                                blurRadius: 8)
-                          ],
+                    border: Border.all(color: context.tokens.line),
                   ),
                   child: ListView.separated(
                     shrinkWrap: true,
@@ -1344,14 +1327,9 @@ class _SessionOverridesSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A2540) : Colors.white,
+        color: context.tokens.surface,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05), blurRadius: 8)
-              ],
+        border: Border.all(color: context.tokens.line),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('حصص استثنائية',
@@ -1382,7 +1360,7 @@ class _SessionOverridesSection extends StatelessWidget {
               Icon(Icons.circle, size: 8, color: c),
               const SizedBox(width: 8),
               Text(df.format(o.date),
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                  style: TextStyle(fontSize: 12, color: context.tokens.inkSoft)),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(label,
@@ -1526,7 +1504,7 @@ class _HomeworkTabState extends State<_HomeworkTab> {
 
     if (days.isEmpty) {
       return Center(
-        child: EmptyState(
+        child: SingleChildScrollView(child: EmptyState(
           icon: Icons.menu_book_outlined,
           title: w.showHomework && w.showRecitation
               ? 'لا توجد سجلات واجب أو تسميع'
@@ -1534,12 +1512,12 @@ class _HomeworkTabState extends State<_HomeworkTab> {
                   ? 'لا توجد درجات تسميع'
                   : 'لا توجد سجلات واجب',
           subtitle: 'سيظهر هنا السجل عند التسجيل',
-        ),
+        )),
       );
     }
 
     BoxDecoration cardDeco() => BoxDecoration(
-          color: isDark ? const Color(0xFF1A2540) : Colors.white,
+          color: context.tokens.surface,
           borderRadius: BorderRadius.circular(18),
           boxShadow: isDark
               ? []
@@ -1569,7 +1547,7 @@ class _HomeworkTabState extends State<_HomeworkTab> {
               style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: on ? FontWeight.w800 : FontWeight.w600,
-                  color: on ? c : Colors.grey.shade600)),
+                  color: on ? c : context.tokens.inkSoft)),
         ),
       );
     }
@@ -1649,7 +1627,7 @@ class _HomeworkTabState extends State<_HomeworkTab> {
             padding: const EdgeInsets.symmetric(vertical: 32),
             child: Center(
               child: Text('مفيش سجلات للفلتر ده',
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                  style: TextStyle(color: context.tokens.inkSoft, fontSize: 13)),
             ),
           ),
 
@@ -1765,7 +1743,7 @@ class _HwOverviewColumn extends StatelessWidget {
               style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w800,
-                  color: Colors.grey.shade600)),
+                  color: context.tokens.inkSoft)),
         ]),
         const SizedBox(height: 8),
         Text(value,
@@ -1777,7 +1755,7 @@ class _HwOverviewColumn extends StatelessWidget {
         const SizedBox(height: 2),
         Text(caption,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+            style: TextStyle(fontSize: 11, color: context.tokens.inkSoft)),
         const SizedBox(height: 10),
         ClipRRect(
           borderRadius: BorderRadius.circular(6),
@@ -1792,7 +1770,7 @@ class _HwOverviewColumn extends StatelessWidget {
         for (final l in lines)
           Text(l,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              style: TextStyle(fontSize: 11, color: context.tokens.inkSoft)),
       ],
     );
   }
@@ -1822,7 +1800,7 @@ class _HwDayRow extends StatelessWidget {
             ? const Color(0xFFF59E0B)
             : const Color(0xFFEF4444);
     final dash =
-        Text('—', style: TextStyle(color: Colors.grey.shade400, fontSize: 14));
+        Text('—', style: TextStyle(color: context.tokens.inkSoft, fontSize: 14));
 
     Widget hwSlot() {
       if (h == null)
@@ -1898,7 +1876,7 @@ class _HwDayRow extends StatelessWidget {
             style: const TextStyle(
                 fontSize: 16, fontWeight: FontWeight.w900, height: 1.1)),
         Text(DateFormat('EEE', 'ar').format(day),
-            style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+            style: TextStyle(fontSize: 10, color: context.tokens.inkSoft)),
       ]),
     );
 
@@ -1930,7 +1908,7 @@ class _MiniStat extends StatelessWidget {
       Text(value,
           style: TextStyle(
               color: color, fontWeight: FontWeight.w900, fontSize: 18)),
-      Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+      Text(label, style: TextStyle(color: context.tokens.inkSoft, fontSize: 11)),
     ]);
   }
 }
@@ -1998,7 +1976,7 @@ class _PaymentsTab extends StatelessWidget {
                         ToastHelper.success('تم إسقاط المديونية');
                       }
                     },
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              style: FilledButton.styleFrom(backgroundColor: context.tokens.danger),
               child: busy
                   ? const SizedBox(
                       width: 18,
@@ -2030,12 +2008,12 @@ class _PaymentsTab extends StatelessWidget {
     if (sorted.isEmpty &&
         accumulatedDebt <= 0 &&
         !studentHasBooklets(student.id!)) {
-      return const Center(
-        child: EmptyState(
+      return Center(
+        child: SingleChildScrollView(child: EmptyState(
           icon: Icons.payments_rounded,
           title: 'لا توجد مدفوعات',
           subtitle: 'سيظهر هنا سجل المدفوعات عند الإضافة',
-        ),
+        )),
       );
     }
 
@@ -2055,16 +2033,16 @@ class _PaymentsTab extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: isDark ? 0.12 : 0.06),
+              color: context.tokens.danger.withValues(alpha: isDark ? 0.12 : 0.06),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
+              border: Border.all(color: context.tokens.danger.withValues(alpha: 0.25)),
             ),
             child: Row(children: [
               Container(
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.12),
+                  color: context.tokens.danger.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.report_gmailerrorred_rounded,
@@ -2106,22 +2084,16 @@ class _PaymentsTab extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1A2540) : Colors.white,
+            color: context.tokens.surface,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: isDark
-                ? []
-                : [
-                    BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 8)
-                  ],
+            border: Border.all(color: context.tokens.line),
           ),
           child: Row(children: [
             Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.12),
+                color: context.tokens.positive.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.payments_rounded,
@@ -2139,7 +2111,7 @@ class _PaymentsTab extends StatelessWidget {
             ]),
             const Spacer(),
             Text('${payments.length} دفعة',
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                style: TextStyle(color: context.tokens.inkSoft, fontSize: 12)),
           ]),
         ),
 
@@ -2168,15 +2140,9 @@ class _PaymentsTab extends StatelessWidget {
                 ),
                 Container(
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1A2540) : Colors.white,
+                    color: context.tokens.surface,
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: isDark
-                        ? []
-                        : [
-                            BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.05),
-                                blurRadius: 8)
-                          ],
+                    border: Border.all(color: context.tokens.line),
                   ),
                   child: ListView.separated(
                     shrinkWrap: true,
@@ -2190,7 +2156,7 @@ class _PaymentsTab extends StatelessWidget {
                       // مختلفين) عشان يتفرق فورًا عن دفعة نقدية فعلية.
                       final isWriteOff = p.note == kDebtWriteOffNote;
                       final rowColor =
-                          isWriteOff ? Colors.orange : Colors.green;
+                          isWriteOff ? context.tokens.caution : context.tokens.positive;
                       return ListTile(
                         leading: Container(
                           width: 36,
@@ -2216,8 +2182,8 @@ class _PaymentsTab extends StatelessWidget {
                                         ? FontWeight.w700
                                         : FontWeight.normal,
                                     color: isWriteOff
-                                        ? Colors.orange.shade700
-                                        : Colors.grey.shade500))
+                                        ? context.tokens.caution
+                                        : context.tokens.inkSoft))
                             : null,
                         trailing: CurrencyText(p.amount,
                             style: TextStyle(

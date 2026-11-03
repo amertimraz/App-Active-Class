@@ -1,6 +1,8 @@
 // lib/widgets/student_form/student_code_field.dart
 import 'package:flutter/material.dart';
 
+import 'package:active_class/config/theme.dart';
+
 /// قسم "كود الطالب" (تلقائي/يدوي + سويتش + زرار مسح QR) — موحَّد بين
 /// شيتَي إضافة وتعديل الطالب. ويدجت عرض بحت: منطق تحديد الحالة
 /// (فارغ/يدوي/تلقائي في الإضافة، تغيّر/بدون تغيير في التعديل) يبقى في
@@ -35,13 +37,14 @@ class StudentCodeField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: boxColor.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: boxColor.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        border: Border.all(color: boxColor.withValues(alpha: 0.4)),
       ),
       child: Row(children: [
         Icon(icon, color: boxColor, size: 18),
@@ -75,13 +78,12 @@ class StudentCodeField extends StatelessWidget {
         if (onReset != null)
           IconButton(
             tooltip: 'رجوع للكود الأصلي',
-            icon: const Icon(Icons.refresh_rounded,
-                size: 20, color: Colors.purple),
+            icon: Icon(Icons.refresh_rounded, size: 20, color: t.brand),
             onPressed: onReset,
           ),
         Switch.adaptive(
           value: isManual,
-          activeThumbColor: Colors.purple,
+          activeThumbColor: t.brand,
           onChanged: onManualChanged,
         ),
         IconButton(

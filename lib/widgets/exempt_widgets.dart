@@ -37,6 +37,9 @@ class ExemptionSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // لون الإعفاء من التوكنز (تباين مضمون في الوضعين) — بيظلّل الثابت.
+    final exemptColor = context.tokens.positive;
+    final onExempt = isDark ? context.tokens.page : Colors.white;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
@@ -145,7 +148,7 @@ class ExemptionSection extends StatelessWidget {
                           exemptPercent >= 100
                               ? 'إعفاء كامل 100%'
                               : '${exemptPercent.toInt()}%',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                             color: exemptColor,
@@ -190,7 +193,7 @@ class ExemptionSection extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: active ? Colors.white : exemptColor,
+                              color: active ? onExempt : exemptColor,
                             ),
                           ),
                         ),
@@ -240,9 +243,8 @@ class ExemptionSection extends StatelessWidget {
                             reason,
                             style: TextStyle(
                               fontSize: 12,
-                              fontWeight: active
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
+                              fontWeight:
+                                  active ? FontWeight.bold : FontWeight.normal,
                               color: active
                                   ? Colors.white
                                   : scheme.onSurface.withValues(alpha: 0.75),
@@ -268,8 +270,7 @@ class ExemptionSection extends StatelessWidget {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: exemptColor),
+                          borderSide: BorderSide(color: exemptColor),
                         ),
                       ),
                     ),

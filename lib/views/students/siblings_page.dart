@@ -18,6 +18,8 @@ import 'package:active_class/utils/phone_helper.dart';
 import 'package:active_class/utils/siblings_overview.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/views/booklets/booklet_widgets.dart';
+import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 
 class SiblingsPage extends StatefulWidget {
@@ -54,8 +56,12 @@ class _SiblingsPageState extends State<SiblingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    // ألوان الأرقام فوق السبورة: درجات الوضع الداكن لأن خلفيتها غامقة دايمًا.
+    final on = AppTokens.dark;
     return Scaffold(
-      appBar: AppBar(title: const Text('الإخوة')),
+      backgroundColor: t.page,
+      appBar: buildBoardAppBar(context, title: 'الإخوة'),
       body: Obx(() {
         final now = DateTime.now();
         // قراءة الـRxLists هنا عشان الشاشة تتحدّث مع أي تغيير (منها المزامنة).
@@ -68,9 +74,37 @@ class _SiblingsPageState extends State<SiblingsPage> {
         );
         final families =
             filterFamilies(all, query: _q, owingOnly: _fin && _owingOnly);
+        final members = all.fold<int>(0, (n, f) => n + f.members.length);
+        final remaining = all.fold<double>(0, (n, f) => n + f.totalRemaining);
         return Column(children: [
+          // السبورة: عيلات / طلاب / متبقي
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(
+                AppSpace.lg, AppSpace.xs, AppSpace.lg, AppSpace.lg),
+            decoration: BoxDecoration(
+              color: t.board,
+              borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(AppRadius.board)),
+            ),
+            child: Row(children: [
+              Expanded(
+                  child: BoardStat(
+                      label: 'عيلة', value: '${all.length}', color: t.boardInk)),
+              Expanded(
+                  child: BoardStat(
+                      label: 'طالب', value: '$members', color: on.positive)),
+              if (_fin)
+                Expanded(
+                    child: BoardStat(
+                        label: 'متبقي',
+                        value: FormatHelper.formatCurrencyCompact(remaining),
+                        color: remaining > 0.005 ? t.chalk : t.boardInkSoft)),
+            ]),
+          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+            padding: const EdgeInsets.fromLTRB(
+                AppSpace.lg, AppSpace.md, AppSpace.lg, AppSpace.xs),
             child: CustomSearchBar(
               controller: _search,
               hintText: 'ابحث باسم الطالب أو الكود',
@@ -83,14 +117,14 @@ class _SiblingsPageState extends State<SiblingsPage> {
           ),
           if (_fin)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg),
               child: Align(
                 alignment: AlignmentDirectional.centerStart,
-                child: ChoiceChip(
-                  label: const Text('عليها متبقي', style: TextStyle(fontSize: 12)),
+                child: AppFilterChip(
+                  label: 'عليها متبقي',
                   selected: _owingOnly,
-                  visualDensity: VisualDensity.compact,
-                  onSelected: (v) => setState(() => _owingOnly = v),
+                  color: t.danger,
+                  onTap: () => setState(() => _owingOnly = !_owingOnly),
                 ),
               ),
             ),
@@ -107,7 +141,8 @@ class _SiblingsPageState extends State<SiblingsPage> {
                         title: 'مفيش عيلات مطابقة',
                         subtitle: 'غيّر البحث أو الفلتر')
                     : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        padding: const EdgeInsets.fromLTRB(
+                            AppSpace.lg, AppSpace.md, AppSpace.lg, AppSpace.xl),
                         itemCount: families.length,
                         itemBuilder: (_, i) =>
                             _FamilyCard(family: families[i], fin: _fin, now: now),
@@ -173,7 +208,7 @@ class _FamilyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = isDarkOf(context);
+    final t = context.tokens;
     final total = family.totalPaid + family.totalRemaining;
     final settings = Get.find<SettingsController>();
     final groupNames = family.members
@@ -181,187 +216,189 @@ class _FamilyCard extends StatelessWidget {
         .whereType<String>()
         .toSet()
         .join('، ');
-    final subtle = dark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(14),
-      decoration: bookletCardDecoration(context,
-          accent: fin && family.hasBalance ? AppTheme.errorColor : null),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── الرأس ────────────────────────────────────────────────
-          Row(children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.md),
+      child: AppPanel(
+        padding: const EdgeInsets.all(AppSpace.md),
+        lineColor: fin && family.hasBalance
+            ? t.danger.withValues(alpha: 0.45)
+            : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── الرأس ────────────────────────────────────────────────
+            Row(children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: t.brand.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
+                ),
+                child: Icon(Icons.family_restroom_rounded, color: t.brand),
               ),
-              child: const Icon(Icons.family_restroom_rounded,
-                  color: AppTheme.primaryColor),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    family.members.map((m) => m.student.name).join(' • '),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w800),
-                  ),
-                  if (groupNames.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(groupNames,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 12, color: Colors.grey.shade600)),
+              const SizedBox(width: AppSpace.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      family.members.map((m) => m.student.name).join(' • '),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.label.copyWith(color: t.ink),
                     ),
-                ],
+                    if (groupNames.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(groupNames,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppType.caption.copyWith(color: t.inkSoft)),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            StatusPill('${family.members.length} إخوة', AppTheme.primaryColor),
-          ]),
+              const SizedBox(width: AppSpace.sm),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.sm, vertical: 2),
+                decoration: BoxDecoration(
+                  border: Border.all(color: t.line),
+                  borderRadius: BorderRadius.circular(AppRadius.chip),
+                ),
+                child: Text('${family.members.length} إخوة',
+                    style: AppType.caption
+                        .copyWith(color: t.ink, fontWeight: FontWeight.w700)),
+              ),
+            ]),
 
-          // ── الماليات ─────────────────────────────────────────────
-          if (fin) ...[
-            const SizedBox(height: 14),
-            IntrinsicHeight(
+            // ── الماليات (صواني محايدة، اللون على الرقم بس) ───────────────
+            if (fin) ...[
+              const SizedBox(height: AppSpace.md),
+              IntrinsicHeight(
                 child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-              if (family.sharedTotal != null) ...[
-                _stat('إجمالي مشترك', family.sharedTotal!,
-                    AppTheme.primaryColor),
-                const SizedBox(width: 8),
-              ],
-              _stat('مدفوع', family.totalPaid, AppTheme.successColor),
-              const SizedBox(width: 8),
-              _stat(
-                  'متبقي',
-                  family.totalRemaining,
-                  family.hasBalance
-                      ? AppTheme.errorColor
-                      : AppTheme.successColor),
-            ])),
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: total <= 0 ? 1 : (family.totalPaid / total).clamp(0.0, 1.0),
-                minHeight: 6,
-                color: family.hasBalance
-                    ? AppTheme.warningColor
-                    : AppTheme.successColor,
-                backgroundColor:
-                    dark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                      if (family.sharedTotal != null) ...[
+                        _stat(t, 'إجمالي مشترك', family.sharedTotal!, t.brand),
+                        const SizedBox(width: AppSpace.sm),
+                      ],
+                      _stat(t, 'مدفوع', family.totalPaid, t.positive),
+                      const SizedBox(width: AppSpace.sm),
+                      _stat(t, 'متبقي', family.totalRemaining,
+                          family.hasBalance ? t.danger : t.positive),
+                    ]),
+              ),
+              const SizedBox(height: AppSpace.sm),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.chip),
+                child: LinearProgressIndicator(
+                  value: total <= 0
+                      ? 1
+                      : (family.totalPaid / total).clamp(0.0, 1.0),
+                  minHeight: 6,
+                  color: family.hasBalance ? t.cautionBar : t.positive,
+                  backgroundColor: t.line,
+                ),
+              ),
+            ],
+
+            // ── الإخوة ───────────────────────────────────────────────
+            const SizedBox(height: AppSpace.md),
+            Container(
+              decoration: BoxDecoration(
+                color: t.page,
+                borderRadius: BorderRadius.circular(AppRadius.control),
+              ),
+              child: Column(children: [
+                for (var i = 0; i < family.members.length; i++) ...[
+                  if (i > 0)
+                    Divider(
+                        height: 1, indent: 12, endIndent: 12, color: t.line),
+                  _memberTile(t, family.members[i]),
+                ],
+              ]),
+            ),
+
+            // ── ولي الأمر ────────────────────────────────────────────
+            const SizedBox(height: AppSpace.md),
+            Row(children: [
+              Icon(Icons.phone_rounded, size: 15, color: t.inkSoft),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  family.contacts.isEmpty
+                      ? 'مفيش رقم ولي أمر مسجّل'
+                      : family.contacts
+                          .map((c) => c.phone.isNotEmpty
+                              ? PhoneHelper.displayIntl(
+                                  c.phone, settings.countryDial.value)
+                              : c.label)
+                          .join('  •  '),
+                  textDirection: TextDirection.ltr,
+                  textAlign: TextAlign.start,
+                  style: AppType.caption.copyWith(color: t.inkSoft),
+                ),
+              ),
+            ]),
+            const SizedBox(height: AppSpace.sm),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _onSendTap(context),
+                icon: Icon(Icons.chat_rounded, size: 18, color: t.positive),
+                label: const Text('رسالة واتساب للعيلة'),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: t.ink,
+                    side: BorderSide(color: t.line),
+                    minimumSize: const Size(44, 46)),
               ),
             ),
           ],
-
-          // ── الإخوة ───────────────────────────────────────────────
-          const SizedBox(height: 14),
-          Container(
-            decoration: BoxDecoration(
-              color: subtle,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(children: [
-              for (var i = 0; i < family.members.length; i++) ...[
-                if (i > 0)
-                  Divider(
-                      height: 1,
-                      indent: 12,
-                      endIndent: 12,
-                      color: Colors.grey.withValues(alpha: 0.25)),
-                _memberTile(family.members[i]),
-              ],
-            ]),
-          ),
-
-          // ── ولي الأمر ────────────────────────────────────────────
-          const SizedBox(height: 12),
-          Row(children: [
-            Icon(Icons.phone_rounded, size: 15, color: Colors.grey.shade600),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                family.contacts.isEmpty
-                    ? 'مفيش رقم ولي أمر مسجّل'
-                    : family.contacts
-                        .map((c) => c.phone.isNotEmpty
-                            ? PhoneHelper.displayIntl(
-                                c.phone, settings.countryDial.value)
-                            : c.label)
-                        .join('  •  '),
-                textDirection: TextDirection.ltr,
-                textAlign: TextAlign.start,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-            ),
-          ]),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.tonalIcon(
-              onPressed: () => _onSendTap(context),
-              icon: const Icon(Icons.chat_rounded, size: 18),
-              label: const Text('رسالة واتساب للعيلة'),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _memberTile(SiblingMember m) {
+  Widget _memberTile(AppTokens t, SiblingMember m) {
     final r = m.monthRate;
     final attColor = r == null
-        ? Colors.grey
+        ? t.inkSoft
         : r >= 80
-            ? AppTheme.successColor
+            ? t.positive
             : r >= 60
-                ? AppTheme.warningColor
-                : AppTheme.errorColor;
+                ? t.caution
+                : t.danger;
     final name = m.student.name.trim();
     final initial = name.isEmpty ? '?' : name.characters.first;
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.control),
       onTap: () => Get.toNamed(ROUTE_STUDENT_DETAILS, arguments: m.student),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.md, vertical: AppSpace.md),
         child: Row(children: [
           CircleAvatar(
             radius: 18,
-            backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.15),
+            backgroundColor: t.brand.withValues(alpha: 0.14),
             child: Text(initial,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.primaryColor)),
+                style: AppType.label.copyWith(color: t.brand)),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: AppSpace.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(m.student.name,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 14)),
+                    style: AppType.label.copyWith(color: t.ink)),
                 const SizedBox(height: 2),
                 Text('${m.group?.name ?? '—'} • ${m.student.code}',
-                    style:
-                        TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
+                    style: AppType.caption.copyWith(color: t.inkSoft)),
                 const SizedBox(height: 5),
-                Wrap(spacing: 6, runSpacing: 4, children: [
+                Wrap(spacing: AppSpace.sm, runSpacing: 4, children: [
                   StatusPill(
                       r == null
                           ? 'لا سجلات حضور'
@@ -372,35 +409,35 @@ class _FamilyCard extends StatelessWidget {
                     m.remaining > 0.005
                         ? StatusPill(
                             'متبقي ${FormatHelper.formatCurrencyCompact(m.remaining)}',
-                            AppTheme.errorColor)
-                        : const StatusPill('مسدّد', AppTheme.successColor,
+                            t.danger)
+                        : StatusPill('مسدّد', t.positive,
                             icon: Icons.check_rounded),
                 ]),
               ],
             ),
           ),
-          const Icon(Icons.chevron_left_rounded, color: Colors.grey),
+          Icon(Icons.chevron_left_rounded, color: t.inkSoft),
         ]),
       ),
     );
   }
 
-  Widget _stat(String label, double amount, Color color) => Expanded(
+  Widget _stat(AppTokens t, String label, double amount, Color color) =>
+      Expanded(
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+          padding: const EdgeInsets.symmetric(
+              vertical: AppSpace.sm, horizontal: AppSpace.xs),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(12),
+            color: t.page,
+            borderRadius: BorderRadius.circular(AppRadius.control),
           ),
           child: Column(children: [
             CurrencyText(amount,
                 stacked: true,
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w900, color: color)),
+                style: AppType.label.copyWith(color: color)),
             const SizedBox(height: 3),
-            Text(label,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+            Text(label, style: AppType.caption.copyWith(color: t.inkSoft)),
           ]),
         ),
       );

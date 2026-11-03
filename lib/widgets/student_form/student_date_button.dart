@@ -1,6 +1,8 @@
 // lib/widgets/student_form/student_date_button.dart
 import 'package:flutter/material.dart';
 
+import 'package:active_class/config/theme.dart';
+
 /// زر اختيار تاريخ (تاريخ الميلاد / بداية الحضور) — موحَّد بين شيتَي
 /// إضافة وتعديل الطالب (كانا مكرَّرين بالحرف تقريبًا: _DatePickerBtn
 /// في add_student_sheet.dart وَ_DateBtn في edit_student_sheet.dart،
@@ -11,6 +13,7 @@ class StudentDateButton extends StatelessWidget {
   final bool hasValue;
   final Color color;
   final VoidCallback onTap;
+  final bool dense;
 
   const StudentDateButton({
     super.key,
@@ -19,33 +22,33 @@ class StudentDateButton extends StatelessWidget {
     required this.hasValue,
     required this.color,
     required this.onTap,
+    this.dense = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final t = context.tokens;
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadius.control),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+        constraints: BoxConstraints(minHeight: dense ? 42 : 48),
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: dense ? 8 : 12),
         decoration: BoxDecoration(
-          color: hasValue
-              ? color.withValues(alpha: 0.07)
-              : Colors.grey.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(12),
+          color: hasValue ? color.withValues(alpha: 0.08) : t.page,
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(
-            color:
-                hasValue ? color.withValues(alpha: 0.3) : Colors.grey.shade300,
-          ),
+              color: hasValue ? color.withValues(alpha: 0.45) : t.line),
         ),
         child: Row(children: [
-          Icon(icon, size: 16, color: hasValue ? color : Colors.grey.shade500),
+          Icon(icon, size: 18, color: hasValue ? color : t.inkSoft),
           const SizedBox(width: 6),
           Expanded(
             child: Text(label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: hasValue ? color : Colors.grey.shade500,
-                  fontWeight: hasValue ? FontWeight.w600 : FontWeight.normal,
+                style: AppType.body.copyWith(
+                  fontSize: dense ? 13 : null,
+                  color: hasValue ? color : t.inkSoft,
+                  fontWeight: hasValue ? FontWeight.w700 : FontWeight.w400,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis),

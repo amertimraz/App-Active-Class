@@ -1,6 +1,7 @@
 // lib/widgets/add_student_sheet.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/widgets/phone_field.dart';
@@ -18,7 +19,7 @@ import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/widgets/import_students_dialog.dart';
 import 'package:active_class/widgets/student_form/student_date_button.dart';
 import 'package:active_class/widgets/student_form/sibling_picker.dart';
-import 'package:active_class/widgets/student_form/student_code_field.dart';
+import 'package:active_class/widgets/student_form/form_sections.dart';
 
 /// يفتح bottom sheet لإضافة طالب.
 /// [preselectedGroup] : لو جاي من صفحة تفاصيل المجموعة — المجموعة محددة مسبقاً.
@@ -122,10 +123,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   final _exemptCustomCtrl = TextEditingController();
 
   // ثابت: لون المجموعة المحددة
-  Color get _primary {
-    final c = _selectedGroup?.color;
-    return c != null ? Color(c) : const Color(0xFF1E88E5);
-  }
+  Color get _primary => context.tokens.brand;
 
   @override
   void initState() {
@@ -408,58 +406,61 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     final primary = _primary;
     final hasPreselectedGroup = widget.preselectedGroup != null;
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF131D31) : Colors.white,
-        borderRadius: BorderRadius.circular(28),
+        color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.board),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 4, 0),
+          // الهيدر: شريط سبورة
+          Container(
+            color: t.board,
+            padding: const EdgeInsetsDirectional.fromSTEB(
+                AppSpace.lg, AppSpace.md, AppSpace.xs, AppSpace.md),
             child: Row(children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: 48,
-                height: 48,
+              Container(
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  color: primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  color: t.chalk,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
-                child: Icon(Icons.person_add_rounded, color: primary, size: 24),
+                child: Icon(Icons.person_add_rounded, color: t.onChalk),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpace.md),
               Expanded(
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    const Text('إضافة طالب جديد',
-                        style: TextStyle(
-                            fontSize: 17, fontWeight: FontWeight.w900)),
+                    Text('إضافة طالب جديد',
+                        style: AppType.title.copyWith(color: t.boardInk)),
                     Text(
                       _loadingGroups
                           ? 'جاري التحميل...'
                           : _selectedGroup != null
                               ? 'المجموعة: ${_selectedGroup!.name}'
                               : 'اختر المجموعة أولاً',
-                      style:
-                          TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.caption.copyWith(color: t.boardInkSoft),
                     ),
                   ])),
               IconButton(
+                tooltip: 'إغلاق',
                 onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close_rounded),
+                icon: Icon(Icons.close_rounded, color: t.boardInk),
               ),
             ]),
           ),
 
-          const Divider(height: 20),
+          const SizedBox(height: AppSpace.md),
 
           // Form
           // Flexible+SingleChildScrollView بدل Expanded+ListView — كده
@@ -475,397 +476,427 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                 child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ── كود تلقائي ──────────────────────────────────────
-                      StudentCodeField(
-                        codeController: _codeCtrl,
-                        isManual: _codeIsManual,
-                        boxColor: _nextCode.isEmpty
-                            ? Colors.orange
-                            : (_codeIsManual ? Colors.purple : primary),
-                        icon: _nextCode.isEmpty
-                            ? Icons.warning_amber_rounded
-                            : (_codeIsManual
-                                ? Icons.qr_code_2_rounded
-                                : Icons.qr_code_rounded),
-                        displayText: _nextCode.isEmpty
-                            ? 'اختر مجموعة لتوليد الكود تلقائياً'
-                            : 'الكود التلقائي: $_nextCode',
-                        manualHint: 'اكتب كود الطالب يدوياً',
-                        onManualChanged: _onManualSwitchChanged,
-                        onCodeChanged: (v) =>
-                            setState(() => _nextCode = v.trim()),
-                        onScanQr: _scanPrintedCode,
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // ── اسم الطالب ──────────────────────────────────────
-                      Row(children: [
-                        Expanded(child: _Label('اسم الطالب *')),
-                        if (_selectedGroup != null)
-                          InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () => showImportStudentsDialog(
-                              context,
-                              controller: widget.controller,
-                              groups: _groups,
-                              preselectedGroup: _selectedGroup,
-                              onImported: () {
-                                widget.onAdded?.call();
-                                widget.controller.loadAllStudents();
-                                _refreshCode();
-                              },
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 2),
-                              child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.upload_file_rounded,
-                                        size: 14, color: primary),
-                                    const SizedBox(width: 4),
-                                    Text('استيراد من إكسل',
-                                        style: TextStyle(
-                                            fontSize: 11.5,
-                                            fontWeight: FontWeight.w700,
-                                            color: primary)),
-                                  ]),
-                            ),
-                          ),
-                      ]),
-                      const SizedBox(height: 6),
-                      CustomTextField(
-                        controller: _nameCtrl,
-                        label: 'مثال: أحمد محمد',
-                        focusNode: _nameFocus,
-                      ),
-                      // هنت النجاح أسفل حقل الاسم مباشرة
-                      if (_savedName != null) ...[
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color:
-                                const Color(0xFF059669).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: const Color(0xFF059669)
-                                    .withValues(alpha: 0.3)),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.check_circle_rounded,
-                                  color: Color(0xFF059669), size: 16),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'تم إضافة $_savedName بنجاح ✓',
-                                  style: const TextStyle(
-                                    color: Color(0xFF059669),
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── الأساسي ─────────────────────────────────────────
+                    FormSectionTitle('الأساسي',
+                        icon: Icons.badge_rounded,
+                        trailing: _selectedGroup == null
+                            ? null
+                            : InkWell(
+                                borderRadius: BorderRadius.circular(8),
+                                onTap: () => showImportStudentsDialog(
+                                  context,
+                                  controller: widget.controller,
+                                  groups: _groups,
+                                  preselectedGroup: _selectedGroup,
+                                  onImported: () {
+                                    widget.onAdded?.call();
+                                    widget.controller.loadAllStudents();
+                                    _refreshCode();
+                                  },
                                 ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 4, vertical: 2),
+                                  child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.upload_file_rounded,
+                                            size: 14, color: primary),
+                                        const SizedBox(width: 4),
+                                        Flexible(
+                                            child: Text('استيراد من إكسل',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                    fontSize: 11.5,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: primary))),
+                                      ]),
+                                ),
+                              )),
+                    CustomTextField(
+                      dense: true,
+                      controller: _nameCtrl,
+                      label: 'اسم الطالب *',
+                      focusNode: _nameFocus,
+                    ),
+                    // هنت النجاح أسفل حقل الاسم مباشرة
+                    if (_savedName != null) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: t.positiveSoft,
+                          borderRadius:
+                              BorderRadius.circular(AppRadius.control),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.check_circle_rounded,
+                                color: t.positive, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'تم إضافة $_savedName بنجاح',
+                                style: AppType.body.copyWith(
+                                    color: t.positive,
+                                    fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 12),
+                    // ── اختيار المجموعة (فقط لو مش preselected) ────────
+                    if (!hasPreselectedGroup) ...[
+                      DropdownButtonFormField<Group>(
+                        isExpanded: true,
+                        value: _selectedGroup,
+                        style: TextStyle(fontSize: 14, color: t.ink),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          labelText: 'المجموعة *',
+                          labelStyle: const TextStyle(fontSize: 13),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 11),
+                          border: OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(AppRadius.control),
+                              borderSide: BorderSide(color: t.line)),
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(AppRadius.control),
+                              borderSide: BorderSide(color: t.line)),
+                        ),
+                        hint: const Text('اختر المجموعة'),
+                        items: _groups
+                            .map((g) => DropdownMenuItem(
+                                  value: g,
+                                  child: Row(children: [
+                                    if (g.color != null)
+                                      Container(
+                                        width: 10,
+                                        height: 10,
+                                        margin: const EdgeInsets.only(left: 8),
+                                        decoration: BoxDecoration(
+                                            color: Color(g.color!),
+                                            shape: BoxShape.circle),
+                                      ),
+                                    // Expanded — من غيرها الـText كان ياخد
+                                    // عرضه الطبيعي الكامل ("الاسم • السعر")
+                                    // بدل ما يحترم عرض القائمة المنسدلة،
+                                    // فالـellipsis ميشتغلش وكان بيعمل
+                                    // overflow حقيقي بدل ما يقص بـ"...".
+                                    Expanded(
+                                      child: Text(
+                                        g.price != null
+                                            ? '${g.name} • ${FormatHelper.formatCurrency(g.price)}'
+                                            : g.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ]),
+                                ))
+                            .toList(),
+                        onChanged: _onGroupChanged,
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    CollapsibleCodeField(
+                      codeController: _codeCtrl,
+                      isManual: _codeIsManual,
+                      boxColor: _nextCode.isEmpty
+                          ? t.caution
+                          : (_codeIsManual ? t.brand : t.positive),
+                      icon: _nextCode.isEmpty
+                          ? Icons.warning_amber_rounded
+                          : (_codeIsManual
+                              ? Icons.qr_code_2_rounded
+                              : Icons.qr_code_rounded),
+                      chipText: _nextCode.isEmpty
+                          ? 'اختر مجموعة لتوليد الكود'
+                          : 'الكود: $_nextCode',
+                      displayText: _nextCode.isEmpty
+                          ? 'اختر مجموعة لتوليد الكود تلقائياً'
+                          : 'الكود التلقائي: $_nextCode',
+                      manualHint: 'اكتب كود الطالب يدوياً',
+                      onManualChanged: _onManualSwitchChanged,
+                      onCodeChanged: (v) =>
+                          setState(() => _nextCode = v.trim()),
+                      onScanQr: _scanPrintedCode,
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // ── ولي الأمر ───────────────────────────────────────
+                    const FormSectionTitle('ولي الأمر',
+                        icon: Icons.family_restroom_rounded),
+                    PhoneField(
+                      dense: true,
+                      controller: _phoneCtrl,
+                      dialCode: _dialCode,
+                      label: 'رقم ولي الأمر',
+                      onContactPick: () async {
+                        final phone =
+                            await ContactPickerService.pickPhoneNumber(context);
+                        if (phone != null && mounted) {
+                          setState(() => _phoneCtrl.text = phone);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    CustomTextField(
+                      dense: true,
+                      controller: _whatsappCtrl,
+                      label: 'واتساب مختلف؟ (اختياري)',
+                      textDirection: TextDirection.ltr,
+                      textAlign: TextAlign.left,
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // ── الاشتراك ────────────────────────────────────────
+                    const FormSectionTitle('الاشتراك',
+                        icon: Icons.payments_rounded),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CustomTextField(
+                                dense: true,
+                                controller: _priceCtrl,
+                                label: _selectedGroup?.isPerSession == true
+                                    ? 'سعر الحصة'
+                                    : 'الرسوم الشهرية',
+                                keyboardType: TextInputType.number,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              StudentDateButton(
+                                dense: true,
+                                icon: Icons.date_range_rounded,
+                                label: _attendanceStart != null
+                                    ? '${_attendanceStart!.day}/${_attendanceStart!.month}/${_attendanceStart!.year}'
+                                    : 'بداية الحضور',
+                                hasValue: true,
+                                color: primary,
+                                onTap: () async {
+                                  final p = await showDatePicker(
+                                    context: context,
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2100),
+                                    initialDate:
+                                        _attendanceStart ?? DateTime.now(),
+                                  );
+                                  if (p != null) {
+                                    setState(() => _attendanceStart = p);
+                                  }
+                                },
                               ),
                             ],
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 12),
+                    StudentDateButton(
+                      dense: true,
+                      icon: Icons.cake_rounded,
+                      label: _birthDate != null
+                          ? '${_birthDate!.day}/${_birthDate!.month}/${_birthDate!.year}'
+                          : 'تاريخ الميلاد',
+                      hasValue: _birthDate != null,
+                      color: primary,
+                      onTap: () async {
+                        final p = await showDatePicker(
+                          context: context,
+                          firstDate: DateTime(1990),
+                          lastDate: DateTime.now(),
+                          initialDate: _birthDate ?? DateTime(2012),
+                        );
+                        if (p != null) setState(() => _birthDate = p);
+                      },
+                    ),
 
-                      const SizedBox(height: 14),
+                    const SizedBox(height: 14),
 
-                      // ── اختيار المجموعة (فقط لو مش preselected) ────────
-                      if (!hasPreselectedGroup) ...[
-                        _Label('المجموعة *'),
-                        const SizedBox(height: 6),
-                        DropdownButtonFormField<Group>(
-                          isExpanded: true,
-                          value: _selectedGroup,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 14),
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide:
-                                    BorderSide(color: Colors.grey.shade300)),
-                            enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide:
-                                    BorderSide(color: Colors.grey.shade300)),
+                    // ── خيارات إضافية (إخوة + إعفاء) ───────────────────
+                    MoreOptionsPanel(
+                      summary: [
+                        if (_isExempt) 'إعفاء ${_exemptPercent.round()}%',
+                        if (_siblings.isNotEmpty)
+                          'إخوة ${_siblings.length + 1}',
+                      ],
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            color: t.page,
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.control),
+                            border: Border.all(color: t.line),
                           ),
-                          hint: const Text('اختر المجموعة'),
-                          items: _groups
-                              .map((g) => DropdownMenuItem(
-                                    value: g,
-                                    child: Row(children: [
-                                      if (g.color != null)
-                                        Container(
-                                          width: 10,
-                                          height: 10,
-                                          margin:
-                                              const EdgeInsets.only(left: 8),
-                                          decoration: BoxDecoration(
-                                              color: Color(g.color!),
-                                              shape: BoxShape.circle),
-                                        ),
-                                      // Expanded — من غيرها الـText كان ياخد
-                                      // عرضه الطبيعي الكامل ("الاسم • السعر")
-                                      // بدل ما يحترم عرض القائمة المنسدلة،
-                                      // فالـellipsis ميشتغلش وكان بيعمل
-                                      // overflow حقيقي بدل ما يقص بـ"...".
-                                      Expanded(
-                                        child: Text(
-                                          g.price != null
-                                              ? '${g.name} • ${FormatHelper.formatCurrency(g.price)}'
-                                              : g.name,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
+                          child: Column(children: [
+                            ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 4),
+                              leading: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: t.brand.withValues(alpha: 0.12),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(Icons.group_rounded,
+                                    color: t.brand, size: 18),
+                              ),
+                              title: Text(
+                                _siblings.isEmpty
+                                    ? 'ربط بطالب آخر (أخ / أخت)'
+                                    : 'الإخوة (${_siblings.length + 1}/3)',
+                                style: AppType.label.copyWith(
+                                    color:
+                                        _siblings.isNotEmpty ? t.brand : t.ink),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: _siblings.isEmpty
+                                  ? Text('خصم مشترك حتى 3 إخوة',
+                                      style: AppType.caption
+                                          .copyWith(color: t.inkSoft))
+                                  : null,
+                              trailing: _siblings.length >= 2
+                                  ? null
+                                  : IconButton(
+                                      onPressed: _pickSibling,
+                                      icon: Icon(
+                                          Icons.add_circle_outline_rounded,
+                                          color: t.brand),
+                                      tooltip: 'أضف عضو',
+                                    ),
+                            ),
+                            if (_siblings.isNotEmpty) ...[
+                              Divider(
+                                  height: 0,
+                                  indent: 16,
+                                  endIndent: 16,
+                                  color: t.line),
+                              ..._siblings.map((s) => ListTile(
+                                    dense: true,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 16),
+                                    title: Text(s.name,
+                                        style: AppType.body
+                                            .copyWith(color: t.ink)),
+                                    subtitle: Text('الكود: ${s.code}',
+                                        style: AppType.caption
+                                            .copyWith(color: t.inkSoft)),
+                                    trailing: IconButton(
+                                      tooltip: 'إزالة',
+                                      onPressed: () => setState(() =>
+                                          _siblings = _siblings
+                                              .where((x) => x.id != s.id)
+                                              .toList()),
+                                      icon: Icon(Icons.close_rounded,
+                                          color: t.danger, size: 20),
+                                    ),
+                                  )),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _Label('الإجمالي المشترك للإخوة'),
+                                      const SizedBox(height: 6),
+                                      CustomTextField(
+                                        dense: true,
+                                        controller: _sibTotalCtrl,
+                                        label: 'مثال: 300',
+                                        keyboardType: TextInputType.number,
                                       ),
                                     ]),
-                                  ))
-                              .toList(),
-                          onChanged: _onGroupChanged,
+                              ),
+                            ],
+                          ]),
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 12),
+                        ExemptionSection(
+                          isExempt: _isExempt,
+                          exemptPercent: _exemptPercent,
+                          selectedPreset: _exemptReasonPreset,
+                          customCtrl: _exemptCustomCtrl,
+                          accentColor: primary,
+                          onToggle: (v) => setState(() => _isExempt = v),
+                          onPercentChanged: (v) =>
+                              setState(() => _exemptPercent = v),
+                          onPresetChanged: (v) =>
+                              setState(() => _exemptReasonPreset = v),
+                        ),
                       ],
+                    ),
 
-                      // ── الرسوم (شهرية أو بالحصة حسب نوع تسعير المجموعة) ──
-                      _Label(_selectedGroup?.isPerSession == true
-                          ? 'سعر الحصة الواحدة'
-                          : 'الرسوم الشهرية'),
-                      const SizedBox(height: 6),
-                      CustomTextField(
-                        controller: _priceCtrl,
-                        label: '0',
-                        keyboardType: TextInputType.number,
-                      ),
-
-                      const SizedBox(height: 14),
-
-                      // ── رقم ولي الأمر ─────────────────────────────────────
-                      _Label('رقم ولي الأمر'),
-                      const SizedBox(height: 6),
-                      PhoneField(
-                        controller: _phoneCtrl,
-                        dialCode: _dialCode,
-                        onContactPick: () async {
-                          final phone =
-                              await ContactPickerService.pickPhoneNumber(
-                                  context);
-                          if (phone != null && mounted) {
-                            setState(() => _phoneCtrl.text = phone);
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      _Label('واتساب ولي الأمر (رابط أو اسم مستخدم — اختياري)'),
-                      const SizedBox(height: 6),
-                      CustomTextField(
-                        controller: _whatsappCtrl,
-                        label: 'wa.me/... أو @username',
-                        textDirection: TextDirection.ltr,
-                        textAlign: TextAlign.left,
-                      ),
-
-                      const SizedBox(height: 14),
-
-                      // ── التواريخ ──────────────────────────────────────────
-                      Row(children: [
-                        Expanded(
-                            child: StudentDateButton(
-                          icon: Icons.cake_rounded,
-                          label: _birthDate != null
-                              ? '${_birthDate!.day}/${_birthDate!.month}/${_birthDate!.year}'
-                              : 'تاريخ الميلاد',
-                          hasValue: _birthDate != null,
-                          color: primary,
-                          onTap: () async {
-                            final p = await showDatePicker(
-                              context: context,
-                              firstDate: DateTime(1990),
-                              lastDate: DateTime.now(),
-                              initialDate: _birthDate ?? DateTime(2012),
-                            );
-                            if (p != null) setState(() => _birthDate = p);
-                          },
-                        )),
-                        const SizedBox(width: 10),
-                        Expanded(
-                            child: StudentDateButton(
-                          icon: Icons.date_range_rounded,
-                          label: _attendanceStart != null
-                              ? '${_attendanceStart!.day}/${_attendanceStart!.month}/${_attendanceStart!.year}'
-                              : 'بداية الحضور',
-                          hasValue: true,
-                          color: primary,
-                          onTap: () async {
-                            final p = await showDatePicker(
-                              context: context,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2100),
-                              initialDate: _attendanceStart ?? DateTime.now(),
-                            );
-                            if (p != null) setState(() => _attendanceStart = p);
-                          },
-                        )),
-                      ]),
-
-                      const SizedBox(height: 16),
-
-                      // ── ربط إخوة (حتى 3 أعضاء) ───────────────────────────
-                      Container(
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.04)
-                              : Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: Column(children: [
-                          ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 4),
-                            leading: Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: Colors.purple.withValues(alpha: 0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.group_rounded,
-                                  color: Colors.purple, size: 18),
-                            ),
-                            title: Text(
-                              _siblings.isEmpty
-                                  ? 'ربط بطالب آخر (أخ / أخت)'
-                                  : 'الإخوة (${_siblings.length + 1}/3)',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color:
-                                    _siblings.isNotEmpty ? Colors.purple : null,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: _siblings.isEmpty
-                                ? const Text('خصم مشترك حتى 3 إخوة',
-                                    style: TextStyle(fontSize: 11))
-                                : null,
-                            trailing: _siblings.length >= 2
-                                ? null
-                                : IconButton(
-                                    onPressed: _pickSibling,
-                                    icon: const Icon(
-                                        Icons.add_circle_outline_rounded,
-                                        color: Colors.purple),
-                                    tooltip: 'أضف عضو',
-                                  ),
-                          ),
-                          if (_siblings.isNotEmpty) ...[
-                            const Divider(height: 0, indent: 16, endIndent: 16),
-                            ..._siblings.map((s) => ListTile(
-                                  dense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16),
-                                  title: Text(s.name,
-                                      style: const TextStyle(fontSize: 13)),
-                                  subtitle: Text('الكود: ${s.code}',
-                                      style: const TextStyle(fontSize: 11)),
-                                  trailing: IconButton(
-                                    onPressed: () => setState(() =>
-                                        _siblings = _siblings
-                                            .where((x) => x.id != s.id)
-                                            .toList()),
-                                    icon: const Icon(Icons.close_rounded,
-                                        color: Colors.red, size: 18),
-                                  ),
-                                )),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 10, 16, 14),
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _Label('الإجمالي المشترك للإخوة'),
-                                    const SizedBox(height: 6),
-                                    CustomTextField(
-                                      controller: _sibTotalCtrl,
-                                      label: 'مثال: 300',
-                                      keyboardType: TextInputType.number,
-                                    ),
-                                  ]),
-                            ),
-                          ],
-                        ]),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // ── قسم الإعفاء ──────────────────────────────────────
-                      ExemptionSection(
-                        isExempt: _isExempt,
-                        exemptPercent: _exemptPercent,
-                        selectedPreset: _exemptReasonPreset,
-                        customCtrl: _exemptCustomCtrl,
-                        accentColor: primary,
-                        onToggle: (v) => setState(() => _isExempt = v),
-                        onPercentChanged: (v) =>
-                            setState(() => _exemptPercent = v),
-                        onPresetChanged: (v) =>
-                            setState(() => _exemptReasonPreset = v),
-                      ),
-
-                      const SizedBox(height: 24),
-                    ],
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
             ),
 
           // ── زر الإضافة ─────────────────────────────────────────────────
           Padding(
-            padding: EdgeInsets.fromLTRB(
-                20, 6, 20, MediaQuery.of(context).viewInsets.bottom + 16),
+            padding: EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.sm, AppSpace.lg,
+                MediaQuery.of(context).viewInsets.bottom + AppSpace.lg),
             child: Row(children: [
               Expanded(
                 child: OutlinedButton(
                   onPressed: () => Navigator.of(context).pop(),
                   style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(46),
+                    foregroundColor: t.ink,
+                    side: BorderSide(color: t.line),
+                    minimumSize: const Size.fromHeight(48),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(AppRadius.control)),
                   ),
                   child: const Text('إغلاق'),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpace.md),
               Expanded(
                 flex: 2,
                 child: FilledButton.icon(
                   onPressed: _loading ? null : _submit,
                   style: FilledButton.styleFrom(
-                    backgroundColor: primary,
-                    minimumSize: const Size.fromHeight(46),
+                    backgroundColor: t.chalk,
+                    foregroundColor: t.onChalk,
+                    minimumSize: const Size.fromHeight(48),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(AppRadius.control)),
                   ),
                   icon: _loading
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
+                              strokeWidth: 2, color: t.onChalk))
                       : const Icon(Icons.person_add_rounded),
-                  label: const Text('إضافة الطالب',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  label: Text('إضافة الطالب',
+                      style: AppType.label.copyWith(color: t.onChalk)),
                 ),
               ),
             ]),
@@ -881,7 +912,6 @@ class _Label extends StatelessWidget {
   final String text;
   const _Label(this.text);
   @override
-  Widget build(BuildContext context) => Text(text,
-      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13));
+  Widget build(BuildContext context) =>
+      Text(text, style: AppType.label.copyWith(color: context.tokens.ink));
 }
-

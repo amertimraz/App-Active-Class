@@ -185,6 +185,8 @@ class CustomTextField extends StatelessWidget {
   final TextDirection? textDirection;
   final TextAlign textAlign;
   final List<TextInputFormatter>? inputFormatters;
+  // نسخة مضغوطة (خط وحشو أصغر) للنوافذ الطويلة.
+  final bool dense;
 
   const CustomTextField({
     Key? key,
@@ -203,6 +205,7 @@ class CustomTextField extends StatelessWidget {
     this.textDirection,
     this.textAlign = TextAlign.start,
     this.inputFormatters,
+    this.dense = false,
   }) : super(key: key);
 
   @override
@@ -219,8 +222,11 @@ class CustomTextField extends StatelessWidget {
       textDirection: textDirection,
       textAlign: textAlign,
       inputFormatters: inputFormatters,
+      style: dense ? const TextStyle(fontSize: 14) : null,
       decoration: InputDecoration(
+        isDense: dense,
         labelText: label,
+        labelStyle: dense ? const TextStyle(fontSize: 13) : null,
         hintText: hint,
         prefixIcon: prefixIcon != null ? Icon(prefixIcon) : null,
         suffixIcon: controller.text.isNotEmpty
@@ -230,11 +236,19 @@ class CustomTextField extends StatelessWidget {
               )
             : null,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(BORDER_RADIUS_NORMAL),
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
-        contentPadding: const EdgeInsets.symmetric(
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          borderSide: BorderSide(color: context.tokens.line),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          borderSide: BorderSide(color: context.tokens.brand, width: 1.6),
+        ),
+        contentPadding: EdgeInsets.symmetric(
           horizontal: PADDING_NORMAL,
-          vertical: 16,
+          vertical: dense ? 11 : 16,
         ),
       ),
     );
@@ -365,39 +379,36 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: PADDING_NORMAL),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.grey[100],
+                color: t.page,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 64, color: Colors.grey[400]),
+              child: Icon(icon, size: 56, color: t.inkFaint),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             Text(
               title,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: Colors.grey[800],
-                    fontWeight: FontWeight.w600,
-                  ),
+              style: AppType.title.copyWith(color: t.ink),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
               subtitle,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[600],
-                  ),
+              style: AppType.body.copyWith(color: t.inkSoft),
               textAlign: TextAlign.center,
             ),
             if (onActionPressed != null && actionLabel != null) ...[
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               CustomButton(
                 label: actionLabel!,
                 onPressed: onActionPressed!,
@@ -451,8 +462,8 @@ class CustomSearchBar extends StatelessWidget {
           // الثيم بيفرض تعبئة مربعة، وكانت بتبان في زوايا الحقل المدوّر.
           filled: false,
           hintText: hintText,
-          hintStyle: TextStyle(
-              fontFamily: 'Cairo', fontSize: 13, color: hintColor),
+          hintStyle:
+              TextStyle(fontFamily: 'Cairo', fontSize: 13, color: hintColor),
           prefixIcon: Icon(Icons.search_rounded, size: 19, color: hintColor),
           prefixIconConstraints:
               const BoxConstraints(minWidth: 34, minHeight: 34),

@@ -29,6 +29,7 @@ class PhoneField extends StatelessWidget {
   final String dialCode;
   final VoidCallback? onContactPick;
   final String label;
+  final bool dense;
 
   const PhoneField({
     super.key,
@@ -36,6 +37,7 @@ class PhoneField extends StatelessWidget {
     required this.dialCode,
     this.onContactPick,
     this.label = '01xxxxxxxxx',
+    this.dense = false,
   });
 
   @override
@@ -43,6 +45,7 @@ class PhoneField extends StatelessWidget {
     final field = CustomTextField(
       controller: controller,
       label: label,
+      dense: dense,
       keyboardType: TextInputType.phone,
       textDirection: TextDirection.ltr,
       textAlign: TextAlign.left,
@@ -65,8 +68,8 @@ class PhoneField extends StatelessWidget {
               ),
               child: IconButton(
                 tooltip: 'اختيار من جهات الاتصال',
-                icon: Icon(Icons.contacts_rounded,
-                    color: AppTheme.primaryColor),
+                icon:
+                    Icon(Icons.contacts_rounded, color: AppTheme.primaryColor),
                 onPressed: onContactPick,
               ),
             ),

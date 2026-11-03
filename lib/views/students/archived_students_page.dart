@@ -6,7 +6,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
@@ -19,6 +19,7 @@ import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/student_sort_helper.dart';
 import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/widgets/student_sort_bar.dart';
@@ -70,8 +71,10 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
   }
 
   Future<void> _loadGroups() async {
-    final groups = await DatabaseService().getAllGroups();
-    if (mounted) setState(() => _groups = groups);
+    try {
+      final groups = await DatabaseService().getAllGroups();
+      if (mounted) setState(() => _groups = groups);
+    } catch (_) {}
   }
 
   Group? _groupOf(Student s) {
@@ -84,10 +87,12 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Scaffold(
-      appBar: buildGradientAppBar(title: 'الأرشيف'),
-      body: buildSoftBackground(
-        context: context,
+      backgroundColor: t.page,
+      appBar: buildBoardAppBar(context, title: 'الأرشيف'),
+      body: ColoredBox(
+        color: t.page,
         child: RefreshIndicator(
           onRefresh: controller.loadArchivedStudents,
           child: Obx(() {
@@ -102,35 +107,54 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
             if (students.isEmpty) {
               return ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  SizedBox(height: 120),
-                  EmptyState(
-                    icon: Icons.archive_outlined,
-                    title: 'لا يوجد طلاب مؤرشفين',
-                    subtitle:
-                        'الطلاب اللي بتأرشفهم من شاشة الطلاب هيظهروا هنا',
+                padding: const EdgeInsets.all(AppSpace.xl),
+                children: [
+                  const SizedBox(height: AppSpace.xl),
+                  AppPanel(
+                    child: EmptyState(
+                      icon: Icons.archive_outlined,
+                      title: 'لا يوجد طلاب مؤرشفين',
+                      subtitle:
+                          'الطلاب اللي بتأرشفهم من شاشة الطلاب هيظهروا هنا',
+                    ),
                   ),
                 ],
               );
             }
             return Column(
               children: [
+                // السبورة: عدد المؤرشفين + شرح قصير
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpace.lg, AppSpace.xs, AppSpace.lg, AppSpace.lg),
+                  decoration: BoxDecoration(
+                    color: t.board,
+                    borderRadius: const BorderRadius.vertical(
+                        bottom: Radius.circular(AppRadius.board)),
+                  ),
+                  child: Row(children: [
+                    BoardStat(
+                        label: 'طالب مؤرشف',
+                        value: '${students.length}',
+                        color: t.chalk),
+                    const SizedBox(width: AppSpace.lg),
+                    Expanded(
+                      child: Text(
+                        'سجلاتهم محفوظة. تقدر تستعيد أي طالب أو تحذفه نهائيًا.',
+                        style: AppType.body.copyWith(color: t.boardInkSoft),
+                      ),
+                    ),
+                  ]),
+                ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpace.lg, AppSpace.sm, AppSpace.lg, 0),
                   child: Row(
                     children: [
-                      Icon(Icons.info_outline_rounded,
-                          size: 16, color: Colors.grey.shade600),
-                      const SizedBox(width: 6),
                       Expanded(
-                        child: Text(
-                          '${students.length} طالب مؤرشف',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        child: Text('ترتيب القايمة',
+                            style: AppType.caption.copyWith(color: t.inkSoft)),
                       ),
                       StudentSortBar(
                         sortBy: _sortBy,
@@ -146,7 +170,8 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
                     // يشتغل حتى لو عدد الطلاب المؤرشفين قليل ومش بيملى الشاشة
                     // (الحالة الشائعة أصلاً).
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSpace.lg, AppSpace.xs, AppSpace.lg, 100),
                     itemCount: students.length,
                     itemBuilder: (_, i) => _ArchivedStudentCard(
                       student: students[i],
@@ -192,8 +217,10 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('إلغاء'),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: context.tokens.brand,
+                minimumSize: const Size(44, 44)),
             onPressed: () async {
               final name = student.name;
               Navigator.of(ctx).pop();
@@ -203,7 +230,7 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
                 AppToast.success(context, 'تم استعادة الطالب', subtitle: name);
               }
             },
-            child: const Text('استعادة', style: TextStyle(color: Colors.white)),
+            child: const Text('استعادة'),
           ),
         ],
       ),
@@ -232,8 +259,10 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('إلغاء'),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: context.tokens.danger,
+                minimumSize: const Size(44, 44)),
             onPressed: () async {
               final name = student.name;
               Navigator.of(ctx).pop();
@@ -244,7 +273,7 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
                 AppToast.success(context, 'تم حذف الطالب نهائيًا', subtitle: name);
               }
             },
-            child: const Text('حذف نهائي', style: TextStyle(color: Colors.white)),
+            child: const Text('حذف نهائي'),
           ),
         ],
       ),
@@ -272,101 +301,97 @@ class _ArchivedStudentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     final initials = student.name.trim().isNotEmpty ? student.name.trim()[0] : '؟';
-    final surface = Theme.of(context).colorScheme.surface;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final subtitleColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
     final archivedAtText = student.archivedAt != null
         ? DateFormat('yyyy/MM/dd').format(student.archivedAt!)
         : null;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-        ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.sm),
+      child: AppPanel(
+        onTap: onTap,
+        padding: const EdgeInsetsDirectional.fromSTEB(
+            AppSpace.md, AppSpace.md, AppSpace.xs, AppSpace.md),
         child: Row(
           children: [
+            // أفاتار رمادي: الطالب غير نشط
             Container(
               width: 44,
               height: 44,
-              decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: t.line, shape: BoxShape.circle),
               child: Center(
                 child: Text(initials,
-                    style: TextStyle(
-                        color: subtitleColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18)),
+                    style: AppType.title.copyWith(color: t.inkSoft)),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpace.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    student.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 15, color: onSurface),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
+                  Text(student.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.label.copyWith(color: t.ink)),
+                  const SizedBox(height: 2),
+                  Wrap(
+                    spacing: AppSpace.sm,
+                    runSpacing: 2,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      if (group != null) ...[
+                      if (group != null)
                         Text(group!.name,
-                            style: TextStyle(color: subtitleColor, fontSize: 12)),
-                        const SizedBox(width: 6),
-                        Text('•', style: TextStyle(color: subtitleColor, fontSize: 12)),
-                        const SizedBox(width: 6),
-                      ],
-                      Text(student.code,
-                          style: TextStyle(color: subtitleColor, fontSize: 12)),
+                            style: AppType.caption.copyWith(color: t.inkSoft)),
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Text(student.code,
+                            style: AppType.caption.copyWith(color: t.inkSoft)),
+                      ),
                     ],
                   ),
                   if (archivedAtText != null) ...[
                     const SizedBox(height: 4),
-                    Text('أُرشف في $archivedAtText',
-                        style: TextStyle(color: subtitleColor, fontSize: 11)),
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.archive_rounded, size: 13, color: t.inkFaint),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text('أُرشف في $archivedAtText',
+                            style: AppType.caption.copyWith(color: t.inkSoft)),
+                      ),
+                    ]),
                   ],
                 ],
               ),
             ),
             PopupMenuButton<String>(
+              tooltip: 'خيارات الطالب المؤرشف',
               onSelected: (v) {
                 if (v == 'unarchive') onUnarchive();
                 if (v == 'delete') onDeletePermanently();
               },
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.control)),
+              icon: Icon(Icons.more_vert_rounded, color: t.inkSoft),
               itemBuilder: (_) => [
                 PopupMenuItem(
                   value: 'unarchive',
                   child: Row(children: [
-                    Icon(Icons.unarchive_rounded, size: 18, color: AppTheme.primaryColor),
+                    Icon(Icons.unarchive_rounded, size: 18, color: t.brand),
                     const SizedBox(width: 10),
-                    Text('استعادة', style: TextStyle(color: AppTheme.primaryColor)),
+                    Text('استعادة', style: TextStyle(color: t.brand)),
                   ]),
                 ),
                 PopupMenuItem(
                   value: 'delete',
                   child: Row(children: [
-                    Icon(Icons.delete_forever_rounded, size: 18, color: Colors.red.shade400),
+                    Icon(Icons.delete_forever_rounded,
+                        size: 18, color: t.danger),
                     const SizedBox(width: 10),
-                    Text('حذف نهائي', style: TextStyle(color: Colors.red.shade400)),
+                    Text('حذف نهائي', style: TextStyle(color: t.danger)),
                   ]),
                 ),
               ],
-              child: Icon(Icons.more_vert_rounded, color: subtitleColor),
             ),
           ],
         ),
