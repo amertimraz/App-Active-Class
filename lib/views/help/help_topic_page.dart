@@ -13,15 +13,19 @@ import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/app_panel.dart';
 
 class HelpTopicPage extends StatelessWidget {
-  /// للاختبار: موضوع مباشر. في التطبيق بييجي من Get.arguments (المعرّف).
+  /// موضوع مباشر (اختبارات)، أو [topicId] اللي بيتقرأ وقت بناء المسار — مش من
+  /// Get.arguments وقت الرسم، عشان صفحة تحت صفحة تانية ما تغيّرش موضوعها.
   final HelpTopic? topic;
-  const HelpTopicPage({super.key, this.topic});
+  final String? topicId;
+  const HelpTopicPage({super.key, this.topic, this.topicId});
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final args = Get.arguments;
-    final topic = this.topic ?? (args is String ? helpTopicById(args) : null);
+    final topic = this.topic ??
+        (topicId != null ? helpTopicById(topicId!) : null) ??
+        (args is String ? helpTopicById(args) : null);
 
     if (topic == null) {
       return Scaffold(
@@ -120,8 +124,10 @@ class HelpTopicPage extends StatelessWidget {
                       style: AppType.caption.copyWith(color: t.ink)),
                   backgroundColor: t.surface,
                   side: BorderSide(color: t.line),
-                  onPressed: () =>
-                      Get.toNamed(ROUTE_HELP_TOPIC, arguments: r.id),
+                  // نفس المسار مفتوح بالفعل: preventDuplicates:false وإلا GetX
+                  // بيتجاهل الضغطة.
+                  onPressed: () => Get.toNamed(ROUTE_HELP_TOPIC,
+                      arguments: r.id, preventDuplicates: false),
                 ),
             ]),
           ],

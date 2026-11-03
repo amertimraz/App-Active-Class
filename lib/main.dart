@@ -273,7 +273,12 @@ class MyApp extends StatelessWidget {
             GetPage(name: ROUTE_ATTENDANCE, page: () => const AttendancePage()),
             GetPage(name: ROUTE_RECITATION, page: () => const RecitationPage()),
             GetPage(name: ROUTE_HELP, page: () => const HelpCenterPage()),
-            GetPage(name: ROUTE_HELP_TOPIC, page: () => const HelpTopicPage()),
+            GetPage(
+                name: ROUTE_HELP_TOPIC,
+                page: () => HelpTopicPage(
+                    topicId: Get.arguments is String
+                        ? Get.arguments as String
+                        : null)),
             GetPage(name: ROUTE_PAYMENTS, page: () => const PaymentsPage()),
             GetPage(
                 name: ROUTE_QR_SCANNER_ATTENDANCE,

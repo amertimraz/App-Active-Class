@@ -53,7 +53,10 @@ Future<void> _pump(WidgetTester t, Widget home,
     ),
     getPages: [
       GetPage(name: '/', page: () => home),
-      GetPage(name: ROUTE_HELP_TOPIC, page: () => const HelpTopicPage()),
+      GetPage(
+          name: ROUTE_HELP_TOPIC,
+          page: () => HelpTopicPage(
+              topicId: Get.arguments is String ? Get.arguments as String : null)),
     ],
   ));
   await t.pump(const Duration(milliseconds: 400));
@@ -199,6 +202,28 @@ void main() {
     expect(find.text('تسجيل دفعة'), findsWidgets);
     expect(find.text('الخطوات'), findsOneWidget);
     expect(find.text('افتح الموضوع كامل'), findsOneWidget);
+  });
+
+  testWidgets('الضغط على موضوع مرتبط بيفتح الموضوع ده (حتى وأنت جوه موضوع)',
+      (t) async {
+    await _pump(t, const Scaffold(body: SizedBox()), size: const Size(360, 2400));
+    Get.toNamed(ROUTE_HELP_TOPIC, arguments: 'start');
+    await t.pump(const Duration(milliseconds: 600));
+    await t.pump(const Duration(milliseconds: 600));
+    expect(find.text('ابدأ من هنا'), findsWidgets);
+    // مواضيع start المرتبطة: groups, students, attendance, payments
+    await t.tap(find.widgetWithText(ActionChip, 'إضافة مجموعة وإدارتها'));
+    await t.pump(const Duration(milliseconds: 600));
+    await t.pump(const Duration(milliseconds: 600));
+    // عنوان الشريط بقى عنوان الموضوع الجديد، وفيه تحذير المسح بتاعه.
+    expect(find.text('إضافة مجموعة وإدارتها'), findsWidgets);
+    expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+    // الرجوع بيرجّع الموضوع الأول من غير ما يتبدّل.
+    Get.back();
+    await t.pump(const Duration(milliseconds: 600));
+    await t.pump(const Duration(milliseconds: 600));
+    expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+    expect(find.text('الخطوات'), findsOneWidget);
   });
 
   group('كارت ابدأ من هنا', () {
