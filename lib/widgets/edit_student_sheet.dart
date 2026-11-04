@@ -307,6 +307,8 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
         siblingsTotal: _siblings.isNotEmpty ? newTotal : null,
         clearSiblingsTotal: _siblings.isEmpty,
         clearSiblingGroupId: _siblings.isEmpty,
+        clearSiblingGroupUuid: _siblings.isEmpty,
+        clearSiblingGroupCommittedCount: _siblings.isEmpty,
         attendanceStart: _attendanceStart,
         guardianPhone:
             _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
@@ -328,8 +330,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
       for (final r in removed) {
         final fresh = await db.getStudent(r.id!);
         if (fresh == null) continue;
-        final cleared =
-            fresh.copyWith(clearSiblingsTotal: true, clearSiblingGroupId: true);
+        final cleared = fresh.unlinkedFromSiblings();
         await db.updateStudent(cleared);
         final idx = _sc.students.indexWhere((s) => s.id == cleared.id);
         if (idx != -1) _sc.students[idx] = cleared;

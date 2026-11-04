@@ -1468,6 +1468,8 @@ class DatabaseService {
         COL_STUDENT_SIBLING_ID: null,
         COL_STUDENT_SIBLINGS_TOTAL: null,
         COL_STUDENT_SIBLING_GROUP_ID: null,
+        COL_STUDENT_SIBLING_GROUP_UUID: null,
+        COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT: null,
         COL_SYNC_UPDATED_AT: now,
       },
       where: '$COL_STUDENT_ID = ?',
@@ -1478,6 +1480,8 @@ class DatabaseService {
       COL_STUDENT_SIBLING_ID: null,
       COL_STUDENT_SIBLINGS_TOTAL: null,
       COL_STUDENT_SIBLING_GROUP_ID: null,
+      COL_STUDENT_SIBLING_GROUP_UUID: null,
+      COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT: null,
       COL_SYNC_UPDATED_AT: now,
     });
   }
@@ -1609,6 +1613,8 @@ class DatabaseService {
             COL_STUDENT_SIBLING_ID: null,
             COL_STUDENT_SIBLINGS_TOTAL: null,
             COL_STUDENT_SIBLING_GROUP_ID: null,
+            COL_STUDENT_SIBLING_GROUP_UUID: null,
+            COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT: null,
             COL_SYNC_UPDATED_AT: now,
           },
           where: '$COL_STUDENT_ID = ?',
@@ -1631,6 +1637,8 @@ class DatabaseService {
       COL_STUDENT_SIBLING_ID: null,
       COL_STUDENT_SIBLINGS_TOTAL: null,
       COL_STUDENT_SIBLING_GROUP_ID: null,
+      COL_STUDENT_SIBLING_GROUP_UUID: null,
+      COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT: null,
       COL_SYNC_UPDATED_AT: now,
     });
     await _recordArchiveEvent(studentId, kArchiveEventArchived,

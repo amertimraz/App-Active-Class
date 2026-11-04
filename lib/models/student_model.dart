@@ -7,20 +7,25 @@ class Student {
   final int groupId;
   final double price;
   final String? qrPath;
-  final int? siblingId; // قديم (ربط ثنائي) — راجع specs/007-three-sibling-support
+  final int?
+      siblingId; // قديم (ربط ثنائي) — راجع specs/007-three-sibling-support
   final double? siblingsTotal;
-  final int? siblingGroupId; // مشترك بين كل أعضاء مجموعة الإخوة (2-3)، = أصغر id بينهم
-  final String? siblingGroupUuid; // نفس المجموعة بس UUID ثابت للمزامنة عبر الأجهزة
-  final int? siblingGroupCommittedCount; // عدد الأعضاء وقت آخر قرار واعي — spec 035
+  final int?
+      siblingGroupId; // مشترك بين كل أعضاء مجموعة الإخوة (2-3)، = أصغر id بينهم
+  final String?
+      siblingGroupUuid; // نفس المجموعة بس UUID ثابت للمزامنة عبر الأجهزة
+  final int?
+      siblingGroupCommittedCount; // عدد الأعضاء وقت آخر قرار واعي — spec 035
   final DateTime? createdAt;
   final DateTime? attendanceStart;
   final String? guardianPhone;
-  final String? guardianWhatsapp;  // spec 033 — رابط wa.me أو اسم مستخدم (اختياري)
-  final DateTime? birthDate;       // تاريخ الميلاد
-  final double exemptPercent;      // 0 = لا إعفاء، 100 = إعفاء كامل، 50 = 50%
-  final String? exemptReason;      // سبب الإعفاء
-  final bool isArchived;           // مؤرشف؟ (بديل الحذف النهائي)
-  final DateTime? archivedAt;      // تاريخ آخر أرشفة، null لو نشط
+  final String?
+      guardianWhatsapp; // spec 033 — رابط wa.me أو اسم مستخدم (اختياري)
+  final DateTime? birthDate; // تاريخ الميلاد
+  final double exemptPercent; // 0 = لا إعفاء، 100 = إعفاء كامل، 50 = 50%
+  final String? exemptReason; // سبب الإعفاء
+  final bool isArchived; // مؤرشف؟ (بديل الحذف النهائي)
+  final DateTime? archivedAt; // تاريخ آخر أرشفة، null لو نشط
 
   Student({
     this.id,
@@ -88,7 +93,9 @@ class Student {
       price: (map['price'] as num).toDouble(),
       qrPath: map['qr_path'] as String?,
       siblingId: map['sibling_id'] as int?,
-      siblingsTotal: map['siblings_total'] != null ? (map['siblings_total'] as num).toDouble() : null,
+      siblingsTotal: map['siblings_total'] != null
+          ? (map['siblings_total'] as num).toDouble()
+          : null,
       siblingGroupId: map['sibling_group_id'] as int?,
       siblingGroupUuid: map['sibling_group_uuid'] as String?,
       siblingGroupCommittedCount: map['sibling_group_committed_count'] as int?,
@@ -113,6 +120,18 @@ class Student {
           : null,
     );
   }
+
+  /// نفس الطالب بعد فك ربطه من الإخوة بالكامل. لازم يتصفّر **كل** أثر الربط:
+  /// sibling_group_uuid كمان (مش sibling_group_id بس) — وإلا الـuuid الباقي
+  /// بيتبعت للمزامنة، والجهاز التاني بيرجّع الربط تاني بالـuuid، والطالب
+  /// يتربط بإخوته من جديد (بلاغ "حذف الإخوة مابيثبتش").
+  Student unlinkedFromSiblings() => copyWith(
+        clearSiblingId: true,
+        clearSiblingsTotal: true,
+        clearSiblingGroupId: true,
+        clearSiblingGroupUuid: true,
+        clearSiblingGroupCommittedCount: true,
+      );
 
   Student copyWith({
     int? id,
@@ -154,9 +173,8 @@ class Student {
       siblingId: clearSiblingId ? null : (siblingId ?? this.siblingId),
       siblingsTotal:
           clearSiblingsTotal ? null : (siblingsTotal ?? this.siblingsTotal),
-      siblingGroupId: clearSiblingGroupId
-          ? null
-          : (siblingGroupId ?? this.siblingGroupId),
+      siblingGroupId:
+          clearSiblingGroupId ? null : (siblingGroupId ?? this.siblingGroupId),
       siblingGroupUuid: clearSiblingGroupUuid
           ? null
           : (siblingGroupUuid ?? this.siblingGroupUuid),
@@ -171,7 +189,8 @@ class Student {
           : (guardianWhatsapp ?? this.guardianWhatsapp),
       birthDate: birthDate ?? this.birthDate,
       exemptPercent: exemptPercent ?? this.exemptPercent,
-      exemptReason: clearExemptReason ? null : (exemptReason ?? this.exemptReason),
+      exemptReason:
+          clearExemptReason ? null : (exemptReason ?? this.exemptReason),
       isArchived: isArchived ?? this.isArchived,
       archivedAt: clearArchivedAt ? null : (archivedAt ?? this.archivedAt),
     );
