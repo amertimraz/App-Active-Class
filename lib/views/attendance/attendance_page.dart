@@ -764,13 +764,13 @@ Future<void> showAttendanceSheet(
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.symmetric(
           horizontal: size.width * 0.04,
-          vertical: size.height * 0.075,
+          vertical: size.height * 0.03,
         ),
         child: ConstrainedBox(
           constraints: BoxConstraints(
             minWidth: size.width * 0.92,
             maxWidth: size.width * 0.92,
-            maxHeight: size.height * 0.85,
+            maxHeight: size.height * 0.94,
           ),
           child: _AttendanceSheet(
             group: group,
@@ -1047,7 +1047,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
             Container(
               color: t.board,
               padding: const EdgeInsetsDirectional.fromSTEB(
-                  AppSpace.lg, AppSpace.sm, AppSpace.xs, AppSpace.lg),
+                  AppSpace.lg, AppSpace.xs, AppSpace.xs, AppSpace.md),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1055,7 +1055,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                            vertical: AppSpace.sm),
+                            vertical: AppSpace.xs),
                         child: Text(group.name,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
@@ -1085,7 +1085,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                     // ضاقت الشارات تنزل سطر تاني بدل overflow.
                     Padding(
                       padding: const EdgeInsetsDirectional.only(
-                          end: AppSpace.md, bottom: AppSpace.md),
+                          end: AppSpace.md, bottom: AppSpace.sm),
                       child: Wrap(
                         spacing: AppSpace.sm,
                         runSpacing: AppSpace.xs,
@@ -1124,44 +1124,44 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                     ),
                     Padding(
                       padding: const EdgeInsetsDirectional.only(end: AppSpace.md),
+                      child: Row(children: [
+                        Expanded(
+                            child: _InlineStat(
+                                label: 'حاضر',
+                                value: '$presentCount',
+                                color: on.positive)),
+                        if (lateCount > 0)
+                          Expanded(
+                              child: _InlineStat(
+                                  label: 'متأخر',
+                                  value: '$lateCount',
+                                  color: t.chalk)),
+                        Expanded(
+                            child: _InlineStat(
+                                label: 'غائب',
+                                value: '$absentCount',
+                                color: on.danger)),
+                        Expanded(
+                            child: _InlineStat(
+                                label: 'الكل',
+                                value: '$totalCount',
+                                color: t.boardInk)),
+                      ]),
+                    ),
+                    const SizedBox(height: AppSpace.sm),
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(end: AppSpace.md),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(AppRadius.chip),
                         child: LinearProgressIndicator(
                           value: totalCount == 0
                               ? 0
                               : attendanceRate.clamp(0.0, 1.0),
-                          minHeight: 6,
+                          minHeight: 4,
                           backgroundColor: t.boardLine,
                           valueColor: AlwaysStoppedAnimation<Color>(barColor),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: AppSpace.md),
-                    Padding(
-                      padding: const EdgeInsetsDirectional.only(end: AppSpace.md),
-                      child: Row(children: [
-                        Expanded(
-                            child: BoardStat(
-                                label: 'حاضر',
-                                value: '$presentCount',
-                                color: on.positive)),
-                        if (lateCount > 0)
-                          Expanded(
-                              child: BoardStat(
-                                  label: 'متأخر',
-                                  value: '$lateCount',
-                                  color: t.chalk)),
-                        Expanded(
-                            child: BoardStat(
-                                label: 'غائب',
-                                value: '$absentCount',
-                                color: on.danger)),
-                        Expanded(
-                            child: BoardStat(
-                                label: 'الكل',
-                                value: '$totalCount',
-                                color: t.boardInk)),
-                      ]),
                     ),
                   ],
                 ],
@@ -1325,10 +1325,10 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                               // الحالة، في سطر واحد (بينزلوا سطر تاني لو الشاشة ضيقة).
                               Padding(
                                 padding: const EdgeInsets.fromLTRB(
-                                    AppSpace.md, AppSpace.xs, AppSpace.md, 0),
+                                    AppSpace.md, 0, AppSpace.md, 0),
                                 child: Wrap(
                                   crossAxisAlignment: WrapCrossAlignment.center,
-                                  spacing: AppSpace.md,
+                                  spacing: AppSpace.sm,
                                   children: [
                                     TextButton.icon(
                                       onPressed: () =>
@@ -1386,36 +1386,25 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                                 ))
                                             .toList(),
                                         child: SizedBox(
-                                          width: 44,
                                           height: 44,
-                                          child: Icon(
-                                              Icons.emoji_emotions_rounded,
-                                              size: 22,
-                                              color: t.brand),
-                                        ),
-                                      ),
-                                    // الإيضاح كتلة واحدة: لو مفيش مكان جنب الأزرار
-                                    // بينزل كله سطر تاني مش مقطّع.
-                                    Row(mainAxisSize: MainAxisSize.min, children: [
-                                      for (final e in [
-                                        (Icons.check_rounded, 'حاضر', t.positive),
-                                        (Icons.schedule_rounded, 'متأخر', t.caution),
-                                        (Icons.close_rounded, 'غائب', t.danger),
-                                      ])
-                                        Padding(
-                                          padding: const EdgeInsetsDirectional.only(
-                                              end: AppSpace.md),
                                           child: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
-                                                Icon(e.$1, size: 16, color: e.$3),
-                                                const SizedBox(width: AppSpace.xs),
-                                                Text(e.$2,
-                                                    style: AppType.caption
-                                                        .copyWith(color: t.inkSoft)),
+                                                Icon(
+                                                    Icons.emoji_emotions_rounded,
+                                                    size: 20,
+                                                    color: t.brand),
+                                                const SizedBox(
+                                                    width: AppSpace.xs),
+                                                Text('تفاعل الكل',
+                                                    style: AppType.body
+                                                        .copyWith(
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color: t.brand)),
                                               ]),
                                         ),
-                                    ]),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -1831,6 +1820,29 @@ Future<void> _atWaitForResume() {
 
 // ── بطاقة الطالب الكبيرة ────────────────────────────────────────────────────
 
+/// رقم + اسمه في سطر واحد فوق السبورة (حاضر 17) — بديل BoardStat المكدّس
+/// لما المساحة الرأسية غالية (موديل تسجيل الحضور).
+class _InlineStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  const _InlineStat(
+      {required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(value, style: AppType.title.copyWith(fontSize: 20, color: color)),
+        const SizedBox(width: AppSpace.xs),
+        Text(label, style: AppType.caption.copyWith(color: t.boardInkSoft)),
+      ]),
+    );
+  }
+}
+
 class _StudentAttendanceChip extends StatelessWidget {
   final Student student;
   final String? status;
@@ -1864,14 +1876,14 @@ class _StudentAttendanceChip extends StatelessWidget {
     // الاسم للحاضر/المتأخر بس، فباقي الصفوف تفضل بارتفاع صف واحد.
     return Padding(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpace.md, vertical: AppSpace.md),
+          horizontal: AppSpace.md, vertical: AppSpace.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
             Container(
               width: 4,
-              height: 36,
+              height: 30,
               decoration: BoxDecoration(
                 color: marked ? ink : t.line,
                 borderRadius: BorderRadius.circular(2),
@@ -1887,7 +1899,7 @@ class _StudentAttendanceChip extends StatelessWidget {
                     student.name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: AppType.label.copyWith(color: t.ink),
+                    style: AppType.label.copyWith(fontSize: 13, color: t.ink),
                   ),
                   // تنبيه متأخر في الدفع (spec 029)
                   OverdueWarningFor(student: student, compact: true),
@@ -1896,6 +1908,7 @@ class _StudentAttendanceChip extends StatelessWidget {
             ),
             const SizedBox(width: AppSpace.sm),
             AppStatusPicker(
+              dense: true,
               value: norm,
               subject: student.name,
               onSelect: onSelect,
@@ -1912,7 +1925,7 @@ class _StudentAttendanceChip extends StatelessWidget {
           if (showInteraction && canRecordInteraction(norm))
             Padding(
               padding: const EdgeInsetsDirectional.only(
-                  start: 14, top: AppSpace.sm),
+                  start: 14, top: AppSpace.xs),
               child: _InteractionRow(
                   interaction: normalizeInteraction(interaction),
                   onSelect: onInteractionSelect),
@@ -1944,8 +1957,8 @@ class _InteractionRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppRadius.chip),
             onTap: () => onSelect(selected ? null : value),
             child: Container(
-              width: 44,
-              height: 30,
+              width: 38,
+              height: 26,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: selected
@@ -1955,7 +1968,7 @@ class _InteractionRow extends StatelessWidget {
                 border: Border.all(color: selected ? t.brand : t.line),
               ),
               child: Text(interactionEmoji(value),
-                  style: const TextStyle(fontSize: 15)),
+                  style: const TextStyle(fontSize: 13)),
             ),
           ),
         ),
@@ -2346,8 +2359,8 @@ class _HomeworkStudentRow extends StatelessWidget {
             child: Text(name,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: AppType.label
-                    .copyWith(color: absent ? t.inkFaint : t.ink)),
+                style: AppType.label.copyWith(
+                    fontSize: 13, color: absent ? t.inkFaint : t.ink)),
           ),
           const SizedBox(width: AppSpace.sm),
           if (absent)
@@ -2363,6 +2376,7 @@ class _HomeworkStudentRow extends StatelessWidget {
             )
           else if (showHomework)
             AppStatusPicker(
+              dense: true,
               value: status,
               subject: name,
               onSelect: onSelect,

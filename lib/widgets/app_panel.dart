@@ -188,6 +188,8 @@ class AppStatusPicker extends StatelessWidget {
   final List<AppSegmentItem> items;
   final ValueChanged<String?> onSelect;
   final String? subject;
+  // مضغوط للقوايم الطويلة (موديل تسجيل الحضور): أزرار وأيقونات أصغر.
+  final bool dense;
 
   const AppStatusPicker({
     super.key,
@@ -195,6 +197,7 @@ class AppStatusPicker extends StatelessWidget {
     required this.items,
     required this.onSelect,
     this.subject,
+    this.dense = false,
   });
 
   @override
@@ -205,7 +208,7 @@ class AppStatusPicker extends StatelessWidget {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       for (var i = 0; i < items.length; i++)
         Padding(
-          padding: EdgeInsetsDirectional.only(start: i == 0 ? 0 : 6),
+          padding: EdgeInsetsDirectional.only(start: i == 0 ? 0 : (dense ? 4 : 6)),
           child: Semantics(
             button: true,
             selected: value == items[i].value,
@@ -231,10 +234,10 @@ class AppStatusPicker extends StatelessWidget {
                   onTap: () => onSelect(
                       value == items[i].value ? null : items[i].value),
                   child: SizedBox(
-                    width: 42,
-                    height: 40,
+                    width: dense ? 36 : 42,
+                    height: dense ? 34 : 40,
                     child: Icon(items[i].icon,
-                        size: 20,
+                        size: dense ? 18 : 20,
                         color: value == items[i].value
                             ? onInk
                             : items[i].ink),
