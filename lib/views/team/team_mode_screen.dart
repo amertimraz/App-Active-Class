@@ -104,10 +104,12 @@ class _NeedLoginCard extends StatelessWidget {
             backgroundColor: AppTheme.primaryColor,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
           child: const Text('تسجيل الدخول',
-              style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+              style:
+                  TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
         ),
       ],
     );
@@ -138,7 +140,8 @@ class _DeviceBlockedCardState extends State<_DeviceBlockedCard> {
     return _Card(
       isDark: isDark,
       children: [
-        const Icon(Icons.phonelink_lock_rounded, size: 42, color: Color(0xFFEF4444)),
+        const Icon(Icons.phonelink_lock_rounded,
+            size: 42, color: Color(0xFFEF4444)),
         const SizedBox(height: 12),
         Text('حسابك مرتبط بجهاز تاني',
             style: TextStyle(
@@ -164,15 +167,18 @@ class _DeviceBlockedCardState extends State<_DeviceBlockedCard> {
             backgroundColor: AppTheme.primaryColor,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
           child: _retrying
               ? const SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2))
               : const Text('إعادة المحاولة',
-                  style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+                  style: TextStyle(
+                      fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
         ),
       ],
     );
@@ -184,7 +190,9 @@ class _DisabledCard extends StatelessWidget {
   final TeamModeService team;
   final bool ownerPlanAllowed;
   const _DisabledCard(
-      {required this.isDark, required this.team, required this.ownerPlanAllowed});
+      {required this.isDark,
+      required this.team,
+      required this.ownerPlanAllowed});
 
   Future<void> _enable(BuildContext context) async {
     if (!ownerPlanAllowed) {
@@ -208,7 +216,8 @@ class _DisabledCard extends StatelessWidget {
         _Card(
           isDark: isDark,
           children: [
-            const Icon(Icons.groups_rounded, size: 42, color: AppTheme.primaryColor),
+            const Icon(Icons.groups_rounded,
+                size: 42, color: AppTheme.primaryColor),
             const SizedBox(height: 12),
             Text('أنا المدرس — عايز أشارك بياناتي مع مساعدين',
                 textAlign: TextAlign.center,
@@ -221,13 +230,14 @@ class _DisabledCard extends StatelessWidget {
             Obx(() => SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: team.loading.value ? null : () => _enable(context),
+                    onPressed:
+                        team.loading.value ? null : () => _enable(context),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryColor,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape:
-                          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
                     ),
                     child: team.loading.value
                         ? const SizedBox(
@@ -237,7 +247,8 @@ class _DisabledCard extends StatelessWidget {
                                 color: Colors.white, strokeWidth: 2))
                         : const Text('تفعيل وضع الفريق',
                             style: TextStyle(
-                                fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+                                fontFamily: 'Cairo',
+                                fontWeight: FontWeight.w800)),
                   ),
                 )),
             if (!ownerPlanAllowed) ...[
@@ -254,7 +265,8 @@ class _DisabledCard extends StatelessWidget {
         _Card(
           isDark: isDark,
           children: [
-            const Icon(Icons.person_add_alt_1_rounded, size: 42, color: Color(0xFF10B981)),
+            const Icon(Icons.person_add_alt_1_rounded,
+                size: 42, color: Color(0xFF10B981)),
             const SizedBox(height: 12),
             Text('أنا مساعد — عندي كود دعوة من مدرسي',
                 textAlign: TextAlign.center,
@@ -272,10 +284,12 @@ class _DisabledCard extends StatelessWidget {
                   foregroundColor: const Color(0xFF10B981),
                   side: const BorderSide(color: Color(0xFF10B981)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
                 ),
                 child: const Text('الانضمام بكود دعوة',
-                    style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+                    style: TextStyle(
+                        fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
               ),
             ),
           ],
@@ -295,7 +309,8 @@ class _EnabledCard extends StatelessWidget {
     return _Card(
       isDark: isDark,
       children: [
-        const Icon(Icons.check_circle_rounded, size: 42, color: Color(0xFF10B981)),
+        const Icon(Icons.check_circle_rounded,
+            size: 42, color: Color(0xFF10B981)),
         const SizedBox(height: 12),
         Text('وضع الفريق مفعّل',
             style: TextStyle(
@@ -305,7 +320,9 @@ class _EnabledCard extends StatelessWidget {
                 color: isDark ? Colors.white : Colors.black87)),
         const SizedBox(height: 4),
         Obx(() => Text(
-              team.isOwner.value ? 'أنت المدرس (صاحب الفريق)' : 'أنت مساعد في الفريق',
+              team.isOwner.value
+                  ? 'أنت المدرس (صاحب الفريق)'
+                  : 'أنت مساعد في الفريق',
               style: TextStyle(
                   fontFamily: 'Cairo',
                   fontSize: 13,
@@ -324,12 +341,14 @@ class _EnabledCard extends StatelessWidget {
               onPressed: () => Get.to(() => const ManageMembersScreen()),
               icon: const Icon(Icons.people_alt_rounded, size: 18),
               label: const Text('إدارة الأعضاء',
-                  style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+                  style: TextStyle(
+                      fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
           );
@@ -345,7 +364,8 @@ class _EnabledCard extends StatelessWidget {
                 if (err != null) {
                   ToastHelper.error(err);
                 } else {
-                  ToastHelper.info('تم تعطيل وضع الفريق — المساعدين هيتقفلوا برضو');
+                  ToastHelper.info(
+                      'تم تعطيل وضع الفريق — المساعدين هيتقفلوا برضو');
                 }
               } else {
                 await team.disable();
@@ -354,17 +374,20 @@ class _EnabledCard extends StatelessWidget {
                 // بنفسه أو اتقفل عليه من بره: حوار عدّاد، وبعده تسجيل
                 // خروج تلقائي ورجوع لحالة تجربة مجانية جديدة، بدل ما
                 // يفضل داخل بحساب مسجّل من غير أي بيانات فريق ظاهرة.
-                unawaited(TeamDisconnectDialog.show('تم تعطيل وضع الفريق على جهازك'));
+                unawaited(
+                    TeamDisconnectDialog.show('تم تعطيل وضع الفريق على جهازك'));
               }
             },
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.red,
               side: const BorderSide(color: Colors.red),
               padding: const EdgeInsets.symmetric(vertical: 13),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
             child: const Text('تعطيل وضع الفريق',
-                style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+                style: TextStyle(
+                    fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
           ),
         ),
       ],
@@ -388,6 +411,7 @@ class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
   Timer? _timer;
   int? _pending;
   Map<String, int> _byTable = const {};
+  Map<String, int> _unsynced = const {};
   String? _lastError;
   DateTime? _lastDrainAt;
 
@@ -401,10 +425,12 @@ class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
   Future<void> _refresh() async {
     final pending = await widget.team.pendingOutboxCount();
     final byTable = await widget.team.pendingOutboxByTable();
+    final unsynced = await widget.team.unsyncedRowCounts();
     if (!mounted) return;
     setState(() {
       _pending = pending;
       _byTable = byTable;
+      _unsynced = unsynced;
       _lastError = widget.team.lastOutboxError;
       _lastDrainAt = widget.team.lastDrainAt;
     });
@@ -448,16 +474,30 @@ class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
             _pending == null
                 ? 'تشخيص المزامنة: بيتحمّل...'
                 : 'معلّق للإرسال: $_pending',
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: subColor),
+            style:
+                TextStyle(fontFamily: 'Cairo', fontSize: 12, color: subColor),
           ),
           Text(drainAgo,
-              style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: subColor)),
+              style: TextStyle(
+                  fontFamily: 'Cairo', fontSize: 11, color: subColor)),
           if (_byTable.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
                 'حسب الجدول: ${_byTable.entries.map((e) => '${e.key}=${e.value}').join('، ')}',
-                style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: subColor),
+                style: TextStyle(
+                    fontFamily: 'Cairo', fontSize: 11, color: subColor),
+              ),
+            ),
+          if (_unsynced.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'صفوف ما اتزامنتش أبدًا: ${_unsynced.entries.map((e) => '${e.key}=${e.value}').join('، ')}',
+                style: TextStyle(
+                    fontFamily: 'Cairo',
+                    fontSize: 11,
+                    color: isDarkErrorColor(widget.isDark)),
               ),
             ),
           if (_lastError != null)
@@ -469,6 +509,24 @@ class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
                       fontSize: 11,
                       color: isDarkErrorColor(widget.isDark))),
             ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () async {
+                final n = await widget.team.resyncUnsyncedOnly();
+                if (!mounted) return;
+                ToastHelper.info(n == null
+                    ? 'وضع الفريق مش شغّال دلوقتي'
+                    : n == 0
+                        ? 'مفيش صفوف ناقصة — كله متزامن'
+                        : 'جاري رفع $n صف ناقص...');
+                unawaited(_refresh());
+              },
+              icon: const Icon(Icons.cloud_upload_rounded, size: 16),
+              label: const Text('رفع الصفوف الناقصة فقط (آمن)',
+                  style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+            ),
+          ),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(

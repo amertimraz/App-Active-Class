@@ -337,7 +337,16 @@ class SyncEngine with WidgetsBindingObserver {
                 '${e.message}');
             continue;
           }
-          // استثناء فعلي (RLS/trigger/شبكة) — ده اللي بيسدّ رأس الطابور.
+          // انقطاع نت/مهلة/جلسة: العيب مش في الصف. مانعدّهاش فشلة (وإلا بعد
+          // دقيقتين أوفلاين الدفعة كانت بتتمسح من الطابور وتفضل على الجهاز ده
+          // بس)، ونوقف الجولة لأن باقي الصفوف هتفشل بنفس السبب.
+          if (isTransientSyncError(e)) {
+            _lastOutboxErr[outboxId] = e.toString();
+            debugPrint('SyncEngine: فشل مؤقت (شبكة/جلسة) — الجولة اتوقفت '
+                'والصف فاضل في الطابور — $table/$rowId — $e');
+            break;
+          }
+          // استثناء فعلي (RLS/trigger) — ده اللي بيسدّ رأس الطابور.
           // لو تكرر بعد عدد معقول من المحاولات، امسحه بدل ما يفضل عالق
           // للأبد (كان بيتسجّل تحذير بس من غير أي تنظيف فعلي).
           final giveUp =
@@ -448,7 +457,7 @@ class SyncEngine with WidgetsBindingObserver {
       if (remoteId != null) {
         await client
             .from(table)
-            .update({'deleted_at': DateTime.now().toIso8601String()})
+            .update({'deleted_at': DateTime.now().toUtc().toIso8601String()})
             .eq('id', remoteId)
             .timeout(_kNetworkTimeout);
       } else {
@@ -457,7 +466,7 @@ class SyncEngine with WidgetsBindingObserver {
         // القديمة صحيحة هنا بالظبط.
         await client
             .from(table)
-            .update({'deleted_at': DateTime.now().toIso8601String()})
+            .update({'deleted_at': DateTime.now().toUtc().toIso8601String()})
             .eq('team_id', teamId)
             .eq('origin_device_id', deviceId)
             .eq('local_id', rowId)
@@ -488,7 +497,7 @@ class SyncEngine with WidgetsBindingObserver {
           .update(inPlaceUpdateColumns(row))
           .eq('id', knownRemoteId)
           .eq('team_id', teamId)
-          .select('id')
+          .select('id,updated_at')
           .timeout(_kNetworkTimeout) as List;
       List updated;
       try {
@@ -504,7 +513,11 @@ class SyncEngine with WidgetsBindingObserver {
           rethrow;
         }
       }
-      if (updated.isNotEmpty) return true;
+      if (updated.isNotEmpty) {
+        await _adoptServerStamp(table, rowId, payload[COL_SYNC_UPDATED_AT],
+            (updated.first as Map)['updated_at']);
+        return true;
+      }
     }
 
     Map<String, dynamic> res;
@@ -512,7 +525,7 @@ class SyncEngine with WidgetsBindingObserver {
       res = await client
           .from(table)
           .upsert(remoteRow, onConflict: 'team_id,origin_device_id,local_id')
-          .select('id')
+          .select('id,updated_at')
           .single()
           .timeout(_kNetworkTimeout);
     } on PostgrestException catch (e) {
@@ -532,7 +545,7 @@ class SyncEngine with WidgetsBindingObserver {
         res = await client
             .from(table)
             .upsert(retryRow, onConflict: 'team_id,origin_device_id,local_id')
-            .select('id')
+            .select('id,updated_at')
             .single()
             .timeout(_kNetworkTimeout);
       } else {
@@ -543,7 +556,22 @@ class SyncEngine with WidgetsBindingObserver {
     final db = await _dbService.database;
     await db.update(table, {COL_SYNC_REMOTE_ID: remoteId},
         where: '${_pkCol(table)} = ?', whereArgs: [rowId]);
+    await _adoptServerStamp(
+        table, rowId, payload[COL_SYNC_UPDATED_AT], res['updated_at']);
     return true;
+  }
+
+  /// بعد نجاح الـpush السيرفر بيختم الصف بوقته (trg_set_updated_at). نتبنّى
+  /// الطابع ده محليًا بدل ساعة الجهاز، عشان مقارنة LWW مع تعديلات الزملاء
+  /// تبقى على نفس الساعة. بنكتبه بس لو الصف ما اتعدّلش محليًا من وقت الـpush
+  /// (الطابع لسه نفس طابع الـpayload) — وإلا التعديل الأحدث هيتخطّى.
+  Future<void> _adoptServerStamp(
+      String table, int rowId, Object? pushedStamp, Object? serverStamp) async {
+    if (pushedStamp == null || serverStamp == null) return;
+    final db = await _dbService.database;
+    await db.update(table, {COL_SYNC_UPDATED_AT: serverStamp.toString()},
+        where: '${_pkCol(table)} = ? AND $COL_SYNC_UPDATED_AT = ?',
+        whereArgs: [rowId, pushedStamp.toString()]);
   }
 
   Future<Map<String, dynamic>?> _buildRemoteRow(
@@ -915,6 +943,70 @@ class SyncEngine with WidgetsBindingObserver {
   /// في صفحة الامتحانات بينادي عليها يدويًا.
   Future<void> enqueueExistingExams() =>
       _enqueueExistingRows([TABLE_EXAMS, TABLE_EXAM_GROUPS, TABLE_EXAM_GRADES]);
+
+  /// صفوف محلية عمرها ما اتزامنت (بلا remote_id) ومالهاش صف معلّق في الطابور —
+  /// يعني اتشالت من الطابور بعد فشل متكرر (النسخ القديمة كانت بتمسح الصف بعد
+  /// دقيقتين أوفلاين) أو اتسجّلت قبل تفعيل الفريق. كل جدول: العدد.
+  Future<Map<String, int>> unsyncedRowCounts() async {
+    final db = await _dbService.database;
+    final out = <String, int>{};
+    for (final table in _tables) {
+      try {
+        final r =
+            await db.rawQuery(_unsyncedRowsSql(table, count: true), [table]);
+        final n = (r.first.values.first as int?) ?? 0;
+        if (n > 0) out[table] = n;
+      } catch (_) {
+        // جدول من غير عمود المزامنة — مش من اللي بنعدّه.
+      }
+    }
+    return out;
+  }
+
+  String _unsyncedRowsSql(String table, {bool count = false}) =>
+      'SELECT ${count ? 'COUNT(*)' : '*'} FROM $table '
+      'WHERE $COL_SYNC_REMOTE_ID IS NULL AND ${_pkCol(table)} NOT IN '
+      '(SELECT $COL_OUTBOX_ROW_ID FROM $TABLE_SYNC_OUTBOX '
+      'WHERE $COL_OUTBOX_TABLE = ? AND $COL_OUTBOX_SYNCED = 0)';
+
+  /// يرجّع للطابور الصفوف اللي ما اتزامنتش بس — من غير ما يلمس أي صف متزامن
+  /// (عكس [enqueueAllExistingLocalRows] اللي بيكتب نسخة الجهاز فوق السيرفر).
+  /// الإرسال upsert بمفتاح (team,device,local_id) فمفيش تكرار. بالترتيب:
+  /// الآباء قبل الأبناء. بيرجّع عدد الصفوف اللي اتضافت.
+  Future<int> enqueueUnsyncedRows({bool drain = true}) async {
+    final db = await _dbService.database;
+    var added = 0;
+    for (final table in _tables) {
+      final pkCol = _pkCol(table);
+      List<Map<String, Object?>> rows;
+      try {
+        rows = await db.rawQuery(_unsyncedRowsSql(table), [table]);
+      } catch (_) {
+        continue;
+      }
+      for (final row in rows) {
+        final id = row[pkCol] as int;
+        final map = Map<String, dynamic>.from(row);
+        if (map[COL_SYNC_UPDATED_AT] == null) {
+          map[COL_SYNC_UPDATED_AT] = DateTime.now().toIso8601String();
+          await db.update(
+              table, {COL_SYNC_UPDATED_AT: map[COL_SYNC_UPDATED_AT]},
+              where: '$pkCol = ?', whereArgs: [id]);
+        }
+        await db.insert(TABLE_SYNC_OUTBOX, {
+          COL_OUTBOX_TABLE: table,
+          COL_OUTBOX_ROW_ID: id,
+          COL_OUTBOX_OP: 'insert',
+          COL_OUTBOX_PAYLOAD: jsonEncode(map),
+          COL_OUTBOX_CREATED_AT: DateTime.now().toIso8601String(),
+          COL_OUTBOX_SYNCED: 0,
+        });
+        added++;
+      }
+    }
+    if (added > 0 && drain) unawaited(drainOutbox());
+    return added;
+  }
 
   Future<void> _enqueueExistingRows(List<String> tables) async {
     final db = await _dbService.database;
@@ -1309,6 +1401,18 @@ class SyncEngine with WidgetsBindingObserver {
           {DatabaseExecutor? executor}) =>
       _applyRemoteRow(table, remote, executor: executor);
 
+  /// فيه تعديل محلي لسه ما اترفعش (صف في الـoutbox) للصف ده؟
+  Future<bool> _hasPendingLocalChange(
+      DatabaseExecutor db, String table, int rowId) async {
+    final r = await db.query(TABLE_SYNC_OUTBOX,
+        columns: [COL_OUTBOX_ID],
+        where:
+            '$COL_OUTBOX_TABLE = ? AND $COL_OUTBOX_ROW_ID = ? AND $COL_OUTBOX_SYNCED = 0',
+        whereArgs: [table, rowId],
+        limit: 1);
+    return r.isNotEmpty;
+  }
+
   Future<void> _applyRemoteRow(String table, Map<String, dynamic> remote,
       {DatabaseExecutor? executor}) async {
     final db = executor ?? await _dbService.database;
@@ -1337,7 +1441,16 @@ class SyncEngine with WidgetsBindingObserver {
       if (localUpdatedAt != null &&
           remoteUpdatedAt != null &&
           !remoteUpdatedAt.isAfter(localUpdatedAt)) {
-        return; // مش أحدث من نسختي — (وده كمان بيتجاهل صدى تعديلاتي إحنا)
+        // نفس الطابع بالظبط = صدى تعديلي أنا (بعد ما تبنّيت طابع السيرفر
+        // عند الـpush). طابع أقدم + عندي تعديل لسه ما اترفعش = نسختي أحدث
+        // فعلاً. أما طابع أقدم ومفيش عندي أي تعديل معلّق فده معناه إن ساعة
+        // جهازي كانت متقدّمة عن السيرفر وقت ما ختمت الصف، ونسخة السيرفر
+        // (تعديل زميل) هي الأحدث — لازم تتطبّق وإلا الجهازين يختلفوا في
+        // القيمة للأبد (بلاغ فرق المدفوعات بين المدرس والمساعد).
+        if (remoteUpdatedAt.isAtSameMomentAs(localUpdatedAt) ||
+            await _hasPendingLocalChange(db, table, localRow[pkCol] as int)) {
+          return;
+        }
       }
       final localMap = await _toLocalMap(table, remote, executor: executor);
       if (localMap == null) return;

@@ -40,8 +40,8 @@ class TeamModeService {
   /// تشخيص لواجهة "وضع الفريق" — عدد العمليات المعلّقة في طابور
   /// الإرسال + آخر خطأ فعلي + آخر لحظة حاول فيها الإرسال يشتغل. بيوضّح
   /// فورًا هل المشكلة "تراكم بيتصفّى ببطء" ولا "المحرك واقف تمامًا".
-  Future<int?> pendingOutboxCount() => _engine?.pendingOutboxCount() ??
-      Future.value(null);
+  Future<int?> pendingOutboxCount() =>
+      _engine?.pendingOutboxCount() ?? Future.value(null);
   Future<Map<String, int>> pendingOutboxByTable() =>
       _engine?.pendingOutboxByTable() ?? Future.value(const {});
   String? get lastOutboxError => _engine?.lastOutboxError;
@@ -71,6 +71,7 @@ class TeamModeService {
   final canManageMembers = false.obs;
   final canViewFinancials = true.obs;
   final canViewAcademics = true.obs;
+
   /// spec 044 — يسمح للمساعد بإدارة الامتحانات الإلكترونية (مقفولة افتراضيًا).
   final canManageOnlineExams = false.obs;
 
@@ -80,9 +81,11 @@ class TeamModeService {
   final teamPortalEnabled = false.obs;
   final teamPortalExpiresAt = Rxn<DateTime>();
   final loading = false.obs;
+
   /// جهاز الحساب ده مرتبط بجهاز تاني — مفعّلة بس بعد محاولة دخول
   /// فعلية اكتشفت التعارض، مش تخمين مسبق.
   final deviceBlocked = false.obs;
+
   /// بس عند المساعد — اسم/جنس المدرس صاحب الفريق (عشان شاشات زي
   /// الترحيب توضّح إنه مساعد لدى مين، مش تعرض بروفايله المحلي هو
   /// وكأنه المدرس نفسه).
@@ -155,9 +158,10 @@ class TeamModeService {
       return true;
     }
     try {
-      final allowed = await client
-          .rpc('claim_device', params: {'_team_id': tId, '_device_id': deviceId})
-          .timeout(kTeamModeNetworkTimeout) as bool;
+      final allowed = await client.rpc('claim_device', params: {
+        '_team_id': tId,
+        '_device_id': deviceId
+      }).timeout(kTeamModeNetworkTimeout) as bool;
       deviceBlocked.value = !allowed;
       return allowed;
     } catch (e) {
@@ -225,6 +229,17 @@ class TeamModeService {
   /// السجلات (مش خطأ متكرر، مجرد غياب تام من الطابور). إعادة الإرسال
   /// آمنة تمامًا: upsert بمفتاح (team,device,local_id) فالصفوف
   /// المتزامنة بالفعل بترجع تحديث بلا أثر (idempotent).
+  /// صفوف ما اتزامنتش أبدًا (بلا remote_id ومش في الطابور) — العدد لكل جدول.
+  Future<Map<String, int>> unsyncedRowCounts() =>
+      _engine?.unsyncedRowCounts() ?? Future.value(const {});
+
+  /// يرفع الصفوف الناقصة بس، من غير ما يكتب فوق أي صف متزامن. بيرجّع عدد
+  /// الصفوف اللي اتضافت للطابور (أو null لو وضع الفريق مش شغّال).
+  Future<int?> resyncUnsyncedOnly() async {
+    if (!isEnabled.value || _engine == null) return null;
+    return _engine!.enqueueUnsyncedRows();
+  }
+
   Future<bool> resyncAll() async {
     if (!isEnabled.value || _engine == null) return false;
     await _engine!.enqueueAllExistingLocalRows();
@@ -498,7 +513,8 @@ class TeamModeService {
 
   /// spec 055: على الويب بنعرض ترخيص صاحب الفريق واسمه بدل التجربة المحلية —
   /// بنجيب كود الترخيص من صف الفريق ونقرا حالته (قراءة بس).
-  Future<void> _applyOwnerLicenseOnWeb(SupabaseClient client, String tId) async {
+  Future<void> _applyOwnerLicenseOnWeb(
+      SupabaseClient client, String tId) async {
     try {
       final row = await client
           .from('teams')
@@ -610,14 +626,13 @@ class TeamModeService {
         Timer.periodic(const Duration(seconds: 30), (_) => unawaited(tick()));
   }
 
-  Future<void> _registerMyFirebaseUid(
-      SupabaseClient client, String tId) async {
+  Future<void> _registerMyFirebaseUid(SupabaseClient client, String tId) async {
     if (!canManageOnlineExams.value) return;
     try {
       final uid = await OnlineExamService().currentUid();
       if (uid == null || uid == _serverFirebaseUid) return;
-      await client.rpc('set_my_firebase_uid',
-          params: {'_team_id': tId, '_uid': uid});
+      await client
+          .rpc('set_my_firebase_uid', params: {'_team_id': tId, '_uid': uid});
       _serverFirebaseUid = uid;
     } catch (e) {
       debugPrint('TeamModeService: فشل تسجيل هوية Firebase للعضو — $e');
@@ -705,7 +720,8 @@ class TeamModeService {
     if (!Get.isRegistered<SettingsController>()) return;
     final settings = Get.find<SettingsController>();
     _profileWorker?.dispose();
-    _profileWorker = everAll([settings.teacherFullName, settings.teacherGender], (_) {
+    _profileWorker =
+        everAll([settings.teacherFullName, settings.teacherGender], (_) {
       client.rpc('set_team_teacher_profile', params: {
         '_team_id': tId,
         '_name': settings.teacherFullName.value,
@@ -898,8 +914,10 @@ class TeamModeService {
           .eq('team_id', teamId.value as Object) as List;
       final userIds = members.map((m) => m['user_id'] as String).toList();
       if (userIds.isEmpty) return [];
-      final profiles =
-          await client.from('profiles').select().inFilter('id', userIds) as List;
+      final profiles = await client
+          .from('profiles')
+          .select()
+          .inFilter('id', userIds) as List;
       final profileMap = {
         for (final p in profiles) p['id'] as String: p as Map<String, dynamic>,
       };

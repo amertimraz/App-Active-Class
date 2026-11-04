@@ -1,5 +1,8 @@
 // test/sync_retry_policy_test.dart
+import 'dart:async';
+
 import 'package:active_class/utils/sync_retry_policy.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -40,9 +43,49 @@ void main() {
     });
     test('عتبة مخصّصة', () {
       expect(
-          shouldFireTeamExit(
-              sessionUsable: true, emptyStreak: 2, threshold: 2),
+          shouldFireTeamExit(sessionUsable: true, emptyStreak: 2, threshold: 2),
           isTrue);
+    });
+  });
+
+  group('isTransientSyncError', () {
+    test('مهلة وشبكة وجلسة → مؤقت', () {
+      expect(isTransientSyncError(TimeoutException('x')), isTrue);
+      expect(isTransientSyncError(const AuthException('JWT expired')), isTrue);
+    });
+    test('بوابة 5xx وانتهاء JWT → مؤقت', () {
+      expect(
+          isTransientSyncError(
+              const PostgrestException(message: 'Bad Gateway', code: '502')),
+          isTrue);
+      expect(
+          isTransientSyncError(const PostgrestException(
+              message: 'JWT expired', code: 'PGRST301')),
+          isTrue);
+      expect(
+          isTransientSyncError(const PostgrestException(
+              message: 'canceling statement due to statement timeout',
+              code: '57014')),
+          isTrue);
+    });
+    test('أخطاء دائمة (RLS / مفتاح أجنبي / قيد فريد / 4xx) → مش مؤقت', () {
+      expect(
+          isTransientSyncError(
+              const PostgrestException(message: 'rls', code: '42501')),
+          isFalse);
+      expect(
+          isTransientSyncError(
+              const PostgrestException(message: 'fk', code: '23503')),
+          isFalse);
+      expect(
+          isTransientSyncError(
+              const PostgrestException(message: 'dup', code: '23505')),
+          isFalse);
+      expect(
+          isTransientSyncError(
+              const PostgrestException(message: 'bad', code: '400')),
+          isFalse);
+      expect(isTransientSyncError(StateError('bug')), isFalse);
     });
   });
 }
