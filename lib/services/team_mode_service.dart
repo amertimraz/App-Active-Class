@@ -45,6 +45,8 @@ class TeamModeService {
   Future<Map<String, int>> pendingOutboxByTable() =>
       _engine?.pendingOutboxByTable() ?? Future.value(const {});
   String? get lastOutboxError => _engine?.lastOutboxError;
+  bool get lastOutboxErrorIsTransient =>
+      _engine?.lastOutboxErrorIsTransient ?? false;
   DateTime? get lastDrainAt => _engine?.lastDrainAt;
   Worker? _licenseWorker;
   Worker? _profileWorker;

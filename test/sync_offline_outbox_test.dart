@@ -18,10 +18,22 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/sync_engine.dart';
 
+/// نفس الاستثناء اللي بيرميه IOClient على أندرويد لما مفيش نت.
+class _ClientSocketException extends http.ClientException
+    implements SocketException {
+  _ClientSocketException(super.message);
+  @override
+  InternetAddress? get address => null;
+  @override
+  OSError? get osError => null;
+  @override
+  int? get port => null;
+}
+
 class _OfflineClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) =>
-      throw http.ClientException('Failed host lookup: offline');
+      throw _ClientSocketException('Failed host lookup: offline');
 }
 
 void main() {

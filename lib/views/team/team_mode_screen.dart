@@ -413,6 +413,7 @@ class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
   Map<String, int> _byTable = const {};
   Map<String, int> _unsynced = const {};
   String? _lastError;
+  bool _lastErrorTransient = false;
   DateTime? _lastDrainAt;
 
   @override
@@ -432,6 +433,7 @@ class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
       _byTable = byTable;
       _unsynced = unsynced;
       _lastError = widget.team.lastOutboxError;
+      _lastErrorTransient = widget.team.lastOutboxErrorIsTransient;
       _lastDrainAt = widget.team.lastDrainAt;
     });
   }
@@ -503,11 +505,16 @@ class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
           if (_lastError != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text('آخر خطأ: $_lastError',
+              child: Text(
+                  _lastErrorTransient
+                      ? 'مشكلة اتصال مؤقتة — المزامنة هتكمل تلقائيًا أول ما النت يرجع'
+                      : 'آخر خطأ: $_lastError',
                   style: TextStyle(
                       fontFamily: 'Cairo',
                       fontSize: 11,
-                      color: isDarkErrorColor(widget.isDark))),
+                      color: _lastErrorTransient
+                          ? subColor
+                          : isDarkErrorColor(widget.isDark))),
             ),
           Align(
             alignment: Alignment.centerLeft,

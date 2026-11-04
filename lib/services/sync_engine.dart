@@ -148,6 +148,8 @@ class SyncEngine with WidgetsBindingObserver {
   // spec 030 — تقوية طابور الإرسال: صف بيفشل باستمرار مايوقفش الطابور.
   final Map<int, int> _outboxFails = {}; // outboxId → عدد الفشل المتتالي
   final Map<int, String> _lastOutboxErr = {}; // outboxId → آخر نص خطأ (للّوج)
+  final Set<int> _transientErrIds =
+      {}; // أخطاء شبكة/جلسة مؤقتة (مش عيب في الصف)
   final Set<int> _loggedPoison = {}; // اتسجّل في اللوج مرة واحدة
   int _drainRound = 0;
 
@@ -342,6 +344,7 @@ class SyncEngine with WidgetsBindingObserver {
           // بس)، ونوقف الجولة لأن باقي الصفوف هتفشل بنفس السبب.
           if (isTransientSyncError(e)) {
             _lastOutboxErr[outboxId] = e.toString();
+            _transientErrIds.add(outboxId);
             debugPrint('SyncEngine: فشل مؤقت (شبكة/جلسة) — الجولة اتوقفت '
                 'والصف فاضل في الطابور — $table/$rowId — $e');
             break;
@@ -377,6 +380,11 @@ class SyncEngine with WidgetsBindingObserver {
   /// آخر رسالة خطأ فعلية اتسجّلت لأي صف في الطابور (لو موجودة).
   String? get lastOutboxError =>
       _lastOutboxErr.values.isEmpty ? null : _lastOutboxErr.values.last;
+
+  /// آخر خطأ ده مؤقت (شبكة/جلسة) وهيتعاد تلقائيًا — الواجهة تعرضه بهدوء مش بالأحمر.
+  bool get lastOutboxErrorIsTransient =>
+      _lastOutboxErr.isNotEmpty &&
+      _transientErrIds.contains(_lastOutboxErr.keys.last);
 
   /// تشخيص إضافي: عدد الصفوف المعلّقة مقسّمة حسب الجدول — بتوضّح فورًا
   /// مين المحتلّ الحقيقي للطابور (مثلاً "attendance: 118" يعني أب واحد
@@ -438,6 +446,7 @@ class SyncEngine with WidgetsBindingObserver {
   void _forgetOutbox(int id) {
     _outboxFails.remove(id);
     _lastOutboxErr.remove(id);
+    _transientErrIds.remove(id);
     _loggedPoison.remove(id);
   }
 

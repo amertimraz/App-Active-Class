@@ -47,13 +47,28 @@ bool shouldFireTeamExit({
 bool isTransientSyncError(Object e) {
   if (e is TimeoutException) return true;
   final type = e.runtimeType.toString();
-  if (type == 'SocketException' ||
-      type == 'ClientException' ||
-      type == 'HandshakeException' ||
-      type == 'WebSocketException' ||
-      type == 'TlsException' ||
+  // contains مش ==: اللي بيطلع فعليًا على أندرويد لما مفيش نت هو
+  // _ClientSocketException (فرع خاص من ClientException بيطبع "ClientException
+  // with SocketException") — فحص الاسم الكامل كان بيفوّته ويعامله كخطأ دائم.
+  if (type.contains('SocketException') ||
+      type.contains('ClientException') ||
+      type.contains('HandshakeException') ||
+      type.contains('WebSocketException') ||
+      type.contains('TlsException') ||
       type.startsWith('Auth')) {
     return true;
+  }
+  if (type != 'PostgrestException') {
+    final text = e.toString();
+    if (text.contains('SocketException') ||
+        text.contains('Failed host lookup') ||
+        text.contains('Connection refused') ||
+        text.contains('Connection reset') ||
+        text.contains('Connection closed') ||
+        text.contains('Software caused connection abort') ||
+        text.contains('Network is unreachable')) {
+      return true;
+    }
   }
   if (type == 'PostgrestException') {
     String? code;

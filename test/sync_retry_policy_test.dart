@@ -1,9 +1,23 @@
 // test/sync_retry_policy_test.dart
 import 'dart:async';
+import 'dart:io' show InternetAddress, OSError, SocketException;
 
 import 'package:active_class/utils/sync_retry_policy.dart';
+import 'package:http/http.dart' show ClientException;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// نفس الشكل اللي بيطلع على أندرويد لما مفيش نت (من package:http IOClient).
+class _ClientSocketException extends ClientException
+    implements SocketException {
+  _ClientSocketException(super.message);
+  @override
+  InternetAddress? get address => null;
+  @override
+  OSError? get osError => null;
+  @override
+  int? get port => null;
+}
 
 void main() {
   group('shouldAttemptOutboxRow', () {
@@ -49,6 +63,12 @@ void main() {
   });
 
   group('isTransientSyncError', () {
+    test('مفيش نت على أندرويد (_ClientSocketException) → مؤقت', () {
+      expect(
+          isTransientSyncError(_ClientSocketException(
+              "Failed host lookup: 'auth.active-class.online'")),
+          isTrue);
+    });
     test('مهلة وشبكة وجلسة → مؤقت', () {
       expect(isTransientSyncError(TimeoutException('x')), isTrue);
       expect(isTransientSyncError(const AuthException('JWT expired')), isTrue);
