@@ -215,6 +215,13 @@ const List<SettingsItem> kSettingsItems = [
       kind: SettingsItemKind.switchTile,
       keywords: ['تفاعل', 'ايموجي']),
   SettingsItem(
+      id: 'attendance.guest_students',
+      categoryId: 'attendance',
+      section: _sheet,
+      title: 'إضافة طلاب ضيوف للحصة',
+      kind: SettingsItemKind.switchTile,
+      keywords: ['ضيف', 'تعويضية', 'بديلة', 'مجموعة تانية']),
+  SettingsItem(
       id: 'attendance.auto_absent',
       categoryId: 'attendance',
       section: _sheet,

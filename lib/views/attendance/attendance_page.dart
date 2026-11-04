@@ -1521,27 +1521,29 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                           style: AppType.body.copyWith(
                                               fontWeight: FontWeight.w700)),
                                     ),
-                                    // طالب من مجموعة تانية بيحضر الحصة دي كضيف (تعويضية).
-                                    TextButton.icon(
-                                      onPressed: () => _pickGuest(
-                                          context,
-                                          group,
-                                          selectedDay,
-                                          groupStudents
-                                              .map((s) => s.id)
-                                              .whereType<int>()
-                                              .toSet(),
-                                          guestIdSet),
-                                      style: TextButton.styleFrom(
-                                          minimumSize: const Size(48, 44),
-                                          foregroundColor: t.brand),
-                                      icon: const Icon(
-                                          Icons.person_add_alt_1_rounded,
-                                          size: 20),
-                                      label: Text('إضافة ضيف',
-                                          style: AppType.body.copyWith(
-                                              fontWeight: FontWeight.w700)),
-                                    ),
+                                    // طالب من مجموعة تانية بيحضر الحصة دي كضيف (تعويضية) —
+                                    // بيظهر بس لو الإعداد مفعّل في إعدادات الحضور.
+                                    if (cfg.allowGuestStudents.value)
+                                      TextButton.icon(
+                                        onPressed: () => _pickGuest(
+                                            context,
+                                            group,
+                                            selectedDay,
+                                            groupStudents
+                                                .map((s) => s.id)
+                                                .whereType<int>()
+                                                .toSet(),
+                                            guestIdSet),
+                                        style: TextButton.styleFrom(
+                                            minimumSize: const Size(48, 44),
+                                            foregroundColor: t.brand),
+                                        icon: const Icon(
+                                            Icons.person_add_alt_1_rounded,
+                                            size: 20),
+                                        label: Text('إضافة ضيف',
+                                            style: AppType.body.copyWith(
+                                                fontWeight: FontWeight.w700)),
+                                      ),
                                     // spec 040 — تطبيق تفاعل واحد على كل
                                     // الطلاب المؤهَّلين (حاضر/متأخر) دفعة واحدة.
                                     if (showInteraction)

@@ -25,14 +25,16 @@ class CurrencyOption {
   final String nameAr; // e.g., ريال سعودي
   final String symbol; // e.g., ر.س or ريال
 
-  const CurrencyOption({required this.code, required this.nameAr, required this.symbol});
+  const CurrencyOption(
+      {required this.code, required this.nameAr, required this.symbol});
 }
 
 class CountryDialOption {
   final String code; // ISO alpha-2/3 approx
   final String nameAr;
   final String dial; // e.g., 20 for Egypt
-  const CountryDialOption({required this.code, required this.nameAr, required this.dial});
+  const CountryDialOption(
+      {required this.code, required this.nameAr, required this.dial});
 }
 
 class SettingsController extends GetxController {
@@ -88,8 +90,8 @@ class SettingsController extends GetxController {
   final RxBool use24hFormat = true.obs;
 
   // زر إرسال الواتساب للمجموعة
-  final RxBool whatsappEnabled = true.obs;   // إظهار/إخفاء الزر
-  final RxInt  whatsappSendDay = 1.obs;      // اليوم الذي يظهر فيه الزر (1-28)
+  final RxBool whatsappEnabled = true.obs; // إظهار/إخفاء الزر
+  final RxInt whatsappSendDay = 1.obs; // اليوم الذي يظهر فيه الزر (1-28)
 
   // إخفاء ماسح QR في شاشتي الدفع/الحضور، ويظهر بس البحث اليدوي
   final RxBool hideQrInPayment = false.obs;
@@ -109,12 +111,10 @@ class SettingsController extends GetxController {
   final RxInt paymentGraceDays = 0.obs;
 
   /// هل وصل اليوم المحدد للإرسال في الشهر الحالي؟
-  bool get isWhatsappDayReached =>
-      DateTime.now().day >= whatsappSendDay.value;
+  bool get isWhatsappDayReached => DateTime.now().day >= whatsappSendDay.value;
 
   /// هل زر الواتساب مرئي ومتاح الآن؟
-  bool get isWhatsappAvailable =>
-      whatsappEnabled.value && isWhatsappDayReached;
+  bool get isWhatsappAvailable => whatsappEnabled.value && isWhatsappDayReached;
 
   // Teacher info state
   final RxString teacherFullName = ''.obs;
@@ -127,7 +127,6 @@ class SettingsController extends GetxController {
 
   /// "مستر" or "مس" based on gender
   String get teacherTitle => teacherGender.value == 'female' ? 'مس' : 'مستر';
-
 
   @override
   void onInit() {
@@ -212,7 +211,8 @@ class SettingsController extends GetxController {
   Future<void> _loadHideQrSettings() async {
     try {
       hideQrInPayment.value = await _migrateBool(_keyHideQrPayment) ?? false;
-      hideQrInAttendance.value = await _migrateBool(_keyHideQrAttendance) ?? false;
+      hideQrInAttendance.value =
+          await _migrateBool(_keyHideQrAttendance) ?? false;
       hardwareScannerEnabled.value =
           await _migrateBool(SETTING_HARDWARE_SCANNER_ENABLED) ?? false;
     } catch (_) {}
@@ -300,7 +300,10 @@ class SettingsController extends GetxController {
       showHomework.value = (await _dbGet(SETTING_SHOW_HOMEWORK)) != '0';
       showRecitation.value = (await _dbGet(SETTING_SHOW_RECITATION)) != '0';
       showInteraction.value = (await _dbGet(SETTING_SHOW_INTERACTION)) != '0';
-      autoAbsentEnabled.value = (await _dbGet(SETTING_AUTO_ABSENT_ENABLED)) == '1';
+      allowGuestStudents.value =
+          (await _dbGet(SETTING_ALLOW_GUEST_STUDENTS)) == '1';
+      autoAbsentEnabled.value =
+          (await _dbGet(SETTING_AUTO_ABSENT_ENABLED)) == '1';
       autoAbsentGraceMinutes.value = clampAutoAbsentGrace(
           int.tryParse(await _dbGet(SETTING_AUTO_ABSENT_GRACE_MINUTES) ?? ''));
     } catch (_) {}
@@ -321,7 +324,8 @@ class SettingsController extends GetxController {
     try {
       if (Get.isRegistered<LicenseController>() &&
           LicenseController.to.parentPortalActiveNow) {
-        unawaited(ParentPortalService().publishAllStudents().catchError((_) => 0));
+        unawaited(
+            ParentPortalService().publishAllStudents().catchError((_) => 0));
       }
     } catch (_) {}
   }
@@ -368,6 +372,11 @@ class SettingsController extends GetxController {
   final RxBool showRecitation = true.obs;
   final RxBool showInteraction = true.obs;
 
+  /// السماح بإضافة طالب ضيف (من مجموعة تانية) لحصة مجموعة — محلي، مطفي
+  /// افتراضيًا. بيتحكم في ظهور زر "إضافة ضيف" بس؛ الضيوف اللي اتسجّلوا قبل
+  /// كده بيفضلوا ظاهرين.
+  final RxBool allowGuestStudents = false.obs;
+
   Future<void> setShowHomework(bool v) async {
     showHomework.value = v;
     try {
@@ -377,7 +386,8 @@ class SettingsController extends GetxController {
     try {
       if (Get.isRegistered<LicenseController>() &&
           LicenseController.to.parentPortalActiveNow) {
-        unawaited(ParentPortalService().publishAllStudents().catchError((_) => 0));
+        unawaited(
+            ParentPortalService().publishAllStudents().catchError((_) => 0));
       }
     } catch (_) {}
   }
@@ -391,8 +401,16 @@ class SettingsController extends GetxController {
     try {
       if (Get.isRegistered<LicenseController>() &&
           LicenseController.to.parentPortalActiveNow) {
-        unawaited(ParentPortalService().publishAllStudents().catchError((_) => 0));
+        unawaited(
+            ParentPortalService().publishAllStudents().catchError((_) => 0));
       }
+    } catch (_) {}
+  }
+
+  Future<void> setAllowGuestStudents(bool v) async {
+    allowGuestStudents.value = v;
+    try {
+      await _dbSet(SETTING_ALLOW_GUEST_STUDENTS, v ? '1' : '0');
     } catch (_) {}
   }
 
@@ -503,7 +521,8 @@ class SettingsController extends GetxController {
       unawaited(NotificationService().scheduleLatePaymentReminder());
       if (Get.isRegistered<LicenseController>() &&
           LicenseController.to.parentPortalActiveNow) {
-        unawaited(ParentPortalService().publishAllStudents().catchError((_) => 0));
+        unawaited(
+            ParentPortalService().publishAllStudents().catchError((_) => 0));
       }
     } catch (_) {}
   }
@@ -714,7 +733,8 @@ class SettingsController extends GetxController {
     try {
       teacherFullName.value = await _migrateString(_keyTeacherFullName) ?? '';
       teacherAvatarPath.value = await _migrateString(_keyTeacherAvatar) ?? '';
-      teacherSpecialization.value = await _migrateString(_keyTeacherSpecialization) ?? '';
+      teacherSpecialization.value =
+          await _migrateString(_keyTeacherSpecialization) ?? '';
       teacherPhone.value = await _migrateString(_keyTeacherPhone) ?? '';
       teacherEmail.value = await _migrateString(_keyTeacherEmail) ?? '';
       teacherSchool.value = await _migrateString(_keyTeacherSchool) ?? '';
@@ -816,7 +836,8 @@ class SettingsController extends GetxController {
     // Build JSON payload
     final now = DateTime.now();
     String two(int n) => n.toString().padLeft(2, '0');
-    final ts = '${now.year}${two(now.month)}${two(now.day)}_${two(now.hour)}${two(now.minute)}${two(now.second)}';
+    final ts =
+        '${now.year}${two(now.month)}${two(now.day)}_${two(now.hour)}${two(now.minute)}${two(now.second)}';
 
     final payload = {
       'version': DATABASE_VERSION,

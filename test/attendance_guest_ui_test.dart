@@ -194,8 +194,10 @@ void main() {
         .load();
   });
 
-  Future<void> open(WidgetTester t, Size size, {double scale = 1}) async {
+  Future<void> open(WidgetTester t, Size size,
+      {double scale = 1, bool guestsEnabled = true}) async {
     seed();
+    Get.find<SettingsController>().allowGuestStudents.value = guestsEnabled;
     t.view.devicePixelRatio = 1;
     t.view.physicalSize = size;
     addTearDown(t.view.reset);
@@ -243,6 +245,16 @@ void main() {
     expect(find.text('إضافة ضيف للحصة'), findsOneWidget);
     // الضيف الموجود أصلًا (طالب 9) ما يظهرش في الاختيار، وطلاب المجموعة نفسها كمان.
     expect(find.textContaining('ثانية إعدادي'), findsWidgets);
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets('الإعداد مطفي: مفيش زر إضافة ضيف، والضيوف المسجّلين فضلوا ظاهرين',
+      (t) async {
+    await open(t, const Size(360, 900), guestsEnabled: false);
+    expect(find.text('إضافة ضيف'), findsNothing);
+    await t.scrollUntilVisible(find.text('ضيوف الحصة'), 300,
+        scrollable: find.byType(Scrollable).last);
+    expect(find.text('ضيوف الحصة'), findsOneWidget);
     expect(t.takeException(), isNull);
   });
 

@@ -106,6 +106,21 @@ class _AttendanceCategoryPage extends StatelessWidget {
                   onChanged: (v) async => await settings.setShowInteraction(v),
                 )),
             _buildDivider(isDark),
+            // ── طالب ضيف في حصة مجموعة تانية (تعويضية/بديلة) ──
+            Obx(() => _buildSwitchTile(
+                  context,
+                  isDark,
+                  icon: Icons.person_add_alt_1_rounded,
+                  iconColor: const Color(0xFF0EA5E9),
+                  title: 'إضافة طلاب ضيوف للحصة',
+                  subtitle: settings.allowGuestStudents.value
+                      ? 'مفعّل — زر "إضافة ضيف" في ورقة الحضور لطالب من مجموعة تانية بيحضر حصة تعويضية'
+                      : 'معطّل — الحضور لطلاب المجموعة بس',
+                  rxValue: settings.allowGuestStudents,
+                  onChanged: (v) async =>
+                      await settings.setAllowGuestStudents(v),
+                )),
+            _buildDivider(isDark),
             // ── الغياب التلقائي بعد انتهاء الحصة (spec 046) ──
             Obx(() => _buildSwitchTile(
                   context,

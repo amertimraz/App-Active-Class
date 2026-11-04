@@ -236,6 +236,7 @@ const String SETTING_RECITATION_MAX = 'recitation_max';
 const String SETTING_SHOW_HOMEWORK = 'show_homework';
 const String SETTING_SHOW_RECITATION = 'show_recitation';
 const String SETTING_SHOW_INTERACTION = 'show_interaction';
+const String SETTING_ALLOW_GUEST_STUDENTS = 'allow_guest_students'; // محلي، مطفي افتراضيًا
 const String SETTING_AUTO_ABSENT_ENABLED = 'auto_absent_enabled';
 const String SETTING_AUTO_ABSENT_GRACE_MINUTES = 'auto_absent_grace_minutes';
 const String SETTING_AUTO_ABSENT_ENABLED_AT = 'auto_absent_enabled_at';

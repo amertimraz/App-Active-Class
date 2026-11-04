@@ -46,7 +46,8 @@ void main() {
     int count(SettingsItemKind k) =>
         settingsOnly.where((i) => i.kind == k).length;
 
-    test('20 سويتش', () => expect(count(SettingsItemKind.switchTile), 20));
+    test('21 سويتش (20 + طلاب ضيوف للحصة)',
+        () => expect(count(SettingsItemKind.switchTile), 21));
     test('13 قائمة اختيار', () => expect(count(SettingsItemKind.dropdown), 13));
     test('10 عناصر تنقّل (9 + صحة البيانات spec 052)',
         () => expect(count(SettingsItemKind.nav), 10));
