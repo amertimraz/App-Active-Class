@@ -253,6 +253,28 @@
       return new Date(iso).toLocaleDateString('ar-EG', { weekday: 'short', day: 'numeric', month: 'long' });
     } catch (e) { return iso; }
   }
+  // ملاحظة الدفعة بيكتبها التطبيق بصيغة داخلية (months=2026-11,2026-12;custom=1;
+  // note=...;siblings=2;sessions=4) — ولي الأمر يشوفها بالعربي مش خام.
+  function payNoteLabel(note){
+    const raw = (note || '').toString().trim();
+    if (!raw) return '';
+    if (!/(^|;)(months|custom|siblings|sessions|note)=/.test(raw)) return raw; // نص حر (مثلاً "إسقاط مديونية")
+    const get = (k) => { const m = raw.match(new RegExp('(?:^|;)' + k + '=([^;]*)')); return m ? m[1].trim() : ''; };
+    const parts = [];
+    const months = get('months').split(',').map(x => x.trim()).filter(Boolean).map(k => {
+      const m = k.match(/^(\d{4})-(\d{1,2})$/);
+      if (!m) return '';
+      try { return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' }); } catch (e) { return ''; }
+    }).filter(Boolean);
+    if (months.length === 1) parts.push('عن شهر ' + months[0]);
+    else if (months.length > 1) parts.push('عن شهور: ' + months.join('، '));
+    const sessions = Number(get('sessions'));
+    if (sessions > 0) parts.push(fmtMoney(sessions) + (sessions === 1 ? ' حصة' : ' حصص'));
+    if (Number(get('siblings')) >= 2) parts.push('دفعة مشتركة للإخوة');
+    const txt = get('note');
+    if (txt) parts.push(txt);
+    return parts.join(' · ');
+  }
   // أرقام عربية-هندية (٠-٩) وفارسية (۰-۹) → لاتينية، وشيل المسافات والرموز الخفية.
   const toLatinDigits = (v) => (v || '')
     .replace(/[\u0660-\u0669]/g, (c) => String(c.charCodeAt(0) - 0x0660))
@@ -401,7 +423,9 @@
       : Math.max(0, effectivePrice - totalPaid);
     const arr = (k) => Array.isArray(d[k]) ? d[k] : [];
     const attendanceHistory = arr('attendanceHistory');
-    const paymentHistory = arr('paymentHistory');
+    // إسقاط المديونية مش دفعة — نخفيه حتى في المستندات القديمة (اللي اتنشرت
+    // قبل ما التطبيق يشيله بنفسه).
+    const paymentHistory = arr('paymentHistory').filter(p => (p.note || '').trim() !== 'إسقاط مديونية');
     const homeworkHistory = arr('homeworkHistory');
     const examHistory = arr('examHistory');
     const recitationHistory = arr('recitationHistory');
@@ -430,7 +454,7 @@
     const payRows = paymentHistory.length
       ? paymentHistory.map(p => `
           <div class="row">
-            <div><div class="d">${fmtDate(p.date)}</div>${p.note ? `<div class="sub">${escapeHtml(p.note)}</div>` : ''}</div>
+            <div><div class="d">${fmtDate(p.date)}</div>${payNoteLabel(p.note) ? `<div class="sub">${escapeHtml(payNoteLabel(p.note))}</div>` : ''}</div>
             <span class="amount">${fmtMoney(p.amount)} جنيه</span>
           </div>`).join('')
       : `<div class="empty">لا توجد مدفوعات بعد</div>`;

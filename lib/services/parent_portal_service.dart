@@ -511,7 +511,10 @@ class ParentPortalService {
     final absent = attendance
         .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT)
         .length;
-    final totalPaid = payments.fold<double>(0, (s, p) => s + p.amount);
+    // إسقاط المديونية مش دفعة نقدية — مايظهرش لولي الأمر ولا يدخل في "المدفوع"
+    // (لكنه محسوب في accumulatedDebt فوق).
+    final shownPayments = portalVisiblePayments(payments);
+    final totalPaid = shownPayments.fold<double>(0, (s, p) => s + p.amount);
     final homeworkDone = homework
         .where((h) => normalizeHomeworkStatus(h.status) == HOMEWORK_DONE)
         .length;
@@ -524,7 +527,7 @@ class ParentPortalService {
 
     final sortedAttendance = [...attendance]
       ..sort((a, b) => b.date.compareTo(a.date));
-    final sortedPayments = [...payments]
+    final sortedPayments = [...shownPayments]
       ..sort((a, b) => b.date.compareTo(a.date));
     final sortedHomework = [...homework]
       ..sort((a, b) => b.date.compareTo(a.date));
