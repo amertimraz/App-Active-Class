@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:open_filex/open_filex.dart';
@@ -61,13 +62,27 @@ Future<void> checkAndShowUpdateDialog(
   await showDialog(
     context: context,
     barrierDismissible: true,
-    builder: (ctx) => _UpdateDialog(info: info),
+    builder: (ctx) => _UpdateDialog(info: info, hostContext: context),
   );
 }
 
+/// للاختبارات فقط: نفس ديالوج التحديث من غير فحص GitHub ولا مصدر التثبيت.
+@visibleForTesting
+Future<void> showUpdateDialogForTest(BuildContext context, UpdateInfo info) =>
+    showDialog(
+      context: context,
+      builder: (ctx) => _UpdateDialog(info: info, hostContext: context),
+    );
+
 class _UpdateDialog extends StatelessWidget {
   final UpdateInfo info;
-  const _UpdateDialog({required this.info});
+  // سياق الشاشة اللي فتحت الديالوج (مش سياق الديالوج نفسه): الديالوج بيتقفل
+  // أول ما المدرس يضغط "تحديث الآن"، فسياقه بيتفكّ بعد ثواني قليلة. ولما كان
+  // _downloadAndInstall بياخد سياق الديالوج، أول `context.mounted` بعد النسخة
+  // الاحتياطية (بتاخد وقت على قاعدة كبيرة) كان بيرجع false ويخرج من الدالة
+  // من غير ما يظهر أي حاجة — "تحديث الآن مابيعملش حاجة".
+  final BuildContext hostContext;
+  const _UpdateDialog({required this.info, required this.hostContext});
 
   @override
   Widget build(BuildContext context) {
@@ -150,8 +165,11 @@ class _UpdateDialog extends StatelessWidget {
         ),
         ElevatedButton.icon(
           onPressed: () async {
+            final host = hostContext.mounted
+                ? hostContext
+                : (Get.overlayContext ?? hostContext);
             Navigator.of(context).pop();
-            await _downloadAndInstall(context, info);
+            await _downloadAndInstall(host, info);
           },
           style: ElevatedButton.styleFrom(
             backgroundColor: AppTheme.primaryColor,
@@ -175,8 +193,12 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
   // اختلف رقم الإصدار بشكل غير متوقع) بتضطر النظام يعمل uninstall/reinstall
   // بدل ترقية عادية، وده بيمسح بيانات التطبيق المحلية بالكامل. النسخة دي
   // بتضمن إن البيانات موجودة كملف مستقل حتى لو حصل كده.
+  ToastHelper.info('جاري تجهيز التحديث...');
   try {
-    final path = await Get.find<SettingsController>().backupData();
+    // مهلة: النسخة الاحتياطية ما تحبسش التحديث لو القاعدة كبيرة أو التخزين بطيء.
+    final path = await Get.find<SettingsController>()
+        .backupData()
+        .timeout(const Duration(seconds: 25));
     debugPrint('Auto-backup before update saved to: $path');
   } catch (e) {
     debugPrint('Auto-backup before update failed: $e');
