@@ -36,6 +36,7 @@ import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/models/booklet_model.dart';
 import 'package:active_class/utils/booklet_portal.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/session_guest.dart';
 import 'package:active_class/utils/recitation.dart';
 import 'package:active_class/utils/performance.dart';
 import 'package:active_class/services/performance_service.dart';
@@ -559,6 +560,8 @@ class ParentPortalService {
                 'date': a.date.toIso8601String(),
                 'status': normalizeAttendanceStatus(a.status) ?? a.status,
                 'statusLabel': attendanceStatusLabel(a.status),
+                // حصة تعويضية (ضيف في مجموعة تانية) — الصفحة بتوضّحها لولي الأمر.
+                if (guestGroupIdOf(a) != null) 'guest': true,
               })
           .toList(),
       'paymentHistory': sortedPayments

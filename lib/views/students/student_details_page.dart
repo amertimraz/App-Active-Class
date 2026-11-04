@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:active_class/utils/session_guest.dart';
 import 'package:get/get.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/config/constants.dart';
@@ -728,8 +729,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
   Widget _buildActions(BuildContext context, Student s, Color primary) {
     final t = context.tokens;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          AppSpace.lg, AppSpace.md, AppSpace.lg, 0),
+      padding:
+          const EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.md, AppSpace.lg, 0),
       child: Row(children: [
         _ActionChip(
           icon: Icons.chat_rounded,
@@ -773,8 +774,8 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
   Widget _buildTabBar(Color primary, bool isDark) {
     final t = context.tokens;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          AppSpace.lg, AppSpace.md, AppSpace.lg, 0),
+      padding:
+          const EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.md, AppSpace.lg, 0),
       child: Container(
         decoration: BoxDecoration(
           color: t.surface,
@@ -1147,7 +1148,8 @@ class _AttendanceTab extends StatelessWidget {
 
     if (sorted.isEmpty) {
       return Center(
-        child: SingleChildScrollView(child: EmptyState(
+        child: SingleChildScrollView(
+            child: EmptyState(
           icon: Icons.calendar_today_rounded,
           title: 'لا توجد سجلات حضور',
           subtitle: 'سيظهر هنا سجل الحضور عند التسجيل',
@@ -1168,8 +1170,12 @@ class _AttendanceTab extends StatelessWidget {
           ),
           child: Column(children: [
             Row(children: [
-              Expanded(child: _MiniStat('حضور', '$presentCount', context.tokens.positive)),
-              Expanded(child: _MiniStat('غياب', '$absentCount', context.tokens.danger)),
+              Expanded(
+                  child: _MiniStat(
+                      'حضور', '$presentCount', context.tokens.positive)),
+              Expanded(
+                  child:
+                      _MiniStat('غياب', '$absentCount', context.tokens.danger)),
               Expanded(
                   child: _MiniStat(
                       'النسبة',
@@ -1280,13 +1286,21 @@ class _AttendanceTab extends StatelessWidget {
                         ),
                         title: Text(FormatHelper.formatFullDate(a.date),
                             style: const TextStyle(fontSize: 13)),
-                        // spec 040 — إيموجي التفاعل لنفس اليوم لو مسجَّل.
-                        subtitle: (showInteraction &&
+                        // حصة تعويضية (ضيف في مجموعة تانية) + spec 040: إيموجي
+                        // التفاعل لنفس اليوم لو مسجَّل.
+                        subtitle: () {
+                          final parts = <String>[
+                            if (guestGroupIdOf(a) != null)
+                              'حصة تعويضية (ضيف في مجموعة تانية)',
+                            if (showInteraction &&
                                 interactionEmoji(a.interaction).isNotEmpty)
-                            ? Text(
-                                '${interactionEmoji(a.interaction)} ${interactionLabel(a.interaction)}',
-                                style: const TextStyle(fontSize: 11))
-                            : null,
+                              '${interactionEmoji(a.interaction)} ${interactionLabel(a.interaction)}',
+                          ];
+                          return parts.isEmpty
+                              ? null
+                              : Text(parts.join(' · '),
+                                  style: const TextStyle(fontSize: 11));
+                        }(),
                         trailing: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 4),
@@ -1360,7 +1374,8 @@ class _SessionOverridesSection extends StatelessWidget {
               Icon(Icons.circle, size: 8, color: c),
               const SizedBox(width: 8),
               Text(df.format(o.date),
-                  style: TextStyle(fontSize: 12, color: context.tokens.inkSoft)),
+                  style:
+                      TextStyle(fontSize: 12, color: context.tokens.inkSoft)),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(label,
@@ -1504,7 +1519,8 @@ class _HomeworkTabState extends State<_HomeworkTab> {
 
     if (days.isEmpty) {
       return Center(
-        child: SingleChildScrollView(child: EmptyState(
+        child: SingleChildScrollView(
+            child: EmptyState(
           icon: Icons.menu_book_outlined,
           title: w.showHomework && w.showRecitation
               ? 'لا توجد سجلات واجب أو تسميع'
@@ -1627,7 +1643,8 @@ class _HomeworkTabState extends State<_HomeworkTab> {
             padding: const EdgeInsets.symmetric(vertical: 32),
             child: Center(
               child: Text('مفيش سجلات للفلتر ده',
-                  style: TextStyle(color: context.tokens.inkSoft, fontSize: 13)),
+                  style:
+                      TextStyle(color: context.tokens.inkSoft, fontSize: 13)),
             ),
           ),
 
@@ -1799,8 +1816,8 @@ class _HwDayRow extends StatelessWidget {
         : norm == HOMEWORK_PARTIAL
             ? const Color(0xFFF59E0B)
             : const Color(0xFFEF4444);
-    final dash =
-        Text('—', style: TextStyle(color: context.tokens.inkSoft, fontSize: 14));
+    final dash = Text('—',
+        style: TextStyle(color: context.tokens.inkSoft, fontSize: 14));
 
     Widget hwSlot() {
       if (h == null)
@@ -1908,7 +1925,8 @@ class _MiniStat extends StatelessWidget {
       Text(value,
           style: TextStyle(
               color: color, fontWeight: FontWeight.w900, fontSize: 18)),
-      Text(label, style: TextStyle(color: context.tokens.inkSoft, fontSize: 11)),
+      Text(label,
+          style: TextStyle(color: context.tokens.inkSoft, fontSize: 11)),
     ]);
   }
 }
@@ -1976,7 +1994,8 @@ class _PaymentsTab extends StatelessWidget {
                         ToastHelper.success('تم إسقاط المديونية');
                       }
                     },
-              style: FilledButton.styleFrom(backgroundColor: context.tokens.danger),
+              style: FilledButton.styleFrom(
+                  backgroundColor: context.tokens.danger),
               child: busy
                   ? const SizedBox(
                       width: 18,
@@ -2009,7 +2028,8 @@ class _PaymentsTab extends StatelessWidget {
         accumulatedDebt <= 0 &&
         !studentHasBooklets(student.id!)) {
       return Center(
-        child: SingleChildScrollView(child: EmptyState(
+        child: SingleChildScrollView(
+            child: EmptyState(
           icon: Icons.payments_rounded,
           title: 'لا توجد مدفوعات',
           subtitle: 'سيظهر هنا سجل المدفوعات عند الإضافة',
@@ -2033,9 +2053,11 @@ class _PaymentsTab extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: context.tokens.danger.withValues(alpha: isDark ? 0.12 : 0.06),
+              color:
+                  context.tokens.danger.withValues(alpha: isDark ? 0.12 : 0.06),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: context.tokens.danger.withValues(alpha: 0.25)),
+              border: Border.all(
+                  color: context.tokens.danger.withValues(alpha: 0.25)),
             ),
             child: Row(children: [
               Container(
@@ -2155,8 +2177,9 @@ class _PaymentsTab extends StatelessWidget {
                       // spec 038 — سطر إسقاط مديونية له شكل مميز (أيقونة/لون
                       // مختلفين) عشان يتفرق فورًا عن دفعة نقدية فعلية.
                       final isWriteOff = p.note == kDebtWriteOffNote;
-                      final rowColor =
-                          isWriteOff ? context.tokens.caution : context.tokens.positive;
+                      final rowColor = isWriteOff
+                          ? context.tokens.caution
+                          : context.tokens.positive;
                       return ListTile(
                         leading: Container(
                           width: 36,

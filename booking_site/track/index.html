@@ -436,7 +436,7 @@
 
     // الحضور
     const attRows = attendanceHistory.length
-      ? attendanceHistory.map(a => `<div class="row"><span class="d">${fmtDate(a.date)}</span>${attBadge(a)}</div>`).join('')
+      ? attendanceHistory.map(a => `<div class="row"><div><div class="d">${fmtDate(a.date)}</div>${a.guest ? '<div class="sub">حصة تعويضية</div>' : ''}</div>${attBadge(a)}</div>`).join('')
       : `<div class="empty">لا توجد سجلات حضور بعد</div>`;
     const attendanceTab = `
       <div class="panel">

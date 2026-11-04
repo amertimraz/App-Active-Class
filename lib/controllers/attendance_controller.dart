@@ -1,4 +1,4 @@
-﻿// lib/controllers/attendance_controller.dart
+// lib/controllers/attendance_controller.dart
 
 import 'dart:async';
 import 'dart:convert';
@@ -18,6 +18,7 @@ import 'package:active_class/services/parent_portal_service.dart';
 import 'package:intl/intl.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/session_guest.dart';
 import 'package:active_class/utils/session_schedule_resolver.dart';
 import 'package:active_class/models/session_override_model.dart';
 import 'package:active_class/controllers/session_override_controller.dart';
@@ -34,7 +35,8 @@ class AttendanceController extends GetxController {
 
   // فلاتر إضافية
   final Rx<int?> groupFilter = Rx<int?>(null); // groupId أو null
-  final RxString statusFilter = RxString(''); // '' | ATTENDANCE_PRESENT | ATTENDANCE_ABSENT
+  final RxString statusFilter =
+      RxString(''); // '' | ATTENDANCE_PRESENT | ATTENDANCE_ABSENT
 
   // ترتيب
   // name|date
@@ -75,11 +77,10 @@ class AttendanceController extends GetxController {
     try {
       // تحقق محلي سريع لمنع التكرار بنفس اليوم (حتى لو القاعدة بها UNIQUE على التاريخ الكامل)
       final sameDayExists = attendance.any((a) =>
-        a.studentId == att.studentId &&
-        a.date.year == att.date.year &&
-        a.date.month == att.date.month &&
-        a.date.day == att.date.day
-      );
+          a.studentId == att.studentId &&
+          a.date.year == att.date.year &&
+          a.date.month == att.date.month &&
+          a.date.day == att.date.day);
       if (sameDayExists) {
         ToastHelper.info('تم تسجيل حضور لهذا الطالب اليوم مسبقًا');
         return;
@@ -107,7 +108,8 @@ class AttendanceController extends GetxController {
   // حذف سجل
   Future<void> deleteAttendance(int id) async {
     try {
-      final studentId = attendance.firstWhereOrNull((a) => a.id == id)?.studentId;
+      final studentId =
+          attendance.firstWhereOrNull((a) => a.id == id)?.studentId;
       await _dbService.deleteAttendance(id);
       await loadAttendance();
       if (studentId != null) {
@@ -125,7 +127,8 @@ class AttendanceController extends GetxController {
     if (ids.isEmpty) return;
     try {
       final studentIds = ids
-          .map((id) => attendance.firstWhereOrNull((a) => a.id == id)?.studentId)
+          .map(
+              (id) => attendance.firstWhereOrNull((a) => a.id == id)?.studentId)
           .whereType<int>()
           .toSet();
       for (final id in ids) {
@@ -149,7 +152,8 @@ class AttendanceController extends GetxController {
   /// لو التعديل نجح.
   Future<String?> editAttendanceDate(Attendance att, DateTime newDate) async {
     final dayStart = DateTime(newDate.year, newDate.month, newDate.day);
-    final dayEnd = DateTime(newDate.year, newDate.month, newDate.day, 23, 59, 59);
+    final dayEnd =
+        DateTime(newDate.year, newDate.month, newDate.day, 23, 59, 59);
     final duplicate = attendance.firstWhereOrNull((a) =>
         a.id != att.id &&
         a.studentId == att.studentId &&
@@ -160,8 +164,8 @@ class AttendanceController extends GetxController {
     }
     try {
       final updated = att.copyWith(
-        date: DateTime(newDate.year, newDate.month, newDate.day,
-            att.date.hour, att.date.minute),
+        date: DateTime(newDate.year, newDate.month, newDate.day, att.date.hour,
+            att.date.minute),
       );
       await _dbService.updateAttendance(updated);
       await loadAttendance();
@@ -213,8 +217,8 @@ class AttendanceController extends GetxController {
       if (existing == null) {
         await _dbService.insertAttendance(Attendance(
           studentId: studentId,
-          date: DateTime(day.year, day.month, day.day,
-              DateTime.now().hour, DateTime.now().minute),
+          date: DateTime(day.year, day.month, day.day, DateTime.now().hour,
+              DateTime.now().minute),
           status: ATTENDANCE_PRESENT,
         ));
       } else if (existing.status == ATTENDANCE_PRESENT) {
@@ -254,8 +258,8 @@ class AttendanceController extends GetxController {
     } else if (existing == null) {
       await _dbService.insertAttendance(Attendance(
         studentId: studentId,
-        date: DateTime(day.year, day.month, day.day,
-            DateTime.now().hour, DateTime.now().minute),
+        date: DateTime(day.year, day.month, day.day, DateTime.now().hour,
+            DateTime.now().minute),
         status: status,
       ));
     } else {
@@ -282,6 +286,60 @@ class AttendanceController extends GetxController {
     await loadAttendance();
     unawaited(ParentPortalService().pushStudentSummary(studentId));
     unawaited(NotificationService().scheduleLatePaymentReminder());
+  }
+
+  /// يضيف [studentId] كضيف في حصة المجموعة [groupId] يوم [day] (حصة تعويضية/
+  /// بديلة): بيتسجّل له حضور "حاضر" على سجله هو ومعاه وسم الضيف في الملاحظة —
+  /// من غير أي حصة جديدة في مجموعته الأصلية. لو عنده سجل في اليوم ده (حتى
+  /// غياب تلقائي من حصة مجموعته)، بيتحوّل لحضور ضيف.
+  Future<void> addGuest(int studentId, int groupId, DateTime day) async {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
+    final existing = attendance.firstWhereOrNull((a) =>
+        a.studentId == studentId &&
+        !a.date.isBefore(dayStart) &&
+        !a.date.isAfter(dayEnd));
+    final note = guestNote(groupId);
+    if (existing == null) {
+      final now = DateTime.now();
+      await _dbService.insertAttendance(Attendance(
+        studentId: studentId,
+        date: DateTime(day.year, day.month, day.day, now.hour, now.minute),
+        status: ATTENDANCE_PRESENT,
+        notes: note,
+      ));
+      await loadAttendance();
+    } else {
+      final updated =
+          existing.copyWith(status: ATTENDANCE_PRESENT, notes: note);
+      await _dbService.updateAttendance(updated);
+      _replaceLocal(updated);
+      _applyFilter();
+    }
+    _afterGuestChange(studentId);
+  }
+
+  /// يشيل الضيف من حصة المجموعة [groupId] (بيمسح سجل حضوره اليوم ده بس لو
+  /// كان فعلًا وسم ضيف على نفس المجموعة).
+  Future<void> removeGuest(int studentId, int groupId, DateTime day) async {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
+    final existing = attendance.firstWhereOrNull((a) =>
+        a.studentId == studentId &&
+        !a.date.isBefore(dayStart) &&
+        !a.date.isAfter(dayEnd) &&
+        isGuestOfGroup(a, groupId));
+    if (existing == null) return;
+    await _dbService.deleteAttendance(existing.id!);
+    await loadAttendance();
+    _afterGuestChange(studentId);
+  }
+
+  void _afterGuestChange(int studentId) {
+    unawaited(
+        ParentPortalService().pushStudentSummary(studentId).catchError((_) {}));
+    unawaited(
+        NotificationService().scheduleLatePaymentReminder().catchError((_) {}));
   }
 
   /// تحديث سجل واحد في الذاكرة بدل إعادة قراءة كل جدول الحضور من الـDB —
@@ -411,8 +469,7 @@ class AttendanceController extends GetxController {
   // لو كل الطلاب متحضّرين بالفعل، الضغطة دي بتتعامل كـ"تراجع" وبتمسح
   // سجلات الحضور بتاعتهم (رجوع لحالة "لم يُسجَّل") بدل ما تفضل عالقة
   // على "حاضر" ومفيش وسيلة تلغيها غير واحد واحد.
-  Future<void> markGroupAllPresent(
-      List<int> studentIds, DateTime day) async {
+  Future<void> markGroupAllPresent(List<int> studentIds, DateTime day) async {
     if (studentIds.isEmpty) return;
     final dayStart = DateTime(day.year, day.month, day.day);
     final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
@@ -426,8 +483,8 @@ class AttendanceController extends GetxController {
     // (recordsByStudent.containsKey) — يعني الطالب المسجّل "متأخر" يدويًا
     // ما بيتكتبش فوقه "حاضر". شرط "الكل حاضر → امسح" بيفضل مربوط بـ"حاضر"
     // بالظبط عشان وجود متأخر يمنع مسح-التبديل (المدرس يمسحه يدويًا).
-    final allAlreadyPresent = studentIds.every((id) =>
-        recordsByStudent[id]?.status == ATTENDANCE_PRESENT);
+    final allAlreadyPresent = studentIds
+        .every((id) => recordsByStudent[id]?.status == ATTENDANCE_PRESENT);
 
     if (allAlreadyPresent) {
       var succeeded = 0;
@@ -480,8 +537,8 @@ class AttendanceController extends GetxController {
       try {
         await _dbService.insertAttendance(Attendance(
           studentId: id,
-          date: DateTime(day.year, day.month, day.day,
-              DateTime.now().hour, DateTime.now().minute),
+          date: DateTime(day.year, day.month, day.day, DateTime.now().hour,
+              DateTime.now().minute),
           status: ATTENDANCE_PRESENT,
         ));
         succeeded++;
@@ -582,7 +639,8 @@ class AttendanceController extends GetxController {
   }
 
   bool _inRange(DateTime date, DateTimeRange range) {
-    final d = DateTime(date.year, date.month, date.day, date.hour, date.minute, date.second);
+    final d = DateTime(
+        date.year, date.month, date.day, date.hour, date.minute, date.second);
     return !d.isBefore(range.start) && !d.isAfter(range.end);
   }
 
@@ -593,7 +651,9 @@ class AttendanceController extends GetxController {
       return;
     }
     filteredAttendance.assignAll(
-      attendance.where((att) => att.date.toIso8601String().startsWith(dateStr)).toList(),
+      attendance
+          .where((att) => att.date.toIso8601String().startsWith(dateStr))
+          .toList(),
     );
   }
 
@@ -660,7 +720,8 @@ class AttendanceController extends GetxController {
   }
 
   // حساب الجلسات المتوقعة لكل مجموعة ضمن النطاق (حسب schedule JSON)
-  Map<int, int> getExpectedSessionsPerGroup({required List<Group> groups, DateTimeRange? range}) {
+  Map<int, int> getExpectedSessionsPerGroup(
+      {required List<Group> groups, DateTimeRange? range}) {
     final r = range ?? dateRange.value;
     final Map<int, int> map = {};
     if (r == null) return map;
@@ -763,8 +824,7 @@ class AttendanceController extends GetxController {
   // لو ليها استثناء makeup/extra صريح لليوم ده.
   List<Group> groupsForDay(List<Group> groups, DateTime day) {
     return groups.where((g) {
-      final hasSchedule =
-          g.schedule != null && g.schedule!.trim().isNotEmpty;
+      final hasSchedule = g.schedule != null && g.schedule!.trim().isNotEmpty;
       if (!hasSchedule) {
         final o = sessionOverrideFor(g, day);
         return o != null && o.type != SessionOverrideType.cancelled;
@@ -828,8 +888,13 @@ class AttendanceController extends GetxController {
     final schedule = group.schedule?.trim();
     if (schedule == null || schedule.isEmpty) return null;
     const Map<String, int> mapArDays = {
-      'الاثنين': 1, 'الثلاثاء': 2, 'الأربعاء': 3, 'الخميس': 4,
-      'الجمعة': 5, 'السبت': 6, 'الأحد': 7,
+      'الاثنين': 1,
+      'الثلاثاء': 2,
+      'الأربعاء': 3,
+      'الخميس': 4,
+      'الجمعة': 5,
+      'السبت': 6,
+      'الأحد': 7,
     };
     final parts = schedule.split(',');
     for (final p in parts) {
@@ -962,7 +1027,8 @@ class AttendanceController extends GetxController {
   }
 
   // ملخص حضور طالب واحد لشهر معيّن: عدد أيام الحضور وتواريخ الغياب
-  StudentMonthAttendance getStudentMonthAttendance(int studentId, DateTime month) {
+  StudentMonthAttendance getStudentMonthAttendance(
+      int studentId, DateTime month) {
     final start = DateTime(month.year, month.month, 1);
     final end = DateTime(month.year, month.month + 1, 0, 23, 59, 59);
     int present = 0; // حاضر + متأخر (الاتنين حضور)
@@ -994,12 +1060,17 @@ class AttendanceController extends GetxController {
   }
 
   // إحصاء ملخص شامل للنطاق: إجمالي حاضر/متوقع ونسبة الحضور
-  AttendanceSummary getSummary({required List<Student> students, required List<Group> groups, DateTimeRange? range}) {
+  AttendanceSummary getSummary(
+      {required List<Student> students,
+      required List<Group> groups,
+      DateTimeRange? range}) {
     final r = range ?? dateRange.value;
-    if (r == null) return const AttendanceSummary(totalPresent: 0, totalExpected: 0);
+    if (r == null)
+      return const AttendanceSummary(totalPresent: 0, totalExpected: 0);
 
     final presentByStudent = getPresentCountByStudent(range: r);
-    final expectedPerGroup = getExpectedSessionsPerGroup(groups: groups, range: r);
+    final expectedPerGroup =
+        getExpectedSessionsPerGroup(groups: groups, range: r);
 
     int totalPresent = 0;
     int totalExpected = 0;
@@ -1010,7 +1081,8 @@ class AttendanceController extends GetxController {
       totalExpected += gExpected;
     }
 
-    return AttendanceSummary(totalPresent: totalPresent, totalExpected: totalExpected);
+    return AttendanceSummary(
+        totalPresent: totalPresent, totalExpected: totalExpected);
   }
 }
 
@@ -1030,7 +1102,8 @@ class StudentMonthAttendance {
 class AttendanceSummary {
   final int totalPresent;
   final int totalExpected;
-  const AttendanceSummary({required this.totalPresent, required this.totalExpected});
+  const AttendanceSummary(
+      {required this.totalPresent, required this.totalExpected});
 
   double get percentage {
     if (totalExpected == 0) return 0;

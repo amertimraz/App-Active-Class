@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:active_class/utils/session_guest.dart';
 import 'package:get/get.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/utils/absence_message.dart';
@@ -48,10 +49,10 @@ class AttendancePage extends StatefulWidget {
 
 class _AttendancePageState extends State<AttendancePage>
     with SingleTickerProviderStateMixin {
-  final AttendanceController controller   = Get.put(AttendanceController());
-  final StudentController studentCtrl     = Get.put(StudentController());
-  final GroupController   groupCtrl       = Get.put(GroupController());
-  final HomeworkController homeworkCtrl   = Get.put(HomeworkController());
+  final AttendanceController controller = Get.put(AttendanceController());
+  final StudentController studentCtrl = Get.put(StudentController());
+  final GroupController groupCtrl = Get.put(GroupController());
+  final HomeworkController homeworkCtrl = Get.put(HomeworkController());
   late final TabController _tabController;
   DateTime _selectedDay = DateTime.now();
   // بيحرّك إعادة رسم العداد التنازلي لحصص المجموعات الشغالة دلوقتي —
@@ -68,8 +69,7 @@ class _AttendancePageState extends State<AttendancePage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    _countdownTimer =
-        Timer.periodic(const Duration(seconds: 30), (_) {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
     _reload();
@@ -186,13 +186,13 @@ class _AttendancePageState extends State<AttendancePage>
   Future<void> _exportPDF(BuildContext context) async {
     AppToast.info(context, 'جاري إنشاء تقرير الحضور...');
     final month = DateTime(_selectedDay.year, _selectedDay.month);
-    final svc   = ExportService();
+    final svc = ExportService();
     final result = await svc.exportAttendancePDF(
-      month:      month,
-      students:   studentCtrl.students,
+      month: month,
+      students: studentCtrl.students,
       attendance: controller.attendance,
-      groups:     groupCtrl.groups,
-      homework:   homeworkCtrl.homework,
+      groups: groupCtrl.groups,
+      homework: homeworkCtrl.homework,
     );
     if (!context.mounted) return;
     if (result.success && result.path != null) {
@@ -211,7 +211,7 @@ class _AttendancePageState extends State<AttendancePage>
 class _RegisterTab extends StatefulWidget {
   final AttendanceController controller;
   final StudentController studentCtrl;
-  final GroupController   groupCtrl;
+  final GroupController groupCtrl;
   final HomeworkController homeworkCtrl;
   final DateTime selectedDay;
   final ValueChanged<DateTime> onDayChanged;
@@ -255,11 +255,13 @@ class _RegisterTabState extends State<_RegisterTab> {
     final t = context.tokens;
     final dateFmt = DateFormat('EEEE، d MMMM', 'ar');
     final selectedDay = widget.selectedDay;
-    final dayStart = DateTime(selectedDay.year, selectedDay.month, selectedDay.day);
-    final dayEnd   = DateTime(selectedDay.year, selectedDay.month, selectedDay.day, 23, 59, 59);
+    final dayStart =
+        DateTime(selectedDay.year, selectedDay.month, selectedDay.day);
+    final dayEnd = DateTime(
+        selectedDay.year, selectedDay.month, selectedDay.day, 23, 59, 59);
 
     return Obx(() {
-      final students  = widget.studentCtrl.students;
+      final students = widget.studentCtrl.students;
       final allGroups = widget.groupCtrl.groups;
       // بطاقات اليوم تشمل المجموعات الملغاة (عشان زر التراجع) — لكن
       // إحصاءات الشريط العلوي تحسب المجموعات النشطة فقط (spec 032).
@@ -278,11 +280,24 @@ class _RegisterTabState extends State<_RegisterTab> {
           .where((s) => activeGroups.any((g) => g.id == s.groupId))
           .map((s) => s.id)
           .toSet();
-      final presentCount  = statusMap.entries.where((e) => todayIds.contains(e.key) && normalizeAttendanceStatus(e.value) == ATTENDANCE_PRESENT).length;
-      final lateCount     = statusMap.entries.where((e) => todayIds.contains(e.key) && normalizeAttendanceStatus(e.value) == ATTENDANCE_LATE).length;
-      final absentCount   = statusMap.entries.where((e) => todayIds.contains(e.key) && normalizeAttendanceStatus(e.value) == ATTENDANCE_ABSENT).length;
+      final presentCount = statusMap.entries
+          .where((e) =>
+              todayIds.contains(e.key) &&
+              normalizeAttendanceStatus(e.value) == ATTENDANCE_PRESENT)
+          .length;
+      final lateCount = statusMap.entries
+          .where((e) =>
+              todayIds.contains(e.key) &&
+              normalizeAttendanceStatus(e.value) == ATTENDANCE_LATE)
+          .length;
+      final absentCount = statusMap.entries
+          .where((e) =>
+              todayIds.contains(e.key) &&
+              normalizeAttendanceStatus(e.value) == ATTENDANCE_ABSENT)
+          .length;
       final totalStudents = todayIds.length;
-      final unmarked = totalStudents - statusMap.keys.where(todayIds.contains).length;
+      final unmarked =
+          totalStudents - statusMap.keys.where(todayIds.contains).length;
 
       return Column(children: [
         // ── مؤشر اليوم ──────────────────────────────────────────────────────
@@ -291,10 +306,10 @@ class _RegisterTabState extends State<_RegisterTab> {
           isToday: _isToday,
           dateFmt: dateFmt,
           onDayChanged: widget.onDayChanged,
-          presentCount:  presentCount,
-          lateCount:     lateCount,
-          absentCount:   absentCount,
-          unmarked:      unmarked,
+          presentCount: presentCount,
+          lateCount: lateCount,
+          absentCount: absentCount,
+          unmarked: unmarked,
           totalStudents: totalStudents,
         ),
 
@@ -309,7 +324,8 @@ class _RegisterTabState extends State<_RegisterTab> {
                   subtitle: 'أضف مجموعات أولاً من صفحة المجموعات',
                 )
               : todayGroups.isEmpty
-                  ? _NoSessionsToday(allGroups: allGroups, selectedDay: selectedDay)
+                  ? _NoSessionsToday(
+                      allGroups: allGroups, selectedDay: selectedDay)
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
                       itemCount: todayGroups.length + 1,
@@ -340,21 +356,26 @@ class _RegisterTabState extends State<_RegisterTab> {
                           );
                         }
                         final group = todayGroups[gi];
-                        final sessionTime = widget.controller.sessionTimeForGroupOnDay(group, selectedDay);
+                        final sessionTime = widget.controller
+                            .sessionTimeForGroupOnDay(group, selectedDay);
                         final groupStudents = students
                             .where((s) => s.groupId == group.id)
                             .toList()
                           ..sort((a, b) => a.name.compareTo(b.name));
-                        if (groupStudents.isEmpty) return const SizedBox.shrink();
+                        if (groupStudents.isEmpty)
+                          return const SizedBox.shrink();
 
                         final gPresent = groupStudents
-                            .where((s) => attendanceCountsAsPresent(statusMap[s.id]))
+                            .where((s) =>
+                                attendanceCountsAsPresent(statusMap[s.id]))
                             .length;
                         final gLate = groupStudents
-                            .where((s) => normalizeAttendanceStatus(statusMap[s.id]) == ATTENDANCE_LATE)
+                            .where((s) =>
+                                normalizeAttendanceStatus(statusMap[s.id]) ==
+                                ATTENDANCE_LATE)
                             .length;
                         final gTotal = groupStudents.length;
-                        final gRate  = gTotal > 0 ? gPresent / gTotal : 0.0;
+                        final gRate = gTotal > 0 ? gPresent / gTotal : 0.0;
 
                         return _GroupSummaryCard(
                           group: group,
@@ -367,8 +388,8 @@ class _RegisterTabState extends State<_RegisterTab> {
                           overrideType: widget.controller
                               .sessionOverrideFor(group, selectedDay)
                               ?.type,
-                          onDetails: () => Get.to(() =>
-                              SessionDetailPage(group: group, day: selectedDay)),
+                          onDetails: () => Get.to(() => SessionDetailPage(
+                              group: group, day: selectedDay)),
                           onTap: () => showAttendanceSheet(
                             context,
                             group: group,
@@ -461,8 +482,8 @@ class _DayNavigator extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(
-          AppSpace.sm, 0, AppSpace.sm, AppSpace.lg),
+      padding:
+          const EdgeInsets.fromLTRB(AppSpace.sm, 0, AppSpace.sm, AppSpace.lg),
       decoration: BoxDecoration(
         color: t.board,
         borderRadius: const BorderRadius.vertical(
@@ -520,8 +541,7 @@ class _DayNavigator extends StatelessWidget {
                     if (!isToday)
                       Text(
                         DateFormat('yyyy/MM/dd').format(selectedDay),
-                        style:
-                            AppType.caption.copyWith(color: t.boardInkSoft),
+                        style: AppType.caption.copyWith(color: t.boardInkSoft),
                       ),
                   ],
                 ),
@@ -558,7 +578,9 @@ class _DayNavigator extends StatelessWidget {
             children: [
               Expanded(
                   child: BoardStat(
-                      label: 'حاضر', value: '$presentCount', color: on.positive)),
+                      label: 'حاضر',
+                      value: '$presentCount',
+                      color: on.positive)),
               if (lateCount > 0)
                 Expanded(
                     child: BoardStat(
@@ -573,7 +595,9 @@ class _DayNavigator extends StatelessWidget {
                       color: t.boardInkSoft)),
               Expanded(
                   child: BoardStat(
-                      label: 'الكل', value: '$totalStudents', color: t.boardInk)),
+                      label: 'الكل',
+                      value: '$totalStudents',
+                      color: t.boardInk)),
             ],
           ),
         ),
@@ -682,8 +706,8 @@ class _GroupSummaryCard extends StatelessWidget {
                       children: [
                         if (sessionTime != null)
                           Text(sessionTime!,
-                              style: AppType.caption
-                                  .copyWith(color: t.inkSoft)),
+                              style:
+                                  AppType.caption.copyWith(color: t.inkSoft)),
                         Builder(builder: (context) {
                           final remaining = controller.remainingSessionTime(
                               group, DateTime.now());
@@ -718,8 +742,8 @@ class _GroupSummaryCard extends StatelessWidget {
                   tooltip: 'تفاصيل الحصة',
                   constraints:
                       const BoxConstraints(minWidth: 44, minHeight: 44),
-                  icon: Icon(Icons.fact_check_outlined,
-                      size: 22, color: t.brand),
+                  icon:
+                      Icon(Icons.fact_check_outlined, size: 22, color: t.brand),
                   onPressed: onDetails,
                 )
               else
@@ -912,6 +936,108 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
     super.dispose();
   }
 
+  /// اختيار طالب من أي مجموعة تانية كضيف في حصة [group] يوم [day].
+  Future<void> _pickGuest(BuildContext context, Group group, DateTime day,
+      Set<int> groupIds, Set<int> guestIds) async {
+    final t = context.tokens;
+    final groups = Get.isRegistered<GroupController>()
+        ? Get.find<GroupController>().groups
+        : <Group>[];
+    final candidates = widget.studentCtrl.students
+        .where((s) =>
+            s.id != null &&
+            s.groupId != group.id &&
+            !groupIds.contains(s.id) &&
+            !guestIds.contains(s.id) &&
+            !s.isArchived)
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    final picked = await showDialog<Student>(
+      context: context,
+      builder: (ctx) {
+        final q = TextEditingController();
+        return StatefulBuilder(builder: (ctx, setSt) {
+          final text = q.text.trim().toLowerCase();
+          final list = text.isEmpty
+              ? candidates
+              : candidates
+                  .where((s) =>
+                      s.name.toLowerCase().contains(text) ||
+                      s.code.toLowerCase().contains(text))
+                  .toList();
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.panel)),
+            title: Text('إضافة ضيف للحصة',
+                style: AppType.title.copyWith(color: t.ink)),
+            content: SizedBox(
+              width: 360,
+              height: 380,
+              child: Column(children: [
+                Text(
+                    'طالب من مجموعة تانية بيحضر الحصة دي. حضوره بيتسجّل على سجله من غير ما تتضاف حصة لمجموعته الأصلية.',
+                    style: AppType.caption.copyWith(color: t.inkSoft)),
+                const SizedBox(height: AppSpace.sm),
+                TextField(
+                  controller: q,
+                  autofocus: true,
+                  onChanged: (_) => setSt(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'ابحث بالاسم أو الكود',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    isDense: true,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.control)),
+                  ),
+                ),
+                const SizedBox(height: AppSpace.sm),
+                Expanded(
+                  child: list.isEmpty
+                      ? Center(
+                          child: Text('مفيش طلاب مطابقين',
+                              style: AppType.body.copyWith(color: t.inkSoft)))
+                      : ListView.builder(
+                          itemCount: list.length,
+                          itemBuilder: (_, i) {
+                            final s = list[i];
+                            final g = groups
+                                .firstWhereOrNull((x) => x.id == s.groupId);
+                            return ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(s.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppType.label
+                                      .copyWith(fontSize: 13, color: t.ink)),
+                              subtitle: Text('${s.code} · ${g?.name ?? "—"}',
+                                  style: AppType.caption
+                                      .copyWith(color: t.inkSoft)),
+                              onTap: () => Navigator.of(ctx).pop(s),
+                            );
+                          },
+                        ),
+                ),
+              ]),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('إلغاء')),
+            ],
+          );
+        });
+      },
+    );
+    if (picked == null || picked.id == null || group.id == null) return;
+    try {
+      await widget.controller.addGuest(picked.id!, group.id!, day);
+      ToastHelper.success('اتضاف ${picked.name} كضيف في الحصة');
+    } catch (_) {
+      ToastHelper.error('حدث خطأ');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
@@ -931,7 +1057,8 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
           .toList()
         ..sort((a, b) => a.name.compareTo(b.name));
 
-      final dayStart = DateTime(selectedDay.year, selectedDay.month, selectedDay.day);
+      final dayStart =
+          DateTime(selectedDay.year, selectedDay.month, selectedDay.day);
       final dayEnd = DateTime(
           selectedDay.year, selectedDay.month, selectedDay.day, 23, 59, 59);
       final dayRecords = controller.attendance
@@ -947,7 +1074,8 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       // نفس مقياس درجات المجموعة اللي في قائمة التسميع (مش القيمة العامة بس).
       final groupIds = groupStudents.map((s) => s.id).toSet();
       final scaleRec = dayRecords
-          .where((a) => groupIds.contains(a.studentId) && recitationGradeOf(a) != null)
+          .where((a) =>
+              groupIds.contains(a.studentId) && recitationGradeOf(a) != null)
           .firstOrNull;
       final recitationMaxNow = resolveGroupRecitationMax(
           recordMax: scaleRec == null ? null : recitationMaxOf(scaleRec),
@@ -964,6 +1092,27 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       final Map<int, String?> interactionMap = {
         for (final a in dayRecords) a.studentId: a.interaction,
       };
+
+      // ضيوف الحصة دي: طلاب من مجموعات تانية سجلنا لهم حضور اليوم بوسم الضيف
+      // (حصة تعويضية/بديلة) — بيظهروا هنا بنفس أدوات الحضور والواجب والتسميع.
+      final guestIdSet = <int>{
+        for (final a in dayRecords)
+          if (group.id != null && isGuestOfGroup(a, group.id!)) a.studentId
+      };
+      final guestStudents = widget.studentCtrl.students
+          .where((s) =>
+              s.id != null &&
+              guestIdSet.contains(s.id) &&
+              s.groupId != group.id)
+          .toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+      final allGroups = Get.isRegistered<GroupController>()
+          ? Get.find<GroupController>().groups
+          : <Group>[];
+      String guestLabelOf(Student s) {
+        final g = allGroups.firstWhereOrNull((x) => x.id == s.groupId);
+        return g == null ? 'ضيف' : 'ضيف من ${g.name}';
+      }
 
       final presentCount = groupStudents
           .where((s) => attendanceCountsAsPresent(statusMap[s.id]))
@@ -989,7 +1138,9 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       final q = _searchQuery.trim().toLowerCase();
       final filteredStudents = q.isEmpty
           ? groupStudents
-          : groupStudents.where((s) => s.name.toLowerCase().contains(q)).toList();
+          : groupStudents
+              .where((s) => s.name.toLowerCase().contains(q))
+              .toList();
       final visibleStudents = sortStudents(
         students: filteredStudents,
         sortBy: _sortBy,
@@ -999,7 +1150,14 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
         allPayments: _payCtrl.payments,
       );
 
-      final sessionTime = controller.sessionTimeForGroupOnDay(group, selectedDay);
+      final visibleGuests = q.isEmpty
+          ? guestStudents
+          : guestStudents
+              .where((s) => s.name.toLowerCase().contains(q))
+              .toList();
+
+      final sessionTime =
+          controller.sessionTimeForGroupOnDay(group, selectedDay);
       final cancelled =
           controller.sessionOverrideFor(group, selectedDay)?.type ==
               SessionOverrideType.cancelled;
@@ -1007,8 +1165,13 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
       final allPresent = totalCount > 0 &&
           groupStudents.every((s) => statusMap[s.id] == ATTENDANCE_PRESENT);
 
-      Widget attendanceRow(Student s) => _StudentAttendanceChip(
+      Widget attendanceRow(Student s, {bool guest = false}) =>
+          _StudentAttendanceChip(
             student: s,
+            guestLabel: guest ? guestLabelOf(s) : null,
+            onRemoveGuest: guest && group.id != null
+                ? () => controller.removeGuest(s.id!, group.id!, selectedDay)
+                : null,
             status: statusMap[s.id],
             interaction: interactionMap[s.id],
             showInteraction: showInteraction,
@@ -1054,8 +1217,8 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                   Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: AppSpace.xs),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: AppSpace.xs),
                         child: Text(group.name,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
@@ -1123,7 +1286,8 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsetsDirectional.only(end: AppSpace.md),
+                      padding:
+                          const EdgeInsetsDirectional.only(end: AppSpace.md),
                       child: Row(children: [
                         Expanded(
                             child: _InlineStat(
@@ -1150,7 +1314,8 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                     ),
                     const SizedBox(height: AppSpace.sm),
                     Padding(
-                      padding: const EdgeInsetsDirectional.only(end: AppSpace.md),
+                      padding:
+                          const EdgeInsetsDirectional.only(end: AppSpace.md),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(AppRadius.chip),
                         child: LinearProgressIndicator(
@@ -1192,8 +1357,8 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                   FilledButton.icon(
                     icon: const Icon(Icons.undo_rounded, size: 18),
                     label: const Text('رجّع الحصة'),
-                    style: FilledButton.styleFrom(
-                        minimumSize: const Size(48, 48)),
+                    style:
+                        FilledButton.styleFrom(minimumSize: const Size(48, 48)),
                     onPressed: () async {
                       final so = Get.find<SessionOverrideController>();
                       final o = so.overrideFor(group.id!, selectedDay);
@@ -1276,7 +1441,8 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                       child: InkWell(
                         onTap: groupStudents.isEmpty
                             ? null
-                            : () => _pickRandomStudent(groupStudents, statusMap),
+                            : () =>
+                                _pickRandomStudent(groupStudents, statusMap),
                         child: SizedBox(
                           width: 44,
                           height: 44,
@@ -1355,6 +1521,27 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                           style: AppType.body.copyWith(
                                               fontWeight: FontWeight.w700)),
                                     ),
+                                    // طالب من مجموعة تانية بيحضر الحصة دي كضيف (تعويضية).
+                                    TextButton.icon(
+                                      onPressed: () => _pickGuest(
+                                          context,
+                                          group,
+                                          selectedDay,
+                                          groupStudents
+                                              .map((s) => s.id)
+                                              .whereType<int>()
+                                              .toSet(),
+                                          guestIdSet),
+                                      style: TextButton.styleFrom(
+                                          minimumSize: const Size(48, 44),
+                                          foregroundColor: t.brand),
+                                      icon: const Icon(
+                                          Icons.person_add_alt_1_rounded,
+                                          size: 20),
+                                      label: Text('إضافة ضيف',
+                                          style: AppType.body.copyWith(
+                                              fontWeight: FontWeight.w700)),
+                                    ),
                                     // spec 040 — تطبيق تفاعل واحد على كل
                                     // الطلاب المؤهَّلين (حاضر/متأخر) دفعة واحدة.
                                     if (showInteraction)
@@ -1391,7 +1578,8 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 Icon(
-                                                    Icons.emoji_emotions_rounded,
+                                                    Icons
+                                                        .emoji_emotions_rounded,
                                                     size: 20,
                                                     color: t.brand),
                                                 const SizedBox(
@@ -1408,7 +1596,8 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                   ],
                                 ),
                               ),
-                              if (visibleStudents.isEmpty)
+                              if (visibleStudents.isEmpty &&
+                                  visibleGuests.isEmpty)
                                 Padding(
                                   padding: const EdgeInsets.all(AppSpace.lg),
                                   child: Text(
@@ -1418,36 +1607,80 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                         .copyWith(color: t.inkSoft),
                                   ),
                                 )
-                              else
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(AppSpace.sm,
-                                      AppSpace.sm, AppSpace.sm, AppSpace.md),
-                                  // لوحة واحدة بفواصل رفيعة بين الطلاب.
-                                  child: AppPanel(
-                                    padding: EdgeInsets.zero,
-                                    child: Column(children: [
-                                      for (var i = 0;
-                                          i < visibleStudents.length;
-                                          i++) ...[
-                                        if (i > 0)
-                                          Divider(
-                                              height: 1,
-                                              thickness: 1,
-                                              color: t.line),
-                                        attendanceRow(visibleStudents[i]),
-                                      ],
+                              else ...[
+                                if (visibleStudents.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        AppSpace.sm,
+                                        AppSpace.sm,
+                                        AppSpace.sm,
+                                        AppSpace.md),
+                                    // لوحة واحدة بفواصل رفيعة بين الطلاب.
+                                    child: AppPanel(
+                                      padding: EdgeInsets.zero,
+                                      child: Column(children: [
+                                        for (var i = 0;
+                                            i < visibleStudents.length;
+                                            i++) ...[
+                                          if (i > 0)
+                                            Divider(
+                                                height: 1,
+                                                thickness: 1,
+                                                color: t.line),
+                                          attendanceRow(visibleStudents[i]),
+                                        ],
+                                      ]),
+                                    ),
+                                  ),
+                                if (visibleGuests.isNotEmpty) ...[
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        AppSpace.md,
+                                        AppSpace.xs,
+                                        AppSpace.md,
+                                        AppSpace.xs),
+                                    child: Row(children: [
+                                      Icon(Icons.person_add_alt_1_rounded,
+                                          size: 16, color: t.inkSoft),
+                                      const SizedBox(width: AppSpace.xs),
+                                      Text('ضيوف الحصة',
+                                          style: AppType.label
+                                              .copyWith(color: t.inkSoft)),
                                     ]),
                                   ),
-                                ),
-                              _buildReportButton(context, group,
-                                  groupStudents, controller, homeworkCtrl,
-                                  selectedDay),
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        AppSpace.sm,
+                                        0,
+                                        AppSpace.sm,
+                                        AppSpace.md),
+                                    child: AppPanel(
+                                      padding: EdgeInsets.zero,
+                                      child: Column(children: [
+                                        for (var i = 0;
+                                            i < visibleGuests.length;
+                                            i++) ...[
+                                          if (i > 0)
+                                            Divider(
+                                                height: 1,
+                                                thickness: 1,
+                                                color: t.line),
+                                          attendanceRow(visibleGuests[i],
+                                              guest: true),
+                                        ],
+                                      ]),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                              _buildReportButton(context, group, groupStudents,
+                                  controller, homeworkCtrl, selectedDay),
                             ]),
                           ),
                           // ── تبويب واجب (+ التسميع) ──────────────────
                           if (hasSecondTab)
                             _HomeworkTabBody(
-                              students: visibleStudents,
+                              students: [...visibleStudents, ...visibleGuests],
                               statusMap: statusMap,
                               homeworkCtrl: homeworkCtrl,
                               selectedDay: selectedDay,
@@ -1455,15 +1688,14 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                               showRecitation: showRecitation,
                               recitationMap: recitationMap,
                               recitationMaxNow: recitationMaxNow,
-                              onRecitation: (id, v) => controller
-                                  .setRecitation(id, selectedDay, v,
-                                      groupMax: recitationMaxNow),
-                              onOpenRecitationList: () => Get.toNamed(
-                                  ROUTE_RECITATION,
-                                  arguments: {
-                                    'groupId': group.id,
-                                    'day': selectedDay,
-                                  }),
+                              onRecitation: (id, v) => controller.setRecitation(
+                                  id, selectedDay, v,
+                                  groupMax: recitationMaxNow),
+                              onOpenRecitationList: () =>
+                                  Get.toNamed(ROUTE_RECITATION, arguments: {
+                                'groupId': group.id,
+                                'day': selectedDay,
+                              }),
                             ),
                         ]),
                       ),
@@ -1503,8 +1735,8 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
     }
     final t = context.tokens;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          AppSpace.md, 0, AppSpace.md, AppSpace.md),
+      padding:
+          const EdgeInsets.fromLTRB(AppSpace.md, 0, AppSpace.md, AppSpace.md),
       child: Material(
         color: t.positiveSoft,
         clipBehavior: Clip.antiAlias,
@@ -1674,8 +1906,8 @@ class _RandomPickDialogState extends State<_RandomPickDialog> {
             Navigator.of(context).pop();
             widget.onAgain();
           },
-          child: const Text('اختيار تاني',
-              style: TextStyle(fontFamily: 'Cairo')),
+          child:
+              const Text('اختيار تاني', style: TextStyle(fontFamily: 'Cairo')),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -1714,7 +1946,8 @@ Future<void> _showSendReportConfirm(
 
   if (withPhone.isEmpty) {
     if (context.mounted) {
-      AppToast.error(context, 'مفيش أي طالب في المجموعة عنده رقم ولي أمر مسجّل');
+      AppToast.error(
+          context, 'مفيش أي طالب في المجموعة عنده رقم ولي أمر مسجّل');
     }
     return;
   }
@@ -1737,7 +1970,8 @@ Future<void> _showSendReportConfirm(
               Text(
                   '${skipped.length} طالب هيتم تخطّيهم (مفيش رقم ولي أمر): '
                   '${skipped.map((s) => s.name).join('، ')}',
-                  style: TextStyle(fontSize: 12, color: Colors.orange.shade800)),
+                  style:
+                      TextStyle(fontSize: 12, color: Colors.orange.shade800)),
             ],
           ],
         ),
@@ -1776,9 +2010,8 @@ Future<void> _showSendReportConfirm(
       recitation: settings.showRecitation.value && todayRec != null
           ? recitationGradeOf(todayRec)
           : null,
-      recitationMax: todayRec == null
-          ? kRecitationDefaultMax
-          : recitationMaxOf(todayRec),
+      recitationMax:
+          todayRec == null ? kRecitationDefaultMax : recitationMaxOf(todayRec),
       includeHomework: settings.showHomework.value,
       interaction:
           settings.showInteraction.value ? todayRec?.interaction : null,
@@ -1854,6 +2087,9 @@ class _StudentAttendanceChip extends StatelessWidget {
   final ValueChanged<String?> onInteractionSelect;
   // إعداد "تفاعل الطالب" (إظهار/إخفاء صف التفاعل).
   final bool showInteraction;
+  // لو الطالب ضيف على الحصة (من مجموعة تانية): نص الشارة، وإزالته من الحصة.
+  final String? guestLabel;
+  final VoidCallback? onRemoveGuest;
 
   const _StudentAttendanceChip({
     required this.student,
@@ -1862,6 +2098,8 @@ class _StudentAttendanceChip extends StatelessWidget {
     required this.interaction,
     required this.onInteractionSelect,
     required this.showInteraction,
+    this.guestLabel,
+    this.onRemoveGuest,
   });
 
   @override
@@ -1903,6 +2141,35 @@ class _StudentAttendanceChip extends StatelessWidget {
                   ),
                   // تنبيه متأخر في الدفع (spec 029)
                   OverdueWarningFor(student: student, compact: true),
+                  if (guestLabel != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Row(children: [
+                        Icon(Icons.person_add_alt_1_rounded,
+                            size: 13, color: t.brand),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(guestLabel!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppType.caption.copyWith(
+                                  color: t.brand, fontWeight: FontWeight.w700)),
+                        ),
+                        if (onRemoveGuest != null)
+                          InkWell(
+                            onTap: onRemoveGuest,
+                            borderRadius: BorderRadius.circular(AppRadius.chip),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 6),
+                              child: Text('إزالة',
+                                  style: AppType.caption.copyWith(
+                                      color: t.danger,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                          ),
+                      ]),
+                    ),
                 ],
               ),
             ),
@@ -1915,8 +2182,8 @@ class _StudentAttendanceChip extends StatelessWidget {
               items: [
                 AppSegmentItem(ATTENDANCE_PRESENT, 'حاضر', Icons.check_rounded,
                     t.positive),
-                AppSegmentItem(ATTENDANCE_LATE, 'متأخر',
-                    Icons.schedule_rounded, t.caution),
+                AppSegmentItem(ATTENDANCE_LATE, 'متأخر', Icons.schedule_rounded,
+                    t.caution),
                 AppSegmentItem(
                     ATTENDANCE_ABSENT, 'غائب', Icons.close_rounded, t.danger),
               ],
@@ -1924,8 +2191,8 @@ class _StudentAttendanceChip extends StatelessWidget {
           ]),
           if (showInteraction && canRecordInteraction(norm))
             Padding(
-              padding: const EdgeInsetsDirectional.only(
-                  start: 14, top: AppSpace.xs),
+              padding:
+                  const EdgeInsetsDirectional.only(start: 14, top: AppSpace.xs),
               child: _InteractionRow(
                   interaction: normalizeInteraction(interaction),
                   onSelect: onInteractionSelect),
@@ -2115,8 +2382,8 @@ Future<int?> _askGrade(BuildContext context, int max, int? current) {
           controller: c,
           autofocus: true,
           keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-              hintText: 'من 1 إلى $max', errorText: err),
+          decoration:
+              InputDecoration(hintText: 'من 1 إلى $max', errorText: err),
           onSubmitted: (_) {
             final v = int.tryParse(c.text.trim());
             if (v != null && v >= kRecitationMin && v <= max) {
@@ -2202,7 +2469,8 @@ class _HomeworkTabBody extends StatelessWidget {
       final sum = homeworkCtrl.homeworkSummary(presentIds, selectedDay);
       final allDone = presentIds.isNotEmpty &&
           presentIds.every((id) =>
-              normalizeHomeworkStatus(homeworkCtrl.statusFor(id, selectedDay)) ==
+              normalizeHomeworkStatus(
+                  homeworkCtrl.statusFor(id, selectedDay)) ==
               HOMEWORK_DONE);
 
       Widget miniCount(Color c, String label, int n) => Padding(
@@ -2245,8 +2513,8 @@ class _HomeworkTabBody extends StatelessWidget {
                       foregroundColor: t.brand,
                       minimumSize: const Size(48, 44)),
                   child: Text(allDone ? 'إلغاء الكل' : 'الكل عمل',
-                      style: AppType.body
-                          .copyWith(fontWeight: FontWeight.w700)),
+                      style:
+                          AppType.body.copyWith(fontWeight: FontWeight.w700)),
                 ),
               ]),
             ),
@@ -2311,7 +2579,8 @@ class _HomeworkTabBody extends StatelessWidget {
 class _HomeworkStudentRow extends StatelessWidget {
   final String name;
   final bool absent;
-  final String? status; // مطبّع: HOMEWORK_DONE / HOMEWORK_PARTIAL / HOMEWORK_NOT_DONE / null
+  final String?
+      status; // مطبّع: HOMEWORK_DONE / HOMEWORK_PARTIAL / HOMEWORK_NOT_DONE / null
   final ValueChanged<String?> onSelect;
   final bool showHomework;
   final bool showRecitation;
@@ -2381,10 +2650,10 @@ class _HomeworkStudentRow extends StatelessWidget {
               subject: name,
               onSelect: onSelect,
               items: [
-                AppSegmentItem(HOMEWORK_DONE, 'تم الحل', Icons.check_rounded,
-                    t.positive),
-                AppSegmentItem(HOMEWORK_PARTIAL, 'ناقص', Icons.remove_rounded,
-                    t.caution),
+                AppSegmentItem(
+                    HOMEWORK_DONE, 'تم الحل', Icons.check_rounded, t.positive),
+                AppSegmentItem(
+                    HOMEWORK_PARTIAL, 'ناقص', Icons.remove_rounded, t.caution),
                 AppSegmentItem(HOMEWORK_NOT_DONE, 'لم يُحل',
                     Icons.close_rounded, t.danger),
               ],
@@ -2412,20 +2681,32 @@ class _NoSessionsToday extends StatelessWidget {
   const _NoSessionsToday({required this.allGroups, required this.selectedDay});
 
   static const _weekdays = {
-    1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء', 4: 'الخميس',
-    5: 'الجمعة',  6: 'السبت',    7: 'الأحد',
+    1: 'الاثنين',
+    2: 'الثلاثاء',
+    3: 'الأربعاء',
+    4: 'الخميس',
+    5: 'الجمعة',
+    6: 'السبت',
+    7: 'الأحد',
   };
 
   static const _arDays = {
-    'الاثنين': 1, 'الثلاثاء': 2, 'الأربعاء': 3, 'الخميس': 4,
-    'الجمعة': 5,  'السبت': 6,    'الأحد': 7,
+    'الاثنين': 1,
+    'الثلاثاء': 2,
+    'الأربعاء': 3,
+    'الخميس': 4,
+    'الجمعة': 5,
+    'السبت': 6,
+    'الأحد': 7,
   };
 
   String _scheduleSummary(dynamic g) {
     final s = g.schedule as String?;
     if (s == null || s.trim().isEmpty) return 'بدون جدول';
     final days = <String>{};
-    for (final k in _arDays.keys) { if (s.contains(k)) days.add(k); }
+    for (final k in _arDays.keys) {
+      if (s.contains(k)) days.add(k);
+    }
     return days.isEmpty ? s : days.join('، ');
   }
 
@@ -2435,91 +2716,88 @@ class _NoSessionsToday extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
       child: Column(
         children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.grey.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.event_busy_rounded,
+                size: 48, color: Colors.grey),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'لا توجد حصص ${_weekdays[selectedDay.weekday] ?? ''}',
+            style: const TextStyle(
+                fontFamily: 'Cairo', fontSize: 17, fontWeight: FontWeight.w800),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'لم يُجدوَل أي مجموعة في هذا اليوم',
+            style: TextStyle(
+                fontFamily: 'Cairo', fontSize: 13, color: Colors.grey.shade500),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => showAddSessionOverrideFlow(
+                context,
+                groups: allGroups.whereType<Group>().toList(),
+                day: selectedDay,
               ),
-              child: const Icon(Icons.event_busy_rounded,
-                  size: 48, color: Colors.grey),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'لا توجد حصص ${_weekdays[selectedDay.weekday] ?? ''}',
-              style: const TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'لم يُجدوَل أي مجموعة في هذا اليوم',
-              style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 13,
-                  color: Colors.grey.shade500),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => showAddSessionOverrideFlow(
-                  context,
-                  groups: allGroups.whereType<Group>().toList(),
-                  day: selectedDay,
-                ),
-                icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-                label: const Text('حصة تعويضية / إضافية',
-                    style: TextStyle(fontFamily: 'Cairo')),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
+              icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+              label: const Text('حصة تعويضية / إضافية',
+                  style: TextStyle(fontFamily: 'Cairo')),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
-            const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                children: [
-                  Row(children: [
-                    Icon(Icons.calendar_month_rounded,
-                        size: 14, color: Colors.grey.shade500),
-                    const SizedBox(width: 6),
-                    Text('جدول المجموعات',
-                        style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            color: Colors.grey.shade600)),
-                  ]),
-                  const SizedBox(height: 10),
-                  ...allGroups.map((g) => Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Row(children: [
-                      const Icon(Icons.groups_outlined, size: 14, color: Colors.grey),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(g.name as String,
-                            style: const TextStyle(
-                                fontFamily: 'Cairo',
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12)),
-                      ),
-                      Text(_scheduleSummary(g),
-                          style: TextStyle(
-                              fontSize: 11, color: Colors.grey.shade500)),
-                    ]),
-                  )),
-                ],
-              ),
+          ),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.grey.withValues(alpha: 0.07),
+              borderRadius: BorderRadius.circular(16),
             ),
+            child: Column(
+              children: [
+                Row(children: [
+                  Icon(Icons.calendar_month_rounded,
+                      size: 14, color: Colors.grey.shade500),
+                  const SizedBox(width: 6),
+                  Text('جدول المجموعات',
+                      style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: Colors.grey.shade600)),
+                ]),
+                const SizedBox(height: 10),
+                ...allGroups.map((g) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(children: [
+                        const Icon(Icons.groups_outlined,
+                            size: 14, color: Colors.grey),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(g.name as String,
+                              style: const TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12)),
+                        ),
+                        Text(_scheduleSummary(g),
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.grey.shade500)),
+                      ]),
+                    )),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -2533,7 +2811,7 @@ class _NoSessionsToday extends StatelessWidget {
 class _RecordsTab extends StatefulWidget {
   final AttendanceController controller;
   final StudentController studentCtrl;
-  final GroupController   groupCtrl;
+  final GroupController groupCtrl;
 
   const _RecordsTab({
     required this.controller,
@@ -2548,7 +2826,7 @@ class _RecordsTab extends StatefulWidget {
 class _RecordsTabState extends State<_RecordsTab> {
   final _searchCtrl = TextEditingController();
   String _statusFilter = '';
-  int?   _groupFilter;
+  int? _groupFilter;
 
   @override
   void dispose() {
@@ -2560,16 +2838,17 @@ class _RecordsTabState extends State<_RecordsTab> {
   Widget build(BuildContext context) {
     final t = context.tokens;
     return Obx(() {
-      final q        = _searchCtrl.text.toLowerCase();
+      final q = _searchCtrl.text.toLowerCase();
       final students = widget.studentCtrl.students;
-      final groups   = widget.groupCtrl.groups;
+      final groups = widget.groupCtrl.groups;
       final groupById = {for (final g in groups) g.id: g};
 
       final list = widget.controller.attendance.where((a) {
         if (_statusFilter.isNotEmpty && a.status != _statusFilter) return false;
         final s = students.firstWhereOrNull((st) => st.id == a.studentId);
         if (_groupFilter != null && s?.groupId != _groupFilter) return false;
-        if (q.isNotEmpty && !(s?.name.toLowerCase().contains(q) ?? false)) return false;
+        if (q.isNotEmpty && !(s?.name.toLowerCase().contains(q) ?? false))
+          return false;
         return true;
       }).toList()
         ..sort((a, b) => b.date.compareTo(a.date));
@@ -2599,7 +2878,10 @@ class _RecordsTabState extends State<_RecordsTab> {
                 controller: _searchCtrl,
                 hintText: 'ابحث باسم الطالب...',
                 onChanged: (_) => setState(() {}),
-                onClear: () { _searchCtrl.clear(); setState(() {}); },
+                onClear: () {
+                  _searchCtrl.clear();
+                  setState(() {});
+                },
               ),
             ),
             const SizedBox(width: 8),
@@ -2667,12 +2949,13 @@ class _RecordsTabState extends State<_RecordsTab> {
                       );
                     }
                     final att = (item as AttendanceItem).record;
-                    final s         = students.firstWhereOrNull((st) => st.id == att.studentId);
-                    final norm      = normalizeAttendanceStatus(att.status);
-                    final isLate    = norm == ATTENDANCE_LATE;
+                    final s = students
+                        .firstWhereOrNull((st) => st.id == att.studentId);
+                    final norm = normalizeAttendanceStatus(att.status);
+                    final isLate = norm == ATTENDANCE_LATE;
                     final isPresent = attendanceCountsAsPresent(att.status);
-                    final ink       = _statusInk(t, norm);
-                    final soft      = _statusSoft(t, norm);
+                    final ink = _statusInk(t, norm);
+                    final soft = _statusSoft(t, norm);
                     final groupName = groupById[s?.groupId]?.name;
 
                     return AppPanel(
@@ -2731,14 +3014,12 @@ class _RecordsTabState extends State<_RecordsTab> {
                               ),
                               child: Text(att.status,
                                   style: AppType.caption.copyWith(
-                                      color: ink,
-                                      fontWeight: FontWeight.w700)),
+                                      color: ink, fontWeight: FontWeight.w700)),
                             ),
                             const SizedBox(height: AppSpace.xs),
                             Text(
                               FormatHelper.formatDate(att.date),
-                              style:
-                                  AppType.caption.copyWith(color: t.inkSoft),
+                              style: AppType.caption.copyWith(color: t.inkSoft),
                             ),
                           ],
                         ),
@@ -2747,8 +3028,8 @@ class _RecordsTabState extends State<_RecordsTab> {
                           icon: Icon(Icons.more_vert_rounded, color: t.inkSoft),
                           iconSize: 22,
                           padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                              minWidth: 44, minHeight: 44),
+                          constraints:
+                              const BoxConstraints(minWidth: 44, minHeight: 44),
                           onSelected: (v) {
                             if (!requireDeletePermission(context,
                                 TeamModeService().canDeleteAttendanceNow)) {
@@ -2785,8 +3066,8 @@ class _RecordsTabState extends State<_RecordsTab> {
                                     size: 20, color: t.danger),
                                 const SizedBox(width: AppSpace.md),
                                 Text('حذف',
-                                    style: AppType.body
-                                        .copyWith(color: t.danger)),
+                                    style:
+                                        AppType.body.copyWith(color: t.danger)),
                               ]),
                             ),
                           ],
@@ -2863,7 +3144,9 @@ class _RecordsTabState extends State<_RecordsTab> {
           child: ListView(controller: scrollCtrl, children: [
             const SizedBox(height: 8),
             Center(
-              child: Container(width: 40, height: 4,
+              child: Container(
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
                       color: Colors.grey.shade400,
                       borderRadius: BorderRadius.circular(2))),
@@ -2874,15 +3157,21 @@ class _RecordsTabState extends State<_RecordsTab> {
                   ? Icons.radio_button_checked
                   : Icons.radio_button_off),
               title: const Text('كل المجموعات'),
-              onTap: () { setState(() => _groupFilter = null); Get.back(); },
+              onTap: () {
+                setState(() => _groupFilter = null);
+                Get.back();
+              },
             ),
             ...groups.map((g) => ListTile(
-              leading: Icon(_groupFilter == g.id
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_off),
-              title: Text(g.name),
-              onTap: () { setState(() => _groupFilter = g.id); Get.back(); },
-            )),
+                  leading: Icon(_groupFilter == g.id
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off),
+                  title: Text(g.name),
+                  onTap: () {
+                    setState(() => _groupFilter = g.id);
+                    Get.back();
+                  },
+                )),
             const SizedBox(height: 8),
           ]),
         ),
@@ -2898,7 +3187,7 @@ class _RecordsTabState extends State<_RecordsTab> {
 class _StatisticsTab extends StatefulWidget {
   final AttendanceController controller;
   final StudentController studentCtrl;
-  final GroupController   groupCtrl;
+  final GroupController groupCtrl;
 
   const _StatisticsTab({
     required this.controller,
@@ -2920,20 +3209,24 @@ class _StatisticsTabState extends State<_StatisticsTab> {
     final on = AppTokens.dark;
     return Obx(() {
       final students = widget.studentCtrl.students;
-      final groups   = widget.groupCtrl.groups;
+      final groups = widget.groupCtrl.groups;
 
-      final presentByStudent  = widget.controller.getPresentCountByStudent(range: _range);
-      final expectedPerGroup  = widget.controller.getExpectedSessionsPerGroup(groups: groups, range: _range);
+      final presentByStudent =
+          widget.controller.getPresentCountByStudent(range: _range);
+      final expectedPerGroup = widget.controller
+          .getExpectedSessionsPerGroup(groups: groups, range: _range);
 
       final perStudent = students.map((s) {
-        final present  = presentByStudent[s.id ?? -1] ?? 0;
+        final present = presentByStudent[s.id ?? -1] ?? 0;
         final expected = expectedPerGroup[s.groupId] ?? 0;
-        final percent  = expected == 0 ? 0.0 : (present / expected) * 100.0;
-        return _StudentStats(student: s, present: present, expected: expected, percent: percent);
+        final percent = expected == 0 ? 0.0 : (present / expected) * 100.0;
+        return _StudentStats(
+            student: s, present: present, expected: expected, percent: percent);
       }).toList()
         ..sort((a, b) => a.percent.compareTo(b.percent));
 
-      bool inRange(DateTime d) => _range == null ||
+      bool inRange(DateTime d) =>
+          _range == null ||
           (!d.isBefore(_range!.start) && !d.isAfter(_range!.end));
       // "متأخر" يُحتسب حضورًا (spec 011)
       final rangePresent = widget.controller.attendance
@@ -2950,7 +3243,7 @@ class _StatisticsTabState extends State<_StatisticsTab> {
               inRange(a.date))
           .length;
       final total = rangePresent + rangeAbsent;
-      final rate  = total > 0 ? rangePresent / total : 0.0;
+      final rate = total > 0 ? rangePresent / total : 0.0;
 
       final isCustomRange = _range != null &&
           !_isTodayRange(_range!) &&
@@ -3024,9 +3317,7 @@ class _StatisticsTabState extends State<_StatisticsTab> {
               if (rangeLate > 0)
                 Expanded(
                     child: BoardStat(
-                        label: 'متأخر',
-                        value: '$rangeLate',
-                        color: t.chalk)),
+                        label: 'متأخر', value: '$rangeLate', color: t.chalk)),
               Expanded(
                   child: BoardStat(
                       label: 'غياب', value: '$rangeAbsent', color: on.danger)),
@@ -3062,8 +3353,8 @@ class _StatisticsTabState extends State<_StatisticsTab> {
                   separatorBuilder: (_, __) =>
                       const SizedBox(height: AppSpace.sm),
                   itemBuilder: (ctx, i) {
-                    final e    = perStudent[i];
-                    final ink  = _percentInk(t, e.percent);
+                    final e = perStudent[i];
+                    final ink = _percentInk(t, e.percent);
                     final soft = _percentSoft(t, e.percent);
                     final fill = ink == t.caution ? t.cautionBar : ink;
 
@@ -3122,8 +3413,7 @@ class _StatisticsTabState extends State<_StatisticsTab> {
                                     : (e.present / e.expected).clamp(0.0, 1.0),
                                 minHeight: 6,
                                 backgroundColor: t.line,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(fill),
+                                valueColor: AlwaysStoppedAnimation<Color>(fill),
                               ),
                             ),
                           ]),
@@ -3158,10 +3448,14 @@ class _BoardTab extends StatelessWidget implements PreferredSizeWidget {
 
 class _StatusChip extends StatelessWidget {
   final String label;
-  final bool   selected;
-  final Color  color;
+  final bool selected;
+  final Color color;
   final VoidCallback onTap;
-  const _StatusChip({required this.label, required this.selected, required this.color, required this.onTap});
+  const _StatusChip(
+      {required this.label,
+      required this.selected,
+      required this.color,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -3293,9 +3587,13 @@ class _BoardRangeChip extends StatelessWidget {
 
 class _StudentStats {
   final Student student;
-  final int     present, expected;
-  final double  percent;
-  _StudentStats({required this.student, required this.present, required this.expected, required this.percent});
+  final int present, expected;
+  final double percent;
+  _StudentStats(
+      {required this.student,
+      required this.present,
+      required this.expected,
+      required this.percent});
 }
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -3304,28 +3602,29 @@ DateTimeRange _todayRange() {
   final n = DateTime.now();
   return DateTimeRange(
     start: DateTime(n.year, n.month, n.day),
-    end:   DateTime(n.year, n.month, n.day, 23, 59, 59),
+    end: DateTime(n.year, n.month, n.day, 23, 59, 59),
   );
 }
 
 DateTimeRange _thisWeekRange() {
-  final n     = DateTime.now();
+  final n = DateTime.now();
   final start = n.subtract(Duration(days: n.weekday - 1));
-  final ws    = DateTime(start.year, start.month, start.day);
-  final we    = ws.add(const Duration(days: 6));
+  final ws = DateTime(start.year, start.month, start.day);
+  final we = ws.add(const Duration(days: 6));
   return DateTimeRange(
     start: ws,
-    end:   DateTime(we.year, we.month, we.day, 23, 59, 59),
+    end: DateTime(we.year, we.month, we.day, 23, 59, 59),
   );
 }
 
 DateTimeRange _thisMonthRange() {
-  final n   = DateTime.now();
-  final s   = DateTime(n.year, n.month, 1);
-  final end = DateTime(n.year, n.month + 1, 1).subtract(const Duration(days: 1));
+  final n = DateTime.now();
+  final s = DateTime(n.year, n.month, 1);
+  final end =
+      DateTime(n.year, n.month + 1, 1).subtract(const Duration(days: 1));
   return DateTimeRange(
     start: s,
-    end:   DateTime(end.year, end.month, end.day, 23, 59, 59),
+    end: DateTime(end.year, end.month, end.day, 23, 59, 59),
   );
 }
 
@@ -3347,9 +3646,9 @@ bool _isThisMonthRange(DateTimeRange r) {
 }
 
 DateTimeRange _asFullDayRange(DateTimeRange r) => DateTimeRange(
-  start: DateTime(r.start.year, r.start.month, r.start.day),
-  end:   DateTime(r.end.year, r.end.month, r.end.day, 23, 59, 59),
-);
+      start: DateTime(r.start.year, r.start.month, r.start.day),
+      end: DateTime(r.end.year, r.end.month, r.end.day, 23, 59, 59),
+    );
 
 // ══════════════════════════════════════════════════════════════════
 //  _AbsentTodayTab — غائبو اليوم مع إرسال رسالة واتساب لأولياء الأمور
@@ -3409,7 +3708,10 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
       return;
     }
     final settings = Get.find<SettingsController>();
-    final msg = _buildMessage(s, groupName, settings.teacherFullName.value.trim(),
+    final msg = _buildMessage(
+        s,
+        groupName,
+        settings.teacherFullName.value.trim(),
         settings.teacherSpecialization.value.trim());
     await launchGuardianWhatsapp(
       context: context,
@@ -3428,7 +3730,9 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
       return;
     }
     final settings = Get.find<SettingsController>();
-    final msg = _buildLateMessage(s, groupName,
+    final msg = _buildLateMessage(
+        s,
+        groupName,
         settings.teacherFullName.value.trim(),
         settings.teacherSpecialization.value.trim());
     await launchGuardianWhatsapp(
@@ -3545,18 +3849,17 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
 
     return Obx(() {
       final students = widget.studentCtrl.students;
-      final groups   = widget.groupCtrl.groups;
+      final groups = widget.groupCtrl.groups;
       final groupById = {
         for (final g in groups)
           if (g.id != null) g.id!: g,
       };
 
-      final now       = DateTime.now();
-      final dayStart  = DateTime(now.year, now.month, now.day);
-      final dayEnd    = DateTime(now.year, now.month, now.day, 23, 59, 59);
+      final now = DateTime.now();
+      final dayStart = DateTime(now.year, now.month, now.day);
+      final dayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
-      bool inToday(DateTime d) =>
-          !d.isBefore(dayStart) && !d.isAfter(dayEnd);
+      bool inToday(DateTime d) => !d.isBefore(dayStart) && !d.isAfter(dayEnd);
       final absentIds = widget.controller.attendance
           .where((a) =>
               normalizeAttendanceStatus(a.status) == ATTENDANCE_ABSENT &&
@@ -3606,9 +3909,8 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
       final selectedCount =
           entries.where((e) => _selected.contains(e.student.id)).length;
       final allSelected = selectedCount == entries.length;
-      final selectedLateCount = lateEntries
-          .where((e) => _selectedLate.contains(e.student.id))
-          .length;
+      final selectedLateCount =
+          lateEntries.where((e) => _selectedLate.contains(e.student.id)).length;
       final allLateSelected = selectedLateCount == lateEntries.length;
 
       return Column(children: [
@@ -3679,8 +3981,7 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
               }
 
               // صفوف "متأخرين" — نفس أسلوب صفوف الغياب (تحديد + إرسال واتساب)
-              final lateStart =
-                  entries.length + (entries.isEmpty ? 0 : 1);
+              final lateStart = entries.length + (entries.isEmpty ? 0 : 1);
               if (i >= lateStart) {
                 final le = lateEntries[i - lateStart];
                 return _AbsentRow(
@@ -3741,7 +4042,8 @@ class _AbsentTodayTabState extends State<_AbsentTodayTab> {
               child: FilledButton.icon(
                 onPressed: () => _sendLateToSelected(lateEntries),
                 icon: const Icon(Icons.chat_rounded),
-                label: Text('إرسال واتساب للمتأخرين المحددين ($selectedLateCount)',
+                label: Text(
+                    'إرسال واتساب للمتأخرين المحددين ($selectedLateCount)',
                     style: AppType.label),
                 style: FilledButton.styleFrom(
                   backgroundColor: t.caution,
@@ -3812,8 +4114,8 @@ class _AbsentRow extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.panel),
-          side: BorderSide(color: checked ? accent : t.line,
-              width: checked ? 1.5 : 1),
+          side: BorderSide(
+              color: checked ? accent : t.line, width: checked ? 1.5 : 1),
         ),
         child: CheckboxListTile(
           value: checked,
