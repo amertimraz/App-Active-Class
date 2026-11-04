@@ -33,6 +33,8 @@ import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/services/booking_service.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
+import 'package:active_class/models/booklet_model.dart';
+import 'package:active_class/utils/booklet_portal.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/recitation.dart';
 import 'package:active_class/utils/performance.dart';
@@ -445,6 +447,33 @@ class ParentPortalService {
     }
   }
 
+  /// جداول المذكرات كلها مرة واحدة (فاضية لو الجداول مش جاهزة — البوابة
+  /// تفضل شغالة من غيرها).
+  Future<
+      ({
+        List<Booklet> booklets,
+        List<BookletGroupLink> links,
+        List<BookletRecord> records,
+        List<BookletPayment> payments,
+      })> _loadBookletData() async {
+    try {
+      return (
+        booklets: await _dbService.getAllBooklets(),
+        links: await _dbService.getAllBookletGroups(),
+        records: await _dbService.getAllBookletRecords(),
+        payments: await _dbService.getAllBookletPayments(),
+      );
+    } catch (e) {
+      debugPrint('portal booklets failed: $e');
+      return (
+        booklets: const <Booklet>[],
+        links: const <BookletGroupLink>[],
+        records: const <BookletRecord>[],
+        payments: const <BookletPayment>[],
+      );
+    }
+  }
+
   Map<String, dynamic>? _buildSummaryData(
     Student student, {
     required List<Attendance> attendance,
@@ -454,6 +483,7 @@ class ParentPortalService {
     List<StudentExamRecord> exams = const [],
     Group? group,
     List<Student> allStudents = const [],
+    List<BookletPortalLine> bookletLines = const [],
   }) {
     final last4 = _last4(student.guardianPhone);
     // بالكود فقط: الطالب بلا رقم ولي أمر برضو بيتنشر (مفيش آخر 4 مطلوبة).
@@ -553,6 +583,8 @@ class ParentPortalService {
           scaleTo: currentRecitationMax(Get.isRegistered<SettingsController>()
               ? Get.find<SettingsController>().recitationMax.value
               : null)),
+      // المذكرات (جوّه تاب المدفوعات في الصفحة) — فاضية لو مفيش.
+      ...bookletPortalFields(bookletLines),
       'examCount': examRecords.length,
       'examHistory': examRecords
           .take(15)
@@ -591,6 +623,7 @@ class ParentPortalService {
       final allStudents = student.siblingGroupId != null
           ? await _dbService.getAllStudents()
           : const <Student>[];
+      final bk = await _loadBookletData();
       final data = _buildSummaryData(student,
           attendance: attendanceRecords,
           payments: payments,
@@ -598,7 +631,13 @@ class ParentPortalService {
           groupName: group?.name ?? '',
           exams: exams,
           group: group,
-          allStudents: allStudents);
+          allStudents: allStudents,
+          bookletLines: studentBookletPortalLines(
+              student: student,
+              booklets: bk.booklets,
+              links: bk.links,
+              records: bk.records,
+              payments: bk.payments));
       if (data == null) return;
       final docId = data.remove('_docId') as String;
 
@@ -700,6 +739,7 @@ class ParentPortalService {
     final allHomework = await _dbService.getAllHomework();
     final allGroups = await _dbService.getAllGroups();
     final examsByStudent = await _dbService.getAllStudentExamHistories();
+    final bk = await _loadBookletData();
 
     final groupNameById = {for (final g in allGroups) g.id: g.name};
     final groupById = {for (final g in allGroups) g.id: g};
@@ -735,6 +775,12 @@ class ParentPortalService {
         exams: examsByStudent[s.id] ?? const [],
         group: groupById[s.groupId],
         allStudents: students,
+        bookletLines: studentBookletPortalLines(
+            student: s,
+            booklets: bk.booklets,
+            links: bk.links,
+            records: bk.records,
+            payments: bk.payments),
       );
       if (data == null) continue;
       final docId = data.remove('_docId') as String;

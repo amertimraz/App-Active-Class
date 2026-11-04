@@ -2,12 +2,15 @@
 //
 // spec 041 — الملازم/الكتب: تسعير + تسليم + تحصيل. مستقل تمامًا عن
 // PaymentController/PricingHelper (FR-008). كل الحسابات عبر booklet_math.
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import 'package:active_class/models/booklet_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/booklet_math.dart';
 
 enum DeliveryFilter { all, notDelivered, delivered }
@@ -17,7 +20,8 @@ enum PayFilter { all, none, partial, full, owing }
 class BookletFilter {
   final DeliveryFilter delivery;
   final PayFilter pay;
-  const BookletFilter({this.delivery = DeliveryFilter.all, this.pay = PayFilter.all});
+  const BookletFilter(
+      {this.delivery = DeliveryFilter.all, this.pay = PayFilter.all});
 }
 
 class BookletStudentRow {
@@ -107,6 +111,22 @@ class BookletController extends GetxController {
     }
   }
 
+  // ── بوابة ولي الأمر ───────────────────────────────────────────────
+  // مديونية/تسليم المذكرات بتظهر لولي الأمر جوّه تاب المدفوعات، فأي تغيير
+  // هنا لازم يعيد نشر ملخص الطلاب المتأثرين (بيتجاهل بصمت لو البوابة مقفولة).
+  void _republishStudents(Iterable<int> ids) {
+    for (final id in ids.toSet()) {
+      unawaited(ParentPortalService().pushStudentSummary(id));
+    }
+  }
+
+  void _republishGroups(Iterable<int> groupIds) {
+    final gs = groupIds.toSet();
+    _republishStudents(_students
+        .where((s) => s.id != null && gs.contains(s.groupId))
+        .map((s) => s.id!));
+  }
+
   // ── الملزمة ────────────────────────────────────────────────────────
   Future<int?> createBooklet({
     required String name,
@@ -120,11 +140,14 @@ class BookletController extends GetxController {
       await _db.insertBookletGroup(id, g);
     }
     await load();
+    _republishGroups(groupIds);
     return id;
   }
 
   Future<void> updateBooklet(Booklet b,
       {String? name, double? price, List<int>? groupIds}) async {
+    final oldGroups =
+        links.where((l) => l.bookletId == b.id).map((l) => l.groupId).toList();
     await _db.updateBooklet(b.copyWith(name: name?.trim(), price: price));
     if (groupIds != null) {
       final current = links.where((l) => l.bookletId == b.id).toList();
@@ -137,17 +160,25 @@ class BookletController extends GetxController {
       }
     }
     await load();
+    _republishGroups([...oldGroups, ...?groupIds]);
   }
 
   Future<void> deleteBooklet(int bookletId) async {
+    final groups = links
+        .where((l) => l.bookletId == bookletId)
+        .map((l) => l.groupId)
+        .toList();
     await _db.deleteBooklet(bookletId);
     await load();
+    _republishGroups(groups);
   }
 
   // ── التسليم / الاستثناء ───────────────────────────────────────────
-  Future<void> setDelivered(int bookletId, int studentId, bool delivered) async {
+  Future<void> setDelivered(
+      int bookletId, int studentId, bool delivered) async {
     await _db.upsertBookletRecord(bookletId, studentId, delivered: delivered);
     await load();
+    _republishStudents([studentId]);
   }
 
   /// تسليم كل المؤهَّلين اللي لسه ما استلموش (يوم توزيع الملازم). يرجّع العدد.
@@ -157,12 +188,14 @@ class BookletController extends GetxController {
       await _db.upsertBookletRecord(bookletId, r.student.id!, delivered: true);
     }
     await load();
+    _republishStudents(pending.map((r) => r.student.id!));
     return pending.length;
   }
 
   Future<void> setExcluded(int bookletId, int studentId, bool excluded) async {
     await _db.upsertBookletRecord(bookletId, studentId, excluded: excluded);
     await load();
+    _republishStudents([studentId]);
   }
 
   // ── الدفعات ───────────────────────────────────────────────────────
@@ -184,12 +217,16 @@ class BookletController extends GetxController {
       date: date ?? DateTime.now(),
     ));
     await load();
+    _republishStudents([studentId]);
     return null;
   }
 
   Future<void> deletePayment(int paymentId) async {
+    final studentId =
+        payments.firstWhereOrNull((p) => p.id == paymentId)?.studentId;
     await _db.deleteBookletPayment(paymentId);
     await load();
+    if (studentId != null) _republishStudents([studentId]);
   }
 
   Future<({int delivered, double paid})> deleteImpact(int bookletId) =>
@@ -200,15 +237,18 @@ class BookletController extends GetxController {
 
   // ── استعلامات العرض ───────────────────────────────────────────────
   Iterable<BookletPayment> _paymentsFor(int bookletId, int studentId) =>
-      payments.where((p) => p.bookletId == bookletId && p.studentId == studentId);
+      payments
+          .where((p) => p.bookletId == bookletId && p.studentId == studentId);
 
   Map<int, BookletRecord> _recordsMap(int bookletId) => {
         for (final r in records.where((r) => r.bookletId == bookletId))
           r.studentId: r
       };
 
-  Set<int> _groupIds(int bookletId) =>
-      links.where((l) => l.bookletId == bookletId).map((l) => l.groupId).toSet();
+  Set<int> _groupIds(int bookletId) => links
+      .where((l) => l.bookletId == bookletId)
+      .map((l) => l.groupId)
+      .toSet();
 
   BookletStudentRow _row(Booklet b, Student s, BookletRecord? r) {
     final pays = _paymentsFor(b.id!, s.id!).toList();
@@ -235,7 +275,9 @@ class BookletController extends GetxController {
     if (includeOrphans) {
       // طلاب عندهم دفعة/تسليم بس مجموعتهم اتشالت من الملزمة — للسجل التاريخي.
       orphanIds
-        ..addAll(payments.where((p) => p.bookletId == bookletId).map((p) => p.studentId))
+        ..addAll(payments
+            .where((p) => p.bookletId == bookletId)
+            .map((p) => p.studentId))
         ..addAll(records
             .where((r) => r.bookletId == bookletId && r.delivered)
             .map((r) => r.studentId));
@@ -262,31 +304,28 @@ class BookletController extends GetxController {
                 .map((p) => p.studentId)
                 .toSet())
         : eligibleStudents(groupStudents: cands, recordsByStudent: rec);
-    return students
-        .map((s) => _row(b, s, rec[s.id]))
-        .where((r) {
-          switch (filter.delivery) {
-            case DeliveryFilter.notDelivered:
-              if (r.delivered) return false;
-            case DeliveryFilter.delivered:
-              if (!r.delivered) return false;
-            case DeliveryFilter.all:
-              break;
-          }
-          switch (filter.pay) {
-            case PayFilter.none:
-              return r.status == BookletPaymentStatus.none;
-            case PayFilter.partial:
-              return r.status == BookletPaymentStatus.partial;
-            case PayFilter.full:
-              return r.status == BookletPaymentStatus.full;
-            case PayFilter.owing:
-              return r.remaining > 0;
-            case PayFilter.all:
-              return true;
-          }
-        })
-        .toList();
+    return students.map((s) => _row(b, s, rec[s.id])).where((r) {
+      switch (filter.delivery) {
+        case DeliveryFilter.notDelivered:
+          if (r.delivered) return false;
+        case DeliveryFilter.delivered:
+          if (!r.delivered) return false;
+        case DeliveryFilter.all:
+          break;
+      }
+      switch (filter.pay) {
+        case PayFilter.none:
+          return r.status == BookletPaymentStatus.none;
+        case PayFilter.partial:
+          return r.status == BookletPaymentStatus.partial;
+        case PayFilter.full:
+          return r.status == BookletPaymentStatus.full;
+        case PayFilter.owing:
+          return r.remaining > 0;
+        case PayFilter.all:
+          return true;
+      }
+    }).toList();
   }
 
   /// الطلاب المستثنون (لإلغاء الاستثناء).
@@ -351,8 +390,9 @@ class BookletController extends GetxController {
     return out;
   }
 
-  double remainingForStudent(int studentId) => studentBookletsRemaining(
-      linesForStudent(studentId).map((l) => BookletRemainingLine(l.remaining, 0)));
+  double remainingForStudent(int studentId) =>
+      studentBookletsRemaining(linesForStudent(studentId)
+          .map((l) => BookletRemainingLine(l.remaining, 0)));
 
   /// دفعات الملزمة دي النهاردة (الأحدث أولًا) — لشريط "مدفوعات اليوم".
   List<BookletPayment> todayPaymentsOf(int bookletId) => bookletPaymentsOnDay(
@@ -362,7 +402,8 @@ class BookletController extends GetxController {
       _paymentsFor(bookletId, studentId).toList();
 
   /// إجمالي كل الملازم: مسلَّم/مؤهَّل، محصَّل، متبقي.
-  ({int delivered, int eligible, double collected, double remaining}) overall() {
+  ({int delivered, int eligible, double collected, double remaining})
+      overall() {
     var d = 0, e = 0;
     double rem = 0;
     for (final b in booklets) {
