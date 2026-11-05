@@ -60,6 +60,53 @@ void main() {
     });
   });
 
+  group('الألعاب الجديدة', () {
+    test('فرقع البالونة بنفس نقاط السباق', () {
+      for (final f in [0.0, 0.5, 1.0]) {
+        expect(
+            gameQuestionPoints(
+                type: OnlineGameType.balloons,
+                correct: true,
+                remainingFraction: f),
+            gameQuestionPoints(
+                type: OnlineGameType.race,
+                correct: true,
+                remainingFraction: f));
+      }
+    });
+    test('سلم المليون: النقاط بتزيد مع رقم السؤال', () {
+      int p(int i) => gameQuestionPoints(
+          type: OnlineGameType.ladder,
+          correct: true,
+          remainingFraction: 0,
+          index: i);
+      expect([p(0), p(1), p(4)], [100, 200, 500]);
+      expect(
+          gameQuestionPoints(
+              type: OnlineGameType.ladder,
+              correct: true,
+              remainingFraction: 1,
+              index: 2),
+          350);
+      expect(
+          gameQuestionPoints(
+              type: OnlineGameType.ladder,
+              correct: false,
+              remainingFraction: 1,
+              index: 2),
+          0);
+    });
+    test('كل نوع بيتحفظ ويتقرا بنفس القيمة، والمجهول = سباق', () {
+      for (final ty in OnlineGameType.values) {
+        expect(OnlineGameTypeX.fromCloud(ty.cloudValue), ty);
+        expect(ty.defaultSeconds,
+            inInclusiveRange(kGameMinSeconds, kGameMaxSeconds));
+      }
+      expect(OnlineGameTypeX.fromCloud('???'), OnlineGameType.race);
+      expect(OnlineGameTypeX.fromCloud(null), OnlineGameType.race);
+    });
+  });
+
   group('GameScore.ranked', () {
     test('النقاط تنازليًا، والأسرع أولًا عند التساوي', () {
       final r = GameScore.ranked([
@@ -154,11 +201,10 @@ void main() {
           isTrue);
       expect(
           const GameQuestion(
-                  text: 't',
-                  options: ['x', 'y'],
-                  correctIndex: 0,
-                  optionImageUrls: [null, 'http://i/o.png'])
-              .hasImages,
+              text: 't',
+              options: ['x', 'y'],
+              correctIndex: 0,
+              optionImageUrls: [null, 'http://i/o.png']).hasImages,
           isTrue);
     });
   });

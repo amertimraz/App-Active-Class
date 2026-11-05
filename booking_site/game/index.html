@@ -144,6 +144,35 @@
     background:rgba(255,255,255,.16);color:#fff;font:700 12px 'Cairo',sans-serif;padding:7px 14px;
     border-radius:999px;transition:opacity .4s;white-space:nowrap;pointer-events:none;}
   .zm-hint.off{opacity:0;}
+  /* ── فرقع البالونة ── */
+  .sky{display:grid;grid-template-columns:1fr 1fr;gap:16px 14px;padding:8px 4px 20px;min-height:330px;align-content:start;}
+  .sky .bal:nth-child(even){margin-top:28px;}
+  .bal{position:relative;border:0;background:none;padding:0 0 40px;cursor:pointer;font-family:'Cairo';
+    animation:bob var(--dur) ease-in-out var(--dl) infinite alternate;}
+  .bb{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;min-height:150px;
+    padding:16px 12px;color:#fff;font-weight:800;font-size:16px;line-height:1.5;text-align:center;
+    border-radius:50% 50% 48% 48%/58% 58% 42% 42%;
+    background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.55),transparent 38%),linear-gradient(160deg,var(--c1),var(--c2));
+    box-shadow:inset -8px -10px 18px rgba(0,0,0,.18),0 12px 20px rgba(0,0,0,.25);transition:transform .1s;}
+  .bb img{max-height:64px;max-width:100%;border-radius:10px;object-fit:contain;background:#fff;padding:3px;}
+  .bk{position:absolute;bottom:36px;left:50%;width:14px;height:12px;margin-left:-7px;background:var(--c2);
+    clip-path:polygon(50% 0,100% 100%,0 100%);}
+  .bal::after{content:'';position:absolute;bottom:0;left:50%;width:2px;height:38px;margin-left:-1px;background:rgba(255,255,255,.55);}
+  @keyframes bob{from{transform:translateY(0) rotate(-1.5deg);}to{transform:translateY(-12px) rotate(1.5deg);}}
+  .bal:active:not(.locked) .bb{transform:scale(.95);}
+  .bal.locked{animation-play-state:paused;filter:saturate(.3) brightness(.8);opacity:.5;cursor:default;}
+  .bal.correct{filter:none;opacity:1;animation:glow .7s ease-out;}
+  .bal.correct .bb{outline:4px solid #A7F3D0;box-shadow:0 0 28px 6px rgba(52,211,153,.55),inset -8px -10px 18px rgba(0,0,0,.18);}
+  .bal.wrong{filter:none;opacity:1;animation:burst .55s ease-out forwards;}
+  @keyframes burst{0%{transform:scale(1);opacity:1;}35%{transform:scale(1.28);opacity:1;}100%{transform:scale(1.7);opacity:0;}}
+  /* ── سلم المليون ── */
+  .life{display:flex;gap:10px;margin:0 0 12px;}
+  .life button{flex:1;padding:11px 8px;border-radius:14px;border:1.5px solid rgba(255,255,255,.3);
+    background:rgba(255,255,255,.12);color:#fff;font:800 14px 'Cairo',sans-serif;cursor:pointer;}
+  .life button:disabled{opacity:.35;cursor:default;text-decoration:line-through;}
+  .prize{display:inline-block;background:var(--chalk);color:var(--on-chalk);font-weight:900;font-size:12.5px;
+    padding:3px 12px;border-radius:999px;margin:0 0 10px;}
+  .tile.gone{visibility:hidden;}
   .prep{text-align:center;padding:90px 0;font-weight:800;color:rgba(255,255,255,.8);}
   .prep .spinner{margin:0 auto 16px;}
   .tile.locked{cursor:default;filter:saturate(.35) brightness(.8);opacity:.6;}
@@ -383,16 +412,20 @@
     sq:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/></svg>',
     check:'<svg viewBox="0 0 24 24"><path d="M9.5 17.5L4 12l2.1-2.1 3.4 3.4 8.4-8.4L20 7z"/></svg>',
     cross:'<svg viewBox="0 0 24 24"><path d="M6.4 4.9L12 10.5l5.6-5.6 1.5 1.5-5.6 5.6 5.6 5.6-1.5 1.5-5.6-5.6-5.6 5.6-1.5-1.5 5.6-5.6-5.6-5.6z"/></svg>',
+    balloon:'<svg viewBox="0 0 64 64"><ellipse cx="32" cy="26" rx="17" ry="21" fill="#E11D48"/><ellipse cx="25" cy="18" rx="5" ry="8" fill="#fff" opacity=".35"/><path d="M28 47h8l-4 6z" fill="#BE123C"/><path d="M32 53c-3 4 3 6 0 10" stroke="#2A2200" stroke-width="2" fill="none"/></svg>',
+    ladder:'<svg viewBox="0 0 64 64"><rect x="14" y="6" width="6" height="52" rx="3" fill="#4F46E5"/><rect x="44" y="6" width="6" height="52" rx="3" fill="#4F46E5"/><rect x="20" y="14" width="24" height="5" rx="2" fill="#6D28D9"/><rect x="20" y="26" width="24" height="5" rx="2" fill="#6D28D9"/><rect x="20" y="38" width="24" height="5" rx="2" fill="#6D28D9"/><rect x="20" y="50" width="24" height="5" rx="2" fill="#6D28D9"/><circle cx="32" cy="9" r="5" fill="#F43F5E"/></svg>',
     star:'<svg viewBox="0 0 24 24"><path class="f" d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z" stroke="#FFE08A" stroke-width="1" stroke-linejoin="round"/></svg>',
     trophy:'<svg class="trophy" viewBox="0 0 128 128"><path d="M36 14h56v34a28 28 0 0 1-56 0z" fill="#FFD15C"/><path d="M36 22H16c0 18 8 30 22 32M92 22h20c0 18-8 30-22 32" fill="none" stroke="#F5B52E" stroke-width="8" stroke-linecap="round"/><rect x="56" y="74" width="16" height="22" fill="#F5B52E"/><rect x="38" y="96" width="52" height="14" rx="6" fill="#6D28D9"/><path d="M50 22v26a14 14 0 0 0 8 12" stroke="#FFF4C7" stroke-width="5" stroke-linecap="round" fill="none" opacity=".8"/></svg>',
   };
   const SHAPES = ['tri','dia','cir','sq'];
 
   // نفس معادلة gameQuestionPoints في التطبيق (online_game_model.dart).
-  function points(type, correct, frac){
+  function points(type, correct, frac, idx){
     if (!correct) return 0;
     const f = Math.max(0, Math.min(1, frac));
-    return type === 'true_false' ? 100 + Math.round(50*f) : 500 + Math.round(500*f);
+    if (type === 'true_false') return 100 + Math.round(50*f);
+    if (type === 'ladder') return 100 * ((idx || 0) + 1) + Math.round(50*f);
+    return 500 + Math.round(500*f); // race + balloons
   }
 
   // عدّاد أرقام متحرّك
@@ -470,6 +503,7 @@
       tone(N.C5, .12, 'triangle', .24); tone(N.E5, .12, 'triangle', .24, .09); tone(N.G5, .26, 'triangle', .26, .18);
       if (streak >= 3) { tone(N.C6, .3, 'sine', .18, .3); tone(N.E6, .34, 'sine', .14, .38); }
     },
+    pop(){ tone(900, .09, 'sine', .22, 0, 180); tone(1400, .05, 'triangle', .1, .01, 400); },
     wrong(){ tone(190, .32, 'sawtooth', .16, 0, 80); tone(150, .34, 'square', .08, .06, 70); },
     timeout(){ tone(440, .16, 'triangle', .2); tone(330, .2, 'triangle', .2, .15); tone(220, .38, 'triangle', .22, .32); },
     tick(urgent){ tone(urgent ? 1040 : 820, .06, 'square', urgent ? .1 : .07); },
@@ -542,20 +576,29 @@
   }
 
   const isTF = () => game.gameType === 'true_false';
-  const secsOf = () => game.secondsPerQuestion || (isTF() ? 10 : 20);
+  const isBalloons = () => game.gameType === 'balloons';
+  const isLadder = () => game.gameType === 'ladder';
+  const MODES = {
+    race:       { title:'سباق الأسئلة',  icon:'rocket',  secs:20, note:'⚡ الأسرع بيكسب أكتر' },
+    true_false: { title:'صح ولا غلط',     icon:'scale',   secs:10, note:'⚡ الأسرع بيكسب أكتر' },
+    balloons:   { title:'فرقع البالونة',  icon:'balloon', secs:15, note:'🎈 فرقع البالونة الصح' },
+    ladder:     { title:'سلم المليون',   icon:'ladder',  secs:30, note:'🪜 غلطة واحدة وتقف' },
+  };
+  const modeOf = () => MODES[game.gameType] || MODES.race;
+  const secsOf = () => game.secondsPerQuestion || modeOf().secs;
 
   function showBriefing(){
     document.getElementById('pageTitle').textContent = game.title || 'لعبة';
     const closed = game.status === 'closed';
     const n = (game.questions || []).length;
     view(`
-      <div class="emblem">${isTF() ? ICON.scale : ICON.rocket}</div>
+      <div class="emblem">${ICON[modeOf().icon]}</div>
       <p class="h-title">${esc(game.title || 'لعبة')}</p>
-      <p class="h-sub">أهلًا ${esc(ctx.name || '')} 👋 — ${isTF() ? 'صح ولا غلط؟' : 'سباق الأسئلة'}</p>
+      <p class="h-sub">أهلًا ${esc(ctx.name || '')} 👋 — ${modeOf().title}</p>
       <div class="chips">
         <span class="chip">❓ ${n} سؤال</span>
         <span class="chip">⏱ ${secsOf()} ثانية</span>
-        <span class="chip">⚡ الأسرع بيكسب أكتر</span>
+        <span class="chip">${modeOf().note}</span>
       </div>
       ${best ? `<div class="best">🏆 أفضل نتيجة ليك: ${best.score} نقطة</div>` : ''}
       ${closed ? '<div class="sheet" style="padding:12px;margin-bottom:14px"><div class="err" style="margin:0">اللعبة اتقفلت — النتيجة مش هتتسجّل.</div></div>' : ''}
@@ -567,7 +610,8 @@
   let run = null;
 
   function buildQuestions(){
-    const qs = shuffle(game.questions || []);
+    // سلم المليون: ترتيب المدرس زي ما هو (السلم بيصعب). الباقي بيتخلط.
+    const qs = isLadder() ? (game.questions || []).slice() : shuffle(game.questions || []);
     if (!isTF()) return qs.map(q => ({ q, order: shuffle(q.options.map((_, i) => i)) }));
     // صح ولا غلط: أسئلة الصح/خطأ زي ما هي، وأي اختيار من متعدد بيتحوّل
     // لجملة «الإجابة: X» (50% الصحيحة، 50% اختيار غلط عشوائي).
@@ -584,7 +628,8 @@
 
   function startGame(){
     unlockAudio(); sfx.start();
-    run = { items: buildQuestions(), i:0, score:0, correct:0, timeMs:0, streak:0, secs: secsOf() };
+    run = { items: buildQuestions(), i:0, score:0, correct:0, timeMs:0, streak:0, secs: secsOf(),
+            life5050:true, lifeSkip:true, over:false };
     showQuestion();
   }
 
@@ -623,7 +668,14 @@
     const q = it.q;
     const total = run.items.length;
     const imgs = q.optionImageUrls || [];
-    const answers = tf
+    const BCOL = [['#FB7185','#E11D48'],['#60A5FA','#2563EB'],['#FBBF24','#D97706'],['#34D399','#059669'],['#C084FC','#7C3AED'],['#F472B6','#DB2777']];
+    const answers = isBalloons()
+      ? `<div class="sky" id="opts">` + it.order.map((oi, k) => {
+          const c = BCOL[k % BCOL.length];
+          return `<button class="bal" data-i="${oi}" style="--c1:${c[0]};--c2:${c[1]};--dl:${(k*0.37).toFixed(2)}s;--dur:${(2.6+k*0.4).toFixed(1)}s">
+            <span class="bb">${imgTag(imgs[oi])}<span class="bt">${esc(q.options[oi])}</span></span><i class="bk"></i></button>`;
+        }).join('') + `</div>`
+      : tf
       ? `<div class="answers two tf" id="opts">
           <button class="tile" data-v="1"><span class="shape">${ICON.check}</span><span class="tx">صح</span></button>
           <button class="tile" data-v="0"><span class="shape">${ICON.cross}</span><span class="tx">خطأ</span></button></div>`
@@ -631,8 +683,12 @@
           `<button class="tile" data-i="${oi}"><span class="shape">${ICON[SHAPES[k % 4]]}</span>
             <span class="tx">${esc(q.options[oi])}</span>${imgTag(imgs[oi])}</button>`).join('') + `</div>`;
 
-    view(`${hudHtml(total)}
-      <div class="qcard">${imgTag(q.imageUrl,'qi')}<p class="q">${esc(tf ? it.statement : q.text)}</p>${tf ? imgTag(it.stmtImg,'qi') : ''}</div>
+    const prizeHere = 100 * (run.i + 1);
+    const ladderTop = isLadder()
+      ? `<div class="life"><button id="l5050" ${run.life5050 && q.options.length > 2 ? '' : 'disabled'}>٥٠:٥٠</button>
+           <button id="lskip" ${run.lifeSkip ? '' : 'disabled'}>تخطّي ⏭</button></div>` : '';
+    view(`${hudHtml(total)}${ladderTop}
+      <div class="qcard">${isLadder() ? `<span class="prize">🪜 السؤال ${run.i+1} من ${total} — يكسبك ${prizeHere}+ نقطة</span>` : ''}${imgTag(q.imageUrl,'qi')}<p class="q">${esc(tf ? it.statement : q.text)}</p>${tf ? imgTag(it.stmtImg,'qi') : ''}</div>
       ${answers}<div id="after"></div>`);
 
     const startedAt = performance.now();
@@ -646,14 +702,18 @@
       clearTimer();
       const elapsed = Math.min(performance.now() - startedAt, limit);
       const frac = (limit - elapsed) / limit;
+      const skipped = chosen === 'skip';
       let ok = false;
-      if (chosen !== null) ok = tf ? ((chosen === 1) === it.truth) : (chosen === q.correctIndex);
-      const gained = points(game.gameType, ok, frac);
+      if (chosen !== null && !skipped) ok = tf ? ((chosen === 1) === it.truth) : (chosen === q.correctIndex);
+      const gained = points(game.gameType, ok, frac, run.i);
       run.score += gained;
       if (ok) { run.correct++; run.streak++; } else run.streak = 0;
       run.timeMs += Math.round(chosen === null ? limit : elapsed);
       buzz(ok ? 25 : [60,40,60]);
-      if (ok) sfx.correct(run.streak); else if (chosen === null) sfx.timeout(); else sfx.wrong();
+      if (isBalloons() && chosen !== null && !skipped) sfx.pop();
+      if (ok) sfx.correct(run.streak); else if (skipped) sfx.tick(false); else if (chosen === null) sfx.timeout(); else sfx.wrong();
+      // سلم المليون: أي غلطة (أو انتهاء الوقت) بتوقّف السلم، والتخطّي لا.
+      if (isLadder() && !ok && !skipped) run.over = true;
 
       const sc = document.getElementById('sc');
       const from = run.score - gained;
@@ -665,7 +725,7 @@
         sc.parentElement.appendChild(f); setTimeout(() => f.remove(), 1000);
       } else sc.textContent = run.score;
 
-      document.querySelectorAll('#opts .tile').forEach(b => {
+      document.querySelectorAll('#opts button').forEach(b => {
         b.onclick = null; b.classList.add('locked');
         if (tf) {
           const v = b.dataset.v === '1';
@@ -678,9 +738,11 @@
         }
       });
 
-      const last = run.i + 1 >= run.items.length;
-      const cls = ok ? 'good' : (chosen === null ? 'late' : 'bad');
-      const title = ok ? (run.streak >= 3 ? 'ولا غلطة! 🔥' : 'برافو!') : (chosen === null ? 'الوقت خلص ⏰' : 'غلط للأسف');
+      const last = run.i + 1 >= run.items.length || run.over;
+      const cls = ok ? 'good' : (skipped || chosen === null ? 'late' : 'bad');
+      const title = ok ? (run.streak >= 3 ? 'ولا غلطة! 🔥' : 'برافو!')
+        : (skipped ? 'تخطّيت السؤال ⏭' : chosen === null ? 'الوقت خلص ⏰' : (isLadder() ? 'غلطة… السلم وقف 🪜' : 'غلط للأسف'));
+      document.querySelectorAll('.life button').forEach(b => b.disabled = true);
       const correctNote = (!ok && tf && q.options.length > 2) ? `الإجابة الصحيحة: <b>${esc(it.correctText)}</b>` : '';
       const expl = (q.explanation || q.explanationImageUrl)
         ? `<p class="note">💡 ${esc(q.explanation || '')}${imgTag(q.explanationImageUrl)}</p>` : '';
@@ -693,9 +755,18 @@
       nb.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
     }
 
-    document.querySelectorAll('#opts .tile').forEach(b => {
+    document.querySelectorAll('#opts button').forEach(b => {
       b.onclick = () => finish(tf ? +b.dataset.v : +b.dataset.i);
     });
+    const b5050 = document.getElementById('l5050'), bskip = document.getElementById('lskip');
+    if (b5050) b5050.onclick = () => {
+      if (!run.life5050 || answered) return;
+      run.life5050 = false; b5050.disabled = true; sfx.tick(false);
+      const wrongs = [...document.querySelectorAll('#opts .tile')].filter(b => +b.dataset.i !== q.correctIndex);
+      // نخلّي الصح + اختيار غلط واحد بس.
+      shuffle(wrongs).slice(0, Math.max(0, wrongs.length - 1)).forEach(b => { b.classList.add('gone'); b.onclick = null; });
+    };
+    if (bskip) bskip.onclick = () => { if (!run.lifeSkip || answered) return; run.lifeSkip = false; finish('skip'); };
 
     let lastSec = Infinity;
     timer = setInterval(() => {
@@ -729,7 +800,7 @@
         best = { score: run.score };
       } catch (e) { saved = false; }
     }
-    const heading = starsOn === 3 ? 'أسطورة! 🎉' : starsOn === 2 ? 'شغل جامد 👏' : starsOn === 1 ? 'بداية حلوة — جرّب تاني 💪' : 'محتاجة مذاكرة — جرّب تاني';
+    const heading = isLadder() && run.over ? `السلم وقّفك عند السؤال ${run.i} 🪜` : isLadder() && run.i >= total && starsOn >= 2 ? 'وصلت لآخر السلم! 🏆' : starsOn === 3 ? 'أسطورة! 🎉' : starsOn === 2 ? 'شغل جامد 👏' : starsOn === 1 ? 'بداية حلوة — جرّب تاني 💪' : 'محتاجة مذاكرة — جرّب تاني';
     view(`
       ${starsOn >= 2 ? ICON.trophy : `<div class="emblem" style="margin-top:6px">${ICON.rocket}</div>`}
       <p class="h-title" style="margin-bottom:0">${heading}</p>

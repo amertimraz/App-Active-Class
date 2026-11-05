@@ -14,7 +14,7 @@ import 'package:active_class/services/online_game_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/views/exams/games/game_leaderboard_page.dart';
-import 'package:active_class/views/exams/games/online_game_editor_page.dart';
+import 'package:active_class/views/exams/games/game_type_picker_page.dart';
 import 'package:active_class/widgets/app_panel.dart';
 
 class OnlineGamesTab extends StatefulWidget {
@@ -191,7 +191,7 @@ class OnlineGamesTabState extends State<OnlineGamesTab> {
         action: access.canCreate
             ? FilledButton.icon(
                 onPressed: () async {
-                  await Get.to(() => const OnlineGameEditorPage());
+                  await Get.to(() => const GameTypePickerPage());
                   reload();
                 },
                 icon: const Icon(Icons.add_rounded),
@@ -253,12 +253,8 @@ class _GameCard extends StatelessWidget {
                 color: t.rosterTint,
                 borderRadius: BorderRadius.circular(AppRadius.control),
               ),
-              child: Icon(
-                  game.type == OnlineGameType.race
-                      ? Icons.rocket_launch_rounded
-                      : Icons.balance_rounded,
-                  color: t.rosterInk,
-                  size: 22),
+              child:
+                  Icon(gameTypeIcon(game.type), color: t.rosterInk, size: 22),
             ),
             const SizedBox(width: AppSpace.md),
             Expanded(

@@ -13,25 +13,53 @@ import 'package:active_class/models/bank_question_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
 
 /// نوع اللعبة: بيحدد شكل العرض في صفحة الطالب (نفس الأسئلة).
-enum OnlineGameType { race, trueFalse }
+enum OnlineGameType { race, trueFalse, balloons, ladder }
 
 extension OnlineGameTypeX on OnlineGameType {
   /// القيمة المخزّنة في Firestore وبتقراها صفحة الويب.
-  String get cloudValue => this == OnlineGameType.race ? 'race' : 'true_false';
+  String get cloudValue => switch (this) {
+        OnlineGameType.race => 'race',
+        OnlineGameType.trueFalse => 'true_false',
+        OnlineGameType.balloons => 'balloons',
+        OnlineGameType.ladder => 'ladder',
+      };
 
-  static OnlineGameType fromCloud(String? raw) =>
-      raw == 'true_false' ? OnlineGameType.trueFalse : OnlineGameType.race;
+  static OnlineGameType fromCloud(String? raw) => switch (raw) {
+        'true_false' => OnlineGameType.trueFalse,
+        'balloons' => OnlineGameType.balloons,
+        'ladder' => OnlineGameType.ladder,
+        _ => OnlineGameType.race,
+      };
 
-  String get title =>
-      this == OnlineGameType.race ? 'سباق الأسئلة' : 'صح ولا غلط';
+  String get title => switch (this) {
+        OnlineGameType.race => 'سباق الأسئلة',
+        OnlineGameType.trueFalse => 'صح ولا غلط',
+        OnlineGameType.balloons => 'فرقع البالونة',
+        OnlineGameType.ladder => 'سلم المليون',
+      };
 
-  String get description => this == OnlineGameType.race
-      ? 'اختيار من متعدد بعدّاد وقت — الأسرع والأدق يكسب نقاط أكتر'
-      : 'جملة وزرّين كبار مع شرح بعد كل سؤال';
+  String get description => switch (this) {
+        OnlineGameType.race =>
+          'اختيار من متعدد بعدّاد وقت — الأسرع والأدق يكسب نقاط أكتر',
+        OnlineGameType.trueFalse => 'جملة وزرّين كبار مع شرح بعد كل سؤال',
+        OnlineGameType.balloons =>
+          'الإجابات على بالونات طايرة — فرقع البالونة الصح',
+        OnlineGameType.ladder =>
+          'سؤال بسؤال والنقاط بتزيد — غلطة واحدة وتقف، ومعاك ٥٠:٥٠ وتخطّي',
+      };
 
   /// الوقت الافتراضي للسؤال بالثواني.
-  int get defaultSeconds => this == OnlineGameType.race ? 20 : 10;
+  int get defaultSeconds => switch (this) {
+        OnlineGameType.race => 20,
+        OnlineGameType.trueFalse => 10,
+        OnlineGameType.balloons => 15,
+        OnlineGameType.ladder => 30,
+      };
 }
+
+/// حدود وقت السؤال اللي المدرس يقدر يضبطه (ثواني).
+const int kGameMinSeconds = 5;
+const int kGameMaxSeconds = 120;
 
 /// سؤال داخل لعبة (نسخة مسطّحة من ExamQuestion/BankQuestion).
 class GameQuestion {
@@ -226,17 +254,20 @@ class GameScore {
 /// تقسيم نقاط السؤال — نفس المعادلة اللي في صفحة اللعبة (booking_site/game)،
 /// متكرّرة هنا عشان تتختبر. [remainingFraction] نسبة الوقت المتبقي (0..1).
 ///
-/// سباق الأسئلة: 500 أساسية + حتى 500 سرعة (1000 كحد أقصى).
+/// سباق الأسئلة وفرقع البالونة: 500 أساسية + حتى 500 سرعة (1000 كحد أقصى).
 /// صح ولا غلط: 100 أساسية + حتى 50 سرعة (150 كحد أقصى).
+/// سلم المليون: 100 × (رقم السؤال) + حتى 50 سرعة — [index] يبدأ من 0.
 int gameQuestionPoints({
   required OnlineGameType type,
   required bool correct,
   required double remainingFraction,
+  int index = 0,
 }) {
   if (!correct) return 0;
   final f = remainingFraction.clamp(0.0, 1.0);
   return switch (type) {
-    OnlineGameType.race => 500 + (500 * f).round(),
+    OnlineGameType.race || OnlineGameType.balloons => 500 + (500 * f).round(),
     OnlineGameType.trueFalse => 100 + (50 * f).round(),
+    OnlineGameType.ladder => 100 * (index + 1) + (50 * f).round(),
   };
 }

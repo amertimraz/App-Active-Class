@@ -13,9 +13,11 @@ import 'package:active_class/models/bank_question_model.dart';
 import 'package:active_class/models/online_game_model.dart';
 import 'package:active_class/services/online_game_service.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/views/exams/games/game_type_picker_page.dart';
 import 'package:active_class/views/question_bank/question_bank_picker_page.dart';
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/app_panel.dart';
+import 'package:active_class/widgets/group_multi_select_field.dart';
 
 /// أقل/أكبر عدد أسئلة للعبة (أقل من 3 مش لعبة، وأكتر من 50 بيطوّل المستند).
 const int kGameMinQuestions = 3;
@@ -36,7 +38,9 @@ List<GameQuestion> mergeGameQuestions(
 }
 
 class OnlineGameEditorPage extends StatefulWidget {
-  const OnlineGameEditorPage({super.key});
+  /// الشكل اللي اتختار من كروت الألعاب (الخطوة الأولى).
+  final OnlineGameType type;
+  const OnlineGameEditorPage({super.key, required this.type});
 
   @override
   State<OnlineGameEditorPage> createState() => _OnlineGameEditorPageState();
@@ -49,24 +53,24 @@ class _OnlineGameEditorPageState extends State<OnlineGameEditorPage> {
       ? Get.find<GroupController>()
       : Get.put(GroupController());
 
-  OnlineGameType _type = OnlineGameType.race;
-  int _seconds = OnlineGameType.race.defaultSeconds;
-  final Set<String> _groups = {};
+  OnlineGameType get _type => widget.type;
+  late int _seconds = widget.type.defaultSeconds;
+  final Set<int> _groupIds = {};
   List<GameQuestion> _questions = [];
   bool _publishing = false;
+  // بعد أول محاولة نشر ناقصة: بنبرّز الناقص بالأحمر ونودّي المستخدم له.
+  bool _tried = false;
+  // آخر خطأ نشر بنصّه الحقيقي — بنعرضه جوّه الشاشة (التوست ممكن ما يبانش).
+  String? _error;
+  final _scroll = ScrollController();
+  final _titleKey = GlobalKey();
+  final _questionsKey = GlobalKey();
 
   @override
   void dispose() {
+    _scroll.dispose();
     _title.dispose();
     super.dispose();
-  }
-
-  void _setType(OnlineGameType t) {
-    setState(() {
-      // لو الوقت لسه على افتراضي النوع القديم، حوّله لافتراضي النوع الجديد.
-      if (_seconds == _type.defaultSeconds) _seconds = t.defaultSeconds;
-      _type = t;
-    });
   }
 
   Future<void> _addFromBank() async {
@@ -126,33 +130,65 @@ class _OnlineGameEditorPageState extends State<OnlineGameEditorPage> {
     ToastHelper.info('اتضافت ${_questions.length - before} سؤال');
   }
 
+  /// نص الوقت: «45 ث» أو «1:30 د» لما يعدّي الدقيقة.
+  String _secondsLabel(int s) =>
+      s < 60 ? '$s ث' : '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')} د';
+
+  /// الناقص قبل النشر (فاضي = جاهزة).
+  List<String> _missing() => [
+        if (_title.text.trim().isEmpty) 'اسم اللعبة',
+        if (_questions.length < kGameMinQuestions)
+          '${kGameMinQuestions - _questions.length} سؤال كمان',
+      ];
+
+  void _reveal(GlobalKey key) {
+    final ctx = key.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(ctx,
+          duration: const Duration(milliseconds: 300), alignment: 0.1);
+    }
+  }
+
   Future<void> _publish() async {
+    final missing = _missing();
+    if (missing.isNotEmpty) {
+      setState(() => _tried = true);
+      ToastHelper.error('ناقص: ${missing.join(' و')}');
+      _reveal(_title.text.trim().isEmpty ? _titleKey : _questionsKey);
+      return;
+    }
     final title = _title.text.trim();
-    if (title.isEmpty) {
-      ToastHelper.error('اكتب اسم اللعبة');
-      return;
-    }
-    if (_questions.length < kGameMinQuestions) {
-      ToastHelper.error('ضيف $kGameMinQuestions أسئلة على الأقل');
-      return;
-    }
-    setState(() => _publishing = true);
+    setState(() {
+      _publishing = true;
+      _error = null;
+    });
     try {
       final svc = OnlineGameService();
-      final id = await svc.publish(
-        title: title,
-        type: _type,
-        secondsPerQuestion: _seconds,
-        allowedGroupNames: _groups.toList(),
-        questions: _questions,
-      );
+      final id = await svc
+          .publish(
+            title: title,
+            type: _type,
+            secondsPerQuestion: _seconds,
+            allowedGroupNames: [
+          for (final g in _gc.groups)
+            if (_groupIds.contains(g.id)) g.name
+        ],
+            questions: _questions,
+          )
+          .timeout(const Duration(seconds: 40));
       final slug = await svc.slug();
       if (!mounted) return;
       ToastHelper.success('اتنشرت اللعبة');
       Get.back(result: OnlineGameService.linkFor(slug, id));
     } catch (e) {
-      if (mounted) setState(() => _publishing = false);
-      ToastHelper.error('تعذّر النشر — تأكد من اتصالك بالإنترنت');
+      debugPrint('OnlineGameEditor.publish failed — $e');
+      if (mounted) {
+        setState(() {
+          _publishing = false;
+          _error = e.toString();
+        });
+      }
+      ToastHelper.error('تعذّر النشر — راجع الرسالة تحت');
     }
   }
 
@@ -166,77 +202,141 @@ class _OnlineGameEditorPageState extends State<OnlineGameEditorPage> {
       bottomNavigationBar: Padding(
         padding: EdgeInsets.fromLTRB(
             AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.md + bottom),
-        child: FilledButton.icon(
-          onPressed: _publishing ? null : _publish,
-          style: FilledButton.styleFrom(minimumSize: const Size(0, 52)),
-          icon: _publishing
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white))
-              : const Icon(Icons.rocket_launch_rounded),
-          label: Text(_publishing ? 'جاري النشر...' : 'انشر اللعبة'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_error != null)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: AppSpace.sm),
+                padding: const EdgeInsets.all(AppSpace.md),
+                decoration: BoxDecoration(
+                  color: t.dangerSoft,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
+                ),
+                child: SelectableText('تعذّر النشر:\n$_error',
+                    maxLines: 6,
+                    textDirection: TextDirection.ltr,
+                    style: AppType.caption
+                        .copyWith(color: const Color(0xFF14172B))),
+              ),
+            if (_missing().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpace.sm),
+                child: Text('ناقص: ${_missing().join(' و')}',
+                    textAlign: TextAlign.center,
+                    style: AppType.body.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: _tried ? t.danger : t.inkFaint)),
+              ),
+            FilledButton.icon(
+              onPressed: _publishing ? null : _publish,
+              style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 52)),
+              icon: _publishing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.rocket_launch_rounded),
+              label: Text(_publishing ? 'جاري النشر...' : 'انشر اللعبة'),
+            ),
+          ],
         ),
       ),
       body: ListView(
+        controller: _scroll,
         padding: const EdgeInsets.all(AppSpace.lg),
         children: [
-          _label(t, 'اسم اللعبة'),
+          KeyedSubtree(key: _titleKey, child: _label(t, 'اسم اللعبة')),
           TextField(
             controller: _title,
+            onChanged: (_) => setState(() {}),
             textInputAction: TextInputAction.next,
             decoration:
                 const InputDecoration(hintText: 'مثال: مراجعة الباب الأول'),
           ),
           const SizedBox(height: AppSpace.xl),
-          _label(t, 'نوع اللعبة'),
-          for (final ty in OnlineGameType.values)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpace.sm),
-              child: _TypeCard(
-                type: ty,
-                selected: _type == ty,
-                onTap: () => _setType(ty),
-              ),
-            ),
-          const SizedBox(height: AppSpace.lg),
+          _TypeBanner(type: _type, onChange: () => Get.back()),
+          const SizedBox(height: AppSpace.xl),
           _label(t, 'الوقت لكل سؤال'),
-          Wrap(
-            spacing: AppSpace.sm,
-            children: [
-              for (final s in const [10, 15, 20, 30, 45])
-                ChoiceChip(
-                  label: Text('$s ث'),
-                  selected: _seconds == s,
-                  onSelected: (_) => setState(() => _seconds = s),
+          AppPanel(
+            padding: const EdgeInsets.fromLTRB(
+                AppSpace.md, AppSpace.sm, AppSpace.md, AppSpace.md),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton.filledTonal(
+                      tooltip: 'أقل',
+                      onPressed: _seconds > kGameMinSeconds
+                          ? () => setState(() => _seconds--)
+                          : null,
+                      icon: const Icon(Icons.remove_rounded),
+                    ),
+                    SizedBox(
+                      width: 120,
+                      child: Text(_secondsLabel(_seconds),
+                          textAlign: TextAlign.center,
+                          style: AppType.figure.copyWith(color: t.brand)),
+                    ),
+                    IconButton.filledTonal(
+                      tooltip: 'أكتر',
+                      onPressed: _seconds < kGameMaxSeconds
+                          ? () => setState(() => _seconds++)
+                          : null,
+                      icon: const Icon(Icons.add_rounded),
+                    ),
+                  ],
                 ),
-            ],
+                Slider(
+                  value: _seconds.toDouble(),
+                  min: kGameMinSeconds.toDouble(),
+                  max: kGameMaxSeconds.toDouble(),
+                  divisions: kGameMaxSeconds - kGameMinSeconds,
+                  label: '$_seconds ث',
+                  onChanged: (v) => setState(() => _seconds = v.round()),
+                ),
+                Wrap(
+                  spacing: AppSpace.sm,
+                  children: [
+                    for (final s in const [10, 15, 20, 30, 45, 60, 90])
+                      ChoiceChip(
+                        label: Text('$s ث'),
+                        selected: _seconds == s,
+                        onSelected: (_) => setState(() => _seconds = s),
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: AppSpace.xl),
           _label(t, 'لمين؟'),
           Text(
-              _groups.isEmpty
+              _groupIds.isEmpty
                   ? 'كل الطلاب اللي معاهم كود'
                   : 'طلاب المجموعات المختارة بس',
               style: AppType.caption.copyWith(color: t.inkFaint)),
           const SizedBox(height: AppSpace.sm),
-          Obx(() => Wrap(
-                spacing: AppSpace.sm,
-                runSpacing: AppSpace.xs,
-                children: [
-                  for (final g in _gc.groups)
-                    FilterChip(
-                      label: Text(g.name),
-                      selected: _groups.contains(g.name),
-                      onSelected: (v) => setState(() =>
-                          v ? _groups.add(g.name) : _groups.remove(g.name)),
-                    ),
-                ],
+          Obx(() => GroupMultiSelectField(
+                groups: _gc.groups.toList(),
+                selected: _groupIds,
+                title: 'اللعبة لمجموعات مين؟',
+                emptyHint: 'كل الطلاب (اضغط لاختيار مجموعات)',
+                onChanged: (ids) => setState(() {
+                  _groupIds
+                    ..clear()
+                    ..addAll(ids);
+                }),
               )),
           const SizedBox(height: AppSpace.xl),
-          Row(children: [
-            Expanded(child: _label(t, 'الأسئلة (${_questions.length})')),
+          Row(key: _questionsKey, children: [
+            Expanded(
+                child: _label(t,
+                    'الأسئلة (${_questions.length} من $kGameMinQuestions على الأقل)')),
             if (_questions.isNotEmpty)
               TextButton(
                   onPressed: () => setState(() => _questions = []),
@@ -281,8 +381,8 @@ class _OnlineGameEditorPageState extends State<OnlineGameEditorPage> {
                     const SizedBox(width: AppSpace.md),
                     if (_questions[i].hasImages)
                       Padding(
-                        padding: const EdgeInsetsDirectional.only(
-                            end: AppSpace.sm),
+                        padding:
+                            const EdgeInsetsDirectional.only(end: AppSpace.sm),
                         child: Tooltip(
                           message: 'السؤال فيه صور',
                           child: Icon(Icons.image_outlined,
@@ -321,39 +421,52 @@ class _OnlineGameEditorPageState extends State<OnlineGameEditorPage> {
       );
 }
 
-class _TypeCard extends StatelessWidget {
+/// شكل اللعبة المختار فوق المحرّر، مع رجوع لتغييره.
+class _TypeBanner extends StatelessWidget {
   final OnlineGameType type;
-  final bool selected;
-  final VoidCallback onTap;
-  const _TypeCard(
-      {required this.type, required this.selected, required this.onTap});
+  final VoidCallback onChange;
+  const _TypeBanner({required this.type, required this.onChange});
 
   @override
   Widget build(BuildContext context) {
-    final t = context.tokens;
-    return AppPanel(
-      onTap: onTap,
-      lineColor: selected ? t.brand : null,
+    return Container(
+      padding: const EdgeInsets.all(AppSpace.md + 2),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: gameTypeGradient(type),
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.panel),
+      ),
       child: Row(children: [
-        Icon(
-            type == OnlineGameType.race
-                ? Icons.rocket_launch_rounded
-                : Icons.balance_rounded,
-            color: selected ? t.brand : t.inkFaint,
-            size: 26),
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.22),
+            borderRadius: BorderRadius.circular(AppRadius.control),
+          ),
+          child: Icon(gameTypeIcon(type), color: Colors.white, size: 26),
+        ),
         const SizedBox(width: AppSpace.md),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(type.title, style: AppType.label.copyWith(color: t.ink)),
+              Text(type.title,
+                  style: AppType.label.copyWith(color: Colors.white)),
               Text(type.description,
-                  style: AppType.caption.copyWith(color: t.inkFaint)),
+                  style: AppType.caption
+                      .copyWith(color: Colors.white.withValues(alpha: 0.9))),
             ],
           ),
         ),
-        Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off,
-            color: selected ? t.brand : t.inkFaint),
+        TextButton(
+          onPressed: onChange,
+          style: TextButton.styleFrom(foregroundColor: Colors.white),
+          child: const Text('تغيير'),
+        ),
       ]),
     );
   }

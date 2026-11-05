@@ -228,58 +228,36 @@ class _StatsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    Widget stat(String v, String l, IconData i) => Expanded(
+          child: Column(children: [
+            Icon(i, size: 20, color: t.boardInkSoft),
+            const SizedBox(height: 4),
+            Text(v, style: AppType.figure.copyWith(color: t.boardInk)),
+            Text(l,
+                textAlign: TextAlign.center,
+                style: AppType.caption.copyWith(color: t.boardInkSoft)),
+          ]),
+        );
+    final divider = Container(width: 1, height: 44, color: t.boardLine);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+      padding: const EdgeInsets.symmetric(
+          vertical: AppSpace.lg, horizontal: AppSpace.sm),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF4F46E5).withValues(alpha: 0.30),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: t.board,
+        borderRadius: BorderRadius.circular(AppRadius.board),
       ),
       child: Row(children: [
-        _stat('$live', 'منشور\nالآن', Icons.wifi_tethering_rounded),
-        _divider(),
-        _stat('$drafts', 'مسودّة', Icons.edit_note_rounded),
-        _divider(),
-        _stat('$ended', 'منتهي', Icons.flag_rounded),
-        _divider(),
-        _stat('$submissions', 'إجمالي\nالتسليمات', Icons.how_to_reg_rounded),
+        stat('$live', 'منشور الآن', Icons.wifi_tethering_rounded),
+        divider,
+        stat('$drafts', 'مسودّة', Icons.edit_note_rounded),
+        divider,
+        stat('$ended', 'منتهي', Icons.flag_rounded),
+        divider,
+        stat('$submissions', 'التسليمات', Icons.how_to_reg_rounded),
       ]),
     );
   }
-
-  Widget _divider() =>
-      Container(width: 1, height: 42, color: Colors.white.withValues(alpha: 0.18));
-
-  Widget _stat(String v, String l, IconData i) => Expanded(
-        child: Column(children: [
-          Icon(i, size: 17, color: Colors.white.withValues(alpha: 0.85)),
-          const SizedBox(height: 5),
-          Text(v,
-              style: const TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 21,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  height: 1.05)),
-          Text(l,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 9.5,
-                  height: 1.3,
-                  color: Colors.white.withValues(alpha: 0.78))),
-        ]),
-      );
 }
 
 // ─── بطاقة امتحان إلكتروني ───────────────────────────────────────────────────

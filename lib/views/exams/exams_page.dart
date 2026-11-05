@@ -11,10 +11,12 @@ import 'package:active_class/models/group_model.dart';
 import 'package:active_class/views/exams/exam_grades_page.dart';
 import 'package:active_class/views/exams/leaderboard_page.dart';
 import 'package:active_class/views/exams/online_exams_tab.dart';
-import 'package:active_class/views/exams/games/online_game_editor_page.dart';
+import 'package:active_class/views/exams/games/game_type_picker_page.dart';
 import 'package:active_class/views/exams/online_exam_editor_page.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/widgets/group_multi_select_field.dart';
 
 // ─── حالة الامتحان ────────────────────────────────────────────────────────────
 enum ExamStatus { notStarted, inProgress, complete }
@@ -52,6 +54,21 @@ extension ExamStatusExt on ExamStatus {
         return Icons.check_circle_rounded;
     }
   }
+}
+
+/// ألوان الحالة من الـtokens (تتبدّل مع الوضع الليلي). fill = تعبئة الشرائط،
+/// ink = لون النص.
+extension ExamStatusTokens on ExamStatus {
+  Color fill(AppTokens t) => switch (this) {
+        ExamStatus.notStarted => t.inkFaint,
+        ExamStatus.inProgress => t.cautionBar,
+        ExamStatus.complete => t.positive,
+      };
+  Color ink(AppTokens t) => switch (this) {
+        ExamStatus.notStarted => t.inkSoft,
+        ExamStatus.inProgress => t.caution,
+        ExamStatus.complete => t.positive,
+      };
 }
 
 ExamStatus _statusOf(ExamProgress? p) {
@@ -163,10 +180,12 @@ class _ExamsPageState extends State<ExamsPage>
     final isDark = theme.brightness == Brightness.dark;
     final cs = theme.colorScheme;
 
+    final tk = context.tokens;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('الامتحانات والدرجات',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+      backgroundColor: tk.page,
+      appBar: buildBoardAppBar(
+        context,
+        title: 'الامتحانات والدرجات',
         actions: [
           // زرار مزامنة الامتحانات القديمة — بيظهر بس لو وضع الفريق شغّال،
           // عشان يبعت الامتحانات اللي اتعملت قبل ما المزامنة دي تتوصّل
@@ -191,35 +210,29 @@ class _ExamsPageState extends State<ExamsPage>
         ],
         bottom: TabBar(
           controller: _tab,
-          labelStyle: const TextStyle(
-              fontFamily: 'Cairo', fontWeight: FontWeight.w800, fontSize: 12.5),
-          unselectedLabelStyle: const TextStyle(
-              fontFamily: 'Cairo', fontWeight: FontWeight.w600, fontSize: 12.5),
-          indicatorSize: TabBarIndicatorSize.tab,
-          indicator: BoxDecoration(
-            gradient: const LinearGradient(
-                colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)]),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          indicatorPadding: const EdgeInsets.all(6),
-          labelColor: Colors.white,
+          labelColor: tk.boardInk,
+          unselectedLabelColor: tk.boardInkSoft,
+          indicatorColor: tk.chalk,
+          indicatorWeight: 3,
           dividerColor: Colors.transparent,
+          labelStyle: AppType.label,
+          unselectedLabelStyle: AppType.label,
           tabs: const [
             Tab(
-                height: 42,
+                height: 46,
                 child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.description_rounded, size: 15),
+                      Icon(Icons.description_rounded, size: 18),
                       SizedBox(width: 6),
                       Text('ورقي'),
                     ])),
             Tab(
-                height: 42,
+                height: 46,
                 child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.wifi_tethering_rounded, size: 15),
+                      Icon(Icons.wifi_tethering_rounded, size: 18),
                       SizedBox(width: 6),
                       Text('إلكتروني'),
                     ])),
@@ -243,7 +256,7 @@ class _ExamsPageState extends State<ExamsPage>
               return FloatingActionButton.extended(
                 onPressed: () async {
                   if (games) {
-                    await Get.to(() => const OnlineGameEditorPage());
+                    await Get.to(() => const GameTypePickerPage());
                     OnlineExamsTab.gamesKey.currentState?.reload();
                   } else {
                     await Get.to(() => const OnlineExamEditorPage());
@@ -269,6 +282,7 @@ class _ExamsPageState extends State<ExamsPage>
   }
 
   Widget _buildPaperTab(ThemeData theme, bool isDark, ColorScheme cs) {
+    final t = context.tokens;
     return Obx(() {
         final groups = _gc.groups.toList();
         // التبويب ده للامتحانات الورقية فقط — الإلكترونية في تبويب منفصل.
@@ -332,47 +346,40 @@ class _ExamsPageState extends State<ExamsPage>
                       child: TextField(
                         controller: _searchCtrl,
                         onChanged: (v) => setState(() => _search = v),
-                        style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 13,
-                            color: cs.onSurface),
+                        style: AppType.label.copyWith(color: t.ink),
                         decoration: InputDecoration(
                           hintText: 'ابحث عن امتحان...',
-                          hintStyle: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 13,
-                              color: cs.onSurface.withValues(alpha: 0.35)),
+                          hintStyle:
+                              AppType.body.copyWith(color: t.inkFaint),
                           prefixIcon: Icon(Icons.search_rounded,
-                              size: 20,
-                              color: cs.onSurface.withValues(alpha: 0.4)),
+                              size: 22, color: t.inkFaint),
                           suffixIcon: _search.isNotEmpty
                               ? IconButton(
-                                  icon: const Icon(Icons.close_rounded,
-                                      size: 18),
+                                  tooltip: 'مسح البحث',
+                                  icon: Icon(Icons.close_rounded,
+                                      size: 20, color: t.inkSoft),
                                   onPressed: () {
                                     _searchCtrl.clear();
                                     setState(() => _search = '');
                                   })
                               : null,
                           filled: true,
-                          fillColor: isDark
-                              ? cs.onSurface.withValues(alpha: 0.05)
-                              : Colors.white,
-                          isDense: true,
+                          fillColor: t.surface,
                           contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 11),
+                              horizontal: 14, vertical: 14),
                           border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(13),
-                              borderSide: BorderSide(
-                                  color: cs.onSurface.withValues(alpha: 0.12))),
+                              borderRadius:
+                                  BorderRadius.circular(AppRadius.panel),
+                              borderSide: BorderSide(color: t.line)),
                           enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(13),
-                              borderSide: BorderSide(
-                                  color: cs.onSurface.withValues(alpha: 0.12))),
+                              borderRadius:
+                                  BorderRadius.circular(AppRadius.panel),
+                              borderSide: BorderSide(color: t.line)),
                           focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(13),
-                              borderSide: const BorderSide(
-                                  color: AppTheme.primaryColor, width: 1.5)),
+                              borderRadius:
+                                  BorderRadius.circular(AppRadius.panel),
+                              borderSide:
+                                  BorderSide(color: t.brand, width: 1.5)),
                         ),
                       ),
                     ),
@@ -423,13 +430,13 @@ class _ExamsPageState extends State<ExamsPage>
                     child: Center(
                       child: Column(children: [
                         Icon(Icons.search_off_rounded,
-                            size: 48,
-                            color: cs.onSurface.withValues(alpha: 0.2)),
+                            size: 48, color: t.inkFaint),
                         const SizedBox(height: 10),
                         Text('لا توجد نتائج مطابقة',
-                            style: TextStyle(
-                                fontFamily: 'Cairo',
-                                color: cs.onSurface.withValues(alpha: 0.4))),
+                            style: AppType.label.copyWith(color: t.inkSoft)),
+                        const SizedBox(height: 2),
+                        Text('غيّر البحث أو الفلتر',
+                            style: AppType.caption.copyWith(color: t.inkFaint)),
                       ]),
                     ),
                   ),
@@ -487,6 +494,7 @@ class _ExamsPageState extends State<ExamsPage>
   List<Widget> _buildGroupedList(
       List<Exam> exams, List<Group> groups, bool isDark, ColorScheme cs) {
     final widgets = <Widget>[];
+    final tk = context.tokens;
     String? lastMonth;
 
     for (final exam in exams) {
@@ -496,18 +504,11 @@ class _ExamsPageState extends State<ExamsPage>
         widgets.add(Padding(
           padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),
           child: Row(children: [
-            Icon(Icons.calendar_month_rounded,
-                size: 15, color: cs.onSurface.withValues(alpha: 0.4)),
+            Icon(Icons.calendar_month_rounded, size: 16, color: tk.inkSoft),
             const SizedBox(width: 6),
-            Text(month,
-                style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w800,
-                    color: cs.onSurface.withValues(alpha: 0.55))),
+            Text(month, style: AppType.label.copyWith(color: tk.inkSoft)),
             const SizedBox(width: 10),
-            Expanded(
-                child: Divider(color: cs.onSurface.withValues(alpha: 0.08))),
+            Expanded(child: Divider(color: tk.line)),
           ]),
         ));
       }
@@ -619,39 +620,40 @@ class _StatusStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    Widget seg(String label, int n, Color color, ExamStatus? value) {
+    final t = context.tokens;
+    Widget seg(String label, int n, Color color, Color ink, ExamStatus? value) {
       final on = selected == value;
       return Expanded(
-        child: GestureDetector(
-          onTap: () => onSelect(on ? null : value),
-          behavior: HitTestBehavior.opaque,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            padding: const EdgeInsets.symmetric(vertical: 9),
-            decoration: BoxDecoration(
-              color: on ? color.withValues(alpha: 0.14) : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: on ? color.withValues(alpha: 0.5) : Colors.transparent),
+        child: Semantics(
+          button: true,
+          selected: on,
+          label: '$label، $n',
+          excludeSemantics: true,
+          child: InkWell(
+            onTap: () => onSelect(on ? null : value),
+            borderRadius: BorderRadius.circular(AppRadius.control),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              constraints: const BoxConstraints(minHeight: 60),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: on ? color.withValues(alpha: 0.14) : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppRadius.control),
+                border: Border.all(
+                    color: on ? color.withValues(alpha: 0.6) : Colors.transparent),
+              ),
+              child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('$n', style: AppType.figure.copyWith(fontSize: 22, color: ink)),
+                    Text(label,
+                        maxLines: 1,
+                        style: AppType.caption.copyWith(
+                            fontWeight: on ? FontWeight.w700 : FontWeight.w400,
+                            color: on ? t.ink : t.inkSoft)),
+                  ]),
             ),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text('$n',
-                  style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      height: 1.1,
-                      color: color)),
-              const SizedBox(height: 2),
-              Text(label,
-                  maxLines: 1,
-                  style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 10.5,
-                      fontWeight: on ? FontWeight.w800 : FontWeight.w600,
-                      color: cs.onSurface.withValues(alpha: on ? 0.85 : 0.55))),
-            ]),
           ),
         ),
       );
@@ -660,24 +662,25 @@ class _StatusStrip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+        color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.panel),
+        border: Border.all(color: t.line),
       ),
       child: Row(children: [
-        seg('الكل', total, AppTheme.primaryColor, null),
-        seg(ExamStatus.complete.label, complete, ExamStatus.complete.color,
-            ExamStatus.complete),
+        seg('الكل', total, t.brand, t.brand, null),
+        seg(ExamStatus.complete.label, complete, ExamStatus.complete.fill(t),
+            ExamStatus.complete.ink(t), ExamStatus.complete),
         seg(ExamStatus.inProgress.label, inProgress,
-            ExamStatus.inProgress.color, ExamStatus.inProgress),
-        seg(ExamStatus.notStarted.label, pending, ExamStatus.notStarted.color,
-            ExamStatus.notStarted),
+            ExamStatus.inProgress.fill(t), ExamStatus.inProgress.ink(t),
+            ExamStatus.inProgress),
+        seg(ExamStatus.notStarted.label, pending, ExamStatus.notStarted.fill(t),
+            ExamStatus.notStarted.ink(t), ExamStatus.notStarted),
       ]),
     );
   }
 }
 
-// زر فلتر المجموعة جنب البحث (بنقطة لو فيه فلتر شغّال).
+// زر فلتر المجموعة جنب البحث (بلون لو فيه فلتر شغّال).
 class _GroupFilterButton extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
@@ -685,30 +688,24 @@ class _GroupFilterButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final t = context.tokens;
     return Tooltip(
       message: 'فلتر المجموعة',
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(13),
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: active
-                ? AppTheme.primaryColor.withValues(alpha: 0.12)
-                : cs.surface,
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(
-                color: active
-                    ? AppTheme.primaryColor
-                    : cs.onSurface.withValues(alpha: 0.12)),
+      child: Material(
+        color: active ? t.rosterTint : t.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.panel),
+          side: BorderSide(color: active ? t.brand : t.line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 52,
+            height: 52,
+            child: Icon(Icons.groups_rounded,
+                size: 24, color: active ? t.brand : t.inkSoft),
           ),
-          child: Icon(Icons.groups_rounded,
-              size: 22,
-              color: active
-                  ? AppTheme.primaryColor
-                  : cs.onSurface.withValues(alpha: 0.55)),
         ),
       ),
     );
@@ -737,167 +734,147 @@ class _ExamCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final t = context.tokens;
     final relatedGroups =
         groups.where((g) => exam.groupIds.contains(g.id)).toList();
     final status = _statusOf(progress);
     final hasProgress = progress != null && progress!.totalStudents > 0;
-    final done = hasProgress
-        ? progress!.enteredGrades + progress!.absentStudents
-        : 0;
-    final muted = cs.onSurface.withValues(alpha: 0.5);
+    final done =
+        hasProgress ? progress!.enteredGrades + progress!.absentStudents : 0;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2)),
-              ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: IntrinsicHeight(
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // شريط لون الحالة على الجنب (بدل شارة + أيقونة + شريط تقدم ملوّن)
-          Container(width: 5, color: status.color),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 6, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Expanded(
-                      child: Text(exam.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: cs.onSurface)),
-                    ),
-                    PopupMenuButton<String>(
-                      padding: EdgeInsets.zero,
-                      onSelected: (v) {
-                        if (v == 'edit') onEdit();
-                        if (v == 'delete') onDelete();
-                      },
-                      itemBuilder: (_) => [
-                        const PopupMenuItem(
-                            value: 'edit',
-                            child: Row(children: [
-                              Icon(Icons.edit_rounded, size: 18),
-                              SizedBox(width: 8),
-                              Text('تعديل',
-                                  style: TextStyle(fontFamily: 'Cairo')),
-                            ])),
-                        PopupMenuItem(
-                            value: 'delete',
-                            child: Row(children: [
-                              Icon(Icons.delete_rounded,
-                                  size: 18, color: Colors.red.shade400),
-                              const SizedBox(width: 8),
-                              Text('حذف',
-                                  style: TextStyle(
-                                      fontFamily: 'Cairo',
-                                      color: Colors.red.shade400)),
-                            ])),
-                      ],
-                    ),
-                  ]),
-                  // سطر واحد للتفاصيل بدل 3 شرائح: التاريخ • الدرجة • النجاح
-                  Text(
-                    '${DateFormat('d MMMM', 'ar').format(exam.date)}  •  '
-                    'من ${exam.maxGrade.toStringAsFixed(0)}  •  '
-                    'النجاح ${exam.passingGrade.toStringAsFixed(0)}',
-                    style: TextStyle(
-                        fontFamily: 'Cairo', fontSize: 12, color: muted),
-                  ),
-                  if (hasProgress) ...[
-                    const SizedBox(height: 10),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.md),
+      child: Material(
+        color: t.surface,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.panel),
+          side: BorderSide(color: t.line),
+        ),
+        child: IntrinsicHeight(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // شريط لون الحالة على الجنب
+            Container(width: 6, color: status.fill(t)),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                    AppSpace.lg, AppSpace.md, AppSpace.xs, AppSpace.md + 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Row(children: [
                       Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: done / progress!.totalStudents,
-                            backgroundColor:
-                                cs.onSurface.withValues(alpha: 0.08),
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(status.color),
-                            minHeight: 6,
+                        child: Text(exam.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppType.title.copyWith(color: t.ink)),
+                      ),
+                      PopupMenuButton<String>(
+                        tooltip: 'المزيد',
+                        icon: Icon(Icons.more_vert_rounded, color: t.inkSoft),
+                        onSelected: (v) {
+                          if (v == 'edit') onEdit();
+                          if (v == 'delete') onDelete();
+                        },
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(
+                              value: 'edit',
+                              child: Row(children: [
+                                Icon(Icons.edit_rounded, size: 18),
+                                SizedBox(width: 8),
+                                Text('تعديل'),
+                              ])),
+                          PopupMenuItem(
+                              value: 'delete',
+                              child: Row(children: [
+                                Icon(Icons.delete_rounded,
+                                    size: 18, color: t.danger),
+                                const SizedBox(width: 8),
+                                Text('حذف', style: TextStyle(color: t.danger)),
+                              ])),
+                        ],
+                      ),
+                    ]),
+                    Text(
+                      '${DateFormat('d MMMM', 'ar').format(exam.date)}  •  '
+                      'من ${exam.maxGrade.toStringAsFixed(0)}  •  '
+                      'النجاح ${exam.passingGrade.toStringAsFixed(0)}',
+                      style: AppType.caption.copyWith(color: t.inkSoft),
+                    ),
+                    if (hasProgress) ...[
+                      const SizedBox(height: AppSpace.md),
+                      Row(children: [
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: LinearProgressIndicator(
+                              value: done / progress!.totalStudents,
+                              backgroundColor: t.line,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(status.fill(t)),
+                              minHeight: 8,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text('$done/${progress!.totalStudents}',
-                          style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w800,
-                              color: status.color)),
-                    ]),
-                    if (progress!.absentStudents > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text('منهم ${progress!.absentStudents} غياب',
-                            style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 11,
-                                color: muted)),
+                        const SizedBox(width: AppSpace.md),
+                        Text('$done/${progress!.totalStudents}',
+                            style: AppType.label.copyWith(
+                                fontSize: 13, color: status.ink(t))),
+                      ]),
+                      if (progress!.absentStudents > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text('منهم ${progress!.absentStudents} غياب',
+                              style:
+                                  AppType.caption.copyWith(color: t.inkFaint)),
+                        ),
+                    ],
+                    const SizedBox(height: AppSpace.md),
+                    if (relatedGroups.isEmpty)
+                      Text('لا توجد مجموعات مرتبطة',
+                          style: AppType.caption.copyWith(color: t.inkFaint))
+                    else
+                      Wrap(
+                        spacing: AppSpace.sm,
+                        runSpacing: AppSpace.sm - 2,
+                        children: relatedGroups.map((g) {
+                          final c = Color(g.color ?? 0xFF4F46E5);
+                          return Material(
+                            color: c.withValues(alpha: isDark ? 0.2 : 0.1),
+                            shape: StadiumBorder(
+                                side: BorderSide(color: c.withValues(alpha: 0.45))),
+                            clipBehavior: Clip.antiAlias,
+                            child: InkWell(
+                              onTap: () => onOpenGrades(g.id!, g.name),
+                              child: ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(minHeight: 40),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: AppSpace.md),
+                                  child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.edit_note_rounded,
+                                            size: 18, color: c),
+                                        const SizedBox(width: 6),
+                                        Text(g.name,
+                                            style: AppType.caption.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                                color: t.ink)),
+                                      ]),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
                       ),
                   ],
-                  const SizedBox(height: 10),
-                  if (relatedGroups.isEmpty)
-                    Text('لا توجد مجموعات مرتبطة',
-                        style: TextStyle(
-                            fontFamily: 'Cairo', fontSize: 12, color: muted))
-                  else
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: relatedGroups.map((g) {
-                        final c = Color(g.color ?? 0xFF4F46E5);
-                        return InkWell(
-                          onTap: () => onOpenGrades(g.id!, g.name),
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 7),
-                            decoration: BoxDecoration(
-                              color: c.withValues(alpha: isDark ? 0.2 : 0.1),
-                              borderRadius: BorderRadius.circular(20),
-                              border:
-                                  Border.all(color: c.withValues(alpha: 0.4)),
-                            ),
-                            child:
-                                Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(Icons.edit_note_rounded, size: 16, color: c),
-                              const SizedBox(width: 5),
-                              Text(g.name,
-                                  style: TextStyle(
-                                      fontFamily: 'Cairo',
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: c)),
-                            ]),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                ],
+                ),
               ),
             ),
-          ),
-        ]),
+          ]),
+        ),
       ),
     );
   }
@@ -909,38 +886,24 @@ class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.onAdd});
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final t = context.tokens;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(AppSpace.xl),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.assignment_outlined,
-              size: 72, color: cs.onSurface.withValues(alpha: 0.2)),
-          const SizedBox(height: 16),
+          Icon(Icons.assignment_outlined, size: 64, color: t.inkFaint),
+          const SizedBox(height: AppSpace.lg),
           Text('لا توجد امتحانات بعد',
-              style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: cs.onSurface.withValues(alpha: 0.5))),
-          const SizedBox(height: 8),
-          Text('اضغط + لإضافة امتحان جديد',
-              style: TextStyle(
-                  fontFamily: 'Cairo',
-                  color: cs.onSurface.withValues(alpha: 0.35))),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
+              style: AppType.title.copyWith(color: t.ink)),
+          const SizedBox(height: AppSpace.xs),
+          Text('سجّل درجات امتحان ورقي من هنا.',
+              style: AppType.body.copyWith(color: t.inkSoft)),
+          const SizedBox(height: AppSpace.xl),
+          FilledButton.icon(
             onPressed: onAdd,
             icon: const Icon(Icons.add_rounded),
-            label: const Text('إضافة امتحان',
-                style: TextStyle(
-                    fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
+            label: const Text('إضافة امتحان'),
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 50)),
           ),
         ]),
       ),
@@ -1057,10 +1020,53 @@ class _ExamFormSheetState extends State<_ExamFormSheet> {
       });
   }
 
+  /// صف بيفتح منتقي (تاريخ/شهر) بنفس شكل الحقول.
+  Widget _pickerRow(AppTokens t,
+      {required IconData icon,
+      String? label,
+      required String value,
+      required VoidCallback onTap,
+      Widget? trailing}) {
+    return Material(
+      color: t.page,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        side: BorderSide(color: t.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 54),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.md + 2, vertical: AppSpace.sm),
+            child: Row(children: [
+              Icon(icon, color: t.brand, size: 20),
+              const SizedBox(width: AppSpace.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (label != null)
+                      Text(label,
+                          style: AppType.caption.copyWith(color: t.inkFaint)),
+                    Text(value, style: AppType.label.copyWith(color: t.ink)),
+                  ],
+                ),
+              ),
+              trailing ??
+                  Icon(Icons.expand_more_rounded, color: t.inkFaint, size: 22),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     final isEdit = widget.existing != null;
 
     return Padding(
@@ -1068,128 +1074,59 @@ class _ExamFormSheetState extends State<_ExamFormSheet> {
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          color: t.surface,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(AppRadius.board)),
         ),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: const EdgeInsets.fromLTRB(
+              AppSpace.xl - 4, AppSpace.sm, AppSpace.xl - 4, AppSpace.xl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Handle bar
               Center(
                 child: Container(
                     width: 40,
                     height: 4,
                     margin: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                        color: cs.onSurface.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(2))),
+                        color: t.line, borderRadius: BorderRadius.circular(2))),
               ),
               Text(isEdit ? 'تعديل الامتحان' : 'امتحان جديد',
-                  style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: cs.onSurface)),
-              const SizedBox(height: 16),
+                  style: AppType.greeting.copyWith(color: t.ink)),
+              const SizedBox(height: AppSpace.lg),
 
-              // Name
               _SheetField(
                   ctrl: _nameCtrl,
                   hint: 'اسم الامتحان',
                   icon: Icons.assignment_rounded),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.md),
 
-              // Date picker
-              InkWell(
-                onTap: _pickDate,
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                  decoration: BoxDecoration(
-                    border:
-                        Border.all(color: cs.onSurface.withValues(alpha: 0.2)),
-                    borderRadius: BorderRadius.circular(12),
-                    color: isDark ? cs.onSurface.withValues(alpha: 0.05) : null,
-                  ),
-                  child: Row(children: [
-                    Icon(Icons.calendar_today_rounded,
-                        color: AppTheme.primaryColor, size: 18),
-                    const SizedBox(width: 10),
-                    Text(
-                      DateFormat('d MMMM yyyy', 'ar').format(_date),
-                      style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 14,
-                          color: cs.onSurface),
-                    ),
-                    const Spacer(),
-                    Icon(Icons.arrow_drop_down_rounded,
-                        color: cs.onSurface.withValues(alpha: 0.4)),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: 12),
+              _pickerRow(t,
+                  icon: Icons.calendar_today_rounded,
+                  label: 'تاريخ الامتحان',
+                  value: DateFormat('d MMMM yyyy', 'ar').format(_date),
+                  onTap: _pickDate),
+              const SizedBox(height: AppSpace.md),
 
               // شهر التقرير (spec 013 US6)
-              InkWell(
-                onTap: _pickReportMonth,
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                  decoration: BoxDecoration(
-                    border:
-                        Border.all(color: cs.onSurface.withValues(alpha: 0.2)),
-                    borderRadius: BorderRadius.circular(12),
-                    color: isDark ? cs.onSurface.withValues(alpha: 0.05) : null,
-                  ),
-                  child: Row(children: [
-                    Icon(Icons.event_note_rounded,
-                        color: AppTheme.primaryColor, size: 18),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('شهر التقرير',
-                            style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 11,
-                                color: cs.onSurface.withValues(alpha: 0.5))),
-                        Text(
-                          DateFormat('MMMM yyyy', 'ar')
-                              .format(_effectiveReportMonth),
-                          style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 14,
-                              color: cs.onSurface),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    if (_reportMonth != null)
-                      InkWell(
-                        onTap: () => setState(() => _reportMonth = null),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Icon(Icons.close_rounded,
-                              size: 16,
-                              color: cs.onSurface.withValues(alpha: 0.4)),
-                        ),
-                      )
-                    else
-                      Icon(Icons.arrow_drop_down_rounded,
-                          color: cs.onSurface.withValues(alpha: 0.4)),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: 12),
+              _pickerRow(t,
+                  icon: Icons.event_note_rounded,
+                  label: 'شهر التقرير',
+                  value: DateFormat('MMMM yyyy', 'ar')
+                      .format(_effectiveReportMonth),
+                  onTap: _pickReportMonth,
+                  trailing: _reportMonth != null
+                      ? IconButton(
+                          tooltip: 'رجّع شهر التاريخ',
+                          icon: Icon(Icons.close_rounded,
+                              size: 20, color: t.inkSoft),
+                          onPressed: () => setState(() => _reportMonth = null),
+                        )
+                      : null),
+              const SizedBox(height: AppSpace.md),
 
-              // Grades row
               Row(children: [
                 Expanded(
                   child: _SheetField(
@@ -1199,7 +1136,7 @@ class _ExamFormSheetState extends State<_ExamFormSheet> {
                       type:
                           const TextInputType.numberWithOptions(decimal: true)),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: AppSpace.md),
                 Expanded(
                   child: _SheetField(
                       ctrl: _passingCtrl,
@@ -1209,85 +1146,42 @@ class _ExamFormSheetState extends State<_ExamFormSheet> {
                           const TextInputType.numberWithOptions(decimal: true)),
                 ),
               ]),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpace.lg),
 
-              // Groups
-              Text('المجموعات:',
-                  style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurface)),
-              const SizedBox(height: 8),
-              if (widget.groups.isEmpty)
-                Text('لا توجد مجموعات — أضف مجموعة أولاً',
-                    style: TextStyle(
-                        fontFamily: 'Cairo',
-                        color: cs.onSurface.withValues(alpha: 0.4)))
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: widget.groups.map((g) {
-                    final sel = _selectedGroups.contains(g.id);
-                    final c = Color(g.color ?? 0xFF4F46E5);
-                    return FilterChip(
-                      label: Text(g.name,
-                          style: TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: sel ? c : cs.onSurface)),
-                      selected: sel,
-                      selectedColor: c.withValues(alpha: 0.15),
-                      checkmarkColor: c,
-                      side: BorderSide(
-                          color: sel ? c : cs.onSurface.withValues(alpha: 0.2)),
-                      backgroundColor: Colors.transparent,
-                      onSelected: (_) => setState(() {
-                        if (sel) {
-                          _selectedGroups.remove(g.id);
-                        } else {
-                          _selectedGroups.add(g.id!);
-                        }
-                      }),
-                    );
-                  }).toList(),
-                ),
+              // المجموعات: قائمة منسدلة، وتقدر تختار أكتر من مجموعة للامتحان
+              Text('المجموعات', style: AppType.label.copyWith(color: t.ink)),
+              const SizedBox(height: AppSpace.sm),
+              GroupMultiSelectField(
+                groups: widget.groups,
+                selected: _selectedGroups,
+                title: 'المجموعات المشاركة في الامتحان',
+                onChanged: (ids) => setState(() {
+                  _selectedGroups
+                    ..clear()
+                    ..addAll(ids);
+                }),
+              ),
 
               if (_error != null) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: AppSpace.md),
                 Text(_error!,
-                    style: const TextStyle(
-                        fontFamily: 'Cairo',
-                        color: AppTheme.errorColor,
-                        fontSize: 12)),
+                    style: AppType.body.copyWith(color: t.danger)),
               ],
-              const SizedBox(height: 20),
+              const SizedBox(height: AppSpace.xl - 4),
 
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
+                child: FilledButton(
                   onPressed: _saving ? null : _save,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                    elevation: 0,
-                  ),
+                  style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 54)),
                   child: _saving
                       ? const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
                               color: Colors.white, strokeWidth: 2))
-                      : Text(isEdit ? 'حفظ التعديلات' : 'إضافة الامتحان',
-                          style: const TextStyle(
-                              fontFamily: 'Cairo',
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800)),
+                      : Text(isEdit ? 'حفظ التعديلات' : 'إضافة الامتحان'),
                 ),
               ),
             ],
@@ -1310,24 +1204,28 @@ class _SheetField extends StatelessWidget {
     this.type = TextInputType.text,
   });
   @override
-  Widget build(BuildContext context) => TextField(
-        controller: ctrl,
-        keyboardType: type,
-        style: TextStyle(
-            fontFamily: 'Cairo',
-            color: Theme.of(context).colorScheme.onSurface),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: TextStyle(
-              fontFamily: 'Cairo',
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.4)),
-          prefixIcon: Icon(icon, color: AppTheme.primaryColor, size: 20),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        ),
-      );
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          borderSide: BorderSide(color: c, width: w),
+        );
+    return TextField(
+      controller: ctrl,
+      keyboardType: type,
+      style: AppType.label.copyWith(color: t.ink),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: AppType.body.copyWith(color: t.inkFaint),
+        prefixIcon: Icon(icon, color: t.brand, size: 20),
+        filled: true,
+        fillColor: t.page,
+        border: border(t.line),
+        enabledBorder: border(t.line),
+        focusedBorder: border(t.brand, 1.5),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+      ),
+    );
+  }
 }
