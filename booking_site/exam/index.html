@@ -168,10 +168,16 @@
     font-size:10.5px;color:var(--muted);background:#F1F2FB;border-radius:8px;
     padding:6px 8px;flex-shrink:0;}
   .opt-img,.rexpl-img,.q-img{cursor:zoom-in;}
-  .lightbox{position:fixed;inset:0;background:rgba(15,16,23,.82);z-index:999;
-    display:flex;align-items:center;justify-content:center;padding:24px;}
-  .lightbox img{max-width:100%;max-height:100%;border-radius:10px;}
-  .lightbox.hidden{display:none;}
+  .zm{position:fixed;inset:0;z-index:1000;background:rgba(8,8,24,.94);touch-action:none;overflow:hidden;
+    -webkit-user-select:none;user-select:none;}
+  .zm img{position:absolute;left:50%;top:50%;max-width:100vw;max-height:100vh;transform:translate(-50%,-50%);
+    will-change:transform;pointer-events:none;-webkit-user-drag:none;}
+  .zm-x{position:absolute;top:max(14px,env(safe-area-inset-top));right:14px;width:44px;height:44px;border-radius:50%;
+    border:0;background:rgba(255,255,255,.18);color:#fff;font-size:20px;cursor:pointer;}
+  .zm-hint{position:absolute;bottom:max(22px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+    background:rgba(255,255,255,.16);color:#fff;font:700 12px 'Cairo',sans-serif;padding:7px 14px;
+    border-radius:999px;transition:opacity .4s;white-space:nowrap;pointer-events:none;}
+  .zm-hint.off{opacity:0;}
   .opt{
     display:flex;align-items:center;gap:11px;padding:12px 13px;border-radius:12px;
     border:1.6px solid var(--line);background:#F8F9FD;margin-bottom:8px;cursor:pointer;
@@ -314,17 +320,108 @@
   // تكبير أي صورة سؤال/اختيار/شرح بضغطة — الصور بتترفع بدقة أقل من حجم
   // عرضها الكامل هنا (موفّرة بيانات الطالب)، فالتكبير ضروري لقراءة أي
   // تفاصيل فيها (خطوات حل مكتوبة بخط اليد مثلاً).
-  let lightboxEl = null;
-  function openLightbox(url){
-    if (!lightboxEl){
-      lightboxEl = document.createElement('div');
-      lightboxEl.className = 'lightbox hidden';
-      lightboxEl.onclick = () => lightboxEl.classList.add('hidden');
-      document.body.appendChild(lightboxEl);
+  // ── عارض الصور بزوم ───────────────────────────────────────────
+  // ضغطة على أي صورة تفتحها ملء الشاشة. جوّه العارض: قرص بصباعين للتكبير
+  // (لحد 6×)، سحب بصباع واحد للتنقّل وهي مكبّرة، ضغطتين سريعتين تكبّر/تصغّر،
+  // وضغطة واحدة تصغّرها لو مكبّرة وإلا تقفل العارض. على الكمبيوتر: عجلة الماوس.
+  function openZoom(url){
+    if (document.querySelector('.zm')) return;
+    const MAX = 6, TAP_MS = 280;
+    const root = document.createElement('div');
+    root.className = 'zm';
+    root.innerHTML = '<img alt=""><button class="zm-x" aria-label="إغلاق">✕</button><span class="zm-hint">اقرص بصباعين للتكبير</span>';
+    document.body.appendChild(root);
+    const img = root.querySelector('img');
+    const hint = root.querySelector('.zm-hint');
+    img.src = url;
+    setTimeout(() => hint.classList.add('off'), 2600);
+
+    let s = 1, tx = 0, ty = 0;
+    const pts = new Map();
+    let pinch = null, pan = null, downAt = 0, moved = 0, lastTap = 0, tapTimer = null, multi = false;
+
+    const apply = () => { img.style.transform = `translate(-50%,-50%) translate(${tx}px,${ty}px) scale(${s})`; };
+    function clamp(){
+      const vw = root.clientWidth, vh = root.clientHeight;
+      const w = img.offsetWidth * s, h = img.offsetHeight * s;
+      const mx = Math.max(0, (w - vw) / 2), my = Math.max(0, (h - vh) / 2);
+      tx = Math.min(mx, Math.max(-mx, tx));
+      ty = Math.min(my, Math.max(-my, ty));
     }
-    lightboxEl.innerHTML = `<img src="${url}" alt="">`;
-    lightboxEl.classList.remove('hidden');
+    // يكبّر/يصغّر حوالين نقطة (x,y) على الشاشة مع تثبيتها مكانها.
+    function zoomAt(x, y, ns){
+      ns = Math.min(MAX, Math.max(1, ns));
+      const cx = root.clientWidth / 2, cy = root.clientHeight / 2;
+      const k = ns / s;
+      tx = (x - cx) - k * (x - cx - tx);
+      ty = (y - cy) - k * (y - cy - ty);
+      s = ns;
+      if (s <= 1.001) { s = 1; tx = 0; ty = 0; }
+      clamp(); apply();
+    }
+    const close = () => { clearTimeout(tapTimer); root.remove(); };
+    root.querySelector('.zm-x').onclick = (e) => { e.stopPropagation(); close(); };
+
+    root.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.zm-x')) return;
+      try { root.setPointerCapture(e.pointerId); } catch (_) {}
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 1) { downAt = performance.now(); moved = 0; multi = false; pan = { x: e.clientX, y: e.clientY, tx, ty }; }
+      if (pts.size === 2) {
+        multi = true; pan = null;
+        const [a, b] = [...pts.values()];
+        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s };
+      }
+    });
+    root.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size >= 2 && pinch) {
+        const [a, b] = [...pts.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, pinch.s * d / pinch.d);
+        return;
+      }
+      if (pan) {
+        const dx = e.clientX - pan.x, dy = e.clientY - pan.y;
+        moved = Math.max(moved, Math.hypot(dx, dy));
+        if (s > 1) { tx = pan.tx + dx; ty = pan.ty + dy; clamp(); apply(); }
+      }
+    });
+    function up(e){
+      if (!pts.has(e.pointerId)) return;
+      pts.delete(e.pointerId);
+      if (pts.size < 2) pinch = null;
+      if (pts.size === 1) { const [p] = [...pts.values()]; pan = { x: p.x, y: p.y, tx, ty }; }
+      if (pts.size > 0) return;
+      pan = null;
+      const isTap = !multi && moved < 10 && performance.now() - downAt < 350;
+      if (!isTap) return;
+      const now = performance.now();
+      if (now - lastTap < TAP_MS) {            // ضغطتين: تبديل التكبير
+        clearTimeout(tapTimer); lastTap = 0;
+        zoomAt(e.clientX, e.clientY, s > 1.05 ? 1 : 2.5);
+        return;
+      }
+      lastTap = now;
+      tapTimer = setTimeout(() => {            // ضغطة واحدة: تصغير أو إغلاق
+        if (s > 1.05) zoomAt(root.clientWidth / 2, root.clientHeight / 2, 1); else close();
+      }, TAP_MS);
+    }
+    root.addEventListener('pointerup', up);
+    root.addEventListener('pointercancel', up);
+    root.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      zoomAt(e.clientX, e.clientY, s * (e.deltaY < 0 ? 1.2 : 1 / 1.2));
+    }, { passive: false });
+    document.addEventListener('keydown', function esc(e){
+      if (!document.body.contains(root)) { document.removeEventListener('keydown', esc); return; }
+      if (e.key === 'Escape') close();
+    });
   }
+  // الـonclick الداخلي في الـHTML بيدوّر على دالة عامة، والسكربت module —
+  // لازم نعرضها على window وإلا الضغط على الصورة ما بيعملش حاجة.
+  window.openLightbox = (url) => openZoom(url);
 
   function shuffled(arr, rnd){
     const a = arr.map((v,i)=>({v,i}));
