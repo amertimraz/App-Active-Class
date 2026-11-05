@@ -11,6 +11,7 @@ import 'package:active_class/models/group_model.dart';
 import 'package:active_class/views/exams/exam_grades_page.dart';
 import 'package:active_class/views/exams/leaderboard_page.dart';
 import 'package:active_class/views/exams/online_exams_tab.dart';
+import 'package:active_class/views/exams/games/online_game_editor_page.dart';
 import 'package:active_class/views/exams/online_exam_editor_page.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -235,20 +236,28 @@ class _ExamsPageState extends State<ExamsPage>
               backgroundColor: AppTheme.primaryColor,
               foregroundColor: Colors.white,
             )
-          : (TeamModeService().onlineExamAccessNow.canCreate
-              ? FloatingActionButton.extended(
-                  onPressed: () async {
+          : Obx(() {
+              final access = TeamModeService().onlineExamAccessNow;
+              if (!access.canCreate) return const SizedBox.shrink();
+              final games = OnlineExamsTab.section.value == 1;
+              return FloatingActionButton.extended(
+                onPressed: () async {
+                  if (games) {
+                    await Get.to(() => const OnlineGameEditorPage());
+                    OnlineExamsTab.gamesKey.currentState?.reload();
+                  } else {
                     await Get.to(() => const OnlineExamEditorPage());
                     _ec.loadExams();
-                  },
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('امتحان إلكتروني جديد',
-                      style: TextStyle(
-                          fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                )
-              : null),
+                  }
+                },
+                icon: const Icon(Icons.add_rounded),
+                label: Text(games ? 'لعبة جديدة' : 'امتحان إلكتروني جديد',
+                    style: const TextStyle(
+                        fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+              );
+            }),
       body: TabBarView(
         controller: _tab,
         children: [

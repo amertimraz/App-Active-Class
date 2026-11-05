@@ -16,7 +16,9 @@ import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/online_exam_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
+import 'package:active_class/views/exams/games/online_games_tab.dart';
 import 'package:active_class/views/exams/online_exam_editor_page.dart';
+import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/views/exams/online_exam_results_page.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/portal_expiry.dart';
@@ -51,6 +53,12 @@ IconData _statusIcon(OnlineExamStatus? s) {
 
 class OnlineExamsTab extends StatefulWidget {
   const OnlineExamsTab({super.key});
+
+  /// القسم الظاهر جوّه الامتحانات الإلكترونية: 0 = الامتحانات، 1 = الألعاب.
+  /// الألعاب جزء من الامتحان الإلكتروني: بتتفتح وتتقفل بنفس ترخيصه (قرار
+  /// التوافر في Obx تحت)، وزرار الإضافة في ExamsPage بيقرا نفس القيمة.
+  static final RxInt section = 0.obs;
+  static final gamesKey = GlobalKey<OnlineGamesTabState>();
 
   @override
   State<OnlineExamsTab> createState() => _OnlineExamsTabState();
@@ -134,8 +142,11 @@ class _OnlineExamsTabState extends State<OnlineExamsTab> {
         );
         return _LockedState(assistant: team.isAssistant, expiredAt: expiredAt);
       }
+      if (OnlineExamsTab.section.value == 1) {
+        return _withSwitch(OnlineGamesTab(key: OnlineExamsTab.gamesKey));
+      }
       final exams = _ec.onlineExams;
-      if (exams.isEmpty) return const _EmptyState();
+      if (exams.isEmpty) return _withSwitch(const _EmptyState());
 
       final drafts =
           exams.where((e) => e.onlineStatus == OnlineExamStatus.draft).length;
@@ -149,7 +160,7 @@ class _OnlineExamsTabState extends State<OnlineExamsTab> {
       final totalSubs =
           _subCounts.values.fold<int>(0, (s, v) => s + v);
 
-      return RefreshIndicator(
+      return _withSwitch(RefreshIndicator(
         onRefresh: () async {
           await _ec.loadExams();
           await _loadCounts();
@@ -173,8 +184,36 @@ class _OnlineExamsTabState extends State<OnlineExamsTab> {
                 )),
           ],
         ),
-      );
+      ));
     });
+  }
+
+  /// مفتاح التبديل (الامتحانات | ألعاب) فوق المحتوى.
+  Widget _withSwitch(Widget child) {
+    final t = context.tokens;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpace.lg, AppSpace.md, AppSpace.lg, 0),
+          child: AppSegmented(
+            value: OnlineExamsTab.section.value == 1 ? 'games' : 'exams',
+            onSelect: (v) {
+              if (v != null) {
+                OnlineExamsTab.section.value = v == 'games' ? 1 : 0;
+              }
+            },
+            items: [
+              AppSegmentItem(
+                  'exams', 'الامتحانات', Icons.wifi_tethering_rounded, t.brand),
+              AppSegmentItem(
+                  'games', 'ألعاب', Icons.sports_esports_rounded, t.brand),
+            ],
+          ),
+        ),
+        Expanded(child: child),
+      ],
+    );
   }
 }
 

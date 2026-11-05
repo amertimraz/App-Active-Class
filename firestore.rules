@@ -260,6 +260,53 @@ service cloud.firestore {
           allow write: if _oeOwner(slug);
         }
       }
+
+      // ── الألعاب الإلكترونية (داخل الامتحان الإلكتروني) ────────────
+      // مستند اللعبة بيحمل مفتاح الإجابة عمدًا (رد فوري في الصفحة) — لعبة
+      // مراجعة وتحفيز، مش تقييم، ومفيش درجة بتتسجّل في سجل الطالب. منفصل
+      // تمامًا عن exams/** فمفاتيح الامتحانات ما تتأثرش.
+      match /games/{gameId} {
+        allow read: if true;
+        allow write: if _oeOwner(slug);
+
+        match /scores/{docId} {
+          // الطالب بيقرا نتيجته هو بمعرفة docId = {code}_{last4}؛ تعدّد
+          // القائمة (لوحة الترتيب) للمدرس بس عشان أكواد/أسماء الطلاب ما
+          // تتسرّبش.
+          allow get: if true;
+          allow list: if _oeOwner(slug);
+
+          function _gameOpen() {
+            return get(/databases/$(database)/documents/online_exams/$(slug)/games/$(gameId)).data.status != 'closed';
+          }
+          function _scoreValid() {
+            return request.resource.data.keys().hasOnly(
+                     ['code','name','score','correct','total','timeMs','updatedAt'])
+                && request.resource.data.code is string
+                && request.resource.data.code.size() > 0
+                && request.resource.data.code.size() < 20
+                && request.resource.data.name is string
+                && request.resource.data.name.size() < 80
+                && request.resource.data.score is int
+                && request.resource.data.score >= 0
+                && request.resource.data.score <= 200000
+                && request.resource.data.correct is int
+                && request.resource.data.correct >= 0
+                && request.resource.data.total is int
+                && request.resource.data.total >= 0
+                && request.resource.data.total <= 500
+                && request.resource.data.timeMs is int
+                && request.resource.data.timeMs >= 0
+                && request.resource.data.updatedAt == request.time;
+          }
+
+          allow create: if _gameOpen() && _scoreValid();
+          // أفضل نتيجة بس: التحديث مسموح لو النقاط أعلى (أو مساوية).
+          allow update: if _gameOpen() && _scoreValid()
+                        && request.resource.data.score >= resource.data.score;
+          allow delete: if _oeOwner(slug);
+        }
+      }
     }
   }
 }
