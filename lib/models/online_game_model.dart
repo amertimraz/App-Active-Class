@@ -83,6 +83,10 @@ class GameQuestion {
 
   bool _hasImages(List<String?> l) => l.any((u) => u != null && u.isNotEmpty);
 
+  /// فيه صورة للسؤال أو لأي اختيار (صورة الشرح مش محسوبة) — علامة في المحرّر.
+  bool get hasImages =>
+      (imageUrl != null && imageUrl!.isNotEmpty) || _hasImages(optionImageUrls);
+
   Map<String, dynamic> toCloudMap() => {
         'text': text,
         'options': options,

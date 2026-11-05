@@ -279,6 +279,16 @@ class _OnlineGameEditorPageState extends State<OnlineGameEditorPage> {
                     Text('${i + 1}',
                         style: AppType.label.copyWith(color: t.inkFaint)),
                     const SizedBox(width: AppSpace.md),
+                    if (_questions[i].hasImages)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(
+                            end: AppSpace.sm),
+                        child: Tooltip(
+                          message: 'السؤال فيه صور',
+                          child: Icon(Icons.image_outlined,
+                              size: 18, color: t.inkFaint),
+                        ),
+                      ),
                     Expanded(
                       child: Text(_questions[i].text,
                           maxLines: 2,

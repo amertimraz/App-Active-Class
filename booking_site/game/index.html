@@ -82,7 +82,8 @@
   @keyframes spin{to{transform:rotate(360deg);}}
 
   /* ── HUD ───────────────────────────────── */
-  .hud{display:flex;align-items:center;gap:12px;margin:2px 0 14px;}
+  /* مساحة محجوزة على الشمال لزرار الصوت (ثابت فوق) عشان ما يغطّيش النقاط */
+  .hud{display:flex;align-items:center;gap:12px;margin:2px 0 14px;padding-inline-end:50px;}
   .ring{position:relative;width:56px;height:56px;flex-shrink:0;}
   .ring svg{width:56px;height:56px;transform:rotate(-90deg);}
   .ring .bg{stroke:rgba(255,255,255,.18);} .ring .fg{stroke:var(--chalk);transition:stroke .2s;}
@@ -110,7 +111,8 @@
   .qcard{background:var(--card);color:var(--ink);border-radius:26px;padding:20px 18px;margin-bottom:14px;
     box-shadow:0 18px 40px rgba(0,0,0,.28);}
   .qcard .q{font-size:19px;font-weight:800;line-height:1.85;margin:0;white-space:pre-wrap;text-align:center;}
-  .qcard img.qi{display:block;max-width:100%;max-height:200px;border-radius:16px;margin:0 auto 14px;}
+  .qcard img.qi{display:block;max-width:100%;max-height:240px;object-fit:contain;border-radius:16px;margin:0 auto 14px;cursor:zoom-in;}
+  .qcard img.qi + .q, .qcard .q + img.qi{margin-top:12px;}
   .answers{display:grid;grid-template-columns:1fr;gap:12px;}
   .answers.two{grid-template-columns:1fr 1fr;}
   .tile{position:relative;display:flex;align-items:center;gap:12px;width:100%;text-align:right;color:#fff;
@@ -126,6 +128,17 @@
   .tile .shape svg{width:18px;height:18px;fill:#fff;}
   .tile .tx{flex:1;}
   .tile img{max-height:64px;border-radius:10px;}
+  /* اختيارات بصور: شبكة 2×2 وصور أكبر */
+  .answers.imgs{grid-template-columns:1fr 1fr;}
+  .answers.imgs .tile{flex-direction:column;align-items:stretch;text-align:center;padding:12px 10px;}
+  .answers.imgs .tile .shape{align-self:flex-start;width:28px;height:28px;border-radius:9px;}
+  .answers.imgs .tile img{width:100%;max-height:130px;object-fit:contain;background:#fff;border-radius:12px;padding:4px;order:-1;}
+  .tile.locked img,.tile.correct img,.tile.wrong img{cursor:zoom-in;}
+  .lb{position:fixed;inset:0;z-index:100;background:rgba(10,8,40,.92);display:flex;align-items:center;
+    justify-content:center;padding:16px;cursor:zoom-out;}
+  .lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:14px;background:#fff;}
+  .prep{text-align:center;padding:90px 0;font-weight:800;color:rgba(255,255,255,.8);}
+  .prep .spinner{margin:0 auto 16px;}
   .tile.locked{cursor:default;filter:saturate(.35) brightness(.8);opacity:.6;}
   .tile.correct{filter:none;opacity:1;--c:#34D399;--cd:#047857;animation:glow .7s ease-out;}
   .tile.wrong{filter:none;opacity:1;--c:#FB7185;--cd:#9F1239;animation:shake .45s;}
@@ -148,7 +161,7 @@
   .fb.good .row{color:var(--ok-d);} .fb.bad .row{color:#BE123C;} .fb.late .row{color:#B45309;}
   .fb .pts{margin-right:auto;background:#ECFDF5;color:var(--ok-d);padding:3px 12px;border-radius:999px;font-size:15px;}
   .fb .note{margin:10px 0 0;font-size:13.5px;line-height:1.85;font-weight:600;color:#3D4260;}
-  .fb .note img{display:block;max-width:100%;max-height:150px;border-radius:12px;margin-top:8px;}
+  .fb .note img{display:block;max-width:100%;max-height:180px;object-fit:contain;border-radius:12px;margin-top:8px;cursor:zoom-in;}
   .fb .btn{margin-top:14px;}
 
   /* ── النتيجة ───────────────────────────── */
@@ -224,6 +237,34 @@
   const esc = (str) => { const d = document.createElement('div'); d.innerText = str ?? ''; return d.innerHTML; };
   const imgTag = (url, cls) => url
     ? `<img class="${cls||''}" src="${esc(url)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
+  // تحميل مسبق للصور: العدّاد بيبدأ بعد ما صور السؤال تتحمّل (أو بعد 5 ثواني
+  // كحد أقصى) عشان النت الضعيف ماياكلش وقت الطالب.
+  const imgSeen = new Set();
+  function preload(urls){
+    const ps = urls.filter(u => u && !imgSeen.has(u)).map(u => new Promise(res => {
+      const im = new Image();
+      im.onload = im.onerror = () => { imgSeen.add(u); res(); };
+      im.src = u;
+    }));
+    if (!ps.length) return Promise.resolve();
+    return Promise.race([Promise.all(ps), new Promise(r => setTimeout(r, 5000))]);
+  }
+  const urlsOf = (it) => [it.q.imageUrl, it.stmtImg, ...(it.q.optionImageUrls || [])];
+
+  // تكبير صورة بالضغط (صورة السؤال/الشرح، وصور الاختيارات بعد الإجابة).
+  document.addEventListener('click', (e) => {
+    const img = e.target.closest && e.target.closest('img');
+    if (!img || img.closest('.lb')) return;
+    const inTile = img.closest('.tile');
+    const zoomable = img.classList.contains('qi') || img.closest('.note') || (inTile && inTile.classList.contains('locked') || inTile && (inTile.classList.contains('correct') || inTile.classList.contains('wrong')));
+    if (!zoomable) return;
+    e.preventDefault(); e.stopPropagation();
+    const lb = document.createElement('div'); lb.className = 'lb';
+    lb.innerHTML = `<img src="${esc(img.currentSrc || img.src)}" alt="">`;
+    lb.onclick = () => lb.remove();
+    document.body.appendChild(lb);
+  }, true);
+
   const shuffle = (a) => { const r=a.slice(); for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [r[i],r[j]]=[r[j],r[i]];} return r; };
   const buzz = (ms) => { try { navigator.vibrate && navigator.vibrate(ms); } catch(e){} };
   function view(html){ appEl.innerHTML = `<div class="view">${html}</div>`; window.scrollTo(0,0); }
@@ -433,7 +474,7 @@
       const useCorrect = Math.random() < 0.5 || wrongs.length === 0;
       const idx = useCorrect ? q.correctIndex : wrongs[Math.floor(Math.random()*wrongs.length)];
       return { q, statement: `${q.text}\n\nالإجابة: ${q.options[idx]}`, truth: idx === q.correctIndex,
-               correctText: q.options[q.correctIndex] };
+               stmtImg: (q.optionImageUrls || [])[idx] || null, correctText: q.options[q.correctIndex] };
     });
   }
 
@@ -461,10 +502,20 @@
     </div>`;
   }
 
-  function showQuestion(){
+  let qToken = 0;
+  async function showQuestion(){
     clearTimer();
     const tf = isTF();
     const it = run.items[run.i];
+    const token = ++qToken;
+    const need = urlsOf(it).filter(u => u && !imgSeen.has(u));
+    if (need.length) {
+      view('<div class="prep"><div class="spinner"></div>جاري تحميل السؤال…</div>');
+      await preload(need);
+      if (token !== qToken) return;
+    }
+    const nxt = run.items[run.i + 1];
+    if (nxt) preload(urlsOf(nxt));
     const q = it.q;
     const total = run.items.length;
     const imgs = q.optionImageUrls || [];
@@ -472,12 +523,12 @@
       ? `<div class="answers two tf" id="opts">
           <button class="tile" data-v="1"><span class="shape">${ICON.check}</span><span class="tx">صح</span></button>
           <button class="tile" data-v="0"><span class="shape">${ICON.cross}</span><span class="tx">خطأ</span></button></div>`
-      : `<div class="answers" id="opts">` + it.order.map((oi, k) =>
+      : `<div class="answers${imgs.some(u => u) ? ' imgs' : ''}" id="opts">` + it.order.map((oi, k) =>
           `<button class="tile" data-i="${oi}"><span class="shape">${ICON[SHAPES[k % 4]]}</span>
             <span class="tx">${esc(q.options[oi])}</span>${imgTag(imgs[oi])}</button>`).join('') + `</div>`;
 
     view(`${hudHtml(total)}
-      <div class="qcard">${imgTag(q.imageUrl,'qi')}<p class="q">${esc(tf ? it.statement : q.text)}</p></div>
+      <div class="qcard">${imgTag(q.imageUrl,'qi')}<p class="q">${esc(tf ? it.statement : q.text)}</p>${tf ? imgTag(it.stmtImg,'qi') : ''}</div>
       ${answers}<div id="after"></div>`);
 
     const startedAt = performance.now();

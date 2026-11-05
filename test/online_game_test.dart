@@ -133,6 +133,36 @@ void main() {
     });
   });
 
+  group('GameQuestion.hasImages', () {
+    test('صورة السؤال أو أي اختيار تعدّ، وصورة الشرح لا', () {
+      expect(q('a').hasImages, isFalse);
+      expect(
+          const GameQuestion(
+                  text: 't',
+                  options: ['x', 'y'],
+                  correctIndex: 0,
+                  explanationImageUrl: 'http://i/e.png')
+              .hasImages,
+          isFalse);
+      expect(
+          const GameQuestion(
+                  text: 't',
+                  options: ['x', 'y'],
+                  correctIndex: 0,
+                  imageUrl: 'http://i/q.png')
+              .hasImages,
+          isTrue);
+      expect(
+          const GameQuestion(
+                  text: 't',
+                  options: ['x', 'y'],
+                  correctIndex: 0,
+                  optionImageUrls: [null, 'http://i/o.png'])
+              .hasImages,
+          isTrue);
+    });
+  });
+
   test('رابط اللعبة', () {
     expect(OnlineGameService.linkFor('abc', 'g1'),
         'active-class.online/game/?s=abc&g=g1');
