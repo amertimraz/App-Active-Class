@@ -9,6 +9,7 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/contact_picker_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
+import 'package:active_class/widgets/phone_field.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
 import 'package:active_class/widgets/code_scanner_page.dart';
@@ -82,6 +83,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   late final TextEditingController _priceCtrl;
   late final TextEditingController _phoneCtrl;
   late final TextEditingController _whatsappCtrl;
+  late final TextEditingController _studentPhoneCtrl;
   late final TextEditingController _exemptCustomCtrl;
 
   String get _dialCode => Get.isRegistered<SettingsController>()
@@ -123,6 +125,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     _priceCtrl = TextEditingController(text: s.price.toStringAsFixed(0));
     _phoneCtrl = TextEditingController(text: s.guardianPhone ?? '');
     _whatsappCtrl = TextEditingController(text: s.guardianWhatsapp ?? '');
+    _studentPhoneCtrl = TextEditingController(text: s.studentPhone ?? '');
     _sibTotalCtrl =
         TextEditingController(text: s.siblingsTotal?.toString() ?? '');
     _attendanceStart = s.attendanceStart ?? DateTime.now();
@@ -201,6 +204,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     _priceCtrl.dispose();
     _phoneCtrl.dispose();
     _whatsappCtrl.dispose();
+    _studentPhoneCtrl.dispose();
     _exemptCustomCtrl.dispose();
     _sibTotalCtrl.dispose();
     _codeCtrl.dispose();
@@ -316,6 +320,10 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
             ? null
             : _whatsappCtrl.text.trim(),
         clearGuardianWhatsapp: _whatsappCtrl.text.trim().isEmpty,
+        studentPhone: _studentPhoneCtrl.text.trim().isEmpty
+            ? null
+            : _studentPhoneCtrl.text.trim(),
+        clearStudentPhone: _studentPhoneCtrl.text.trim().isEmpty,
         birthDate: _birthDate,
         exemptPercent: _isExempt ? _exemptPercent : 0,
         exemptReason: finalReason,
@@ -513,6 +521,25 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                       }
                     },
                   ),
+                  // رقم الطالب نفسه (اختياري) — لرسائل واتساب للطالب
+                  Obx(() => Get.find<SettingsController>()
+                          .studentWhatsappEnabled
+                          .value
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 14),
+                            const FormSectionTitle('الطالب (اختياري)',
+                                icon: Icons.person_rounded),
+                            PhoneField(
+                              controller: _studentPhoneCtrl,
+                              dialCode: _dialCode,
+                              label: 'رقم الطالب نفسه',
+                              dense: true,
+                            ),
+                          ],
+                        )
+                      : const SizedBox.shrink()),
                   const SizedBox(height: 14),
                   const FormSectionTitle('الاشتراك',
                       icon: Icons.payments_rounded),

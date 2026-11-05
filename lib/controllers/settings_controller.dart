@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/at_risk_controller.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/team_settings_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
@@ -138,6 +139,18 @@ class SettingsController extends GetxController {
   /// احتياطية (قاعدة البيانات اتستبدلت بالكامل، والقيم في الذاكرة
   /// لسه القديمة لحد ما نعيد تحميلها).
   Future<void> reloadFromDatabase() async {
+    _loading = true;
+    try {
+      await _reloadAll();
+    } finally {
+      _loading = false;
+    }
+  }
+
+  // أثناء التحميل بنسمح لـ_dbSet بالكتابة (ترحيل قديم) من غير قفل الفريق.
+  bool _loading = false;
+
+  Future<void> _reloadAll() async {
     await Future.wait([
       _loadCurrency(),
       _loadCountryDial(),
@@ -159,8 +172,18 @@ class SettingsController extends GetxController {
   // كخطوة ترحيل لمرة واحدة فقط لو المفتاح مش موجود لسه في القاعدة،
   // عشان مستخدمين النسخة القديمة ميفقدوش إعداداتهم المحفوظة.
   Future<String?> _dbGet(String key) => DatabaseService().getSetting(key);
-  Future<void> _dbSet(String key, String value) =>
-      DatabaseService().setSetting(key, value);
+  Future<void> _dbSet(String key, String value) async {
+    // وضع الفريق: الإعداد المشترك بيتحكم فيه المدرس بس. المساعد لو وصل
+    // لهنا (الواجهة المفروض مقفولة) ما بنكتبش، ونرجّع القيم في الذاكرة
+    // للمحفوظ فعليًا.
+    if (!_loading && TeamSettingsService.isLocked(key)) {
+      TeamSettingsService.notifyLocked();
+      unawaited(reloadFromDatabase());
+      return;
+    }
+    await DatabaseService().setSetting(key, value);
+    TeamSettingsService().onLocalWrite(key, value);
+  }
 
   Future<String?> _migrateString(String key) async {
     final v = await _dbGet(key);
@@ -201,8 +224,20 @@ class SettingsController extends GetxController {
     }
   }
 
+  /// السماح بإرسال رسائل واتساب للطالب نفسه (مش ولي الأمر بس) — محلي، مطفي.
+  final RxBool studentWhatsappEnabled = false.obs;
+
+  Future<void> setStudentWhatsappEnabled(bool v) async {
+    studentWhatsappEnabled.value = v;
+    try {
+      await _dbSet(SETTING_STUDENT_WHATSAPP_ENABLED, v ? '1' : '0');
+    } catch (_) {}
+  }
+
   Future<void> _loadWhatsappSettings() async {
     try {
+      studentWhatsappEnabled.value =
+          (await _dbGet(SETTING_STUDENT_WHATSAPP_ENABLED)) == '1';
       whatsappEnabled.value = await _migrateBool(_keyWaEnabled) ?? true;
       whatsappSendDay.value = await _migrateInt(_keyWaSendDay) ?? 1;
     } catch (_) {}

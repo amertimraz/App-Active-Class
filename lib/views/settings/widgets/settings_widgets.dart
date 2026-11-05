@@ -146,34 +146,46 @@ Widget _buildSwitchTile(
   required String subtitle,
   required RxBool rxValue,
   required void Function(bool) onChanged,
+  // مفتاح الإعداد لو مشترك في وضع الفريق: بيتقفل على جهاز المساعد.
+  String? sharedKey,
 }) {
   final t = _tk(isDark);
+  final locked = sharedKey != null && TeamSettingsService.isLocked(sharedKey);
   // الصف كله بيقلب الإعداد (مش السويتش بس) — هدف لمس أكبر.
   return _tileRow(
     t,
     icon: icon,
     iconColor: iconColor,
     title: title,
-    subtitle: subtitle,
-    onTap: () => onChanged(!rxValue.value),
-    trailing: SizedBox(
-      width: 44,
-      height: 28,
-      child: FittedBox(
-        child: Obx(() => Switch(
-              value: rxValue.value,
-              onChanged: onChanged,
-              thumbColor:
-                  WidgetStatePropertyAll(isDark ? t.board : Colors.white),
-              trackColor: WidgetStateProperty.resolveWith((s) =>
-                  s.contains(WidgetState.selected)
-                      ? t.brand
-                      : t.inkFaint.withValues(alpha: 0.45)),
-              trackOutlineColor:
-                  const WidgetStatePropertyAll(Colors.transparent),
-            )),
+    subtitle: locked ? '$subtitle — بيتحكم فيه المدرس' : subtitle,
+    onTap: locked
+        ? TeamSettingsService.notifyLocked
+        : () => onChanged(!rxValue.value),
+    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+      if (locked)
+        Padding(
+          padding: const EdgeInsetsDirectional.only(end: 6),
+          child: Icon(Icons.lock_rounded, size: 18, color: t.inkFaint),
+        ),
+      SizedBox(
+        width: 44,
+        height: 28,
+        child: FittedBox(
+          child: Obx(() => Switch(
+                value: rxValue.value,
+                onChanged: locked ? null : onChanged,
+                thumbColor:
+                    WidgetStatePropertyAll(isDark ? t.board : Colors.white),
+                trackColor: WidgetStateProperty.resolveWith((s) =>
+                    s.contains(WidgetState.selected)
+                        ? t.brand
+                        : t.inkFaint.withValues(alpha: 0.45)),
+                trackOutlineColor:
+                    const WidgetStatePropertyAll(Colors.transparent),
+              )),
+        ),
       ),
-    ),
+    ]),
   );
 }
 
@@ -211,8 +223,17 @@ Widget _buildDropdownTile<T>(
   required List<DropdownMenuItem<T>> items,
   required void Function(T?)? onChanged,
   String? helper,
+  // مفتاح الإعداد لو مشترك في وضع الفريق: بيتقفل على جهاز المساعد.
+  String? sharedKey,
 }) {
   final t = _tk(isDark);
+  final locked = sharedKey != null && TeamSettingsService.isLocked(sharedKey);
+  if (locked) {
+    onChanged = null;
+    helper = (helper == null || helper.isEmpty)
+        ? 'بيتحكم فيه المدرس'
+        : '$helper\nبيتحكم فيه المدرس';
+  }
   return Padding(
     padding: const EdgeInsets.symmetric(
         horizontal: _kTilePadH, vertical: AppSpace.sm + 2),

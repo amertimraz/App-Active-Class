@@ -46,11 +46,11 @@ void main() {
     int count(SettingsItemKind k) =>
         settingsOnly.where((i) => i.kind == k).length;
 
-    test('21 سويتش (20 + طلاب ضيوف للحصة)',
-        () => expect(count(SettingsItemKind.switchTile), 21));
+    test('22 سويتش (21 + رسائل واتساب للطالب)',
+        () => expect(count(SettingsItemKind.switchTile), 22));
     test('13 قائمة اختيار', () => expect(count(SettingsItemKind.dropdown), 13));
-    test('10 عناصر تنقّل (9 + صحة البيانات spec 052)',
-        () => expect(count(SettingsItemKind.nav), 10));
+    test('11 عنصر تنقّل (10 + رسائلي المحفوظة)',
+        () => expect(count(SettingsItemKind.nav), 11));
   });
 
   test('منطقة الخطر: حذف السجلات وحذف الكل فقط وفي فئة البيانات', () {

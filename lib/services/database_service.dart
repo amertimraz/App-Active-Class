@@ -103,6 +103,18 @@ const String _examQuestionsExamIdIndexSql =
     'CREATE INDEX IF NOT EXISTS idx_${TABLE_EXAM_QUESTIONS}_exam_id '
     'ON $TABLE_EXAM_QUESTIONS($COL_EQ_EXAM_ID, $COL_EQ_POSITION)';
 
+// رسائل واتساب المحفوظة (v40) — محلية، غير مُزامَنة.
+const String _messageTemplatesTableSql = '''
+  CREATE TABLE IF NOT EXISTS $TABLE_MESSAGE_TEMPLATES (
+    $COL_MT_ID       INTEGER PRIMARY KEY AUTOINCREMENT,
+    $COL_MT_TITLE    TEXT NOT NULL,
+    $COL_MT_BODY     TEXT NOT NULL,
+    $COL_MT_CATEGORY TEXT NOT NULL DEFAULT 'general',
+    $COL_MT_LEVELS   TEXT,
+    $COL_MT_SORT     INTEGER NOT NULL DEFAULT 0
+  )
+''';
+
 // spec 021 — واقعة "تمّت المتابعة" (تُستخدم في _createTables و_onUpgrade v25).
 // متزامَنة عبر الفريق (COL_SYNC_*) زي TABLE_HOMEWORK/TABLE_PAYMENTS.
 const String _studentFollowUpsTableSql = '''
@@ -300,6 +312,7 @@ class DatabaseService {
         $COL_GROUP_SCHEDULE TEXT,
         $COL_GROUP_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_GROUP_PRICING_TYPE TEXT DEFAULT 'monthly',
+        $COL_GROUP_WHATSAPP_LINK TEXT,
         $COL_SYNC_UPDATED_AT TEXT,
         $COL_SYNC_REMOTE_ID TEXT
       )
@@ -322,6 +335,7 @@ class DatabaseService {
         $COL_STUDENT_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_STUDENT_ATTENDANCE_START TEXT,
         $COL_STUDENT_GUARDIAN_PHONE TEXT,
+        $COL_STUDENT_STUDENT_PHONE TEXT,
         $COL_STUDENT_GUARDIAN_WHATSAPP TEXT,
         $COL_STUDENT_BIRTH_DATE TEXT,
         $COL_STUDENT_EXEMPT_PERCENT REAL DEFAULT 0,
@@ -461,6 +475,7 @@ class DatabaseService {
 
     // Student Follow-ups (spec 021) — واقعة "تمّت المتابعة"، متزامَنة عبر الفريق.
     await db.execute(_studentFollowUpsTableSql);
+    await db.execute(_messageTemplatesTableSql);
     await db.execute(_studentFollowUpsIndexSql);
 
     // Bank Questions (spec 025) — بنك أسئلة قابل لإعادة الاستخدام، متزامن عبر الفريق.
@@ -915,6 +930,19 @@ class DatabaseService {
       try {
         await db.execute(_sessionOverridesIndexSql);
       } catch (_) {}
+    }
+
+    if (oldVersion < 40) {
+      // رسائل واتساب: رقم الطالب + رابط جروب المجموعة + جدول الرسائل المحفوظة.
+      for (final stmt in [
+        'ALTER TABLE $TABLE_STUDENTS ADD COLUMN $COL_STUDENT_STUDENT_PHONE TEXT',
+        'ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_WHATSAPP_LINK TEXT',
+        _messageTemplatesTableSql,
+      ]) {
+        try {
+          await db.execute(stmt);
+        } catch (_) {}
+      }
     }
 
     if (oldVersion < 30) {
@@ -2610,6 +2638,42 @@ class DatabaseService {
       {COL_SETTING_KEY: key, COL_SETTING_VALUE: value},
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  /// يمسح إعدادًا (الرجوع للقيمة الافتراضية) — بيستعمله تطبيق الإعدادات
+  /// المشتركة لما المدرس يكون على الافتراضي.
+  Future<void> clearSetting(String key, {DatabaseExecutor? on}) async {
+    final db = on ?? await database;
+    await db.delete(
+      TABLE_APP_SETTINGS,
+      where: '$COL_SETTING_KEY = ?',
+      whereArgs: [key],
+    );
+  }
+
+  // ── رسائل واتساب المحفوظة (محلية) ─────────────────────────────
+  Future<List<Map<String, Object?>>> getMessageTemplateRows() async {
+    final db = await database;
+    return db.query(TABLE_MESSAGE_TEMPLATES,
+        orderBy: '$COL_MT_SORT ASC, $COL_MT_ID ASC');
+  }
+
+  Future<int> insertMessageTemplateRow(Map<String, Object?> row) async {
+    final db = await database;
+    return db.insert(TABLE_MESSAGE_TEMPLATES, row);
+  }
+
+  Future<void> updateMessageTemplateRow(
+      int id, Map<String, Object?> row) async {
+    final db = await database;
+    await db.update(TABLE_MESSAGE_TEMPLATES, row,
+        where: '$COL_MT_ID = ?', whereArgs: [id]);
+  }
+
+  Future<void> deleteMessageTemplateRow(int id) async {
+    final db = await database;
+    await db.delete(TABLE_MESSAGE_TEMPLATES,
+        where: '$COL_MT_ID = ?', whereArgs: [id]);
   }
 
   Future<double> getTotalPaymentsByStudent(int studentId) async {

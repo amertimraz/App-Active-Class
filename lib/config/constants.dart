@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 39;
+const int DATABASE_VERSION = 40;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -129,6 +129,8 @@ const String COL_GROUP_ICON = 'icon'; // icon name
 const String COL_GROUP_SCHEDULE = 'schedule'; // optional text/json schedule
 const String COL_GROUP_CREATED_AT = 'created_at';
 const String COL_GROUP_PRICING_TYPE = 'pricing_type'; // monthly / per_session
+// رابط جروب واتساب المجموعة (اختياري، مُزامَن) — v40.
+const String COL_GROUP_WHATSAPP_LINK = 'whatsapp_link';
 
 // Column Names - Students
 const String COL_STUDENT_ID = 'id';
@@ -153,6 +155,8 @@ const String COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT = 'sibling_group_committe
 const String COL_STUDENT_CREATED_AT = 'created_at';
 const String COL_STUDENT_ATTENDANCE_START = 'attendance_start';
 const String COL_STUDENT_GUARDIAN_PHONE = 'guardian_phone';
+// رقم الطالب نفسه (اختياري، مُزامَن) — v40: لرسائل واتساب للطالب.
+const String COL_STUDENT_STUDENT_PHONE = 'student_phone';
 const String COL_STUDENT_GUARDIAN_WHATSAPP = 'guardian_whatsapp'; // spec 033
 const String COL_STUDENT_BIRTH_DATE = 'birth_date';
 const String COL_STUDENT_EXEMPT_PERCENT = 'exempt_percent';
@@ -371,6 +375,19 @@ const int DEFAULT_SESSION_MINUTES = 60;
 //  بنفس آلية outbox الموجودة (زي TABLE_HOMEWORK/TABLE_PAYMENTS).
 // ─────────────────────────────────────────────────────────────────
 const String TABLE_STUDENT_FOLLOW_UPS = 'student_follow_ups';
+
+// رسائل واتساب المحفوظة (v40) — محلية للمعلم فقط (غير مُزامَنة).
+const String TABLE_MESSAGE_TEMPLATES = 'message_templates';
+const String COL_MT_ID = 'id';
+const String COL_MT_TITLE = 'title';
+const String COL_MT_BODY = 'body';
+const String COL_MT_CATEGORY = 'category';
+const String COL_MT_LEVELS = 'levels'; // JSON array
+const String COL_MT_SORT = 'sort_order';
+
+// إعداد: السماح بإرسال رسائل واتساب للطالب نفسه (مش ولي الأمر بس). محلي،
+// مطفي افتراضيًا.
+const String SETTING_STUDENT_WHATSAPP_ENABLED = 'student_whatsapp_enabled';
 const String COL_SFU_ID              = 'id';
 const String COL_SFU_STUDENT_ID      = 'student_id';
 const String COL_SFU_REASON_TYPES    = 'reason_types';    // JSON list<String>

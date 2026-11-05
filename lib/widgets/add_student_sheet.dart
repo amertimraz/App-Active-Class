@@ -13,6 +13,7 @@ import 'package:active_class/services/contact_picker_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
+import 'package:active_class/widgets/phone_field.dart';
 import 'package:active_class/widgets/exempt_widgets.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/widgets/import_students_dialog.dart';
@@ -87,6 +88,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _whatsappCtrl = TextEditingController();
+  final _studentPhoneCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
 
   String get _dialCode => Get.isRegistered<SettingsController>()
@@ -292,6 +294,9 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
         createdAt: DateTime.now(),
         attendanceStart: _attendanceStart,
         guardianPhone: phone.isEmpty ? null : phone,
+        studentPhone: _studentPhoneCtrl.text.trim().isEmpty
+            ? null
+            : _studentPhoneCtrl.text.trim(),
         guardianWhatsapp: whatsapp.isEmpty ? null : whatsapp,
         birthDate: _birthDate,
         siblingsTotal: sibTotal,
@@ -358,6 +363,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
     _nameCtrl.clear();
     _phoneCtrl.clear();
     _whatsappCtrl.clear();
+    _studentPhoneCtrl.clear();
     _sibTotalCtrl.clear();
     _exemptCustomCtrl.clear();
     _birthDate = null;
@@ -395,6 +401,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _whatsappCtrl.dispose();
+    _studentPhoneCtrl.dispose();
     _priceCtrl.dispose();
     _sibTotalCtrl.dispose();
     _codeCtrl.dispose();
@@ -648,6 +655,25 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                         }
                       },
                     ),
+                    // رقم الطالب نفسه (اختياري) — لرسائل واتساب للطالب
+                    Obx(() => Get.find<SettingsController>()
+                            .studentWhatsappEnabled
+                            .value
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 14),
+                              const FormSectionTitle('الطالب (اختياري)',
+                                  icon: Icons.person_rounded),
+                              PhoneField(
+                                controller: _studentPhoneCtrl,
+                                dialCode: _dialCode,
+                                label: 'رقم الطالب نفسه',
+                                dense: true,
+                              ),
+                            ],
+                          )
+                        : const SizedBox.shrink()),
 
                     const SizedBox(height: 14),
 

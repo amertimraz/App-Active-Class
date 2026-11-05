@@ -17,6 +17,7 @@ import 'package:active_class/utils/portal_expiry.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/announcement_model.dart';
+import 'package:active_class/views/license/free_month_banner.dart' show openFreeMonthRequest;
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/helpers.dart';
 
@@ -195,6 +196,10 @@ class NotificationService {
     if (response.payload == 'announcement_plans') {
       Get.toNamed(ROUTE_PLANS);
     }
+    // حملة الشهر المجاني: يفتح ورقة الطلب مباشرة.
+    if (response.payload == 'promo_free_month') {
+      openFreeMonthRequest();
+    }
   }
 
   /// spec 054 — إشعار إعلان تسويقي (مرة لكل إصدار؛ التكرار بيمنعه المتصل).
@@ -225,6 +230,30 @@ class NotificationService {
   }
 
   static const int announcementNotificationId = 990000100;
+
+  /// إشعار حملة «شهر مجانًا» (مرة لكل إصدار؛ التكرار بيمنعه المتصل).
+  Future<void> showPromo({required String title, required String body}) async {
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        icon: 'ic_stat_notify',
+        largeIcon: DrawableResourceAndroidBitmap('ic_notification_large'),
+        color: Color(0xFF4F46E5),
+        'active_class_announcements',
+        'عروض وإعلانات',
+        channelDescription: 'عروض وخصومات من Active Class',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        showWhen: true,
+      ),
+    );
+    await _notificationsPlugin.show(
+      990000101,
+      '🎁 $title',
+      body,
+      details,
+      payload: 'promo_free_month',
+    );
+  }
 
   // Show immediate notification
   Future<void> showNotification({

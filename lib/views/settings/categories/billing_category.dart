@@ -30,6 +30,7 @@ class _BillingCategoryPage extends StatelessWidget {
                   icon: Icons.hourglass_bottom_rounded,
                   iconColor: const Color(0xFFEF4444),
                   title: 'مهلة السماح قبل "متأخر"',
+                  sharedKey: 'payment_grace_days',
                   value: settings.paymentGraceDays.value,
                   items: List.generate(15, (i) => i)
                       .map((d) => DropdownMenuItem(
@@ -59,6 +60,7 @@ class _BillingCategoryPage extends StatelessWidget {
                   icon: Icons.event_repeat_rounded,
                   iconColor: const Color(0xFF0EA5E9),
                   title: 'تحصيل مؤخّر (بالمنقضي)',
+                  sharedKey: SETTING_BILLING_ARREARS,
                   subtitle: settings.billingArrears.value
                       ? 'الشهر الجاري ما يتحسبش في المديونية لحد ما يخلص'
                       : 'مقدّم — الشهر مستحق من أول يومه (الافتراضي)',
@@ -89,6 +91,7 @@ class _BillingCategoryPage extends StatelessWidget {
                 icon: Icons.event_available_rounded,
                 iconColor: const Color(0xFF0EA5E9),
                 title: 'يوم نزول المديونية',
+                sharedKey: SETTING_BILLING_DAY,
                 value: d,
                 items: List.generate(28, (i) => i + 1)
                     .map((x) => DropdownMenuItem(
@@ -123,6 +126,7 @@ class _BillingCategoryPage extends StatelessWidget {
                   icon: Icons.pie_chart_outline_rounded,
                   iconColor: const Color(0xFF0EA5E9),
                   title: 'حساب نسبي للشهر الأول',
+                  sharedKey: SETTING_PRORATE_FIRST_MONTH,
                   subtitle: settings.prorateFirstMonth.value
                       ? 'الطالب اللي بينضم نص الشهر يدفع نسبة الأيام (تقريب لأقرب 5 ج)'
                       : 'الشهر الأول شهر كامل زي أي شهر (الافتراضي)',
@@ -175,6 +179,7 @@ class _BillingCategoryPage extends StatelessWidget {
                 icon: Icons.attach_money_rounded,
                 iconColor: const Color(0xFF10B981),
                 title: 'العملة',
+                sharedKey: 'currency_code',
                 value: settings.currencyCode.value,
                 items: items
                     .map((c) => DropdownMenuItem(

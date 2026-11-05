@@ -1,5 +1,7 @@
 // lib/views/groups/group_details_page.dart
 import 'package:flutter/material.dart';
+import 'package:active_class/widgets/whatsapp_send_sheet.dart';
+import 'package:active_class/utils/whatsapp_targets.dart';
 import 'package:active_class/views/groups/group_performance_page.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'dart:ui' as ui;
@@ -317,6 +319,19 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                         MaterialPageRoute(
                             builder: (_) => GroupPerformancePage(group: g))),
                   ),
+                IconButton(
+                  tooltip: 'واتساب المجموعة',
+                  icon: const Icon(Icons.chat_rounded),
+                  onPressed: () {
+                    if (normalizeWhatsappGroupLink(g.whatsappLink) == null) {
+                      ToastHelper.info(
+                          'أضف رابط جروب واتساب من تعديل المجموعة الأول');
+                      _showEditGroupSheet(context, g);
+                      return;
+                    }
+                    showGroupWhatsappSheet(context, g);
+                  },
+                ),
                 IconButton(
                   tooltip: 'تعديل المجموعة',
                   icon: const Icon(Icons.edit_rounded),

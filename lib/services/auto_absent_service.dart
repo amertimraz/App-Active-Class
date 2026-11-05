@@ -16,6 +16,7 @@ import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/sync_engine.dart';
 import 'package:active_class/services/parent_portal_service.dart';
@@ -50,6 +51,9 @@ class AutoAbsentService {
     }
     final settings = Get.find<SettingsController>();
     if (!settings.autoAbsentEnabled.value) return 0;
+    // وضع الفريق: الغياب التلقائي بيشتغل على جهاز المدرس (المالك) بس —
+    // الإعداد مشترك، ولو اشتغل عند المساعد كمان هيتكرر الغياب من جهازين.
+    if (TeamModeService().isAssistant) return 0;
     // وضع الفريق: ما نسجّلش غياب قبل ما نسحب تحضير الزملاء (وإلا تحضير
     // المساعد بيتمسح بغياب تلقائي لما المالك يفتح التطبيق بعد غياب).
     if (!autoAbsentSyncReady(

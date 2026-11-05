@@ -30,6 +30,7 @@ class _AttendanceCategoryPage extends StatelessWidget {
                   icon: Icons.warning_amber_rounded,
                   iconColor: const Color(0xFFF59E0B),
                   title: 'تنبيه المتأخر في شاشة الحضور',
+                  sharedKey: SETTING_ATTENDANCE_OVERDUE_WARNING,
                   subtitle: settings.attendanceOverdueWarning.value
                       ? 'بيظهر شريط تحذير جنب اسم الطالب المتأخر وقت تسجيل حضوره'
                       : 'معطّل — مفيش تحذير دفع في شاشة الحضور',
@@ -45,6 +46,7 @@ class _AttendanceCategoryPage extends StatelessWidget {
                   icon: Icons.menu_book_rounded,
                   iconColor: const Color(0xFF3B82F6),
                   title: 'الواجب في حضور اليوم',
+                  sharedKey: SETTING_SHOW_HOMEWORK,
                   subtitle: settings.showHomework.value
                       ? 'ظاهر — تبويب الواجب في ورقة حضور اليوم'
                       : 'مخفي — لا يظهر تسجيل الواجب',
@@ -58,6 +60,7 @@ class _AttendanceCategoryPage extends StatelessWidget {
                   icon: Icons.record_voice_over_rounded,
                   iconColor: const Color(0xFF0EA5E9),
                   title: 'درجة التسميع',
+                  sharedKey: SETTING_SHOW_RECITATION,
                   subtitle: settings.showRecitation.value
                       ? 'ظاهرة — داخل تبويب الواجب (1 إلى 10)'
                       : 'مخفية — لا يظهر تسجيل التسميع',
@@ -74,6 +77,7 @@ class _AttendanceCategoryPage extends StatelessWidget {
                       icon: Icons.stairs_rounded,
                       iconColor: const Color(0xFF0EA5E9),
                       title: 'الدرجة العظمى للتسميع',
+                      sharedKey: SETTING_RECITATION_MAX,
                       value: settings.recitationMax.value,
                       items: const [5, 10, 15, 20, 25, 30, 40, 50, 100]
                           .map((m) => DropdownMenuItem(
@@ -99,6 +103,7 @@ class _AttendanceCategoryPage extends StatelessWidget {
                   icon: Icons.emoji_emotions_rounded,
                   iconColor: Colors.deepPurple,
                   title: 'تفاعل الطالب',
+                  sharedKey: SETTING_SHOW_INTERACTION,
                   subtitle: settings.showInteraction.value
                       ? 'ظاهر — إيموجي التفاعل في ورقة الحضور'
                       : 'مخفي — لا يظهر تسجيل التفاعل',
@@ -113,6 +118,7 @@ class _AttendanceCategoryPage extends StatelessWidget {
                   icon: Icons.person_add_alt_1_rounded,
                   iconColor: const Color(0xFF0EA5E9),
                   title: 'إضافة طلاب ضيوف للحصة',
+                  sharedKey: SETTING_ALLOW_GUEST_STUDENTS,
                   subtitle: settings.allowGuestStudents.value
                       ? 'مفعّل — زر "إضافة ضيف" في ورقة الحضور لطالب من مجموعة تانية بيحضر حصة تعويضية'
                       : 'معطّل — الحضور لطلاب المجموعة بس',
@@ -128,6 +134,7 @@ class _AttendanceCategoryPage extends StatelessWidget {
                   icon: Icons.event_busy_rounded,
                   iconColor: const Color(0xFFEF4444),
                   title: 'تسجيل الغياب تلقائيًا بعد انتهاء الحصة',
+                  sharedKey: SETTING_AUTO_ABSENT_ENABLED,
                   subtitle: settings.autoAbsentEnabled.value
                       ? 'الطلاب اللي ما اتمسحوش ومالهمش سجل بعد نهاية الحصة + المهلة يتسجّلوا "غائب" (للمجموعات اللي جدولها فيه وقت نهاية)'
                       : 'معطّل — الغياب بيتسجّل يدويًا',
@@ -144,6 +151,7 @@ class _AttendanceCategoryPage extends StatelessWidget {
                       icon: Icons.hourglass_bottom_rounded,
                       iconColor: const Color(0xFFEF4444),
                       title: 'مهلة بعد نهاية الحصة',
+                      sharedKey: SETTING_AUTO_ABSENT_GRACE_MINUTES,
                       value: settings.autoAbsentGraceMinutes.value,
                       items: const [0, 5, 10, 15, 20, 30, 45, 60, 90, 120, 180]
                           .map((m) => DropdownMenuItem(
@@ -224,6 +232,7 @@ class _AttendanceCategoryPage extends StatelessWidget {
                   icon: Icons.schedule_rounded,
                   iconColor: const Color(0xFFF59E0B),
                   title: 'تسجيل "متأخر" تلقائيًا عبر QR',
+                  sharedKey: SETTING_QR_AUTO_LATE_ENABLED,
                   subtitle: settings.qrAutoLateEnabled.value
                       ? 'لو الطالب اتمسح بعد بداية الحصة بأكتر من المهلة، يتسجّل "متأخر"'
                       : 'معطّل — المسح يسجّل "حاضر" دايمًا',
@@ -240,6 +249,7 @@ class _AttendanceCategoryPage extends StatelessWidget {
                       icon: Icons.hourglass_bottom_rounded,
                       iconColor: const Color(0xFFF59E0B),
                       title: 'مهلة التأخير (دقائق)',
+                      sharedKey: SETTING_LATE_GRACE_MINUTES,
                       value: settings.lateGraceMinutes.value,
                       items: const [0, 5, 10, 15, 20, 30, 45, 60]
                           .map((m) => DropdownMenuItem(

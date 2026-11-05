@@ -19,6 +19,7 @@ class Student {
   final DateTime? createdAt;
   final DateTime? attendanceStart;
   final String? guardianPhone;
+  final String? studentPhone; // رقم الطالب نفسه (اختياري) — v40
   final String?
       guardianWhatsapp; // spec 033 — رابط wa.me أو اسم مستخدم (اختياري)
   final DateTime? birthDate; // تاريخ الميلاد
@@ -42,6 +43,7 @@ class Student {
     this.createdAt,
     this.attendanceStart,
     this.guardianPhone,
+    this.studentPhone,
     this.guardianWhatsapp,
     this.birthDate,
     this.exemptPercent = 0,
@@ -75,6 +77,7 @@ class Student {
       'created_at': createdAt?.toIso8601String(),
       'attendance_start': attendanceStart?.toIso8601String(),
       'guardian_phone': guardianPhone,
+      'student_phone': studentPhone,
       'guardian_whatsapp': guardianWhatsapp,
       'birth_date': birthDate?.toIso8601String(),
       'exempt_percent': exemptPercent,
@@ -106,6 +109,7 @@ class Student {
           ? DateTime.parse(map['attendance_start'] as String)
           : null,
       guardianPhone: map['guardian_phone'] as String?,
+      studentPhone: map['student_phone'] as String?,
       guardianWhatsapp: map['guardian_whatsapp'] as String?,
       birthDate: map['birth_date'] != null
           ? DateTime.parse(map['birth_date'] as String)
@@ -148,6 +152,8 @@ class Student {
     DateTime? createdAt,
     DateTime? attendanceStart,
     String? guardianPhone,
+    String? studentPhone,
+    bool clearStudentPhone = false,
     String? guardianWhatsapp,
     bool clearGuardianWhatsapp = false,
     DateTime? birthDate,
@@ -184,6 +190,8 @@ class Student {
       createdAt: createdAt ?? this.createdAt,
       attendanceStart: attendanceStart ?? this.attendanceStart,
       guardianPhone: guardianPhone ?? this.guardianPhone,
+      studentPhone:
+          clearStudentPhone ? null : (studentPhone ?? this.studentPhone),
       guardianWhatsapp: clearGuardianWhatsapp
           ? null
           : (guardianWhatsapp ?? this.guardianWhatsapp),

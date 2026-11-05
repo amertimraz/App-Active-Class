@@ -12,6 +12,7 @@ import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/controllers/theme_controller.dart';
 import 'package:active_class/views/license/trial_banner.dart';
+import 'package:active_class/views/license/free_month_banner.dart';
 import 'package:active_class/views/license/portal_expiry_banner.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
@@ -225,6 +226,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ),
               ),
               const TrialBanner(),
+              const FreeMonthBanner(),
               const PortalExpiryBanner(),
               const AnnouncementSlot(placement: AnnouncementPlacement.home),
               Expanded(

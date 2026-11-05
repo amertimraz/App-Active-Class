@@ -36,6 +36,7 @@ import 'package:active_class/utils/support_contact.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/backup_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
+import 'package:active_class/services/team_settings_service.dart';
 import 'package:active_class/services/auth_service.dart';
 import 'package:active_class/controllers/google_drive_backup_controller.dart';
 import 'package:active_class/services/google_drive_backup_service.dart';
@@ -45,6 +46,7 @@ import 'package:active_class/views/license/trial_banner.dart';
 import 'package:active_class/widgets/update_dialog.dart';
 import 'package:active_class/widgets/hardware_reader_widgets.dart';
 import 'package:active_class/views/settings/delete_records_page.dart';
+import 'package:active_class/views/messages/message_templates_page.dart';
 
 import 'package:active_class/views/settings/settings_registry.dart';
 import 'package:active_class/views/settings/data_health_page.dart';

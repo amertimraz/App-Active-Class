@@ -3,6 +3,9 @@
 // spec 032 — عناصر واجهة إلغاء/تعويض الحصة: قائمة إجراءات في رأس موديل
 // الحضور + بانر الحالة. المنطق كله في SessionOverrideController.
 import 'package:flutter/material.dart';
+import 'package:active_class/widgets/whatsapp_send_sheet.dart';
+import 'package:active_class/utils/whatsapp_targets.dart';
+import 'package:active_class/utils/message_templates.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
@@ -127,6 +130,30 @@ class SessionOverrideMenuButton extends StatelessWidget {
         group: group, day: day, scheduleHasSession: _scheduleHasSession);
     await attCtrl.loadAttendance();
     if (context.mounted) _toast(context, err ?? 'تم إلغاء حصة اليوم');
+    // لو للمجموعة جروب واتساب: اعرض إبلاغ الطلاب برسالة الإلغاء.
+    if (err == null &&
+        context.mounted &&
+        normalizeWhatsappGroupLink(group.whatsappLink) != null) {
+      final send = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('تبلّغ الطلاب؟'),
+          content: const Text('ابعت رسالة الإلغاء على جروب واتساب المجموعة.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('مش دلوقتي')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('ابعت للجروب')),
+          ],
+        ),
+      );
+      if (send == true && context.mounted) {
+        await showGroupWhatsappSheet(context, group,
+            preferCategory: MessageCategory.cancel);
+      }
+    }
   }
 
   void _toast(BuildContext context, String msg) => AppToast.info(context, msg);

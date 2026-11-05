@@ -29,6 +29,7 @@ class _FollowupCategoryPage extends StatelessWidget {
                   icon: Icons.event_busy_rounded,
                   iconColor: const Color(0xFFEF4444),
                   title: 'غياب متتالي',
+                  sharedKey: SETTING_ATRISK_ABSENCE_ENABLED,
                   subtitle:
                       'رصد بعد ${settings.atRiskAbsenceThreshold.value} حصص غياب ورا بعض',
                   rxValue: settings.atRiskAbsenceEnabled,
@@ -40,6 +41,7 @@ class _FollowupCategoryPage extends StatelessWidget {
                   icon: Icons.repeat_rounded,
                   iconColor: const Color(0xFFEF4444),
                   title: 'عدد حصص الغياب المتتالي',
+                  sharedKey: SETTING_ATRISK_ABSENCE_THRESHOLD,
                   value: settings.atRiskAbsenceThreshold.value,
                   items: List.generate(9, (i) => i + 1)
                       .map((n) =>
@@ -58,6 +60,7 @@ class _FollowupCategoryPage extends StatelessWidget {
                   icon: Icons.assignment_late_rounded,
                   iconColor: const Color(0xFFF59E0B),
                   title: 'واجب ناقص متكرر',
+                  sharedKey: SETTING_ATRISK_HOMEWORK_ENABLED,
                   subtitle:
                       '${settings.atRiskHomeworkM.value} من آخر ${settings.atRiskHomeworkW.value} حصص',
                   rxValue: settings.atRiskHomeworkEnabled,
@@ -69,6 +72,7 @@ class _FollowupCategoryPage extends StatelessWidget {
                   icon: Icons.pending_actions_rounded,
                   iconColor: const Color(0xFFF59E0B),
                   title: 'عدد مرات الواجب الناقص',
+                  sharedKey: SETTING_ATRISK_HOMEWORK_M,
                   value: settings.atRiskHomeworkM.value,
                   items: List.generate(10, (i) => i + 1)
                       .map((n) =>
@@ -86,6 +90,7 @@ class _FollowupCategoryPage extends StatelessWidget {
                   icon: Icons.view_week_rounded,
                   iconColor: const Color(0xFFF59E0B),
                   title: 'من آخر كام حصة',
+                  sharedKey: SETTING_ATRISK_HOMEWORK_W,
                   value: settings.atRiskHomeworkW.value,
                   items: List.generate(15, (i) => i + 1)
                       .map((n) =>
@@ -104,6 +109,7 @@ class _FollowupCategoryPage extends StatelessWidget {
                   icon: Icons.trending_down_rounded,
                   iconColor: const Color(0xFF8B5CF6),
                   title: 'هبوط الدرجات',
+                  sharedKey: SETTING_ATRISK_GRADE_ENABLED,
                   subtitle:
                       'رصد لو نزلت ${settings.atRiskGradeDropPoints.value} نقطة أو تحت النجاح',
                   rxValue: settings.atRiskGradeEnabled,
@@ -115,6 +121,7 @@ class _FollowupCategoryPage extends StatelessWidget {
                   icon: Icons.percent_rounded,
                   iconColor: const Color(0xFF8B5CF6),
                   title: 'مقدار هبوط الدرجة',
+                  sharedKey: SETTING_ATRISK_GRADE_DROP_POINTS,
                   value: settings.atRiskGradeDropPoints.value,
                   items: [5, 10, 15, 20, 25, 30, 40, 50]
                       .map((n) =>
@@ -133,6 +140,7 @@ class _FollowupCategoryPage extends StatelessWidget {
                   icon: Icons.snooze_rounded,
                   iconColor: const Color(0xFF64748B),
                   title: 'مدة التهدئة بعد "تمّت المتابعة"',
+                  sharedKey: SETTING_ATRISK_COOLDOWN_DAYS,
                   value: settings.atRiskCooldownDays.value,
                   items: [1, 3, 5, 7, 10, 14, 21, 30]
                       .map((n) =>

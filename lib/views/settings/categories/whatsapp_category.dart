@@ -31,6 +31,7 @@ class _WhatsappCategoryPage extends StatelessWidget {
                 icon: Icons.flag_rounded,
                 iconColor: const Color(0xFFF59E0B),
                 title: 'رمز دولة الواتساب',
+                sharedKey: 'country_dial',
                 value: settings.countryDial.value,
                 items: items
                     .map((c) => DropdownMenuItem(
@@ -49,6 +50,29 @@ class _WhatsappCategoryPage extends StatelessWidget {
                 },
               );
             }),
+            _buildNavTile(
+              context,
+              isDark,
+              icon: Icons.chat_bubble_outline_rounded,
+              iconColor: const Color(0xFF25D366),
+              title: 'رسائلي المحفوظة',
+              subtitle: 'اكتب رسايل جاهزة (حصة ملغية، نتيجة، مستوى الطالب…) وابعتها',
+              onTap: () => Get.to(() => const MessageTemplatesPage()),
+            ),
+            _buildDivider(isDark),
+            Obx(() => _buildSwitchTile(
+                  context,
+                  isDark,
+                  icon: Icons.person_rounded,
+                  iconColor: const Color(0xFF25D366),
+                  title: 'رسائل واتساب للطالب نفسه',
+                  subtitle: settings.studentWhatsappEnabled.value
+                      ? 'مفعّل — تقدر تبعت لولي الأمر أو الطالب أو الاتنين'
+                      : 'معطّل — الرسائل لولي الأمر بس',
+                  rxValue: settings.studentWhatsappEnabled,
+                  onChanged: (v) async =>
+                      await settings.setStudentWhatsappEnabled(v),
+                )),
             _buildDivider(isDark),
             _buildNavTile(
               context,
@@ -75,6 +99,7 @@ class _WhatsappCategoryPage extends StatelessWidget {
                   icon: Icons.smart_button_rounded,
                   iconColor: const Color(0xFF25D366),
                   title: 'زر الواتساب في المجموعات',
+                  sharedKey: 'wa_button_enabled',
                   subtitle: settings.whatsappEnabled.value
                       ? (settings.isWhatsappDayReached
                           ? 'ظاهر الآن — يبدأ يوم ${settings.whatsappSendDay.value} من الشهر'
@@ -96,6 +121,7 @@ class _WhatsappCategoryPage extends StatelessWidget {
                   icon: Icons.event_rounded,
                   iconColor: const Color(0xFFF59E0B),
                   title: 'يوم ظهور الزر',
+                  sharedKey: 'wa_send_day',
                   value: settings.whatsappSendDay.value,
                   items: List.generate(28, (i) => i + 1)
                       .map((d) => DropdownMenuItem(
@@ -123,6 +149,7 @@ class _WhatsappCategoryPage extends StatelessWidget {
                   icon: Icons.mark_chat_read_rounded,
                   iconColor: const Color(0xFF25D366),
                   title: 'تقرير واتساب بعد اكتمال الحضور',
+                  sharedKey: SETTING_REPORT_ON_COMPLETION_ENABLED,
                   subtitle: settings.reportOnCompletionEnabled.value
                       ? 'هيظهر زرار إرسال تقرير في كارت المجموعة أول ما تحضير النهاردة يكتمل'
                       : 'معطّل — مفيش زرار إرسال هيظهر',

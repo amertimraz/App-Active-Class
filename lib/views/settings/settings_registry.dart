@@ -319,6 +319,18 @@ const List<SettingsItem> kSettingsItems = [
       kind: SettingsItemKind.dropdown,
       keywords: ['رمز الدولة', 'كود الدولة', '+20']),
   SettingsItem(
+      id: 'whatsapp.templates',
+      categoryId: 'whatsapp',
+      title: 'رسائلي المحفوظة',
+      kind: SettingsItemKind.nav,
+      keywords: ['رسالة', 'قالب', 'جاهزة', 'حصة ملغية', 'مستوى', 'نتيجة']),
+  SettingsItem(
+      id: 'whatsapp.student_messages',
+      categoryId: 'whatsapp',
+      title: 'رسائل واتساب للطالب نفسه',
+      kind: SettingsItemKind.switchTile,
+      keywords: ['طالب', 'رقم الطالب', 'ولي الأمر', 'الاتنين']),
+  SettingsItem(
       id: 'whatsapp.send_monthly',
       categoryId: 'whatsapp',
       title: 'إرسال تقارير الشهر',

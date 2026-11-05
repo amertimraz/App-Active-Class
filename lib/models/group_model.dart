@@ -18,6 +18,7 @@ class Group {
   final String? schedule; // optional text/json
   final DateTime? createdAt;
   final String pricingType; // GroupPricingType.monthly / perSession
+  final String? whatsappLink; // رابط جروب واتساب المجموعة (اختياري) — v40
 
   Group({
     this.id,
@@ -29,6 +30,7 @@ class Group {
     this.schedule,
     this.createdAt,
     this.pricingType = GroupPricingType.monthly,
+    this.whatsappLink,
   });
 
   bool get isPerSession => pricingType == GroupPricingType.perSession;
@@ -44,6 +46,7 @@ class Group {
       'schedule': schedule,
       'created_at': createdAt?.toIso8601String(),
       'pricing_type': pricingType,
+      'whatsapp_link': whatsappLink,
     };
   }
 
@@ -61,6 +64,7 @@ class Group {
           : null,
       pricingType:
           map['pricing_type'] as String? ?? GroupPricingType.monthly,
+      whatsappLink: map['whatsapp_link'] as String?,
     );
   }
 
@@ -74,6 +78,8 @@ class Group {
     String? schedule,
     DateTime? createdAt,
     String? pricingType,
+    String? whatsappLink,
+    bool clearWhatsappLink = false,
   }) {
     return Group(
       id: id ?? this.id,
@@ -85,6 +91,8 @@ class Group {
       schedule: schedule ?? this.schedule,
       createdAt: createdAt ?? this.createdAt,
       pricingType: pricingType ?? this.pricingType,
+      whatsappLink:
+          clearWhatsappLink ? null : (whatsappLink ?? this.whatsappLink),
     );
   }
 

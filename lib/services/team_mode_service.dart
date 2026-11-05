@@ -20,6 +20,7 @@ import 'package:active_class/services/online_exam_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/online_exam_access.dart';
 import 'package:active_class/services/sync_engine.dart';
+import 'package:active_class/services/team_settings_service.dart';
 import 'package:active_class/widgets/team_disconnect_dialog.dart';
 
 // مهلة زمنية لطلبات init()/_claimDevice الحرجة — من غيرها، طلب معلّق
@@ -468,6 +469,7 @@ class TeamModeService {
     // سحب دوري، فلو فيه محرّك قديم شغّال لازم يتوقف الأول عشان
     // متبقاش observers/تايمرات مكرّرة.
     _engine?.stop();
+    TeamSettingsService().detach();
     final deviceId = LicenseController.to.deviceId.value;
     _engine = SyncEngine(
       client: client,
@@ -490,9 +492,16 @@ class TeamModeService {
       // ارتباط جهازه هو (مش منطقي أصلاً، مفيش زرار لده)، ماينفعش نسجّل
       // خروجه بالغلط.
       onDeviceUnbound: isOwner.value ? null : _handleDeviceUnbound,
-      onReconnected: () => _refreshMyPermissions(client, tId),
+      onReconnected: () {
+        _refreshMyPermissions(client, tId);
+        unawaited(TeamSettingsService().sync());
+      },
     );
     _engine!.start();
+    // الإعدادات المشتركة: المدرس يرفع، والمساعد يسحب ويتقفل عليه.
+    if (!kIsWeb) {
+      TeamSettingsService().attach(client, tId, isOwner: isOwner.value);
+    }
     // spec 055: الويب بيقرا ويعدّل بيانات الفريق بس. ممنوع يبعت حالة الترخيص
     // ولا بيانات المالك (اسمه/بوابة أولياء الأمور/المالكين الشركاء) لأن
     // ترخيصه المحلي = تجربة، فكان بيبعت "الترخيص متوقف" (owner_license_active

@@ -67,6 +67,7 @@ import 'package:active_class/services/parent_portal_service.dart';
 
 // تشغيل المهام الخلفية
 import 'package:workmanager/workmanager.dart';
+import 'package:active_class/services/promo_background.dart';
 import 'package:active_class/controllers/announcement_controller.dart';
 import 'package:active_class/services/announcement_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -82,7 +83,10 @@ void callbackDispatcher() {
     // spec 054 — فحص الإعلانات (إشعار والتطبيق مقفول). باقي المهام تفضل
     // على المنطق الشهري زي ما كانت بالظبط.
     if (task == kAnnouncementCheckTask) {
-      return runAnnouncementBackgroundCheck();
+      // + إشعار حملة «شهر مجانًا» (نفس الفحص الدوري).
+      final a = await runAnnouncementBackgroundCheck();
+      await runPromoBackgroundCheck();
+      return a;
     }
     final now = DateTime.now();
     final nextMonth = DateTime(now.year, now.month + 1, 1);

@@ -14,7 +14,13 @@ import 'package:active_class/widgets/app_panel.dart';
 
 // نفس أسماء أيام الأسبوع المستخدَمة في NotificationService._dayNameToWeekday.
 const List<String> _weekDayNames = [
-  'السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'
+  'السبت',
+  'الأحد',
+  'الاثنين',
+  'الثلاثاء',
+  'الأربعاء',
+  'الخميس',
+  'الجمعة'
 ];
 
 class NotificationSettingsPage extends StatefulWidget {
@@ -120,7 +126,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
     final db = DatabaseService();
     final students =
         (await db.getAllStudents()).where((s) => !s.isArchived).toList();
-    final now   = DateTime.now();
+    final now = DateTime.now();
     // اليوم بدون وقت
     final today = DateTime(now.year, now.month, now.day);
 
@@ -155,7 +161,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
     if (mounted) {
       setState(() {
         _upcomingBirthdays = entries;
-        _loadingBirthdays  = false;
+        _loadingBirthdays = false;
       });
     }
   }
@@ -334,8 +340,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
                   body: 'هذا إشعار تجريبي لأعياد الميلاد',
                 );
               } else {
-                ToastHelper.error('صلاحية الإشعارات غير مفعلة',
-                    title: 'تنبيه');
+                ToastHelper.error('صلاحية الإشعارات غير مفعلة', title: 'تنبيه');
               }
             },
             icon: Icons.cake_rounded,
@@ -351,8 +356,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
                   body: 'هذا إشعار تجريبي للحصص',
                 );
               } else {
-                ToastHelper.error('صلاحية الإشعارات غير مفعلة',
-                    title: 'تنبيه');
+                ToastHelper.error('صلاحية الإشعارات غير مفعلة', title: 'تنبيه');
               }
             },
             icon: Icons.event_rounded,
@@ -605,8 +609,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
           ),
           if (enabled)
             Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(
-                  16 + 36 + 12, 0, 16, 14),
+              padding:
+                  const EdgeInsetsDirectional.fromSTEB(16 + 36 + 12, 0, 16, 14),
               child: Row(
                 children: [
                   Expanded(
@@ -619,8 +623,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
                       decoration: const InputDecoration(
                           labelText: 'اليوم', isDense: true),
                       items: _weekDayNames
-                          .map((d) =>
-                              DropdownMenuItem(value: d, child: Text(d)))
+                          .map(
+                              (d) => DropdownMenuItem(value: d, child: Text(d)))
                           .toList(),
                       onChanged: (d) {
                         if (d != null) settings.setAtRiskWeeklyNotif(day: d);

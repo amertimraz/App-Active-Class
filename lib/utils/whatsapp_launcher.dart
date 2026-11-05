@@ -36,6 +36,7 @@ Future<bool> launchGuardianWhatsapp({
   String? whatsapp,
   required String message,
   required String dialCode,
+  String missingMessage = 'مفيش رقم أو واتساب لولي الأمر',
 }) async {
   message = withTeacherSignature(message);
   final encoded = Uri.encodeComponent(message);
@@ -78,7 +79,7 @@ Future<bool> launchGuardianWhatsapp({
 
   // 4) لا وجهة
   if (context.mounted) {
-    AppToast.error(context, 'مفيش رقم أو واتساب لولي الأمر');
+    AppToast.error(context, missingMessage);
   }
   return false;
 }

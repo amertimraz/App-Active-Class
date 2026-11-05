@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:active_class/widgets/whatsapp_send_sheet.dart';
 import 'package:active_class/utils/session_guest.dart';
 import 'package:get/get.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
@@ -461,6 +462,11 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
         context,
         title: 'بيانات الطالب',
         actions: [
+          IconButton(
+            tooltip: 'رسالة واتساب',
+            icon: const Icon(Icons.chat_rounded),
+            onPressed: () => showStudentWhatsappSheet(context, s),
+          ),
           IconButton(
             tooltip: 'تعديل بيانات الطالب',
             icon: const Icon(Icons.edit_rounded),

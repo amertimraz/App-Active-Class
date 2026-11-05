@@ -602,6 +602,7 @@ class SyncEngine with WidgetsBindingObserver {
           'icon': payload[COL_GROUP_ICON],
           'schedule': payload[COL_GROUP_SCHEDULE],
           'pricing_type': payload[COL_GROUP_PRICING_TYPE],
+          'whatsapp_link': payload[COL_GROUP_WHATSAPP_LINK],
         };
       case TABLE_STUDENTS:
         final groupLocalId = payload[COL_STUDENT_GROUP_ID] as int?;
@@ -633,6 +634,7 @@ class SyncEngine with WidgetsBindingObserver {
           'code': payload[COL_STUDENT_CODE],
           'price': payload[COL_STUDENT_PRICE],
           'guardian_phone': payload[COL_STUDENT_GUARDIAN_PHONE],
+          'student_phone': payload[COL_STUDENT_STUDENT_PHONE],
           'guardian_whatsapp': payload[COL_STUDENT_GUARDIAN_WHATSAPP],
           'birth_date': payload[COL_STUDENT_BIRTH_DATE],
           'attendance_start': payload[COL_STUDENT_ATTENDANCE_START],
@@ -1848,6 +1850,7 @@ class SyncEngine with WidgetsBindingObserver {
           COL_GROUP_ICON: remote['icon'],
           COL_GROUP_SCHEDULE: remote['schedule'],
           COL_GROUP_PRICING_TYPE: remote['pricing_type'],
+          COL_GROUP_WHATSAPP_LINK: remote['whatsapp_link'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };
@@ -1899,6 +1902,7 @@ class SyncEngine with WidgetsBindingObserver {
           COL_STUDENT_CODE: remote['code'],
           COL_STUDENT_PRICE: remote['price'],
           COL_STUDENT_GUARDIAN_PHONE: remote['guardian_phone'],
+          COL_STUDENT_STUDENT_PHONE: remote['student_phone'],
           COL_STUDENT_GUARDIAN_WHATSAPP: remote['guardian_whatsapp'],
           COL_STUDENT_BIRTH_DATE: remote['birth_date'],
           COL_STUDENT_ATTENDANCE_START: remote['attendance_start'],

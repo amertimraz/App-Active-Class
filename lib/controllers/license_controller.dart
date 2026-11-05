@@ -10,6 +10,9 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:active_class/models/free_month_promo.dart';
+import 'package:active_class/services/notification_service.dart';
+import 'package:active_class/services/promo_background.dart';
 import 'package:active_class/utils/web_owner_license.dart';
 import 'package:uuid/uuid.dart';
 
@@ -171,6 +174,11 @@ class LicenseController extends GetxController {
   }
   final licenseCode = RxnString();
   final hasRequest = false.obs; // هل عنده طلب ترقية pending
+
+  /// حملة «شهر مجانًا» (من الأدمن) + هل استخدمها هذا الجهاز قبل كده.
+  final promo = Rxn<FreeMonthPromo>();
+  final promoUsed = false.obs;
+  static const _kPromoUsed = 'promo_free_month_used';
   final expiresAt = Rxn<DateTime>(); // تاريخ انتهاء الترخيص
 
   /// طول الفترة التجريبية الفعلي — يبدأ بالقيمة الافتراضية [kTrialDays]
@@ -266,6 +274,7 @@ class LicenseController extends GetxController {
       _registerDevice();
       // فحص هل عنده طلب ترقية pending (real-time)
       _checkUpgradeRequest();
+      _watchPromo();
       // تحميل حدود الباقات من مكان مركزي (real-time) — مستقل تمامًا عن
       // حالة الترخيص، عشان يشتغل حتى في وضع التجربة.
       _watchRemoteConfig();
@@ -726,6 +735,94 @@ class LicenseController extends GetxController {
     } catch (_) {}
   }
 
+  // ── حملة الشهر المجاني (real-time) ────────────────────────────────────────
+  void _watchPromo() {
+    SharedPreferences.getInstance().then((p) {
+      promoUsed.value = p.getBool(_kPromoUsed) ?? false;
+    }).catchError((_) {});
+    _db
+        .collection('app_config')
+        .doc(kFreeMonthPromoDocId)
+        .snapshots()
+        .listen((snap) {
+      final data = snap.data();
+      int? ms;
+      final ts = data?['updatedAt'];
+      if (ts is Timestamp) ms = ts.millisecondsSinceEpoch;
+      promo.value =
+          snap.exists ? FreeMonthPromo.fromMap(data, updatedAtMs: ms) : null;
+      _syncPromoPrefs();
+    }, onError: (e) {
+      debugPrint('LicenseController: فشل متابعة حملة الشهر المجاني — $e');
+    });
+    // أي تغيّر في حالة المدرس يحدّث بيانات الإشعار الخلفي ويعيد التقييم.
+    ever(state, (_) => _syncPromoPrefs());
+    ever(hasRequest, (_) => _syncPromoPrefs());
+    ever(promoUsed, (_) => _syncPromoPrefs());
+  }
+
+  /// جمهور المدرس الحالي (new/expired) أو null.
+  String? get promoAudience => promoAudienceForState(state.value.name);
+
+  /// محجوب من الحملة (طلب قيد المراجعة / استخدمها / مساعد في فريق).
+  bool get promoBlocked =>
+      hasRequest.value || promoUsed.value || teamModeBypassLimits;
+
+  /// بيحدّث SharedPreferences (للمهمة الخلفية) وبيبعت إشعار الحملة لو لزم.
+  Future<void> _syncPromoPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(kPromoAudiencePrefsKey, promoAudience ?? '');
+      await prefs.setBool(kPromoBlockedPrefsKey, promoBlocked);
+      if (!shouldNotifyFreeMonthPromo(
+        promo: promo.value,
+        audience: promoAudience,
+        blocked: promoBlocked,
+        lastNotifiedKey: prefs.getString(kPromoNotifiedPrefsKey),
+      )) {
+        return;
+      }
+      final p = promo.value!;
+      await prefs.setString(kPromoNotifiedPrefsKey, p.campaignKey!);
+      await NotificationService().showPromo(title: p.title, body: p.subtitle);
+    } catch (e) {
+      debugPrint('LicenseController._syncPromoPrefs فشل: $e');
+    }
+  }
+
+  /// بنر «شهر مجانًا» يظهر؟ (جمهور مستهدف + حملة شغّالة + مفيش طلب + ماستخدمهاش).
+  bool get showFreeMonthPromo => shouldShowFreeMonthPromo(
+        promo: promo.value,
+        audience: promoAudience,
+        hasPendingRequest: hasRequest.value,
+        alreadyUsed: promoUsed.value,
+        isTeamAssistant: teamModeBypassLimits,
+      );
+
+  /// يبعت طلب «شهر مجانًا» لصفحة طلبات الترقية في الأدمن (نفس قناة الترقية،
+  /// مع promo=free_month عشان الأدمن يفعّله بضغطة).
+  Future<String?> submitFreeMonthRequest({
+    required String name,
+    required String phone,
+  }) async {
+    final p = promo.value;
+    if (p == null || !p.enabled) return 'الحملة مش شغّالة دلوقتي';
+    final err = await submitUpgradeRequest(
+      name: name,
+      phone: phone,
+      planId: p.plan,
+      message: 'طلب ${p.days} يوم مجانًا (حملة الشهر المجاني)',
+      extra: {'promo': kFreeMonthPromoTag, 'promoDays': p.days},
+    );
+    if (err == null) {
+      promoUsed.value = true;
+      try {
+        (await SharedPreferences.getInstance()).setBool(_kPromoUsed, true);
+      } catch (_) {}
+    }
+    return err;
+  }
+
   // ── Check Upgrade Request (real-time) ────────────────────────────────────
   void _checkUpgradeRequest() {
     if (deviceId.value.isEmpty) return;
@@ -794,6 +891,7 @@ class LicenseController extends GetxController {
     String? message,
     String? paymentMethod, // نقدي / Vodafone Cash / InstaPay
     XFile? receiptImage, // صورة الإيصال (اختياري)
+    Map<String, dynamic>? extra, // حقول إضافية (مثلًا promo)
   }) async {
     if (name.trim().isEmpty) return 'أدخل اسمك';
     if (phone.trim().isEmpty) return 'أدخل رقم هاتفك';
@@ -865,6 +963,7 @@ class LicenseController extends GetxController {
         'createdAt': Timestamp.now(),
         'adminNote': '',
         'licenseCode': '',
+        if (extra != null) ...extra,
       });
 
       hasRequest.value = true;

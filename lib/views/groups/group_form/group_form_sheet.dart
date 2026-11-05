@@ -5,6 +5,7 @@
 // وgroup_details_page.dart معًا بدل نسختين منفصلتين (spec 039،
 // راجع research.md #2).
 import 'package:flutter/material.dart';
+import 'package:active_class/utils/whatsapp_targets.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -37,6 +38,7 @@ class GroupFormSheetState extends State<GroupFormSheet> {
   late final TextEditingController _codeCtrl;
   late final TextEditingController _priceCtrl;
   late final TextEditingController _scheduleCtrl;
+  late final TextEditingController _waLinkCtrl;
 
   late String _selectedIcon;
   late int _selectedColor;
@@ -48,6 +50,7 @@ class GroupFormSheetState extends State<GroupFormSheet> {
   String? _codeError;
   String? _priceError;
   String? _scheduleError;
+  String? _waLinkError;
 
   static const _iconOptions = <String, IconData>{
     'group': Icons.groups_rounded,
@@ -87,6 +90,7 @@ class GroupFormSheetState extends State<GroupFormSheet> {
     _codeCtrl = TextEditingController(text: g?.code ?? '');
     _priceCtrl = TextEditingController(text: g?.price?.toString() ?? '');
     _scheduleCtrl = TextEditingController(text: g?.schedule ?? '');
+    _waLinkCtrl = TextEditingController(text: g?.whatsappLink ?? '');
     _pricingType = g?.pricingType ?? GroupPricingType.monthly;
 
     // اختيار أيقونة ولون افتراضيين
@@ -173,10 +177,18 @@ class GroupFormSheetState extends State<GroupFormSheet> {
                   : null;
     });
 
+    // رابط جروب واتساب (اختياري): لو مكتوب لازم يكون رابط واتساب صحيح.
+    final rawLink = _waLinkCtrl.text.trim();
+    final waLink = normalizeWhatsappGroupLink(rawLink);
+    _waLinkError = rawLink.isNotEmpty && waLink == null
+        ? 'الرابط مش صحيح — لازم يبدأ بـ chat.whatsapp.com'
+        : null;
+    setState(() {});
     if (_nameError != null ||
         _codeError != null ||
         _priceError != null ||
-        _scheduleError != null) return;
+        _scheduleError != null ||
+        _waLinkError != null) return;
 
     final price = double.parse(priceText);
     setState(() => _saving = true);
@@ -193,6 +205,7 @@ class GroupFormSheetState extends State<GroupFormSheet> {
             : _scheduleCtrl.text.trim(),
         createdAt: widget.group?.createdAt,
         pricingType: _pricingType,
+        whatsappLink: waLink,
       ));
       if (!mounted) return;
       if (success) {
@@ -429,6 +442,20 @@ class GroupFormSheetState extends State<GroupFormSheet> {
                       ),
                     ),
                   ]),
+                  const SizedBox(height: 18),
+
+                  // رابط جروب واتساب (اختياري)
+                  const FormSectionTitle('جروب الواتساب (اختياري)',
+                      icon: Icons.chat_rounded),
+                  CustomTextField(
+                    dense: true,
+                    controller: _waLinkCtrl,
+                    label: 'رابط جروب واتساب',
+                    keyboardType: TextInputType.url,
+                    textDirection: TextDirection.ltr,
+                    textAlign: TextAlign.left,
+                  ),
+                  if (_waLinkError != null) ErrorText(_waLinkError!),
                   const SizedBox(height: 18),
 
                   // مظهر المجموعة — لون وأيقونة (معاينة مدمجة تفتح منتقي)

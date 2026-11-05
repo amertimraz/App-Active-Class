@@ -21,10 +21,9 @@ class DeleteRecordsPage extends StatelessWidget {
   static const _warn = Color(0xFFF59E0B);
   static const _danger = Color(0xFFEF4444);
 
-  DeleteRecordsController get _c =>
-      Get.isRegistered<DeleteRecordsController>()
-          ? Get.find<DeleteRecordsController>()
-          : Get.put(DeleteRecordsController());
+  DeleteRecordsController get _c => Get.isRegistered<DeleteRecordsController>()
+      ? Get.find<DeleteRecordsController>()
+      : Get.put(DeleteRecordsController());
 
   @override
   Widget build(BuildContext context) {
@@ -41,12 +40,12 @@ class DeleteRecordsPage extends StatelessWidget {
           const SizedBox(height: 8),
           Obx(() => Row(children: [
                 Expanded(
-                    child: _dateField(context, 'من',
-                        c.fromDate.value, (d) => c.setFrom(d))),
+                    child: _dateField(
+                        context, 'من', c.fromDate.value, (d) => c.setFrom(d))),
                 const SizedBox(width: 10),
                 Expanded(
-                    child: _dateField(context, 'إلى',
-                        c.toDate.value, (d) => c.setTo(d))),
+                    child: _dateField(
+                        context, 'إلى', c.toDate.value, (d) => c.setTo(d))),
               ])),
           Obx(() => (c.fromDate.value != null &&
                   c.toDate.value != null &&
@@ -147,8 +146,8 @@ class DeleteRecordsPage extends StatelessWidget {
             child: Text(
               'الحذف نهائي — لا يمكن التراجع إلا باستعادة نسخة احتياطية كاملة. '
               'تُنشأ نسخة احتياطية تلقائيًا قبل أي حذف.',
-              style: TextStyle(
-                  fontFamily: 'Cairo', fontSize: 12, color: _danger),
+              style:
+                  TextStyle(fontFamily: 'Cairo', fontSize: 12, color: _danger),
             ),
           ),
         ]),
@@ -217,15 +216,16 @@ class DeleteRecordsPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('سيُحذف:',
-              style: TextStyle(
-                  fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+              style:
+                  TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
-          ...p.entries.where((e) => c.selectedTypes.contains(e.key)).map((e) =>
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text('• ${e.key.label}: ${e.value}',
-                    style: const TextStyle(fontSize: 12.5)),
-              )),
+          ...p.entries
+              .where((e) => c.selectedTypes.contains(e.key))
+              .map((e) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Text('• ${e.key.label}: ${e.value}',
+                        style: const TextStyle(fontSize: 12.5)),
+                  )),
           const Divider(height: 14),
           Text('الإجمالي: ${c.previewTotal} سجل',
               style: const TextStyle(
@@ -258,11 +258,11 @@ class DeleteRecordsPage extends StatelessWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) {
-          final enabled = !needsWord ||
-              wordCtrl.text.trim() == kDeleteConfirmWord;
+          final enabled =
+              !needsWord || wordCtrl.text.trim() == kDeleteConfirmWord;
           return AlertDialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: const Text('تأكيد الحذف'),
             content: Column(
               mainAxisSize: MainAxisSize.min,

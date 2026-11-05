@@ -95,8 +95,8 @@ class _NeedLoginCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppRadius.control)),
             ),
             child: Text('تسجيل الدخول',
-                style: AppType.label.copyWith(
-                    color: isDark ? tk.board : Colors.white)),
+                style: AppType.label
+                    .copyWith(color: isDark ? tk.board : Colors.white)),
           ),
         ],
       ),
