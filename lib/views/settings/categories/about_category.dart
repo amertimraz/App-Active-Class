@@ -145,7 +145,7 @@ class _AboutCategoryPage extends StatelessWidget {
       highlightId: highlightId,
       children: [
         _buildCommunitySection(context, isDark),
-        const SizedBox(height: 14),
+        const SizedBox(height: 20),
         _buildAboutSection(context, isDark),
       ],
     );

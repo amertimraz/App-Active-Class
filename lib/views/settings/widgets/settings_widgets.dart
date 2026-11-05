@@ -1,6 +1,57 @@
 part of '../settings_page.dart';
 
-// spec 051 — مشترَكات الإعدادات (نقل حرفي من settings_page.dart)
+// مشترَكات الإعدادات بتصميم «السبورة والطباشير» (AppTokens): سطح بحد رفيع
+// بلا ظل، أيقونة بمربع ملوّن خفيف، وصفوف بارتفاع لمس مريح (>= 56).
+// التواقيع ثابتة عشان صفحات الفئات ما تتغيرش.
+
+AppTokens _tk(bool isDark) => isDark ? AppTokens.dark : AppTokens.light;
+
+const double _kTileIcon = 36;
+const double _kTilePadH = 16;
+const double _kTileGap = 12;
+
+/// مربع الأيقونة المشترك بين كل أنواع الصفوف.
+Widget _tileIcon(IconData icon, Color color, {double size = _kTileIcon}) {
+  return Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(AppRadius.control),
+    ),
+    child: Icon(icon, size: size * 0.55, color: color),
+  );
+}
+
+/// سطح مجموعة الصفوف: حد رفيع، وقص عشان تأثير اللمس ما يطلعش برا الزوايا.
+Widget _settingsCard(AppTokens t, Widget child) {
+  return Material(
+    color: t.surface,
+    clipBehavior: Clip.antiAlias,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(AppRadius.panel),
+      side: BorderSide(color: t.line),
+    ),
+    child: child,
+  );
+}
+
+Widget _sectionHeader(AppTokens t, String title, IconData icon, Color color) {
+  return Row(
+    children: [
+      Icon(icon, size: 18, color: color),
+      const SizedBox(width: AppSpace.sm),
+      Flexible(
+        child: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppType.label.copyWith(color: t.ink),
+        ),
+      ),
+    ],
+  );
+}
 
 Widget _buildSection(
   BuildContext context,
@@ -12,59 +63,16 @@ Widget _buildSection(
   bool collapsible = false,
   bool initiallyExpanded = true,
 }) {
-  final header = Row(
-    children: [
-      Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(icon, size: 16, color: color),
-      ),
-      const SizedBox(width: 8),
-      Text(
-        title,
-        style: TextStyle(
-          fontFamily: 'Cairo',
-          fontSize: 14,
-          fontWeight: FontWeight.w900,
-          color: isDark ? Colors.white70 : const Color(0xFF374151),
-        ),
-      ),
-    ],
-  );
-
-  final card = Container(
-    decoration: BoxDecoration(
-      color: isDark
-          ? const Color(0xFF131D31).withValues(alpha: 0.95)
-          : Colors.white.withValues(alpha: 0.96),
-      borderRadius: BorderRadius.circular(22),
-      border: Border.all(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.06)
-            : Colors.white.withValues(alpha: 0.9),
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: isDark
-              ? Colors.black.withValues(alpha: 0.18)
-              : const Color(0xFFD8E0F0).withValues(alpha: 0.45),
-          blurRadius: 20,
-          offset: const Offset(0, 8),
-        ),
-      ],
-    ),
-    child: Column(children: children),
-  );
+  final t = _tk(isDark);
+  final header = _sectionHeader(t, title, icon, color);
+  final card = _settingsCard(t, Column(children: children));
 
   if (!collapsible) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.only(right: 4, bottom: 8),
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, AppSpace.sm),
           child: header,
         ),
         card,
@@ -72,8 +80,6 @@ Widget _buildSection(
     );
   }
 
-  // قسم قابل للطي — ترويسة واضحة (كارت + سهم كبير ملوّن + "اضغط للفتح")
-  // بدل السهم الرمادي الصغير القديم.
   return _CollapsibleSection(
     isDark: isDark,
     color: color,
@@ -81,6 +87,54 @@ Widget _buildSection(
     card: card,
     initiallyExpanded: initiallyExpanded,
   );
+}
+
+/// هيكل صف موحّد: أيقونة + نص (عنوان/وصف) + عنصر في الآخر.
+Widget _tileRow(
+  AppTokens t, {
+  required IconData icon,
+  required Color iconColor,
+  required String title,
+  String? subtitle,
+  Color? titleColor,
+  Widget? trailing,
+  VoidCallback? onTap,
+}) {
+  final body = ConstrainedBox(
+    constraints: const BoxConstraints(minHeight: 60),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(
+          horizontal: _kTilePadH, vertical: AppSpace.sm + 2),
+      child: Row(
+        children: [
+          _tileIcon(icon, iconColor),
+          const SizedBox(width: _kTileGap),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title,
+                    style: AppType.label.copyWith(color: titleColor ?? t.ink)),
+                if (subtitle != null && subtitle.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(subtitle,
+                        style: AppType.caption.copyWith(color: t.inkFaint)),
+                  ),
+              ],
+            ),
+          ),
+          if (trailing != null) ...[
+            const SizedBox(width: AppSpace.sm),
+            trailing,
+          ],
+        ],
+      ),
+    ),
+  );
+  if (onTap == null) return body;
+  return InkWell(onTap: onTap, child: body);
 }
 
 Widget _buildSwitchTile(
@@ -93,49 +147,32 @@ Widget _buildSwitchTile(
   required RxBool rxValue,
   required void Function(bool) onChanged,
 }) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    child: Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(9),
-          decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, size: 20, color: iconColor),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: isDark ? Colors.white : const Color(0xFF111827),
-                ),
-              ),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12,
-                  color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Obx(() => Switch(
+  final t = _tk(isDark);
+  // الصف كله بيقلب الإعداد (مش السويتش بس) — هدف لمس أكبر.
+  return _tileRow(
+    t,
+    icon: icon,
+    iconColor: iconColor,
+    title: title,
+    subtitle: subtitle,
+    onTap: () => onChanged(!rxValue.value),
+    trailing: SizedBox(
+      width: 44,
+      height: 28,
+      child: FittedBox(
+        child: Obx(() => Switch(
               value: rxValue.value,
               onChanged: onChanged,
-              activeColor: iconColor,
+              thumbColor:
+                  WidgetStatePropertyAll(isDark ? t.board : Colors.white),
+              trackColor: WidgetStateProperty.resolveWith((s) =>
+                  s.contains(WidgetState.selected)
+                      ? t.brand
+                      : t.inkFaint.withValues(alpha: 0.45)),
+              trackOutlineColor:
+                  const WidgetStatePropertyAll(Colors.transparent),
             )),
-      ],
+      ),
     ),
   );
 }
@@ -150,57 +187,17 @@ Widget _buildNavTile(
   Color? titleColor,
   required VoidCallback onTap,
 }) {
-  return InkWell(
+  final t = _tk(isDark);
+  return _tileRow(
+    t,
+    icon: icon,
+    iconColor: iconColor,
+    title: title,
+    subtitle: subtitle,
+    titleColor: titleColor,
     onTap: onTap,
-    borderRadius: BorderRadius.circular(22),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: 20, color: iconColor),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontFamily: 'Cairo',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: titleColor ??
-                        (isDark ? Colors.white : const Color(0xFF111827)),
-                  ),
-                ),
-                if (subtitle != null)
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontFamily: 'Cairo',
-                      fontSize: 12,
-                      color:
-                          isDark ? Colors.grey[400] : const Color(0xFF64748B),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          Icon(
-            Icons.arrow_forward_ios_rounded,
-            size: 14,
-            color: isDark ? Colors.grey[500] : const Color(0xFF9CA3AF),
-          ),
-        ],
-      ),
-    ),
+    trailing:
+        Icon(Icons.arrow_forward_ios_rounded, size: 14, color: t.inkFaint),
   );
 }
 
@@ -213,50 +210,46 @@ Widget _buildDropdownTile<T>(
   required T value,
   required List<DropdownMenuItem<T>> items,
   required void Function(T?)? onChanged,
+  String? helper,
 }) {
+  final t = _tk(isDark);
   return Padding(
-    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+    padding: const EdgeInsets.symmetric(
+        horizontal: _kTilePadH, vertical: AppSpace.sm + 2),
     child: Row(
       children: [
-        Container(
-          padding: const EdgeInsets.all(9),
-          decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, size: 20, color: iconColor),
-        ),
-        const SizedBox(width: 12),
+        _tileIcon(icon, iconColor),
+        const SizedBox(width: _kTileGap),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
-                ),
-              ),
+              Text(title, style: AppType.caption.copyWith(color: t.inkFaint)),
               DropdownButtonFormField<T>(
                 value: value,
+                isExpanded: true,
                 decoration: const InputDecoration(
+                  filled: false,
                   border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
                   isDense: true,
-                  contentPadding: EdgeInsets.zero,
+                  contentPadding: EdgeInsets.only(top: 2, bottom: 2),
                 ),
-                style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: isDark ? Colors.white : const Color(0xFF111827),
-                ),
-                dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                style: AppType.label.copyWith(color: t.ink),
+                icon: Icon(Icons.expand_more_rounded, color: t.inkFaint),
+                dropdownColor: t.surface,
+                borderRadius: BorderRadius.circular(AppRadius.control),
                 items: items,
                 onChanged: onChanged,
               ),
+              if (helper != null && helper.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(helper,
+                      style: AppType.caption.copyWith(color: t.inkFaint)),
+                ),
             ],
           ),
         ),
@@ -272,40 +265,21 @@ Widget _buildInfoTile(
   required String title,
   required String trailing,
 }) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-    child: Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(9),
-          decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, size: 20, color: iconColor),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            title,
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: isDark ? Colors.white : const Color(0xFF111827),
-            ),
-          ),
-        ),
-        Text(
-          trailing,
-          style: TextStyle(
-            fontFamily: 'Cairo',
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
-          ),
-        ),
-      ],
+  final t = _tk(isDark);
+  return _tileRow(
+    t,
+    icon: icon,
+    iconColor: iconColor,
+    title: title,
+    trailing: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 150),
+      child: Text(
+        trailing,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.end,
+        style: AppType.body.copyWith(color: t.inkSoft),
+      ),
     ),
   );
 }
@@ -320,51 +294,41 @@ Widget _buildTextField(
   ui.TextDirection? textDirection,
   bool enabled = true,
 }) {
+  final t = _tk(isDark);
+  OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        borderSide: BorderSide(color: c, width: w),
+      );
   return TextFormField(
     initialValue: value,
     keyboardType: keyboardType,
     textDirection: textDirection ?? ui.TextDirection.rtl,
     enabled: enabled,
     onChanged: onChanged,
-    style: TextStyle(
-      fontFamily: 'Cairo',
-      fontSize: 14,
-      color: isDark ? Colors.white : const Color(0xFF111827),
-    ),
+    style: AppType.label.copyWith(color: t.ink),
     decoration: InputDecoration(
       labelText: label,
-      labelStyle: TextStyle(
-        fontFamily: 'Cairo',
-        fontSize: 13,
-        color: isDark ? Colors.grey[400] : const Color(0xFF64748B),
-      ),
-      prefixIcon: Icon(icon,
-          size: 18, color: isDark ? Colors.grey[400] : const Color(0xFF9CA3AF)),
+      labelStyle: AppType.body.copyWith(color: t.inkFaint),
+      prefixIcon: Icon(icon, size: 20, color: t.inkFaint),
       filled: true,
-      fillColor: isDark
-          ? Colors.white.withValues(alpha: 0.05)
-          : const Color(0xFFF8FAFF),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide.none,
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(
-            color: AppTheme.primaryColor.withValues(alpha: 0.6), width: 1.5),
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      fillColor: t.page,
+      border: border(t.line),
+      enabledBorder: border(t.line),
+      disabledBorder: border(t.line.withValues(alpha: 0.6)),
+      focusedBorder: border(t.brand, 1.5),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
     ),
   );
 }
 
+/// فاصل بين صفين: بيبدأ عند بداية النص (بعد مربع الأيقونة) مش من الحافة.
 Widget _buildDivider(bool isDark) {
   return Divider(
     height: 1,
-    indent: 52,
-    endIndent: 16,
-    color:
-        isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFE5E7EB),
+    thickness: 1,
+    indent: _kTilePadH + _kTileIcon + _kTileGap,
+    endIndent: 0,
+    color: _tk(isDark).line,
   );
 }
 
@@ -391,62 +355,51 @@ class _CollapsibleSectionState extends State<_CollapsibleSection> {
 
   @override
   Widget build(BuildContext context) {
-    final headerBar = InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: () => setState(() => _open = !_open),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: widget.isDark
-              ? const Color(0xFF131D31).withValues(alpha: 0.95)
-              : Colors.white.withValues(alpha: 0.96),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: widget.isDark
-                ? Colors.white.withValues(alpha: 0.06)
-                : const Color(0xFFE7E9F3),
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(child: widget.header),
-            if (!_open)
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Text('اضغط للفتح',
-                    style: TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
-                        color: widget.color.withValues(alpha: 0.75))),
-              ),
-            AnimatedRotation(
-              turns: _open ? 0.5 : 0,
-              duration: const Duration(milliseconds: 180),
-              child: Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: widget.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(9),
+    final t = _tk(widget.isDark);
+    final headerBar = Material(
+      color: t.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.panel),
+        side: BorderSide(color: t.line),
+      ),
+      child: InkWell(
+        onTap: () => setState(() => _open = !_open),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 52),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: _kTilePadH, vertical: AppSpace.sm),
+            child: Row(
+              children: [
+                Expanded(child: widget.header),
+                if (!_open)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: AppSpace.sm),
+                    child: Text('اضغط للفتح',
+                        style: AppType.caption.copyWith(color: t.inkFaint)),
+                  ),
+                AnimatedRotation(
+                  turns: _open ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: Icon(Icons.keyboard_arrow_down_rounded,
+                      color: t.inkSoft, size: 24),
                 ),
-                child: Icon(Icons.keyboard_arrow_down_rounded,
-                    color: widget.color, size: 22),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         headerBar,
         AnimatedCrossFade(
           firstChild: const SizedBox(width: double.infinity),
           secondChild: Padding(
-            padding: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.only(top: AppSpace.sm),
             child: widget.card,
           ),
           crossFadeState:
@@ -454,55 +407,6 @@ class _CollapsibleSectionState extends State<_CollapsibleSection> {
           duration: const Duration(milliseconds: 180),
         ),
       ],
-    );
-  }
-}
-
-// ─── Helper Widgets ────────────────────────────────────────────────────────
-
-class _IconBtn extends StatelessWidget {
-  final IconData icon;
-  final bool isDark;
-  final VoidCallback onTap;
-
-  const _IconBtn({
-    required this.icon,
-    required this.isDark,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: isDark
-              ? const Color(0xFF131D31).withValues(alpha: 0.94)
-              : Colors.white.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.06)
-                : Colors.white.withValues(alpha: 0.9),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isDark
-                  ? Colors.black.withValues(alpha: 0.16)
-                  : const Color(0xFFD9E1F2).withValues(alpha: 0.5),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: isDark ? Colors.white : const Color(0xFF111827),
-        ),
-      ),
     );
   }
 }

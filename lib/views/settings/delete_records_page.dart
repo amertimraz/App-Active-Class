@@ -3,6 +3,8 @@
 // شاشة "حذف سجلّات بمدى تواريخ" (spec 028) — منفصلة تمامًا عن زر
 // "حذف كل البيانات". نسخة احتياطية إجبارية + معاينة + تأكيد.
 import 'package:flutter/material.dart';
+import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/config/theme.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
@@ -28,11 +30,8 @@ class DeleteRecordsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = _c;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('حذف سجلّات بمدى تواريخ',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-        centerTitle: true,
-      ),
+      backgroundColor: context.tokens.page,
+      appBar: buildBoardAppBar(context, title: 'حذف سجلّات بمدى تواريخ'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
         children: [

@@ -27,6 +27,7 @@ import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/homework_controller.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/views/settings/account_team_screen.dart';
+import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/custom_dialogs.dart';
 import 'package:active_class/widgets/progress_dialog.dart';
 import 'package:active_class/utils/booklet_message.dart';
@@ -66,60 +67,17 @@ part 'categories/appearance_category.dart';
 part 'categories/data_category.dart';
 part 'categories/about_category.dart';
 
-/// الشاشة الرئيسية للإعدادات: كارت الترخيص + قائمة الفئات (spec 051).
+/// الشاشة الرئيسية للإعدادات: كارت الترخيص + بحث + قائمة الفئات.
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0B1020) : const Color(0xFFF7F8FF),
-      body: Stack(
-        children: [
-          _SettingsBackdrop(isDark: isDark),
-          SafeArea(
-            child: Column(
-              children: [
-                _buildAppBar(context, isDark),
-                Expanded(child: _SettingsHomeBody(isDark: isDark)),
-              ],
-            ),
-          ),
-        ],
-      ),
+      backgroundColor: _tk(isDark).page,
+      appBar: buildBoardAppBar(context, title: 'الإعدادات'),
+      body: _SettingsHomeBody(isDark: isDark),
     );
   }
-}
-
-// ─── AppBar (الرئيسية + صفحات الفئات) ───────────────────────────────────────
-
-Widget _buildAppBar(BuildContext context, bool isDark,
-    {String title = 'الإعدادات'}) {
-  return Padding(
-    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-    child: Row(
-      children: [
-        _IconBtn(
-          icon: Icons.arrow_back_ios_new_rounded,
-          isDark: isDark,
-          onTap: () => Get.back(),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            title,
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              color: isDark ? Colors.white : const Color(0xFF111827),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
 }

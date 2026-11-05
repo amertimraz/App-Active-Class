@@ -2,6 +2,8 @@
 //
 // spec 052 — شاشة "صحة البيانات": فحص التكرار ← حالات ← معاينة ← دمج.
 import 'package:flutter/material.dart';
+import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/config/theme.dart';
 import 'package:get/get.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -128,10 +130,8 @@ class _DataHealthPageState extends State<DataHealthPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('صحة البيانات',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
-      ),
+      backgroundColor: context.tokens.page,
+      appBar: buildBoardAppBar(context, title: 'صحة البيانات'),
       body: Obx(() {
         final r = c.result.value;
         return ListView(

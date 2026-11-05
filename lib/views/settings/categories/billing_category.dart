@@ -83,53 +83,36 @@ class _BillingCategoryPage extends StatelessWidget {
                   : d == 1
                       ? 'اشتراك الشهر بينزل من أول يوم فيه (الافتراضي)'
                       : 'اشتراك الشهر بينزل يوم $d من كل شهر — قبله مابيظهرش كمديونية';
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildDropdownTile<int>(
-                    context,
-                    isDark,
-                    icon: Icons.event_available_rounded,
-                    iconColor: const Color(0xFF0EA5E9),
-                    title: 'يوم نزول المديونية',
-                    value: d,
-                    items: List.generate(28, (i) => i + 1)
-                        .map((x) => DropdownMenuItem(
-                              value: x,
-                              child: Text(
-                                  x == 1 ? 'من أول الشهر' : 'يوم $x من كل شهر'),
-                            ))
-                        .toList(),
-                    onChanged: arrears
-                        ? null
-                        : (x) async {
-                            if (x == null) return;
-                            await settings.setBillingDay(x);
-                            ToastHelper.success(
-                              x == 1
-                                  ? 'الاشتراك بينزل من أول الشهر'
-                                  : 'الاشتراك هينزل يوم $x من كل شهر',
-                              title: 'يوم النزول',
-                            );
-                          },
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(68, 0, 16, 10),
-                    child: Text(
-                      preview +
-                          (TeamModeService().isEnabled.value
-                              ? '\nفي وضع الفريق: اضبط نفس اليوم على جهاز المساعد.'
-                              : ''),
-                      style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 11,
-                          height: 1.6,
-                          color: isDark
-                              ? Colors.grey[400]
-                              : const Color(0xFF64748B)),
-                    ),
-                  ),
-                ],
+              return _buildDropdownTile<int>(
+                context,
+                isDark,
+                icon: Icons.event_available_rounded,
+                iconColor: const Color(0xFF0EA5E9),
+                title: 'يوم نزول المديونية',
+                value: d,
+                items: List.generate(28, (i) => i + 1)
+                    .map((x) => DropdownMenuItem(
+                          value: x,
+                          child: Text(
+                              x == 1 ? 'من أول الشهر' : 'يوم $x من كل شهر'),
+                        ))
+                    .toList(),
+                onChanged: arrears
+                    ? null
+                    : (x) async {
+                        if (x == null) return;
+                        await settings.setBillingDay(x);
+                        ToastHelper.success(
+                          x == 1
+                              ? 'الاشتراك بينزل من أول الشهر'
+                              : 'الاشتراك هينزل يوم $x من كل شهر',
+                          title: 'يوم النزول',
+                        );
+                      },
+                helper: preview +
+                    (TeamModeService().isEnabled.value
+                        ? '\nفي وضع الفريق: اضبط نفس اليوم على جهاز المساعد.'
+                        : ''),
               );
             }),
             _buildDivider(isDark),
@@ -156,7 +139,7 @@ class _BillingCategoryPage extends StatelessWidget {
                 )),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 20),
         _buildSection(
           context,
           isDark,
@@ -176,7 +159,7 @@ class _BillingCategoryPage extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 20),
         _buildSection(
           context,
           isDark,

@@ -121,7 +121,7 @@ class _DataCategoryPage extends StatelessWidget {
             }),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 20),
         _buildSection(
           context,
           isDark,

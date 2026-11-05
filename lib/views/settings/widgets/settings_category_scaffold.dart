@@ -1,30 +1,8 @@
 part of '../settings_page.dart';
 
-// spec 051 — هيكل صفحة فئة + بلاطة فئة في الشاشة الرئيسية.
+// هيكل صفحة فئة + صف فئة في الشاشة الرئيسية (تصميم السبورة والطباشير).
 
-class _SettingsBackdrop extends StatelessWidget {
-  final bool isDark;
-  const _SettingsBackdrop({required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: isDark
-                ? const [Color(0xFF08101F), Color(0xFF121A2D)]
-                : const [Color(0xFFFDFDFF), Color(0xFFEEF4FF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// صفحة فئة: نفس خلفية/شريط الإعدادات القديمة، وعنوان الفئة.
+/// صفحة فئة: رأس سبورة + قائمة أقسام على خلفية الصفحة.
 class _CategoryScaffold extends StatelessWidget {
   final String title;
   final List<Widget> children;
@@ -37,29 +15,17 @@ class _CategoryScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = _tk(isDark);
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0B1020) : const Color(0xFFF7F8FF),
-      body: Stack(
+      backgroundColor: t.page,
+      appBar: buildBoardAppBar(context, title: title),
+      body: ListView(
+        padding: EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.lg, AppSpace.lg,
+            AppSpace.xl + MediaQuery.paddingOf(context).bottom),
         children: [
-          _SettingsBackdrop(isDark: isDark),
-          SafeArea(
-            child: Column(
-              children: [
-                _buildAppBar(context, isDark, title: title),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                    children: [
-                      if (highlightId != null)
-                        _SearchHitBanner(itemId: highlightId!, isDark: isDark),
-                      ...children,
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          if (highlightId != null)
+            _SearchHitBanner(itemId: highlightId!, isDark: isDark),
+          ...children,
         ],
       ),
     );
@@ -76,68 +42,16 @@ class _SettingsCategoryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = category.color;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: isDark
-            ? const Color(0xFF131D31).withValues(alpha: 0.95)
-            : Colors.white.withValues(alpha: 0.96),
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.06)
-                    : const Color(0xFFE5E7EB),
-              ),
-            ),
-            child: Row(children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: c.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(category.icon, size: 22, color: c),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(category.title,
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color:
-                              isDark ? Colors.white : const Color(0xFF111827),
-                        )),
-                    const SizedBox(height: 2),
-                    Text(category.subtitle,
-                        style: TextStyle(
-                          fontFamily: 'Cairo',
-                          fontSize: 12,
-                          color: isDark
-                              ? Colors.grey[400]
-                              : const Color(0xFF64748B),
-                        )),
-                  ],
-                ),
-              ),
-              Icon(Icons.arrow_forward_ios_rounded,
-                  size: 14,
-                  color: isDark ? Colors.grey[500] : const Color(0xFF9CA3AF)),
-            ]),
-          ),
-        ),
-      ),
+    final t = _tk(isDark);
+    return _tileRow(
+      t,
+      icon: category.icon,
+      iconColor: category.color,
+      title: category.title,
+      subtitle: category.subtitle,
+      onTap: onTap,
+      trailing:
+          Icon(Icons.arrow_forward_ios_rounded, size: 14, color: t.inkFaint),
     );
   }
 }
@@ -155,28 +69,25 @@ class _SearchHitBanner extends StatelessWidget {
       if (i.id == itemId) item = i;
     }
     if (item == null) return const SizedBox.shrink();
-    const accent = Color(0xFFF59E0B);
+    final t = _tk(isDark);
     final where = item.section == null ? '' : ' — في قسم «${item.section}»';
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: const EdgeInsets.only(bottom: AppSpace.md),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.md, vertical: AppSpace.md - 2),
       decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: accent.withValues(alpha: 0.4)),
+        color: t.cautionSoft,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        border: Border.all(color: t.cautionBar.withValues(alpha: 0.5)),
       ),
       child: Row(children: [
-        const Icon(Icons.search_rounded, size: 16, color: accent),
-        const SizedBox(width: 8),
+        Icon(Icons.search_rounded, size: 18, color: t.caution),
+        const SizedBox(width: AppSpace.sm),
         Expanded(
           child: Text(
             'بتدوّر على «${item.title}»$where',
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: isDark ? Colors.white70 : const Color(0xFF92400E),
-            ),
+            style: AppType.body
+                .copyWith(fontWeight: FontWeight.w700, color: t.caution),
           ),
         ),
       ]),

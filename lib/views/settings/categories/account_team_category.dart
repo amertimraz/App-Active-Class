@@ -17,7 +17,7 @@ class _AccountTeamCategoryPage extends StatelessWidget {
       highlightId: highlightId,
       children: [
         _buildTeacherSection(context, isDark, settings),
-        const SizedBox(height: 14),
+        const SizedBox(height: 20),
         _buildSection(
           context,
           isDark,
@@ -42,7 +42,7 @@ class _AccountTeamCategoryPage extends StatelessWidget {
             }),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 20),
         // ── متابعة أولياء الأمور (إضافة مدفوعة، spec 016) ──
         Obx(() {
           final lic = Get.find<LicenseController>();

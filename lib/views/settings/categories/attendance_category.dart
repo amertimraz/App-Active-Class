@@ -164,7 +164,7 @@ class _AttendanceCategoryPage extends StatelessWidget {
                 : const SizedBox.shrink()),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 20),
         _buildSection(
           context,
           isDark,

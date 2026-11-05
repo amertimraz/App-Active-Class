@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:active_class/config/theme.dart';
+import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/controllers/auth_controller.dart';
+import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/views/auth/account_screen.dart';
 import 'package:active_class/views/auth/login_screen.dart';
 import 'package:active_class/views/team/team_mode_screen.dart';
@@ -16,21 +18,16 @@ class AccountTeamScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final tk = isDark ? AppTokens.dark : AppTokens.light;
     final auth = AuthController.to;
 
     return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: bg,
-        elevation: 0,
-        title: const Text('المساعدين والحسابات',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
-      ),
+      backgroundColor: tk.page,
+      appBar: buildBoardAppBar(context, title: 'المساعدين والحسابات'),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(AppSpace.lg),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 460),
               child: Obx(() {
@@ -39,7 +36,7 @@ class AccountTeamScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _SectionLabel(isDark: isDark, text: 'الحساب'),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: AppSpace.sm),
                       _NeedLoginCard(isDark: isDark),
                     ],
                   );
@@ -48,11 +45,11 @@ class AccountTeamScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _SectionLabel(isDark: isDark, text: 'الحساب'),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: AppSpace.sm),
                     const AccountSection(),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: AppSpace.xl),
                     _SectionLabel(isDark: isDark, text: 'وضع الفريق'),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: AppSpace.sm),
                     const TeamModeSection(),
                   ],
                 );
@@ -71,44 +68,35 @@ class _NeedLoginCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-      ),
+    final tk = isDark ? AppTokens.dark : AppTokens.light;
+    return AppPanel(
+      padding: const EdgeInsets.all(AppSpace.xl),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.login_rounded, size: 42, color: AppTheme.primaryColor),
-          const SizedBox(height: 12),
+          Icon(Icons.login_rounded, size: 42, color: tk.brand),
+          const SizedBox(height: AppSpace.md),
           Text('سجّل الدخول الأول',
-              style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: isDark ? Colors.white : Colors.black87)),
-          const SizedBox(height: 8),
-          Text('محتاج حساب مسجّل دخول (رقم تليفون وباسورد) عشان تدير حسابك أو وضع الفريق.',
+              style: AppType.title.copyWith(color: tk.ink)),
+          const SizedBox(height: AppSpace.sm),
+          Text(
+              'محتاج حساب مسجّل دخول (رقم تليفون وباسورد) عشان تدير حسابك أو وضع الفريق.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontFamily: 'Cairo',
-                  fontSize: 13,
-                  color: isDark ? Colors.white60 : Colors.black45)),
-          const SizedBox(height: 20),
+              style: AppType.body.copyWith(color: tk.inkSoft)),
+          const SizedBox(height: AppSpace.xl - 4),
           ElevatedButton(
             onPressed: () => Get.to(() => const LoginScreen()),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              backgroundColor: tk.brand,
+              foregroundColor: isDark ? tk.board : Colors.white,
+              minimumSize: const Size(0, 48),
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.control)),
             ),
-            child: const Text('تسجيل الدخول',
-                style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+            child: Text('تسجيل الدخول',
+                style: AppType.label.copyWith(
+                    color: isDark ? tk.board : Colors.white)),
           ),
         ],
       ),
@@ -123,17 +111,10 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = isDark ? AppTokens.dark : AppTokens.light;
     return Align(
-      alignment: Alignment.centerRight,
-      child: Text(
-        text,
-        style: TextStyle(
-          fontFamily: 'Cairo',
-          fontSize: 13,
-          fontWeight: FontWeight.w800,
-          color: isDark ? Colors.white54 : const Color(0xFF6B7280),
-        ),
-      ),
+      alignment: AlignmentDirectional.centerStart,
+      child: Text(text, style: AppType.label.copyWith(color: tk.ink)),
     );
   }
 }

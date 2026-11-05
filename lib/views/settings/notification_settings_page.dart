@@ -9,6 +9,8 @@ import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/widgets/app_panel.dart';
 
 // نفس أسماء أيام الأسبوع المستخدَمة في NotificationService._dayNameToWeekday.
 const List<String> _weekDayNames = [
@@ -185,30 +187,41 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
 
   // ─── Build ────────────────────────────────────────────────────────────────
 
+  AppTokens get _t => Theme.of(context).brightness == Brightness.dark
+      ? AppTokens.dark
+      : AppTokens.light;
+
+  bool get _isDark => Theme.of(context).brightness == Brightness.dark;
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF0B1020) : const Color(0xFFF7F8FF);
+    final t = _t;
 
     return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        title: const Text('مركز الإشعارات'),
-        centerTitle: true,
+      backgroundColor: t.page,
+      appBar: buildBoardAppBar(
+        context,
+        title: 'مركز الإشعارات',
         bottom: TabBar(
           controller: _tabController,
+          labelColor: t.boardInk,
+          unselectedLabelColor: t.boardInkSoft,
+          indicatorColor: t.chalk,
+          indicatorWeight: 3,
+          dividerColor: Colors.transparent,
+          labelStyle: AppType.label,
+          unselectedLabelStyle: AppType.label,
           tabs: const [
             Tab(icon: Icon(Icons.notifications_rounded), text: 'الإشعارات'),
             Tab(icon: Icon(Icons.cake_rounded), text: 'أعياد الميلاد'),
           ],
-          labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildNotificationsTab(isDark),
-          _buildBirthdaysTab(isDark),
+          _buildNotificationsTab(),
+          _buildBirthdaysTab(),
         ],
       ),
     );
@@ -216,183 +229,195 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
 
   // ─── Tab 1: Notification settings ─────────────────────────────────────────
 
-  Widget _buildNotificationsTab(bool isDark) {
+  Widget _buildNotificationsTab() {
+    final t = _t;
+    final bottom = MediaQuery.paddingOf(context).bottom;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(
+          AppSpace.lg, AppSpace.lg, AppSpace.lg, AppSpace.xl + bottom),
       children: [
         // تحذير لو صلاحية "الجدولة الدقيقة" مش مفعّلة — من غيرها، كل
         // التذكيرات (حصص وأعياد ميلاد) بتفشل تظهر بصمت من غير أي رسالة
         // خطأ، فالمدرس بيفتكر التطبيق عطلان من غير ما يعرف السبب.
         if (_hasExactAlarm == false) ...[
           Container(
-            padding: const EdgeInsets.all(14),
-            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.all(AppSpace.md + 2),
+            margin: const EdgeInsets.only(bottom: AppSpace.lg),
             decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+              color: t.dangerSoft,
+              borderRadius: BorderRadius.circular(AppRadius.panel),
+              border: Border.all(color: t.danger.withValues(alpha: 0.4)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
-                  const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
-                  const SizedBox(width: 8),
-                  const Expanded(
+                  Icon(Icons.warning_amber_rounded, color: t.danger, size: 22),
+                  const SizedBox(width: AppSpace.sm),
+                  Expanded(
                     child: Text('صلاحية الجدولة الدقيقة غير مفعّلة',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                        style: AppType.label.copyWith(color: t.danger)),
                   ),
                 ]),
-                const SizedBox(height: 6),
-                const Text(
+                const SizedBox(height: AppSpace.sm),
+                Text(
                   'من غير الصلاحية دي، تذكيرات الحصص وأعياد الميلاد مش هتوصلك في ميعادها — دي صلاحية منفصلة عن إذن الإشعارات العادي.',
-                  style: TextStyle(fontSize: 12, color: Colors.black87),
+                  // لون النص ثابت غامق: الخلفية الحمرا الفاتحة ثابتة في الوضعين.
+                  style: AppType.body.copyWith(color: const Color(0xFF14172B)),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: AppSpace.md),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: t.danger,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 48),
+                      shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(AppRadius.control)),
+                    ),
                     onPressed: () async {
-                      await _notificationService.requestPermission(requestExactAlarm: true);
+                      await _notificationService.requestPermission(
+                          requestExactAlarm: true);
                       await _checkExactAlarmPermission();
                     },
-                    child: const Text('تفعيل الصلاحية', style: TextStyle(color: Colors.white)),
+                    child: Text('تفعيل الصلاحية',
+                        style: AppType.label.copyWith(color: Colors.white)),
                   ),
                 ),
               ],
             ),
           ),
         ],
-        _buildNotificationToggle(
-          title: 'إشعارات أعياد الميلاد',
-          subtitle: 'تنبيه يوم قبل عيد الميلاد وفي يوم العيد نفسه',
-          value: _birthdayNotifications,
-          onChanged: (v) => _onToggleChanged(type: 'birthday', value: v),
-          icon: Icons.cake_rounded,
-          isDark: isDark,
-        ),
-        const SizedBox(height: 14),
-        _buildNotificationToggle(
-          title: 'إشعارات الحصص',
-          subtitle: 'تنبيه بالحصص المجدولة لليوم',
-          value: _classNotifications,
-          onChanged: (v) => _onToggleChanged(type: 'class', value: v),
-          icon: Icons.event_rounded,
-          isDark: isDark,
-        ),
-        const SizedBox(height: 14),
-        _buildNotificationToggle(
-          title: 'إشعارات الدفع المتأخر',
-          subtitle: 'تنبيه بالطلاب المتأخرين في الدفع',
-          value: _latePaymentNotifications,
-          onChanged: (v) => _onToggleChanged(type: 'late_payment', value: v),
-          icon: Icons.payment_rounded,
-          isDark: isDark,
-        ),
-        const SizedBox(height: 14),
-        _buildAtRiskWeeklyNotifTile(isDark),
-        const SizedBox(height: 24),
-        _buildSectionTitle('اختبار الإشعارات', isDark),
-        const SizedBox(height: 12),
-        _buildTestButton(
-          title: 'اختبار إشعار أعياد الميلاد',
-          isDark: isDark,
-          onTap: () async {
-            final granted = await _notificationService.requestPermission();
-            if (granted) {
-              await _notificationService.showNotification(
-                title: '🎂 عيد ميلاد تجريبي',
-                body: 'هذا إشعار تجريبي لأعياد الميلاد',
-              );
-            } else {
-              ToastHelper.error('صلاحية الإشعارات غير مفعلة', title: 'تنبيه');
-            }
-          },
-          icon: Icons.cake_rounded,
-        ),
-        const SizedBox(height: 12),
-        _buildTestButton(
-          title: 'اختبار إشعار الحصص',
-          isDark: isDark,
-          onTap: () async {
-            final granted = await _notificationService.requestPermission();
-            if (granted) {
-              await _notificationService.showNotification(
-                title: '📚 حصة تجريبية',
-                body: 'هذا إشعار تجريبي للحصص',
-              );
-            } else {
-              ToastHelper.error('صلاحية الإشعارات غير مفعلة', title: 'تنبيه');
-            }
-          },
-          icon: Icons.event_rounded,
-        ),
+        _sectionTitle('التنبيهات'),
+        _card(Column(children: [
+          _buildNotificationToggle(
+            title: 'إشعارات أعياد الميلاد',
+            subtitle: 'تنبيه يوم قبل عيد الميلاد وفي يوم العيد نفسه',
+            value: _birthdayNotifications,
+            onChanged: (v) => _onToggleChanged(type: 'birthday', value: v),
+            icon: Icons.cake_rounded,
+            color: const Color(0xFFF97316),
+          ),
+          _divider(),
+          _buildNotificationToggle(
+            title: 'إشعارات الحصص',
+            subtitle: 'تنبيه بالحصص المجدولة لليوم',
+            value: _classNotifications,
+            onChanged: (v) => _onToggleChanged(type: 'class', value: v),
+            icon: Icons.event_rounded,
+            color: const Color(0xFF3B82F6),
+          ),
+          _divider(),
+          _buildNotificationToggle(
+            title: 'إشعارات الدفع المتأخر',
+            subtitle: 'تنبيه بالطلاب المتأخرين في الدفع',
+            value: _latePaymentNotifications,
+            onChanged: (v) => _onToggleChanged(type: 'late_payment', value: v),
+            icon: Icons.payment_rounded,
+            color: const Color(0xFF10B981),
+          ),
+          _divider(),
+          _buildAtRiskWeeklyNotifTile(),
+        ])),
+        const SizedBox(height: AppSpace.xl - 4),
+        _sectionTitle('اختبار الإشعارات'),
+        _card(Column(children: [
+          _buildTestButton(
+            title: 'اختبار إشعار أعياد الميلاد',
+            onTap: () async {
+              final granted = await _notificationService.requestPermission();
+              if (granted) {
+                await _notificationService.showNotification(
+                  title: '🎂 عيد ميلاد تجريبي',
+                  body: 'هذا إشعار تجريبي لأعياد الميلاد',
+                );
+              } else {
+                ToastHelper.error('صلاحية الإشعارات غير مفعلة',
+                    title: 'تنبيه');
+              }
+            },
+            icon: Icons.cake_rounded,
+          ),
+          _divider(),
+          _buildTestButton(
+            title: 'اختبار إشعار الحصص',
+            onTap: () async {
+              final granted = await _notificationService.requestPermission();
+              if (granted) {
+                await _notificationService.showNotification(
+                  title: '📚 حصة تجريبية',
+                  body: 'هذا إشعار تجريبي للحصص',
+                );
+              } else {
+                ToastHelper.error('صلاحية الإشعارات غير مفعلة',
+                    title: 'تنبيه');
+              }
+            },
+            icon: Icons.event_rounded,
+          ),
+        ])),
       ],
     );
   }
 
   // ─── Tab 2: Upcoming birthdays ─────────────────────────────────────────────
 
-  Widget _buildBirthdaysTab(bool isDark) {
-    final cardBg = isDark ? const Color(0xFF1E1E2E) : Colors.white;
+  Widget _buildBirthdaysTab() {
+    final t = _t;
 
     if (_loadingBirthdays) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
+            CircularProgressIndicator(color: t.brand),
+            const SizedBox(height: AppSpace.lg),
             Text('جاري تحميل أعياد الميلاد...',
-                style: TextStyle(color: Colors.grey.shade500)),
+                style: AppType.body.copyWith(color: t.inkFaint)),
           ],
         ),
       );
     }
 
+    const orange = Color(0xFFF97316);
     return RefreshIndicator(
       onRefresh: _loadBirthdays,
       child: _upcomingBirthdays.isEmpty
           ? _buildEmptyBirthdays()
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+              padding: EdgeInsets.fromLTRB(
+                  AppSpace.lg,
+                  AppSpace.lg,
+                  AppSpace.lg,
+                  AppSpace.xl + MediaQuery.paddingOf(context).bottom),
               children: [
-                // Header info + schedule all button
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF97316).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                        color: const Color(0xFFF97316).withValues(alpha: 0.3)),
-                  ),
+                // ملخّص + زر جدولة الكل
+                AppPanel(
+                  padding: const EdgeInsets.all(AppSpace.md + 2),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.info_outline_rounded,
-                              color: Color(0xFFF97316), size: 18),
-                          const SizedBox(width: 8),
+                          const Icon(Icons.cake_rounded,
+                              color: orange, size: 20),
+                          const SizedBox(width: AppSpace.sm),
                           Expanded(
                             child: Text(
                               '${_upcomingBirthdays.length} عيد ميلاد خلال الـ 7 أيام القادمة',
-                              style: const TextStyle(
-                                  color: Color(0xFFF97316),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13),
+                              style: AppType.label.copyWith(color: t.ink),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                      const Text(
+                      const SizedBox(height: AppSpace.xs + 2),
+                      Text(
                         'سيُرسل إشعار قبل كل عيد ميلاد بيوم والساعة 8 ص، وإشعار آخر في يوم العيد',
-                        style: TextStyle(
-                            color: Color(0xFFF97316), fontSize: 12),
+                        style: AppType.body.copyWith(color: t.inkSoft),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: AppSpace.md),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
@@ -401,7 +426,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
                               : _scheduleAllBirthdayNotifications,
                           icon: _schedulingAll
                               ? const SizedBox(
-                                  width: 16, height: 16,
+                                  width: 16,
+                                  height: 16,
                                   child: CircularProgressIndicator(
                                       strokeWidth: 2, color: Colors.white))
                               : const Icon(Icons.notifications_active_rounded,
@@ -410,21 +436,23 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
                               ? 'جاري الجدولة...'
                               : 'جدولة إشعارات الكل'),
                           style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFFF97316),
-                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            backgroundColor: t.brand,
+                            foregroundColor: _isDark ? t.board : Colors.white,
+                            minimumSize: const Size(0, 48),
+                            textStyle: AppType.label,
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10)),
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.control)),
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-
-                // Birthday cards
-                ...(_upcomingBirthdays.map((e) =>
-                    _BirthdayCard(entry: e, cardBg: cardBg,
-                        onSchedule: () async {
+                const SizedBox(height: AppSpace.md),
+                ..._upcomingBirthdays.map((e) => _BirthdayCard(
+                    entry: e,
+                    onSchedule: () async {
                       await _notificationService
                           .scheduleBirthdayNotifications(e.student);
                       if (mounted) {
@@ -433,37 +461,87 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
                           title: '✓ تم',
                         );
                       }
-                    }))),
+                    })),
               ],
             ),
     );
   }
 
   Widget _buildEmptyBirthdays() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.cake_rounded, size: 64, color: Colors.grey.shade400),
-          const SizedBox(height: 16),
-          const Text('لا توجد أعياد ميلاد خلال الأسبوع القادم',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          Text('اسحب للأسفل للتحديث',
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
-        ],
-      ),
+    final t = _t;
+    return ListView(
+      // ListView عشان السحب للتحديث يشتغل حتى والقائمة فاضية.
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(height: MediaQuery.sizeOf(context).height * 0.2),
+        Icon(Icons.cake_rounded, size: 56, color: t.inkFaint),
+        const SizedBox(height: AppSpace.lg),
+        Text('لا توجد أعياد ميلاد خلال الأسبوع القادم',
+            textAlign: TextAlign.center,
+            style: AppType.title.copyWith(color: t.ink)),
+        const SizedBox(height: AppSpace.sm),
+        Text('اسحب للأسفل للتحديث',
+            textAlign: TextAlign.center,
+            style: AppType.body.copyWith(color: t.inkFaint)),
+      ],
     );
   }
 
   // ─── Shared helpers ────────────────────────────────────────────────────────
 
-  Widget _buildSectionTitle(String title, bool isDark) {
-    return Text(title,
-        style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: isDark ? Colors.white70 : Colors.black87));
+  Widget _sectionTitle(String title) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, AppSpace.sm),
+        child: Text(title, style: AppType.label.copyWith(color: _t.ink)),
+      );
+
+  Widget _card(Widget child) {
+    final t = _t;
+    return Material(
+      color: t.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.panel),
+        side: BorderSide(color: t.line),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _divider() => Divider(
+        height: 1,
+        thickness: 1,
+        indent: 16 + 36 + 12,
+        color: _t.line,
+      );
+
+  Widget _icon(IconData icon, Color color) => Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
+        child: Icon(icon, size: 20, color: color),
+      );
+
+  Widget _switch(bool value, ValueChanged<bool> onChanged) {
+    final t = _t;
+    return SizedBox(
+      width: 44,
+      height: 28,
+      child: FittedBox(
+        child: Switch(
+          value: value,
+          onChanged: onChanged,
+          thumbColor: WidgetStatePropertyAll(_isDark ? t.board : Colors.white),
+          trackColor: WidgetStateProperty.resolveWith((s) =>
+              s.contains(WidgetState.selected)
+                  ? t.brand
+                  : t.inkFaint.withValues(alpha: 0.45)),
+          trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+        ),
+      ),
+    );
   }
 
   Widget _buildNotificationToggle({
@@ -472,54 +550,35 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
     required bool value,
     required ValueChanged<bool> onChanged,
     required IconData icon,
-    required bool isDark,
+    required Color color,
   }) {
-    final bg = isDark ? const Color(0xFF1E1E2E) : Colors.white;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          )
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: AppTheme.primaryColor, size: 22),
+    final t = _t;
+    return InkWell(
+      onTap: () => onChanged(!value),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 60),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              _icon(icon, color),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: AppType.label.copyWith(color: t.ink)),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: AppType.caption.copyWith(color: t.inkFaint)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpace.sm),
+              _switch(value, onChanged),
+            ],
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 3),
-                Text(subtitle,
-                    style: TextStyle(
-                        fontSize: 12, color: Colors.grey.shade500)),
-              ],
-            ),
-          ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeThumbColor: AppTheme.primaryColor,
-            activeTrackColor: AppTheme.primaryColor.withValues(alpha: 0.5),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -528,104 +587,79 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
   // في SettingsController (Rx) بدل حالة محلية — عشان يوم/وقت الإرسال
   // يبقوا متاحين لـ NotificationService.scheduleWeeklyAtRiskDigest من
   // غير تكرار تخزين.
-  Widget _buildAtRiskWeeklyNotifTile(bool isDark) {
+  Widget _buildAtRiskWeeklyNotifTile() {
     final settings = Get.find<SettingsController>();
-    final bg = isDark ? const Color(0xFF1E1E2E) : Colors.white;
+    final t = _t;
     return Obx(() {
       final enabled = settings.atRiskWeeklyNotifEnabled.value;
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEF4444).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.warning_amber_rounded,
-                      color: Color(0xFFEF4444), size: 22),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('إشعار محتاجين متابعة',
-                          style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w700)),
-                      SizedBox(height: 3),
-                      Text('تذكير أسبوعي بعدد الطلاب المحتاجين متابعة',
-                          style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    ],
-                  ),
-                ),
-                Switch(
-                  value: enabled,
-                  onChanged: (v) => settings.setAtRiskWeeklyNotif(enabled: v),
-                  activeThumbColor: AppTheme.primaryColor,
-                  activeTrackColor: AppTheme.primaryColor.withValues(alpha: 0.5),
-                ),
-              ],
-            ),
-            if (enabled) ...[
-              const SizedBox(height: 12),
-              Row(
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildNotificationToggle(
+            title: 'إشعار محتاجين متابعة',
+            subtitle: 'تذكير أسبوعي بعدد الطلاب المحتاجين متابعة',
+            value: enabled,
+            onChanged: (v) => settings.setAtRiskWeeklyNotif(enabled: v),
+            icon: Icons.warning_amber_rounded,
+            color: const Color(0xFFEF4444),
+          ),
+          if (enabled)
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  16 + 36 + 12, 0, 16, 14),
+              child: Row(
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       initialValue: settings.atRiskWeeklyNotifDay.value,
                       isDense: true,
+                      isExpanded: true,
+                      style: AppType.label.copyWith(color: t.ink),
+                      dropdownColor: t.surface,
                       decoration: const InputDecoration(
                           labelText: 'اليوم', isDense: true),
                       items: _weekDayNames
-                          .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                          .map((d) =>
+                              DropdownMenuItem(value: d, child: Text(d)))
                           .toList(),
                       onChanged: (d) {
                         if (d != null) settings.setAtRiskWeeklyNotif(day: d);
                       },
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpace.md),
                   Expanded(
                     child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 48),
+                        foregroundColor: t.ink,
+                        side: BorderSide(color: t.line),
+                        shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.control)),
+                      ),
                       icon: const Icon(Icons.access_time_rounded, size: 18),
                       label: Text(
                           '${settings.atRiskWeeklyNotifHour.value.toString().padLeft(2, '0')}'
                           ':${settings.atRiskWeeklyNotifMinute.value.toString().padLeft(2, '0')}'),
                       onPressed: () async {
-                        final t = await showTimePicker(
+                        final picked = await showTimePicker(
                           context: context,
                           initialTime: TimeOfDay(
                               hour: settings.atRiskWeeklyNotifHour.value,
                               minute: settings.atRiskWeeklyNotifMinute.value),
                         );
-                        if (t != null) {
+                        if (picked != null) {
                           settings.setAtRiskWeeklyNotif(
-                              hour: t.hour, minute: t.minute);
+                              hour: picked.hour, minute: picked.minute);
                         }
                       },
                     ),
                   ),
                 ],
               ),
-            ],
-          ],
-        ),
+            ),
+        ],
       );
     });
   }
@@ -634,37 +668,25 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage>
     required String title,
     required VoidCallback onTap,
     required IconData icon,
-    required bool isDark,
   }) {
-    final bg = isDark ? const Color(0xFF1E1E2E) : Colors.white;
+    final t = _t;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            )
-          ],
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: AppTheme.accentColor, size: 22),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(title,
-                  style: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w600)),
-            ),
-            const Icon(Icons.play_circle_rounded,
-                color: AppTheme.primaryColor, size: 22),
-          ],
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              _icon(icon, t.brand),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(title, style: AppType.label.copyWith(color: t.ink)),
+              ),
+              Icon(Icons.play_circle_outline_rounded,
+                  color: t.inkSoft, size: 24),
+            ],
+          ),
         ),
       ),
     );
@@ -687,23 +709,20 @@ class _BirthdayEntry {
 
 class _BirthdayCard extends StatelessWidget {
   final _BirthdayEntry entry;
-  final Color cardBg;
   final VoidCallback onSchedule;
 
-  const _BirthdayCard(
-      {required this.entry,
-      required this.cardBg,
-      required this.onSchedule});
+  const _BirthdayCard({required this.entry, required this.onSchedule});
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     final isToday = entry.daysUntil == 0;
     final isTomorrow = entry.daysUntil == 1;
     final accent = isToday
-        ? const Color(0xFFEF4444)
+        ? t.danger
         : isTomorrow
-            ? const Color(0xFFF97316)
-            : const Color(0xFF6366F1);
+            ? t.caution
+            : t.brand;
 
     final dateStr = DateFormat('d MMMM', 'ar').format(entry.nextBirthday);
     final daysLabel = isToday
@@ -712,86 +731,68 @@ class _BirthdayCard extends StatelessWidget {
             ? '🎉 غداً'
             : 'بعد ${entry.daysUntil} أيام';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withValues(alpha: 0.3)),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: 0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          )
-        ],
-      ),
-      child: Row(
-        children: [
-          // Avatar circle
-          Container(
-            width: 48, height: 48,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                entry.student.name.isNotEmpty
-                    ? entry.student.name[0]
-                    : '?',
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: accent),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.sm + 2),
+      child: AppPanel(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.md + 2, vertical: AppSpace.md),
+        lineColor: isToday ? accent.withValues(alpha: 0.5) : null,
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  entry.student.name.isNotEmpty ? entry.student.name[0] : '?',
+                  style: AppType.title.copyWith(color: accent),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(entry.student.name,
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 3),
-                Row(
-                  children: [
-                    Icon(Icons.calendar_today_rounded,
-                        size: 12, color: Colors.grey.shade500),
-                    const SizedBox(width: 4),
-                    Text(dateStr,
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade500)),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(20),
+            const SizedBox(width: AppSpace.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(entry.student.name,
+                      style: AppType.label.copyWith(color: t.ink)),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: AppSpace.sm,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(dateStr,
+                          style: AppType.caption.copyWith(color: t.inkFaint)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(AppRadius.chip),
+                        ),
+                        child: Text(daysLabel,
+                            style: AppType.caption.copyWith(
+                                fontWeight: FontWeight.w700, color: accent)),
                       ),
-                      child: Text(daysLabel,
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: accent)),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          // Schedule button
-          IconButton(
-            tooltip: 'جدولة الإشعار',
-            onPressed: onSchedule,
-            icon: Icon(Icons.notification_add_rounded,
-                color: accent, size: 22),
-          ),
-        ],
+            IconButton(
+              tooltip: 'جدولة الإشعار',
+              onPressed: onSchedule,
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: Icon(Icons.notification_add_rounded,
+                  color: t.inkSoft, size: 24),
+            ),
+          ],
+        ),
       ),
     );
   }
