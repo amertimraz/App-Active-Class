@@ -2,7 +2,7 @@ name: active_class
 description: "تطبيق إدارة الفصول الدراسية - Active Class Application"
 publish_to: 'none'
 
-version: 1.2.82+4100
+version: 1.2.83+4101
 
 environment:
   sdk: ^3.5.4
