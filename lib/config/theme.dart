@@ -22,6 +22,14 @@ class AppTheme {
     useMaterial3: true,
     brightness: Brightness.light,
     extensions: const [AppTokens.light],
+    dialogTheme: DialogThemeData(
+      backgroundColor: AppTokens.light.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.panel),
+        side: BorderSide(color: AppTokens.light.line),
+      ),
+    ),
     primaryColor: primaryColor,
     scaffoldBackgroundColor: backgroundColor,
     appBarTheme: const AppBarTheme(
@@ -196,6 +204,14 @@ class AppTheme {
     useMaterial3: true,
     brightness: Brightness.dark,
     extensions: const [AppTokens.dark],
+    dialogTheme: DialogThemeData(
+      backgroundColor: AppTokens.dark.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.panel),
+        side: BorderSide(color: AppTokens.dark.line),
+      ),
+    ),
     primaryColor: primaryColor,
     scaffoldBackgroundColor: const Color(0xFF0F172A), // Slate 900
     appBarTheme: const AppBarTheme(

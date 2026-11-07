@@ -15,6 +15,7 @@ import 'package:active_class/utils/billing_day.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/billing_period.dart';
 import 'package:active_class/utils/single_flight.dart';
+import 'package:active_class/utils/next_session.dart';
 
 enum ActivityType { attendance, payment }
 
@@ -267,6 +268,9 @@ class DashboardController extends GetxController {
   // ── النشاط الأخير ─────────────────────────────────────────────────────────
   final RxList<RecentActivity> recentActivities = <RecentActivity>[].obs;
 
+  // ── الحصة الجاية/الشغالة النهاردة (كارت الرئيسية) ──────────────────────
+  final Rx<NextSessionInfo?> nextSession = Rx<NextSessionInfo?>(null);
+
   // ── قائمة غير المدفوعين (للشيت) ─────────────────────────────────────────
   RxList<UnpaidStudentEntry> get unpaidList => _unpaidList;
   final RxList<UnpaidStudentEntry> _unpaidList = <UnpaidStudentEntry>[].obs;
@@ -306,10 +310,69 @@ class DashboardController extends GetxController {
         _guard('اليوم', _loadTodayStats),
         _guard('النشاط الأخير', _loadRecentActivities),
       ]);
+      // بعد الباقي لأنها بتعتمد على قايمة المتأخرين في الدفع.
+      await _guard('الحصة الجاية', _loadNextSession);
       lastUpdated.value = DateTime.now();
     } finally {
       isLoading(false);
     }
+  }
+
+  // ── الحصة الجاية: الشغالة دلوقتي وإلا أقرب حصة لسه ما بدأتش ─────────────
+  Future<void> _loadNextSession() async {
+    final now = DateTime.now();
+    final groups = await _db.getAllGroups();
+    final students =
+        (await _db.getAllStudents()).where((s) => !s.isArchived).toList();
+    final att = Get.isRegistered<AttendanceController>()
+        ? Get.find<AttendanceController>()
+        : Get.put(AttendanceController());
+    final slots = <SessionSlot>[];
+    for (final g in att.groupsForDay(groups, now)) {
+      final r = parseSessionRange(att.sessionTimeForGroupOnDay(g, now), now);
+      if (r != null) slots.add(SessionSlot(g, r.start, r.end));
+    }
+    _todaySlots = slots;
+    _studentCountByGroup = {
+      for (final g in groups)
+        g.id: students.where((s) => s.groupId == g.id).length
+    };
+    _overdueByGroup = {
+      for (final g in groups)
+        g.id: _unpaidList.where((u) => u.student.groupId == g.id).length
+    };
+    refreshNextSessionClock();
+  }
+
+  List<SessionSlot> _todaySlots = const [];
+  Map<int?, int> _studentCountByGroup = const {};
+  Map<int?, int> _overdueByGroup = const {};
+  String _slotsDay = '';
+
+  /// بيعيد اختيار الحصة الجاية/الشغالة بالوقت الحالي من غير قراءة القاعدة —
+  /// بتتنادى كل نص دقيقة، فالكارت ما يفضلش يقول «شغالة» بعد ما الحصة تخلص.
+  void refreshNextSessionClock() {
+    final now = DateTime.now();
+    // عدّى يوم جديد: الحصص القديمة مالهاش لازمة لحد التحميل الجاي.
+    final today = '${now.year}-${now.month}-${now.day}';
+    if (_slotsDay.isNotEmpty && _slotsDay != today) {
+      _todaySlots = const [];
+    }
+    _slotsDay = today;
+    final pick = pickNextSlot(_todaySlots, now);
+    if (pick == null) {
+      nextSession.value = null;
+      return;
+    }
+    final gid = pick.group.id;
+    nextSession.value = NextSessionInfo(
+      group: pick.group,
+      start: pick.start,
+      end: pick.end,
+      isLive: !now.isBefore(pick.start),
+      studentCount: _studentCountByGroup[gid] ?? 0,
+      overdueCount: _overdueByGroup[gid] ?? 0,
+    );
   }
 
   Future<void> _guard(String label, Future<void> Function() loader) async {

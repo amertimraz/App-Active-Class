@@ -16,13 +16,19 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
+import 'package:active_class/utils/debts_overview.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/student_sort_helper.dart';
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/app_panel.dart';
+import 'package:active_class/widgets/chalk_dialog.dart';
+import 'package:active_class/widgets/remove_student_dialog.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/widgets/student_sort_bar.dart';
+
+enum RestoreChoice { restoreOnly, restoreAndWriteOff }
 
 class ArchivedStudentsPage extends StatefulWidget {
   const ArchivedStudentsPage({super.key});
@@ -194,7 +200,7 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
   }
 
   // ── استعادة (إلغاء أرشفة) ──────────────────────────────────────────
-  void _confirmUnarchive(BuildContext context, Student student) {
+  Future<void> _confirmUnarchive(BuildContext context, Student student) async {
     if (student.id == null) return;
     // نفس صلاحية "حذف الطلاب" بتحكم الاستعادة كمان — عشان الثلاثة
     // إجراءات (أرشفة/استعادة/حذف نهائي) يبقوا محكومين بنفس القاعدة
@@ -203,81 +209,83 @@ class _ArchivedStudentsPageState extends State<ArchivedStudentsPage> {
         context, TeamModeService().canDeleteStudentsNow)) {
       return;
     }
-    showDialog(
+    final group = _groupOf(student);
+    final attendance = _attCtrl.attendance.toList();
+    final payments =
+        _payCtrl.payments.where((p) => p.studentId == student.id).toList();
+    // مديونيته وقت الأرشفة (متجمّدة) — شهر بشهر مع عدد حصص الحضور.
+    final rows = computeDebtRows(
+      students: [student],
+      groups: _groups,
+      allAttendance: attendance,
+      payments: payments,
+      siblingGroupMembers: controller.students.toList(),
+    );
+    final debt = rows.isEmpty ? null : rows.first;
+    final hasDebt = debt != null && debt.total > 0.5;
+    final choice = await showDialog<RestoreChoice>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('استعادة الطالب'),
-        content: Text(
-          'هل تريد استعادة "${student.name}"؟\n'
-          'هيرجع يظهر تاني في كل الشاشات النشطة (القوائم، الحضور، الدفع).',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: context.tokens.brand,
-                minimumSize: const Size(44, 44)),
-            onPressed: () async {
-              final name = student.name;
-              Navigator.of(ctx).pop();
-              final ok = await controller.unarchiveStudent(student.id!);
-              if (!context.mounted) return;
-              if (ok) {
-                AppToast.success(context, 'تم استعادة الطالب', subtitle: name);
-              }
-            },
-            child: const Text('استعادة'),
-          ),
+      builder: (ctx) => RestoreDialog(
+        studentName: student.name,
+        groupName: group?.name,
+        debtTotal: hasDebt ? debt.total : 0,
+        months: [
+          if (hasDebt)
+            for (final m in debt.months)
+              RestoreMonth(
+                label: DateFormat('MMMM yyyy', 'ar').format(m.month),
+                remaining: m.remaining,
+                attendance: PricingHelper.sessionsAttended(
+                    student: student,
+                    month: m.month,
+                    allAttendance: attendance),
+              ),
         ],
+        restoreMonthLabel: DateFormat('MMMM yyyy', 'ar').format(DateTime.now()),
       ),
     );
+    if (choice == null || !context.mounted) return;
+
+    if (choice == RestoreChoice.restoreAndWriteOff) {
+      // الإسقاط قبل الاستعادة: الطالب لسه مؤرشف فالمديونية متجمّدة.
+      final err = await _payCtrl.writeOffDebt(
+        student: student,
+        group: group,
+        allAttendance: attendance,
+        payments: payments,
+        siblingGroupMembers: controller.students.toList(),
+      );
+      if (!context.mounted) return;
+      if (err != null) {
+        ToastHelper.error(err);
+        return;
+      }
+    }
+    final name = student.name;
+    final ok = await controller.unarchiveStudent(student.id!);
+    if (!context.mounted) return;
+    if (ok) {
+      AppToast.success(context, 'تم استعادة الطالب', subtitle: name);
+    }
   }
 
   // ── حذف نهائي ────────────────────────────────────────────────────
-  void _confirmDeletePermanently(BuildContext context, Student student) {
+  Future<void> _confirmDeletePermanently(
+      BuildContext context, Student student) async {
     if (student.id == null) return;
     if (!requireDeletePermission(
         context, TeamModeService().canDeleteStudentsNow)) {
       return;
     }
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('حذف نهائي'),
-        content: Text(
-          'هل تريد حذف "${student.name}" نهائياً؟\n'
-          'تحذير: هيتحذف معاه كل سجلات حضوره ومدفوعاته ودرجات امتحاناته '
-          '— الإجراء ده لا يمكن التراجع عنه إطلاقاً.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: context.tokens.danger,
-                minimumSize: const Size(44, 44)),
-            onPressed: () async {
-              final name = student.name;
-              Navigator.of(ctx).pop();
-              await Future.delayed(const Duration(milliseconds: 80));
-              final ok = await controller.deleteStudent(student.id!);
-              if (!context.mounted) return;
-              if (ok) {
-                AppToast.success(context, 'تم حذف الطالب نهائيًا', subtitle: name);
-              }
-            },
-            child: const Text('حذف نهائي'),
-          ),
-        ],
-      ),
-    );
+    final confirmed = await showConfirmPermanentDelete(context, student.name);
+    if (confirmed != true || !context.mounted) return;
+    final name = student.name;
+    await Future.delayed(const Duration(milliseconds: 80));
+    final ok = await controller.deleteStudent(student.id!);
+    if (!context.mounted) return;
+    if (ok) {
+      AppToast.success(context, 'تم حذف الطالب نهائيًا', subtitle: name);
+    }
   }
 }
 
@@ -396,6 +404,133 @@ class _ArchivedStudentCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  نافذة الاستعادة: توضّح إيه اللي هيتحسب، والمديونية شهر بشهر، والإجراءات
+//  بترتيب واضح (الأساسي: استعادة، الخطر: إسقاط، إلغاء).
+// ══════════════════════════════════════════════════════════════════
+class RestoreMonth {
+  final String label;
+  final double remaining;
+  final int attendance;
+  const RestoreMonth(
+      {required this.label, required this.remaining, required this.attendance});
+}
+
+class RestoreDialog extends StatelessWidget {
+  final String studentName;
+  final String? groupName;
+  final double debtTotal;
+  final List<RestoreMonth> months;
+  final String restoreMonthLabel;
+
+  const RestoreDialog({
+    super.key,
+    required this.studentName,
+    required this.groupName,
+    required this.debtTotal,
+    required this.months,
+    required this.restoreMonthLabel,
+  });
+
+  bool get _hasDebt => debtTotal > 0.5;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return ChalkDialog(
+      icon: Icons.unarchive_rounded,
+      title: 'استعادة $studentName',
+      subtitle: groupName,
+      body: [
+        Text('إزاي هتتحسب عليه؟', style: AppType.label.copyWith(color: t.ink)),
+        const ChalkRule(
+            icon: Icons.pause_circle_outline_rounded,
+            text: 'الشهور اللي كان فيها مؤرشف بالكامل مش بتتحسب عليه.'),
+        ChalkRule(
+            icon: Icons.calendar_month_rounded,
+            text: 'شهر الاستعادة ($restoreMonthLabel) بيتحسب كامل، حتى لو '
+                'رجع في آخر يوم فيه.'),
+        const SizedBox(height: AppSpace.md),
+        if (_hasDebt)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpace.md),
+            decoration: BoxDecoration(
+              color: t.dangerSoft,
+              borderRadius: BorderRadius.circular(AppRadius.panel),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Icon(Icons.money_off_rounded, size: 20, color: t.danger),
+                  const SizedBox(width: AppSpace.sm),
+                  Expanded(
+                    child: Text('عليه مديونية',
+                        style: AppType.label.copyWith(color: t.danger)),
+                  ),
+                ]),
+                Text(FormatHelper.formatCurrency(debtTotal),
+                    style: AppType.title.copyWith(color: t.danger)),
+                const SizedBox(height: AppSpace.sm),
+                for (final m in months)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Expanded(
+                              child: Text(m.label,
+                                  style: AppType.body.copyWith(color: t.ink)),
+                            ),
+                            const SizedBox(width: AppSpace.sm),
+                            Text(FormatHelper.formatCurrency(m.remaining),
+                                style:
+                                    AppType.label.copyWith(color: t.danger)),
+                          ]),
+                          Text('${m.attendance} سجل حضور في الشهر ده',
+                              style: AppType.caption
+                                  .copyWith(color: t.inkSoft)),
+                        ]),
+                  ),
+              ],
+            ),
+          )
+        else
+          Row(children: [
+            Icon(Icons.check_circle_rounded, size: 20, color: t.positive),
+            const SizedBox(width: AppSpace.sm),
+            Text('مفيش عليه أي مديونية',
+                style: AppType.body.copyWith(color: t.positive)),
+          ]),
+      ],
+      actions: [
+        ChalkAction(
+          label: _hasDebt ? 'استعادة بمديونيته' : 'استعادة',
+          icon: Icons.unarchive_rounded,
+          onPressed: () =>
+              Navigator.of(context).pop(RestoreChoice.restoreOnly),
+        ),
+        if (_hasDebt)
+          ChalkAction(
+            label:
+                'استعادة وإسقاط ${FormatHelper.formatCurrency(debtTotal)}',
+            icon: Icons.cleaning_services_rounded,
+            kind: ChalkActionKind.dangerOutlined,
+            onPressed: () => Navigator.of(context)
+                .pop(RestoreChoice.restoreAndWriteOff),
+          ),
+        ChalkAction(
+          label: 'إلغاء',
+          kind: ChalkActionKind.text,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
     );
   }
 }

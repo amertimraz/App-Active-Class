@@ -8,6 +8,7 @@
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/utils/phone_helper.dart';
+import 'package:active_class/utils/system_messages.dart';
 
 /// أساس رابط صفحة المتابعة العامة.
 const String kPortalBaseUrl = 'https://active-class.online/track';
@@ -128,6 +129,15 @@ String buildPortalInviteMessage({
   required String url,
   required bool codeOnly,
 }) {
+  final custom = SystemMessages.renderOverride('portal_invite', {
+    'اسم_الطالب': studentName,
+    'الرابط': url,
+    'الكود': studentCode.trim().toUpperCase(),
+    'تعليمة_الأمان': codeOnly
+        ? ''
+        : '🔒 وبعدين اكتب آخر 4 أرقام من رقم تليفونك المسجّل عندنا.',
+  });
+  if (custom != null) return custom;
   final b = StringBuffer()
     ..writeln('📲 *متابعة $studentName*')
     ..writeln('تقدر تتابع حضوره ومدفوعاته وواجبه ودرجاته من الرابط ده:')

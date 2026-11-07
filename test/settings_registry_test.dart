@@ -49,7 +49,7 @@ void main() {
     test('22 سويتش (21 + رسائل واتساب للطالب)',
         () => expect(count(SettingsItemKind.switchTile), 22));
     test('13 قائمة اختيار', () => expect(count(SettingsItemKind.dropdown), 13));
-    test('11 عنصر تنقّل (10 + رسائلي المحفوظة)',
+    test('11 عنصر تنقّل (10 + قوالب الرسائل)',
         () => expect(count(SettingsItemKind.nav), 11));
   });
 

@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:get/get.dart';
 import 'package:active_class/models/exam_model.dart';
+import 'package:active_class/utils/system_messages.dart';
 import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
 import 'package:active_class/models/exam_submission_model.dart';
@@ -886,6 +887,17 @@ class ExamController extends GetxController {
     } else {
       final g = grade.grade ?? 0;
       final passed = g >= exam.passingGrade;
+      final custom = SystemMessages.renderOverride('exam_result', {
+        'اسم_الطالب': name,
+        'الامتحان': exam.name,
+        'الدرجة': FormatHelper.formatGrade(g),
+        'الدرجة_العظمى': FormatHelper.formatGrade(exam.maxGrade),
+        'الحالة': passed ? '🟢 الحالة: ناجح' : '🔴 الحالة: راسب',
+        'ملاحظات': (grade.notes ?? '').trim(),
+        'المعلم': teacherName.trim(),
+        'التخصص': teacherSpecialization.trim(),
+      });
+      if (custom != null) return custom;
       buffer
         ..writeln(passed ? '✅ *نتيجة امتحان*' : '⚠️ *نتيجة امتحان*')
         ..writeln('👤 $name')

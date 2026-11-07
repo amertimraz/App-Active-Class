@@ -53,6 +53,7 @@ import 'package:active_class/controllers/settings_controller.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:media_store_plus/media_store_plus.dart';
+import 'package:active_class/widgets/student_points_card.dart';
 
 // أيقونات المجموعات
 const _kGroupIconMap = <String, IconData>{
@@ -553,6 +554,13 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
                 // ── Header ─────────────────────────────────────────────
                 _buildHeader(context, s, initials, primary, isDark,
                     presentCount, absentCount, attRate, totalPaid),
+                // ── نقاط الطالب ومستواه (بنسبة الالتزام) ───────────────
+                if (_canSeeAcademics)
+                  StudentPointsCard(
+                      student: s,
+                      groupName: _group?.name,
+                      refreshKey: studentAtts.length +
+                          studentHomework.length),
                 // ── Actions ────────────────────────────────────────────
                 _buildActions(context, s, primary),
                 // ── TabBar ─────────────────────────────────────────────

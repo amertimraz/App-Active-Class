@@ -3,6 +3,7 @@ import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/student_model.dart';
+import 'package:active_class/utils/archive_periods.dart';
 import 'package:active_class/utils/billing_day.dart';
 
 /// حساب المستحق الشهري على طالب، مراعيًا نوع تسعير مجموعته:
@@ -19,6 +20,30 @@ class PricingHelper {
   // spec 045 — يوم نزول المديونية (1..28)؛ 1 = السلوك القديم. بيتجاهله
   // وضع المؤخّر. راجع lib/utils/billing_day.dart.
   static int billingDay = 1;
+
+  // فترات أرشفة الطلاب (studentId → فترات) من سجل أحداث الأرشفة. بتتحدّث
+  // من DatabaseService (عند قراءة الطلاب وعند الأرشفة/الاستعادة).
+  static Map<int, List<ArchivePeriod>> archivePeriods = {};
+
+  /// الشهر [monthStart] (أول الشهر) كان الطالب مؤرشف فيه بالكامل؟ أرشفة في
+  /// نص الشهر بتحسب الشهر ده كامل؛ الشهور بعده (لحد الاستعادة) لأ.
+  static bool isPausedMonth(Student student, DateTime monthStart) {
+    final periods = <ArchivePeriod>[
+      ...?archivePeriods[student.id],
+    ];
+    // بيانات قديمة: مؤرشف من غير أحداث → نعتمد على تاريخ الأرشفة.
+    if (student.isArchived &&
+        student.archivedAt != null &&
+        !periods.any((p) => p.isOpen)) {
+      periods.add(ArchivePeriod(student.archivedAt!, null));
+    }
+    for (final p in periods) {
+      // الفترة المفتوحة بتسري بس لو الطالب فعلًا مؤرشف دلوقتي.
+      if (p.isOpen && !student.isArchived) continue;
+      if (p.coversMonth(monthStart)) return true;
+    }
+    return false;
+  }
 
   static double _roundTo5(double x) => (x / 5).round() * 5.0;
 
@@ -214,12 +239,15 @@ class PricingHelper {
 
     double totalDue = 0;
     while (!cursor.isAfter(lastMonth)) {
-      totalDue += monthlyDue(
-          student: student,
-          group: group,
-          month: cursor,
-          allAttendance: allAttendance,
-          siblingGroupMembers: siblingGroupMembers);
+      // الشهور اللي كان الطالب فيها مؤرشف بالكامل مش بتتحسب عليه.
+      if (!isPausedMonth(student, cursor)) {
+        totalDue += monthlyDue(
+            student: student,
+            group: group,
+            month: cursor,
+            allAttendance: allAttendance,
+            siblingGroupMembers: siblingGroupMembers);
+      }
       cursor = DateTime(cursor.year, cursor.month + 1, 1);
     }
     return totalDue;

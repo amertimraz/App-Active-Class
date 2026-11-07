@@ -581,6 +581,11 @@ class NotificationService {
     }
 
     final entries = _parseScheduleEntries(group.schedule!);
+    // عدد طلاب المجموعة وقت الجدولة (بيتجدّد مع كل مزامنة بعد أي تغيير).
+    var studentCount = 0;
+    try {
+      studentCount = await _dbService.getGroupStudentCount(group.id!);
+    } catch (_) {}
     for (var i = 0; i < entries.length; i++) {
       final (weekday, time) = entries[i];
       final reminderTime = _subtractMinutes(time, 15);
@@ -590,7 +595,9 @@ class NotificationService {
       await _scheduleById(
         id: id,
         title: '🔔 حصة ${group.name} بعد 15 دقيقة',
-        body: 'الحصة الساعة ${_fmt(time)}',
+        body: studentCount > 0
+            ? 'الحصة الساعة ${_fmt(time)} • $studentCount طالب'
+            : 'الحصة الساعة ${_fmt(time)}',
         scheduledTime: scheduled,
         payload: 'class_${group.id}_$i',
         channelId: 'class_channel',

@@ -80,6 +80,11 @@ class _PaymentsPageState extends State<PaymentsPage> {
         actions: [
           const HelpButton(topicId: 'payments'),
           IconButton(
+            tooltip: 'المديونيات',
+            icon: const Icon(Icons.money_off_rounded),
+            onPressed: () => Get.toNamed(ROUTE_DEBTS),
+          ),
+          IconButton(
             tooltip: 'المصاريف وصافي الدخل',
             icon: const Icon(Icons.account_balance_wallet_rounded),
             onPressed: () => Get.toNamed(ROUTE_EXPENSES),

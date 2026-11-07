@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/exam_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
@@ -89,25 +90,15 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
       _subs.where((s) => s.status == SubmissionStatus.voided).toList();
 
   Future<void> _unapprove(ExamSubmission s) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('إلغاء الاعتماد؟',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
-        content: Text(
-            'درجة ${s.studentName ?? "الطالب"} هتتشال من سجله وبوابة الأهالي. '
-            'لو كان شايف نتيجته بالفعل، هتختفي من عنده كمان.',
-            style: const TextStyle(fontFamily: 'Cairo')),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo'))),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('إلغاء الاعتماد', style: TextStyle(fontFamily: 'Cairo'))),
-        ],
-      ),
+    final confirmed = await showChalkConfirm(
+      context,
+      icon: Icons.undo_rounded,
+      title: 'إلغاء الاعتماد؟',
+      message: 'درجة ${s.studentName ?? "الطالب"} هتتشال من سجله وبوابة الأهالي. '
+          'لو كان شايف نتيجته بالفعل، هتختفي من عنده كمان.',
+      confirmLabel: 'إلغاء الاعتماد',
+      cancelLabel: 'رجوع',
+      destructive: true,
     );
     if (confirmed != true) return;
     await _ec.unapproveOnlineGrade(_examId, s.studentId);
@@ -115,26 +106,16 @@ class _OnlineExamResultsPageState extends State<OnlineExamResultsPage> {
   }
 
   Future<void> _void(ExamSubmission s) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('إبطال التسليم؟',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
-        content: Text(
-            'هيتمسح تسليم ${s.studentName ?? "الطالب"} الحالي (إجاباته + درجته '
-            'لو كانت معتمَدة) نهائيًا، ويقدر يسلّم الامتحان من الأول لو المهلة '
-            'لسه سارية.',
-            style: const TextStyle(fontFamily: 'Cairo')),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo'))),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('إبطال التسليم', style: TextStyle(fontFamily: 'Cairo'))),
-        ],
-      ),
+    final confirmed = await showChalkConfirm(
+      context,
+      icon: Icons.block_rounded,
+      title: 'إبطال التسليم؟',
+      message: 'هيتمسح تسليم ${s.studentName ?? "الطالب"} الحالي (إجاباته + درجته '
+          'لو كانت معتمَدة) نهائيًا، ويقدر يسلّم الامتحان من الأول لو المهلة '
+          'لسه سارية.',
+      confirmLabel: 'إبطال التسليم',
+      cancelLabel: 'رجوع',
+      destructive: true,
     );
     if (confirmed != true) return;
     await _ec.voidSubmission(_examId, s.studentId);

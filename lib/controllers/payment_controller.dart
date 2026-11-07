@@ -226,12 +226,16 @@ class PaymentController extends GetxController {
   /// موسومة بـ kDebtWriteOffNote عشان تتفرق عن دفعة نقدية فعلية.
   /// بترجع null لو نجحت، أو رسالة خطأ بالعربي لو اتلغت (مديونية صفر
   /// أو أقل وقت التنفيذ — FR-010).
+  ///
+  /// [amount]: لو متبعت، بنسقط الجزء ده بس (مش المديونية كلها) — بحد أقصى
+  /// المديونية الحالية. الإسقاط بيتوزع على أقدم شهر عليه متبقي.
   Future<String?> writeOffDebt({
     required Student student,
     required Group? group,
     required List<Attendance> allAttendance,
     required List<Payment> payments,
     List<Student>? siblingGroupMembers,
+    double? amount,
   }) async {
     if (writeOffBusy.value) return 'في عملية إسقاط جارية بالفعل';
     writeOffBusy.value = true;
@@ -246,10 +250,13 @@ class PaymentController extends GetxController {
       if (!prepared.canProceed) {
         return prepared.errorMessage;
       }
+      final toWrite = (amount != null && amount > 0 && amount < prepared.amount)
+          ? amount
+          : prepared.amount;
       final payment = Payment(
         studentId: student.id!,
         date: DateTime.now(),
-        amount: prepared.amount,
+        amount: toWrite,
         note: kDebtWriteOffNote, // بنكتبها كمان عشان الأجهزة القديمة
         storedKind: PaymentKind.writeOff,
       );
@@ -264,6 +271,40 @@ class PaymentController extends GetxController {
     } finally {
       writeOffBusy.value = false;
     }
+  }
+
+  /// إسقاط مبالغ لعدة طلاب مرة واحدة (شاشة المديونيات) — [amounts]:
+  /// studentId → المبلغ. كل طالب بدفعة إسقاط واحدة، وتحديث واحد في الآخر.
+  /// بترجع عدد اللي اتسجّلوا فعلًا.
+  Future<int> writeOffMany(Map<int, double> amounts) async {
+    if (writeOffBusy.value) return 0;
+    writeOffBusy.value = true;
+    var done = 0;
+    try {
+      final now = DateTime.now();
+      for (final e in amounts.entries) {
+        if (e.value <= 0) continue;
+        await _dbService.insertPayment(Payment(
+          studentId: e.key,
+          date: now,
+          amount: e.value,
+          note: kDebtWriteOffNote,
+          storedKind: PaymentKind.writeOff,
+        ));
+        done++;
+      }
+    } finally {
+      if (done > 0) {
+        await loadPayments();
+        _refreshDashboard();
+        for (final id in amounts.keys) {
+          unawaited(ParentPortalService().pushStudentSummary(id));
+        }
+        unawaited(NotificationService().scheduleLatePaymentReminder());
+      }
+      writeOffBusy.value = false;
+    }
+    return done;
   }
 
   void _refreshDashboard() {

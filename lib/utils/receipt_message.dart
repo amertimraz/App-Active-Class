@@ -3,6 +3,7 @@
 // نصوص واتساب لـ«إيصال الدفع» و«كشف الحساب» لولي الأمر. دوال صرفة؛ توقيع
 // المعلم بيتضاف لوحده في launchGuardianWhatsapp.
 import 'package:active_class/utils/student_statement.dart';
+import 'package:active_class/utils/system_messages.dart';
 
 String buildReceiptMessage({
   required String studentName,
@@ -16,6 +17,16 @@ String buildReceiptMessage({
   required String Function(DateTime) monthLabel,
   required String Function(DateTime) dateLabel,
 }) {
+  final custom = SystemMessages.renderOverride('receipt', {
+    'اسم_الطالب': studentName,
+    'الكود': studentCode.trim(),
+    'المجموعة': groupName.trim() == '-' ? '' : groupName.trim(),
+    'المبلغ': money(amount),
+    'الشهور': months.map(monthLabel).join('، '),
+    'التاريخ': dateLabel(date),
+    'المتبقي': (remaining != null && remaining > 0.5) ? money(remaining) : '',
+  });
+  if (custom != null) return custom;
   final code = studentCode.trim();
   final b = StringBuffer()
     ..writeln('🧾 *إيصال دفع*')
@@ -45,8 +56,22 @@ String buildStatementMessage({
   required String Function(DateTime) monthLabel,
   int maxUnpaidLines = 6,
 }) {
-  final code = studentCode.trim();
   final s = statement;
+  final custom = SystemMessages.renderOverride('statement', {
+    'اسم_الطالب': studentName,
+    'الكود': studentCode.trim(),
+    'المجموعة': groupName.trim() == '-' ? '' : groupName.trim(),
+    'المستحق': money(s.totalDue),
+    'المدفوع': money(s.totalPaid),
+    'المُسقَط': s.totalWrittenOff > 0.5 ? money(s.totalWrittenOff) : '',
+    'المتبقي': s.balance > 0.5 ? money(s.balance) : '',
+    'تفاصيل_الشهور': [
+      for (final m in s.unpaidMonths.take(maxUnpaidLines))
+        '   • ${monthLabel(m.month)}: ${money(m.remaining)}'
+    ].join('\n'),
+  });
+  if (custom != null) return custom;
+  final code = studentCode.trim();
   final b = StringBuffer()
     ..writeln('📋 *كشف حساب*')
     ..writeln('👤 $studentName${code.isEmpty ? '' : ' ($code)'}');

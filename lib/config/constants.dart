@@ -387,6 +387,8 @@ const String COL_EXP_AMOUNT = 'amount';
 const String COL_EXP_CATEGORY = 'category';
 const String COL_EXP_NOTE = 'note';
 const String ROUTE_EXPENSES = '/expenses';
+const String ROUTE_DEBTS = '/debts';
+const String ROUTE_BULK_SEND = '/bulk_send';
 
 // رسائل واتساب المحفوظة (v40) — محلية للمعلم فقط (غير مُزامَنة).
 const String TABLE_MESSAGE_TEMPLATES = 'message_templates';

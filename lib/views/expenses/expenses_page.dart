@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/models/expense_model.dart';
 import 'package:active_class/services/database_service.dart';
@@ -79,21 +80,14 @@ class _ExpensesPageState extends State<ExpensesPage> {
   }
 
   Future<void> _delete(Expense e) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('حذف المصروف؟'),
-        content: Text(
-            '${expenseCategoryLabel(e.category)} — ${FormatHelper.formatCurrency(e.amount)}'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: const Text('إلغاء')),
-          FilledButton(
-              onPressed: () => Navigator.pop(c, true),
-              child: const Text('حذف')),
-        ],
-      ),
+    final ok = await showChalkConfirm(
+      context,
+      icon: Icons.receipt_long_rounded,
+      title: 'حذف المصروف؟',
+      message:
+          '${expenseCategoryLabel(e.category)} — ${FormatHelper.formatCurrency(e.amount)}',
+      confirmLabel: 'حذف',
+      destructive: true,
     );
     if (ok != true) return;
     await _db.deleteExpense(e.id!);

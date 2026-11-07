@@ -110,6 +110,24 @@ class _Limits {
 }
 
 // ── المتحكم الرئيسي ───────────────────────────────────────────────────────────
+/// هل نقدر نفتح التطبيق فورًا بحالة الترخيص المحفوظة (من غير انتظار
+/// السيرفر)؟ بس لو فيه تحقق ناجح قبل كده جوه مهلة الأوفلاين والترخيص لسه
+/// سارٍ محليًا. دالة صرفة عشان تتختبر.
+bool canStartFromCachedLicense({
+  required int? lastVerifiedMs,
+  required DateTime? expiresAt,
+  required DateTime now,
+  required int graceDays,
+}) {
+  if (lastVerifiedMs == null) return false;
+  final days = now
+      .difference(DateTime.fromMillisecondsSinceEpoch(lastVerifiedMs))
+      .inDays;
+  if (days > graceDays) return false;
+  if (expiresAt != null && expiresAt.isBefore(now)) return false;
+  return true;
+}
+
 class LicenseController extends GetxController {
   static LicenseController get to => Get.find();
 
@@ -142,6 +160,12 @@ class LicenseController extends GetxController {
   /// لو الأدمن قفل البوابة والتطبيق كان مقفول (ساعتها parentPortalEnabled
   /// بيفضل false → false ومفيش أي everAll بيفير).
   final licenseVerifiedTick = 0.obs;
+
+  /// اتفتح التطبيق بالحالة المحفوظة (من غير انتظار السيرفر)؟ ولو آه، بيتحوّل
+  /// [initCompleted] لـ true لما التحقق الفعلي يخلص — عشان شاشة البداية
+  /// تحوّل لشاشة الباقات لو طلع الترخيص موقوف/منتهي.
+  bool startedOptimistically = false;
+  final initCompleted = false.obs;
 
   /// "شغالة فعليًا دلوقتي" — مفعّلة أصلاً، ومدتها المستقلة (لو محددة)
   /// لسه ماعدّتش. مقارنة زمنية مباشرة بنفس نمط فحص انتهاء الترخيص
@@ -246,6 +270,18 @@ class LicenseController extends GetxController {
   }
 
   Future<void> _init() async {
+    // 0. فتح سريع: لو الترخيص اتحقق من السيرفر في آخر _kGraceDays أيام،
+    // نفتح فورًا بالحالة المحفوظة (محلي، من غير نت). التحقق الفعلي من السيرفر
+    // بيكمّل تحت وبيحدّث الحالة لو اتغيّرت (موقوف/منتهي/جهاز تاني).
+    try {
+      await _initDeviceId();
+      final early = await SharedPreferences.getInstance();
+      final code = early.getString(_kCode);
+      if (code != null && !kIsWeb) {
+        startedOptimistically = _applyCachedLicenseIfFresh(code, early);
+      }
+    } catch (_) {}
+
     try {
       // 1. تسجيل دخول مجهول (anonymous) للوصول لـ Firestore
       if (_auth.currentUser == null) {
@@ -281,6 +317,33 @@ class LicenseController extends GetxController {
     } catch (e) {
       _loadCachedState();
     }
+    initCompleted.value = true;
+  }
+
+  /// يطبّق آخر حالة ترخيص متحقَّق منها (باقة + انتهاء) من الكاش، بس لو
+  /// التحقق الناجح الأخير جوه مهلة الأوفلاين والترخيص لسه سارٍ محليًا.
+  /// بترجع true لو اتطبّقت. مفيش أي كتابة ولا نت.
+  bool _applyCachedLicenseIfFresh(String code, SharedPreferences prefs) {
+    final lastVerified = prefs.getInt(_kLastVerified);
+    final planStr = prefs.getString(_kPlan);
+    final expMs = prefs.getInt(_kExpiresAt);
+    final exp =
+        expMs != null ? DateTime.fromMillisecondsSinceEpoch(expMs) : null;
+    if (planStr == null ||
+        !canStartFromCachedLicense(
+          lastVerifiedMs: lastVerified,
+          expiresAt: exp,
+          now: DateTime.now(),
+          graceDays: _kGraceDays,
+        )) {
+      return false;
+    }
+    _restoreParentPortal(prefs);
+    plan.value = _parsePlan(planStr);
+    licenseCode.value = code;
+    expiresAt.value = exp;
+    state.value = LicenseState.active;
+    return true;
   }
 
   // ── Remote Config (حدود الباقات + مدة التجربة) ───────────────────────────

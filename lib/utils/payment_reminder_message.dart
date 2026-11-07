@@ -5,6 +5,8 @@
 // دالة صرفة (بلا GetX/DB) عشان تتختبر. اسم المعلم وتخصصه بنفس سطري رسائل
 // الغياب/التأخير (👨‍🏫 / 📘)، فـlaunchGuardianWhatsapp مابيكررهمش.
 
+import 'package:active_class/utils/system_messages.dart';
+
 /// [remainingText] المبلغ المتبقي مُنسَّق جاهز (مثلاً "150 ج.م")، وفاضي لو
 /// المبلغ مش معروف. [monthLabel] اسم الشهر ("أكتوبر 2026") وفاضي لو مش معروف.
 String buildPaymentReminderMessage({
@@ -16,6 +18,16 @@ String buildPaymentReminderMessage({
   String teacherName = '',
   String teacherSpecialization = '',
 }) {
+  final custom = SystemMessages.renderOverride('payment_reminder', {
+    'اسم_الطالب': studentName,
+    'الكود': studentCode.trim(),
+    'المجموعة': groupName.trim() == '-' ? '' : groupName.trim(),
+    'الشهر': monthLabel.trim(),
+    'المتبقي': remainingText.trim(),
+    'المعلم': teacherName.trim(),
+    'التخصص': teacherSpecialization.trim(),
+  });
+  if (custom != null) return custom;
   final code = studentCode.trim();
   final b = StringBuffer()
     ..writeln('⚠️ *تنبيه تأخر الدفع*')

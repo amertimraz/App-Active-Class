@@ -19,6 +19,7 @@ import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/app_chrome.dart';
 import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/views/help/help_widgets.dart';
+import 'package:active_class/views/exams/points_board.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
@@ -144,6 +145,8 @@ class _StudentsPageState extends State<StudentsPage>
                     groups: _groups,
                     onImported: () => controller.loadAllStudents(),
                   );
+                case 'points':
+                  Get.to(() => const PointsPage());
                 case 'siblings':
                   Get.toNamed(ROUTE_SIBLINGS);
                 case 'archive':
@@ -157,6 +160,14 @@ class _StudentsPageState extends State<StudentsPage>
                   Icon(Icons.upload_file_rounded, size: 20),
                   SizedBox(width: 10),
                   Text('استيراد من إكسل'),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'points',
+                child: Row(children: [
+                  Icon(Icons.stars_rounded, size: 20),
+                  SizedBox(width: 10),
+                  Text('نقاط الطلاب'),
                 ]),
               ),
               PopupMenuItem(

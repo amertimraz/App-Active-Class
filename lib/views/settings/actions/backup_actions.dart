@@ -183,39 +183,15 @@ Future<void> _handleRestoreBackup(BuildContext context) async {
   if (selectedPath == null || !context.mounted) return;
 
   // تأكيد نهائي
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text('تأكيد الاستعادة',
-          style: TextStyle(
-              fontFamily: 'Cairo',
-              fontWeight: FontWeight.bold,
-              color: Colors.red)),
-      content: const Text(
+  final confirmed = await showChalkConfirm(
+    context,
+    icon: Icons.restore_rounded,
+    title: 'تأكيد الاستعادة',
+    message:
         'هل أنت متأكد؟\nسيتم مسح جميع البيانات الحالية واستبدالها بالنسخة المختارة.',
-        style: TextStyle(fontFamily: 'Cairo'),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red,
-            foregroundColor: Colors.white,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-          onPressed: () => Navigator.of(ctx).pop(true),
-          child:
-              const Text('استعادة الآن', style: TextStyle(fontFamily: 'Cairo')),
-        ),
-      ],
-    ),
+    confirmLabel: 'استعادة الآن',
+    destructive: true,
   );
-
   if (confirmed != true || !context.mounted) return;
   // فسحة صغيرة عشان أنيميشن إغلاق حوار التأكيد يخلص الأول
   await Future.delayed(const Duration(milliseconds: 80));

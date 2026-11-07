@@ -17,6 +17,7 @@ import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/utils/leaderboard_share.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/views/exams/certificates_sheet.dart';
+import 'package:active_class/views/exams/points_board.dart';
 import 'package:active_class/views/exams/student_exam_history_page.dart';
 
 enum _RankPickMode { count, minPercent, studentPercent }
@@ -30,6 +31,9 @@ class LeaderboardPage extends StatefulWidget {
 class _LeaderboardPageState extends State<LeaderboardPage> {
   late final ExamController _ec;
   late final GroupController _gc;
+
+  /// 0 = الدرجات (المراكز بالامتحانات)، 1 = النقاط.
+  int _tab = 0;
 
   LbFilter _filter = const LbFilter();
   List<LeaderboardEntry> _entries = [];
@@ -382,38 +386,72 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
             style:
                 TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w900)),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.workspace_premium_rounded),
-            tooltip: 'شهادات المراكز',
-            onPressed: _entries.isEmpty ? null : _rankCertificates,
-          ),
-          IconButton(
-            icon: const Icon(Icons.ios_share_rounded),
-            tooltip: 'مشاركة قائمة الأوائل',
-            onPressed: _entries.isEmpty ? null : _share,
-          ),
+          if (_tab == 0) ...[
+            IconButton(
+              icon: const Icon(Icons.workspace_premium_rounded),
+              tooltip: 'شهادات المراكز',
+              onPressed: _entries.isEmpty ? null : _rankCertificates,
+            ),
+            IconButton(
+              icon: const Icon(Icons.ios_share_rounded),
+              tooltip: 'مشاركة قائمة الأوائل',
+              onPressed: _entries.isEmpty ? null : _share,
+            ),
+          ],
         ],
       ),
       body: Column(
         children: [
-          _header(),
-          _filterBar(cs),
+          _tabSwitcher(cs),
           Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _entries.isEmpty
-                    ? _EmptyLeaderboard(cs: cs, filter: _filter)
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
-                        itemCount: _entries.length,
-                        itemBuilder: (_, i) =>
-                            _LeaderboardCard(entry: _entries[i]),
+            child: _tab == 1
+                ? const PointsBoard()
+                : Column(
+                    children: [
+                      _header(),
+                      _filterBar(cs),
+                      Expanded(
+                        child: _loading
+                            ? const Center(child: CircularProgressIndicator())
+                            : _entries.isEmpty
+                                ? _EmptyLeaderboard(cs: cs, filter: _filter)
+                                : ListView.builder(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        16, 10, 16, 28),
+                                    itemCount: _entries.length,
+                                    itemBuilder: (_, i) =>
+                                        _LeaderboardCard(entry: _entries[i]),
+                                  ),
                       ),
+                    ],
+                  ),
           ),
         ],
       ),
     );
   }
+
+  /// تبديل بين «الدرجات» (المراكز بالامتحانات) و«النقاط».
+  Widget _tabSwitcher(ColorScheme cs) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+        color: cs.surface,
+        child: SegmentedButton<int>(
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(
+                value: 0,
+                icon: Icon(Icons.emoji_events_rounded),
+                label: Text('الدرجات')),
+            ButtonSegment(
+                value: 1,
+                icon: Icon(Icons.stars_rounded),
+                label: Text('النقاط')),
+          ],
+          selected: {_tab},
+          onSelectionChanged: (s) => setState(() => _tab = s.first),
+        ),
+      );
 
   Widget _header() => Container(
         width: double.infinity,

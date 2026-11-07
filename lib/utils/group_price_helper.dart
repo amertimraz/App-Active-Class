@@ -1,5 +1,6 @@
 // lib/utils/group_price_helper.dart
 import 'package:flutter/material.dart';
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/utils/helpers.dart';
 
@@ -30,25 +31,16 @@ Future<void> offerBulkStudentPriceUpdate(
       groupId: groupId, price: oldPrice);
   if (count == 0) return;
   if (!context.mounted) return;
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      title: const Text('تحديث سعر الطلاب؟'),
-      content: Text(
-          'فيه $count طالب سعرهم لسه ${FormatHelper.formatCurrency(oldPrice)} '
-          '(السعر القديم للمجموعة). عايز تحدّث سعرهم للسعر الجديد '
-          '${FormatHelper.formatCurrency(newPrice)}؟\n\n'
-          'أي طالب سعره مختلف عن ده (خصم أو اتفاق خاص) مش هيتأثر.'),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('لا، سيبهم زي ما هما')),
-        FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('تحديث السعر')),
-      ],
-    ),
+  final confirmed = await showChalkConfirm(
+    context,
+    icon: Icons.price_change_rounded,
+    title: 'تحديث سعر الطلاب؟',
+    message: 'فيه $count طالب سعرهم لسه ${FormatHelper.formatCurrency(oldPrice)} '
+        '(السعر القديم للمجموعة). عايز تحدّث سعرهم للسعر الجديد '
+        '${FormatHelper.formatCurrency(newPrice)}؟\n\n'
+        'أي طالب سعره مختلف عن ده (خصم أو اتفاق خاص) مش هيتأثر.',
+    confirmLabel: 'تحديث السعر',
+    cancelLabel: 'لا، سيبهم زي ما هما',
   );
   if (confirmed != true) return;
   final updatedCount = await studentController.bulkUpdatePriceForGroupDefault(

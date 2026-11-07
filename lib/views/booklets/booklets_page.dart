@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/booklet_controller.dart';
@@ -119,24 +120,16 @@ class _BookletCard extends StatelessWidget {
     final c = _ctrl();
     final impact = await c.deleteImpact(booklet.id!);
     if (!context.mounted) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('حذف الملزمة'),
-        content: Text(
-          'هتتحذف "${booklet.name}" نهائيًا بكل سجلات التسليم والدفعات.\n'
+    final ok = await showChalkConfirm(
+      context,
+      icon: Icons.menu_book_rounded,
+      title: 'حذف الملزمة',
+      subtitle: booklet.name,
+      message: 'هتتحذف "${booklet.name}" نهائيًا بكل سجلات التسليم والدفعات.\n'
           'التسليمات المسجّلة: ${impact.delivered}'
           '${fin ? '\nإجمالي المدفوع: ${FormatHelper.formatCurrency(impact.paid)}' : ''}',
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حذف', style: TextStyle(color: Colors.red))),
-        ],
-      ),
+      confirmLabel: 'حذف',
+      destructive: true,
     );
     if (ok == true) {
       await c.deleteBooklet(booklet.id!);

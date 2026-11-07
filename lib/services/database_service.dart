@@ -27,6 +27,8 @@ import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/services/auto_backup_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/archive_history.dart';
+import 'package:active_class/utils/archive_periods.dart';
+import 'package:active_class/utils/pricing_helper.dart';
 
 // spec 052 — صحة البيانات (دمج المكرّر): extension بنفس الـlibrary.
 part 'database_service_data_health.dart';
@@ -1417,8 +1419,19 @@ class DatabaseService {
     return result.map((map) => Student.fromMap(map)).toList();
   }
 
+  /// يحدّث فترات الأرشفة اللي PricingHelper بيستثني شهورها من المستحق.
+  Future<void> refreshArchivePeriods() async {
+    try {
+      PricingHelper.archivePeriods =
+          buildArchivePeriods(await getAllArchiveEvents());
+    } catch (e) {
+      debugPrint('refreshArchivePeriods failed: $e');
+    }
+  }
+
   Future<List<Student>> getAllStudents() async {
     final db = await database;
+    await refreshArchivePeriods();
     final result = await db.query(TABLE_STUDENTS);
     return result.map((map) => Student.fromMap(map)).toList();
   }
@@ -1727,6 +1740,7 @@ class DatabaseService {
       if (id <= 0) return;
       await _queueSync(TABLE_STUDENT_ARCHIVE_EVENTS, id, 'insert',
           payload: {...map, COL_SAE_ID: id});
+      await refreshArchivePeriods();
     } catch (e) {
       debugPrint('archive event failed: $e');
     }

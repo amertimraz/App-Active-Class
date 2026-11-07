@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/exam_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
@@ -568,39 +569,24 @@ class _ExamsPageState extends State<ExamsPage>
     );
   }
 
-  void _confirmDelete(BuildContext context, Exam exam) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('حذف الامتحان',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
-        content: Text(
-          'سيتم حذف "${exam.name}" وجميع الدرجات المرتبطة به.\nهل أنت متأكد؟',
-          style: const TextStyle(fontFamily: 'Cairo'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red, foregroundColor: Colors.white),
-            onPressed: () async {
-              Navigator.pop(context);
-              try {
-                await _ec.deleteExam(exam.id!);
-              } catch (e) {
-                if (context.mounted) {
-                  ToastHelper.error('فشل حذف الامتحان — حاول تاني');
-                }
-              }
-            },
-            child: const Text('حذف', style: TextStyle(fontFamily: 'Cairo')),
-          ),
-        ],
-      ),
+  Future<void> _confirmDelete(BuildContext context, Exam exam) async {
+    final ok = await showChalkConfirm(
+      context,
+      icon: Icons.quiz_rounded,
+      title: 'حذف الامتحان',
+      subtitle: exam.name,
+      message: 'سيتم حذف "${exam.name}" وجميع الدرجات المرتبطة به.\nهل أنت متأكد؟',
+      confirmLabel: 'حذف',
+      destructive: true,
     );
+    if (!ok) return;
+    try {
+      await _ec.deleteExam(exam.id!);
+    } catch (e) {
+      if (context.mounted) {
+        ToastHelper.error('فشل حذف الامتحان — حاول تاني');
+      }
+    }
   }
 }
 

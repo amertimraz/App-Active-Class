@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:active_class/controllers/booklet_controller.dart';
 import 'package:active_class/utils/booklet_math.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/utils/system_messages.dart';
 
 /// رسالة تذكير لولي الأمر بمتبقي ملزمة واحدة.
 String buildBookletReminderMessage({
@@ -16,6 +17,15 @@ String buildBookletReminderMessage({
   required double remaining,
   String teacherName = '',
 }) {
+  final custom = SystemMessages.renderOverride('booklet_reminder', {
+    'اسم_الطالب': studentName,
+    'الملزمة': bookletName,
+    'السعر': FormatHelper.formatCurrency(price),
+    'المدفوع': paid > 0 ? FormatHelper.formatCurrency(paid) : '',
+    'المتبقي': FormatHelper.formatCurrency(remaining),
+    'المعلم': teacherName.trim(),
+  });
+  if (custom != null) return custom;
   final b = StringBuffer()
     ..writeln('السلام عليكم ورحمة الله')
     ..writeln('تذكير بخصوص "$bookletName" للطالب/ة $studentName:')

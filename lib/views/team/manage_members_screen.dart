@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -174,30 +175,14 @@ class _ManageMembersScreenState extends State<ManageMembersScreen> {
     final name = (m['display_name'] as String?)?.isNotEmpty == true
         ? m['display_name'] as String
         : (m['phone'] as String? ?? '');
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('إزالة العضو',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
-        content: Text('هل أنت متأكد من إزالة "$name" من الفريق؟',
-            style: const TextStyle(fontFamily: 'Cairo')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('إزالة', style: TextStyle(fontFamily: 'Cairo')),
-          ),
-        ],
-      ),
+    final confirmed = await showChalkConfirm(
+      context,
+      icon: Icons.person_remove_rounded,
+      title: 'إزالة العضو',
+      subtitle: name,
+      message: 'هل أنت متأكد من إزالة "$name" من الفريق؟',
+      confirmLabel: 'إزالة',
+      destructive: true,
     );
     if (confirmed != true) return;
     final error = await _team.removeMember(m['user_id'] as String);
@@ -214,32 +199,15 @@ class _ManageMembersScreenState extends State<ManageMembersScreen> {
     final name = (m['display_name'] as String?)?.isNotEmpty == true
         ? m['display_name'] as String
         : (m['phone'] as String? ?? '');
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('فك ارتباط الجهاز',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
-        content: Text(
-            'هيقدر "$name" يسجّل دخول من جهاز جديد بعد كده. استخدمها بس لو '
-            'فعلاً غيّر جهازه.',
-            style: const TextStyle(fontFamily: 'Cairo')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo')),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('فك الارتباط', style: TextStyle(fontFamily: 'Cairo')),
-          ),
-        ],
-      ),
+    final confirmed = await showChalkConfirm(
+      context,
+      icon: Icons.phonelink_erase_rounded,
+      tone: ChalkTone.caution,
+      title: 'فك ارتباط الجهاز',
+      subtitle: name,
+      message: 'هيقدر "$name" يسجّل دخول من جهاز جديد بعد كده. استخدمها بس لو '
+          'فعلاً غيّر جهازه.',
+      confirmLabel: 'فك الارتباط',
     );
     if (confirmed != true) return;
     final error = await _team.resetMemberDevice(m['user_id'] as String);

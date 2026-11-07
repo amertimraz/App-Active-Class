@@ -3,6 +3,7 @@
 // (استُخرِجت من groups_page.dart — spec 039).
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/models/group_model.dart';
@@ -238,11 +239,14 @@ class GroupCard extends StatelessWidget {
     }
   }
 
-  void _confirmDelete() {
+  Future<void> _confirmDelete() async {
     final totalToDelete = studentCount + archivedCount;
-    Get.defaultDialog(
+    final ok = await showChalkConfirm(
+      Get.context!,
+      icon: Icons.delete_sweep_rounded,
       title: 'حذف المجموعة',
-      middleText: totalToDelete > 0
+      subtitle: group.name,
+      message: totalToDelete > 0
           ? 'هل تريد حذف مجموعة "${group.name}"؟\n'
               'تحذير: هيتحذف معاها $totalToDelete طالب'
               '${archivedCount > 0 ? ' (منهم $archivedCount من الأرشيف)' : ''} '
@@ -250,16 +254,12 @@ class GroupCard extends StatelessWidget {
               'نهائياً — الإجراء ده لا يمكن التراجع عنه.'
           : 'هل تريد حذف مجموعة "${group.name}"؟ '
               'لا يمكن التراجع عن هذا الإجراء.',
-      textCancel: 'إلغاء',
-      textConfirm: 'حذف',
-      confirmTextColor: Colors.white,
-      buttonColor: Colors.red,
-      onConfirm: () async {
-        Get.back(); // أغلق الـ dialog
-        await Future.delayed(const Duration(milliseconds: 80));
-        onDelete();
-      },
+      confirmLabel: 'حذف',
+      destructive: true,
     );
+    if (!ok) return;
+    await Future.delayed(const Duration(milliseconds: 80));
+    onDelete();
   }
 
   @override

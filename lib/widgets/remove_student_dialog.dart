@@ -1,7 +1,9 @@
 // lib/widgets/remove_student_dialog.dart
 import 'package:flutter/material.dart';
+import 'package:active_class/config/theme.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/utils/helpers.dart';
+import 'package:active_class/widgets/chalk_dialog.dart';
 
 /// نافذة "حذف الطالب" الموحّدة — بتدّي المدرس تلات اختيارات:
 ///   • أرشفة  → يختفي بس بياناته وسجله محفوظين، يترجع من "الأرشيف".
@@ -28,29 +30,38 @@ Future<void> showRemoveStudentDialog(
 
   final choice = await showDialog<String>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text('حذف الطالب'),
-      content: Text(
-        'إيه اللي تحب تعمله بـ"${student.name}"؟\n\n'
-        '• أرشفة: هيختفي من كل الشاشات النشطة، بس بياناته وسجله (حضور، '
-        'مدفوعات، درجات) هيفضلوا محفوظين، وتقدر تسترجعه في أي وقت من "الأرشيف".\n'
-        '• حذف نهائي: هيتمسح هو وكل سجلاته — مفيش تراجع.',
-      ),
+    builder: (ctx) => ChalkDialog(
+      icon: Icons.person_remove_rounded,
+      tone: ChalkTone.caution,
+      title: 'حذف ${student.name}',
+      subtitle: 'اختار إيه اللي يحصل لسجلاته',
+      body: const [
+        ChalkRule(
+          icon: Icons.archive_rounded,
+          text: 'أرشفة: يختفي من كل الشاشات النشطة، وبياناته وسجله (حضور، '
+              'مدفوعات، درجات) يفضلوا محفوظين. تقدر تسترجعه في أي وقت من '
+              '«الأرشيف».',
+        ),
+        ChalkRule(
+          icon: Icons.delete_forever_rounded,
+          text: 'حذف نهائي: يتمسح هو وكل سجلاته. مفيش تراجع.',
+        ),
+      ],
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('إلغاء'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop('delete'),
-          child: Text('حذف نهائي',
-              style: TextStyle(color: Colors.red.shade400)),
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+        ChalkAction(
+          label: 'أرشفة',
+          icon: Icons.archive_rounded,
           onPressed: () => Navigator.of(ctx).pop('archive'),
-          child: const Text('أرشفة', style: TextStyle(color: Colors.white)),
+        ),
+        ChalkAction(
+          label: 'حذف نهائي',
+          kind: ChalkActionKind.dangerOutlined,
+          onPressed: () => Navigator.of(ctx).pop('delete'),
+        ),
+        ChalkAction(
+          label: 'إلغاء',
+          kind: ChalkActionKind.text,
+          onPressed: () => Navigator.of(ctx).pop(),
         ),
       ],
     ),
@@ -68,29 +79,7 @@ Future<void> showRemoveStudentDialog(
   }
 
   // choice == 'delete' — تأكيد تاني صريح قبل أي مسح
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text('تأكيد الحذف النهائي'),
-      content: Text(
-        'هل تريد حذف "${student.name}" نهائياً؟\n'
-        'هيتحذف معاه كل سجلات حضوره ومدفوعاته ودرجات امتحاناته — '
-        'الإجراء ده لا يمكن التراجع عنه إطلاقاً.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('رجوع'),
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-          onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('حذف نهائي', style: TextStyle(color: Colors.white)),
-        ),
-      ],
-    ),
-  );
+  final confirmed = await showConfirmPermanentDelete(context, student.name);
 
   if (!context.mounted || confirmed != true) return;
 
@@ -99,4 +88,45 @@ Future<void> showRemoveStudentDialog(
     ToastHelper.success('تم حذف الطالب نهائيًا');
     onRemoved?.call();
   }
+}
+
+/// تأكيد الحذف النهائي لطالب (مشترك بين نافذة الحذف وشاشة الأرشيف).
+Future<bool?> showConfirmPermanentDelete(
+    BuildContext context, String studentName) {
+  return showDialog<bool>(
+    context: context,
+    builder: (ctx) => ChalkDialog(
+      icon: Icons.warning_amber_rounded,
+      tone: ChalkTone.danger,
+      title: 'تأكيد الحذف النهائي',
+      subtitle: studentName,
+      body: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(AppSpace.md),
+          decoration: BoxDecoration(
+            color: ctx.tokens.dangerSoft,
+            borderRadius: BorderRadius.circular(AppRadius.panel),
+          ),
+          child: Text(
+            'هيتحذف معاه كل سجلات حضوره ومدفوعاته ودرجات امتحاناته. '
+            'الإجراء ده لا يمكن التراجع عنه إطلاقًا.',
+            style: AppType.body.copyWith(color: ctx.tokens.danger, height: 1.5),
+          ),
+        ),
+      ],
+      actions: [
+        ChalkAction(
+          label: 'حذف نهائي',
+          kind: ChalkActionKind.dangerFilled,
+          onPressed: () => Navigator.of(ctx).pop(true),
+        ),
+        ChalkAction(
+          label: 'رجوع',
+          kind: ChalkActionKind.text,
+          onPressed: () => Navigator.of(ctx).pop(false),
+        ),
+      ],
+    ),
+  );
 }

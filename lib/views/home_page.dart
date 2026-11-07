@@ -7,6 +7,10 @@ import 'package:active_class/utils/responsive.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/widgets/app_panel.dart';
+import 'package:active_class/widgets/payment_month_sheet.dart';
+import 'package:active_class/widgets/next_session_card.dart';
+import 'package:active_class/views/messages/bulk_send_page.dart';
+import 'package:active_class/services/bulk_send_service.dart';
 import 'package:active_class/controllers/at_risk_controller.dart';
 import 'package:active_class/controllers/dashboard_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
@@ -18,7 +22,6 @@ import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/export_service.dart';
-import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
@@ -53,11 +56,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // متابعة" يفضل حيّ حتى قبل ما المدرس يفتح الشاشة المخصّصة بنفسه.
   final AtRiskController _atRiskController = Get.put(AtRiskController());
   bool _statsVisible = true;
+  Timer? _clockTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // كارت «الحصة الجاية» يتجدّد بالوقت كل نص دقيقة (من غير قراءة القاعدة).
+    _clockTimer = Timer.periodic(const Duration(seconds: 30),
+        (_) => _dashboardController.refreshNextSessionClock());
     // DashboardController مسجّل كـ singleton — Get.put() فوق بيرجع نفس
     // النسخة القديمة (بأرقامها المحفوظة في الذاكرة) لو الصفحة اتفتحت
     // قبل كده، مش نسخة جديدة تعيد التحميل من قاعدة البيانات تلقائيًا.
@@ -93,6 +100,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _clockTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     AutoAbsentService.instance.stop();
     super.dispose();
@@ -609,6 +617,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // ── الحصة الجاية/الشغالة (بتظهر لو فيه حصة النهاردة) ──
+                Obx(() {
+                  final n = _dashboardController.nextSession.value;
+                  if (n == null) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpace.md),
+                    child: NextSessionCard(
+                      info: n,
+                      canSeeFinancials: TeamModeService().canSeeFinancials,
+                      onAttendance: () => Get.toNamed(ROUTE_ATTENDANCE),
+                      onRemind: () => Get.to(() => BulkSendPage(
+                          initialKind: BulkKind.payments,
+                          initialGroupId: n.group.id)),
+                    ),
+                  );
+                }),
                 // ── ملخص سريع: أعداد + متابعة + حضور اليوم ──
                 AppTray(
                   color: t.rosterTint,
@@ -1120,6 +1144,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     },
                   ),
                   _DrawerItem(
+                    icon: Icons.send_rounded,
+                    title: 'إرسال جماعي',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Get.toNamed(ROUTE_BULK_SEND);
+                    },
+                  ),
+                  _DrawerItem(
                     icon: Icons.qr_code_2_rounded,
                     title: 'مكتبة QR',
                     onTap: () {
@@ -1244,172 +1276,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // (US1) مرتّب تنازليًا حسب الباقي. كل الأرقام مقروءة مباشرة من
   // DashboardController (بلا حساب جديد هنا) عشان تفضل مطابقة للكارت.
   void _showPaymentMonthSummarySheet(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final d = _dashboardController;
-    final cardMonth = d.paymentCardMonth.value;
-    final monthName = _PaymentProgressCard._arabicMonth(cardMonth.month);
-    final breakdown = d.paymentCardGroupBreakdown;
-    final pct = d.paymentCardRate.value * 100;
-
+    final monthName =
+        _PaymentProgressCard._arabicMonth(d.paymentCardMonth.value.month);
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.75,
-        ),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF131D31) : Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 6),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade400,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.bar_chart_rounded,
-                      color: Color(0xFF4F46E5), size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'ملخص دفعات $monthName',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 15),
-                  ),
-                ],
-              ),
-            ),
-            // ── US2: رأس الملخص العام — نفس أرقام الكارت بالظبط ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: (isDark ? Colors.white : Colors.grey)
-                      .withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                              FormatHelper.formatCurrency(
-                                  d.paymentCardCollected.value),
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 15)),
-                          Text(
-                              'من ${FormatHelper.formatCurrency(d.paymentCardExpected.value)}',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: isDark
-                                      ? Colors.white38
-                                      : Colors.grey.shade600)),
-                        ],
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                            'الباقي ${FormatHelper.formatCurrency(d.paymentCardRemaining.value)}',
-                            style: const TextStyle(
-                                color: Color(0xFFEF4444),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12)),
-                        if (d.paymentCardWrittenOff.value > 0.5)
-                          Text(
-                              'مُسقَط ${FormatHelper.formatCurrency(d.paymentCardWrittenOff.value)}',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: isDark
-                                      ? Colors.white38
-                                      : Colors.grey.shade600)),
-                        Text('${pct.toInt()}% محصّل',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: isDark
-                                    ? Colors.white38
-                                    : Colors.grey.shade600)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const Divider(height: 16),
-            Expanded(
-              child: breakdown.isEmpty
-                  // US1 edge case: مفيش أي مجموعة عليها مستحق للشهر ده.
-                  ? Center(
-                      child: Text(
-                        'مفيش مستحقات على أي مجموعة للشهر ده',
-                        style: TextStyle(
-                            color:
-                                isDark ? Colors.white38 : Colors.grey.shade600),
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount: breakdown.length,
-                      itemBuilder: (_, i) {
-                        final g = breakdown[i];
-                        final done = g.remaining <= 0.01;
-                        final color = done
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFFEF4444);
-                        return ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: color.withValues(alpha: 0.1),
-                            child: Icon(
-                              done
-                                  ? Icons.check_circle_rounded
-                                  : Icons.groups_rounded,
-                              color: color,
-                              size: 20,
-                            ),
-                          ),
-                          title: Text(g.groupName,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text(
-                            done
-                                ? 'مكتملة الدفع — ${FormatHelper.formatCurrency(g.expected)}'
-                                : '${g.unpaidStudentsCount} متأخر • من ${FormatHelper.formatCurrency(g.expected)}',
-                          ),
-                          trailing: Text(
-                            done
-                                ? '✓'
-                                : FormatHelper.formatCurrency(g.remaining),
-                            style: TextStyle(
-                                color: color, fontWeight: FontWeight.bold),
-                          ),
-                          onTap: g.unpaidStudentsCount > 0
-                              // US3: drill-down لمتأخري المجموعة دي بس.
-                              ? () {
-                                  Navigator.of(context).pop();
-                                  _showUnpaidSheet(context,
-                                      groupIdFilter: g.groupId);
-                                }
-                              : null,
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
+      builder: (sheetCtx) => PaymentMonthSheet(
+        monthName: monthName,
+        collected: d.paymentCardCollected.value,
+        expected: d.paymentCardExpected.value,
+        remaining: d.paymentCardRemaining.value,
+        writtenOff: d.paymentCardWrittenOff.value,
+        rate: d.paymentCardRate.value,
+        groups: d.paymentCardGroupBreakdown.toList(),
+        // US3: drill-down لمتأخري المجموعة دي بس.
+        onGroupTap: (groupId) {
+          Navigator.of(sheetCtx).pop();
+          _showUnpaidSheet(context, groupIdFilter: groupId);
+        },
       ),
     );
   }

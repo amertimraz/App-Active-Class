@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/auth_controller.dart';
 import 'package:active_class/core/platform/browser_storage_purge.dart';
@@ -28,36 +29,19 @@ Future<int> pendingUnsyncedCount() async {
 Future<void> confirmAndSignOutWeb(BuildContext context) async {
   final pending = await pendingUnsyncedCount();
   if (!context.mounted) return;
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => Directionality(
-      textDirection: TextDirection.rtl,
-      child: AlertDialog(
-        title: const Text('تسجيل الخروج؟',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
-        content: Text(
-          pending > 0
-              ? 'فيه $pending تعديل لسه ماترفعش للسيرفر. لو خرجت دلوقتي هتضيع. '
-                  'استنى دقيقة لحد ما يترفعوا، أو اخرج وامسحهم.'
-              : 'هيتمسح بيانات الويب المحلية من المتصفح ده. بياناتك محفوظة على '
-                  'حسابك وهترجع لما تدخل تاني.',
-          style: const TextStyle(fontFamily: 'Cairo', height: 1.7),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(pending > 0 ? 'استنى' : 'إلغاء',
-                  style: const TextStyle(fontFamily: 'Cairo'))),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFDC2626)),
-            child: Text(pending > 0 ? 'اخرج وامسح' : 'تسجيل الخروج',
-                style: const TextStyle(fontFamily: 'Cairo')),
-          ),
-        ],
-      ),
-    ),
+  final ok = await showChalkConfirm(
+    context,
+    icon: Icons.logout_rounded,
+    tone: ChalkTone.caution,
+    title: 'تسجيل الخروج؟',
+    message: pending > 0
+        ? 'فيه $pending تعديل لسه ماترفعش للسيرفر. لو خرجت دلوقتي هتضيع. '
+            'استنى دقيقة لحد ما يترفعوا، أو اخرج وامسحهم.'
+        : 'هيتمسح بيانات الويب المحلية من المتصفح ده. بياناتك محفوظة على '
+            'حسابك وهترجع لما تدخل تاني.',
+    confirmLabel: pending > 0 ? 'اخرج وامسح' : 'تسجيل الخروج',
+    cancelLabel: pending > 0 ? 'استنى' : 'إلغاء',
+    destructive: pending > 0,
   );
   if (ok != true) return;
   await signOutAndWipeWeb();

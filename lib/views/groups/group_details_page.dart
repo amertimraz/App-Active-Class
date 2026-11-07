@@ -1,5 +1,6 @@
 // lib/views/groups/group_details_page.dart
 import 'package:flutter/material.dart';
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/widgets/whatsapp_send_sheet.dart';
 import 'package:active_class/utils/whatsapp_targets.dart';
 import 'package:active_class/views/groups/group_performance_page.dart';
@@ -790,7 +791,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   }
 
   // ─── Dialogs / sheets ─────────────────────────────────────────────────────
-  void _confirmDeleteGroup(Group g) {
+  Future<void> _confirmDeleteGroup(Group g) async {
     if (!requireDeletePermission(
         context, TeamModeService().canDeleteStudentsNow)) {
       return;
@@ -804,53 +805,51 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         .where((s) => s.groupId == g.id)
         .length;
     final count = activeCount + archivedCount;
-    Get.defaultDialog(
+    final ok = await showChalkConfirm(
+      context,
+      icon: Icons.delete_sweep_rounded,
       title: 'حذف المجموعة',
-      middleText: count > 0
+      subtitle: g.name,
+      message: count > 0
           ? 'تحذير: هيتحذف معاها $count طالب${archivedCount > 0 ? ' (منهم $archivedCount من الأرشيف)' : ''} '
               'وكل سجلات حضورهم ودفعاتهم ودرجات امتحاناتهم نهائياً — لا يمكن التراجع عن هذا الإجراء.'
           : 'هل تريد حذف هذه المجموعة؟ لا يمكن التراجع عن هذا الإجراء.',
-      textCancel: 'إلغاء',
-      textConfirm: 'حذف',
-      confirmTextColor: Colors.white,
-      buttonColor: Colors.red,
-      onConfirm: () async {
-        Get.back(); // close dialog
-        await Future.delayed(const Duration(milliseconds: 80));
-        final ok = await Get.find<GroupController>().deleteGroup(g.id!);
-        if (ok) {
-          NotificationService().syncAllScheduledNotifications();
-          Get.back(); // back to groups list — الخطأ (لو حصل) اتعرض بالفعل
-        }
-      },
+      confirmLabel: 'حذف',
+      destructive: true,
     );
+    if (!ok || !mounted) return;
+    await Future.delayed(const Duration(milliseconds: 80));
+    final deleted = await Get.find<GroupController>().deleteGroup(g.id!);
+    if (deleted) {
+      NotificationService().syncAllScheduledNotifications();
+      Get.back(); // back to groups list — الخطأ (لو حصل) اتعرض بالفعل
+    }
   }
 
-  void _confirmResetStudents(Group g) {
+  Future<void> _confirmResetStudents(Group g) async {
     if (!requireDeletePermission(
         context, TeamModeService().canDeleteStudentsNow)) {
       return;
     }
-    Get.defaultDialog(
+    final ok = await showChalkConfirm(
+      context,
+      icon: Icons.restart_alt_rounded,
+      tone: ChalkTone.caution,
       title: 'تصفير الطلاب',
-      middleText:
-          'سيتم حذف جميع الطلاب وسجلاتهم لهذه المجموعة. هل تريد المتابعة؟',
-      textCancel: 'إلغاء',
-      textConfirm: 'متابعة',
-      confirmTextColor: Colors.white,
-      buttonColor: Colors.orange,
-      onConfirm: () async {
-        Get.back();
-        try {
-          await DatabaseService().deleteStudentsByGroup(g.id!);
-          await studentController.loadStudentsByGroup(g.id!);
-          NotificationService().syncAllScheduledNotifications();
-          ToastHelper.success('تم حذف الطلاب وتصفير الأكواد');
-        } catch (e) {
-          ToastHelper.error('فشل تصفير الطلاب — حاول تاني');
-        }
-      },
+      subtitle: g.name,
+      message: 'سيتم حذف جميع الطلاب وسجلاتهم لهذه المجموعة. هل تريد المتابعة؟',
+      confirmLabel: 'متابعة',
+      destructive: true,
     );
+    if (!ok || !mounted) return;
+    try {
+      await DatabaseService().deleteStudentsByGroup(g.id!);
+      await studentController.loadStudentsByGroup(g.id!);
+      NotificationService().syncAllScheduledNotifications();
+      ToastHelper.success('تم حذف الطلاب وتصفير الأكواد');
+    } catch (e) {
+      ToastHelper.error('فشل تصفير الطلاب — حاول تاني');
+    }
   }
 
   void _confirmArchiveStudent(Student student) {
@@ -1539,27 +1538,15 @@ void _gdShowSessionsDialog(
                         color: Colors.red, size: 20),
                     tooltip: 'حذف الحصة',
                     onPressed: () async {
-                      final confirm = await showDialog<bool>(
-                        context: ctx,
-                        builder: (c) => AlertDialog(
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
-                          title: const Text('حذف الحصة'),
-                          content: Text(
-                              'هل تريد حذف كل سجلات الحضور المسجّلة يوم '
-                              '${DateFormat('EEEE، d MMMM yyyy', 'ar').format(d.date)}؟ '
-                              '(${d.totalMarked} سجل)'),
-                          actions: [
-                            TextButton(
-                                onPressed: () => Navigator.pop(c, false),
-                                child: const Text('إلغاء')),
-                            ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red),
-                                onPressed: () => Navigator.pop(c, true),
-                                child: const Text('حذف')),
-                          ],
-                        ),
+                      final confirm = await showChalkConfirm(
+                        ctx,
+                        icon: Icons.event_busy_rounded,
+                        title: 'حذف الحصة',
+                        message: 'هل تريد حذف كل سجلات الحضور المسجّلة يوم '
+                            '${DateFormat('EEEE، d MMMM yyyy', 'ar').format(d.date)}؟ '
+                            '(${d.totalMarked} سجل)',
+                        confirmLabel: 'حذف',
+                        destructive: true,
                       );
                       if (confirm == true) {
                         await Get.find<AttendanceController>()

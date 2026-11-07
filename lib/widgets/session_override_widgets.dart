@@ -3,6 +3,7 @@
 // spec 032 — عناصر واجهة إلغاء/تعويض الحصة: قائمة إجراءات في رأس موديل
 // الحضور + بانر الحالة. المنطق كله في SessionOverrideController.
 import 'package:flutter/material.dart';
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/widgets/whatsapp_send_sheet.dart';
 import 'package:active_class/utils/whatsapp_targets.dart';
 import 'package:active_class/utils/message_templates.dart';
@@ -102,23 +103,18 @@ class SessionOverrideMenuButton extends StatelessWidget {
     final n =
         await DatabaseService().countAttendanceForGroupOnDay(group.id!, day);
     if (!context.mounted) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('إلغاء حصة اليوم'),
-        content: Text(n > 0
-            ? 'فيه $n سجل حضور مسجّل النهارده — الإلغاء هيمسحهم، ومش هيرجعوا لو '
-                'تراجعت بعد كده. تمام؟'
-            : 'الحصة هتختفي من حضور اليوم ومن العدّ المتوقّع. تمام؟'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('لأ')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(n > 0 ? 'إلغاء الحصة ومسح الحضور' : 'إلغاء الحصة')),
-        ],
-      ),
+    final ok = await showChalkConfirm(
+      context,
+      icon: Icons.event_busy_rounded,
+      tone: ChalkTone.caution,
+      title: 'إلغاء حصة اليوم',
+      message: n > 0
+          ? 'فيه $n سجل حضور مسجّل النهارده — الإلغاء هيمسحهم، ومش هيرجعوا لو '
+              'تراجعت بعد كده. تمام؟'
+          : 'الحصة هتختفي من حضور اليوم ومن العدّ المتوقّع. تمام؟',
+      confirmLabel: n > 0 ? 'إلغاء الحصة ومسح الحضور' : 'إلغاء الحصة',
+      cancelLabel: 'لأ',
+      destructive: n > 0,
     );
     if (ok != true) return;
     if (n > 0) {
@@ -134,20 +130,14 @@ class SessionOverrideMenuButton extends StatelessWidget {
     if (err == null &&
         context.mounted &&
         normalizeWhatsappGroupLink(group.whatsappLink) != null) {
-      final send = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('تبلّغ الطلاب؟'),
-          content: const Text('ابعت رسالة الإلغاء على جروب واتساب المجموعة.'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('مش دلوقتي')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('ابعت للجروب')),
-          ],
-        ),
+      final send = await showChalkConfirm(
+        context,
+        icon: Icons.campaign_rounded,
+        title: 'تبلّغ الطلاب؟',
+        message: 'ابعت رسالة الإلغاء على جروب واتساب المجموعة.',
+        confirmLabel: 'ابعت للجروب',
+        confirmIcon: Icons.send_rounded,
+        cancelLabel: 'مش دلوقتي',
       );
       if (send == true && context.mounted) {
         await showGroupWhatsappSheet(context, group,
@@ -163,22 +153,14 @@ class SessionOverrideMenuButton extends StatelessWidget {
 /// الإلغاء مش هيرجع)، ثم يحذف استثناء الإلغاء. يرجّع true لو اتعمل.
 Future<bool> confirmUndoSessionCancel(
     BuildContext context, SessionOverride cancelled) async {
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (_) => AlertDialog(
-      title: const Text('ترجّع الحصة؟'),
-      content: const Text(
-          'الحصة هتتفتح تاني وتقدر تسجّل حضورها.\n\n'
-          'لو كان فيه حضور مسجّل قبل الإلغاء — مش هيرجع، هتحتاج تسجّله من الأول.'),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('لأ')),
-        FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('رجّع الحصة')),
-      ],
-    ),
+  final ok = await showChalkConfirm(
+    context,
+    icon: Icons.event_available_rounded,
+    title: 'ترجّع الحصة؟',
+    message: 'الحصة هتتفتح تاني وتقدر تسجّل حضورها.\n\n'
+        'لو كان فيه حضور مسجّل قبل الإلغاء — مش هيرجع، هتحتاج تسجّله من الأول.',
+    confirmLabel: 'رجّع الحصة',
+    cancelLabel: 'لأ',
   );
   if (ok != true) return false;
   final err = await _so.removeOverride(cancelled);

@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/controllers/question_bank_controller.dart';
 import 'package:active_class/models/bank_question_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
@@ -53,24 +54,14 @@ class _QuestionBankPageState extends State<QuestionBankPage> {
   }
 
   Future<void> _delete(BankQuestion bq) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('حذف السؤال؟',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
-        content: const Text('هيتشال من البنك نهائيًا. الامتحانات اللي استخدمت نسخة منه مش هتتأثر.',
-            style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo'))),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('حذف', style: TextStyle(fontFamily: 'Cairo'))),
-        ],
-      ),
+    final ok = await showChalkConfirm(
+      context,
+      icon: Icons.quiz_rounded,
+      title: 'حذف السؤال؟',
+      message:
+          'هيتشال من البنك نهائيًا. الامتحانات اللي استخدمت نسخة منه مش هتتأثر.',
+      confirmLabel: 'حذف',
+      destructive: true,
     );
     if (ok == true && bq.id != null) await c.remove(bq.id!);
   }

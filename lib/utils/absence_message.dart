@@ -5,7 +5,10 @@
 // شاشة تفاصيل الحصة تبعت بتاريخ الحصة (مش النهاردة).
 import 'package:intl/intl.dart';
 
+import 'package:active_class/utils/system_messages.dart';
+
 String _buildAttendanceAlert(
+  String id,
   String title, {
   required String studentName,
   required String studentCode,
@@ -15,6 +18,15 @@ String _buildAttendanceAlert(
   String teacherSpecialization = '',
 }) {
   final dateStr = DateFormat('yyyy-MM-dd', 'ar').format(date);
+  final custom = SystemMessages.renderOverride(id, {
+    'اسم_الطالب': studentName,
+    'الكود': studentCode,
+    'المجموعة': groupName,
+    'التاريخ': dateStr,
+    'المعلم': teacherName,
+    'التخصص': teacherSpecialization,
+  });
+  if (custom != null) return custom;
   final b = StringBuffer()
     ..writeln('⚠️ *$title*')
     ..writeln('👤 $studentName ($studentCode)')
@@ -33,7 +45,7 @@ String buildAbsenceMessage({
   String teacherName = '',
   String teacherSpecialization = '',
 }) =>
-    _buildAttendanceAlert('تنبيه غياب',
+    _buildAttendanceAlert('absence', 'تنبيه غياب',
         studentName: studentName,
         studentCode: studentCode,
         groupName: groupName,
@@ -49,7 +61,7 @@ String buildLateMessage({
   String teacherName = '',
   String teacherSpecialization = '',
 }) =>
-    _buildAttendanceAlert('تنبيه تأخير',
+    _buildAttendanceAlert('late', 'تنبيه تأخير',
         studentName: studentName,
         studentCode: studentCode,
         groupName: groupName,

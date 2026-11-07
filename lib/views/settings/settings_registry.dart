@@ -321,9 +321,9 @@ const List<SettingsItem> kSettingsItems = [
   SettingsItem(
       id: 'whatsapp.templates',
       categoryId: 'whatsapp',
-      title: 'رسائلي المحفوظة',
+      title: 'قوالب الرسائل',
       kind: SettingsItemKind.nav,
-      keywords: ['رسالة', 'قالب', 'جاهزة', 'حصة ملغية', 'مستوى', 'نتيجة']),
+      keywords: ['رسالة', 'قالب', 'جاهزة', 'حصة ملغية', 'مستوى', 'نتيجة', 'غياب', 'إيصال', 'تذكير', 'تعديل الرسالة']),
   SettingsItem(
       id: 'whatsapp.student_messages',
       categoryId: 'whatsapp',

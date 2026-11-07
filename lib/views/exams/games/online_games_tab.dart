@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/models/online_game_model.dart';
 import 'package:active_class/services/online_game_service.dart';
@@ -73,19 +74,15 @@ class OnlineGamesTabState extends State<OnlineGamesTab> {
   }
 
   Future<void> _delete(OnlineGame g) async {
-    final ok = await Get.dialog<bool>(AlertDialog(
-      title: const Text('حذف اللعبة؟'),
-      content: Text('هتتمسح «${g.title}» ومعاها كل نتايج الطلاب. الرابط '
-          'هيبطّل يشتغل.'),
-      actions: [
-        TextButton(
-            onPressed: () => Get.back(result: false),
-            child: const Text('إلغاء')),
-        TextButton(
-            onPressed: () => Get.back(result: true),
-            child: Text('حذف', style: TextStyle(color: context.tokens.danger))),
-      ],
-    ));
+    final ok = await showChalkConfirm(
+      context,
+      icon: Icons.sports_esports_rounded,
+      title: 'حذف اللعبة؟',
+      subtitle: g.title,
+      message: 'هتتمسح «${g.title}» ومعاها كل نتايج الطلاب. الرابط هيبطّل يشتغل.',
+      confirmLabel: 'حذف',
+      destructive: true,
+    );
     if (ok != true) return;
     try {
       await _service.delete(g.id);
