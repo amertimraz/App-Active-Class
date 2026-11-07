@@ -26,6 +26,7 @@ import 'package:active_class/utils/recitation.dart';
 import 'package:active_class/utils/recitation_session.dart';
 import 'package:active_class/utils/performance.dart';
 import 'package:active_class/utils/pdf_text.dart';
+import 'package:active_class/utils/student_statement.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:get/get.dart';
 
@@ -119,7 +120,7 @@ class ExportService {
       // شاملة الإسقاط لأن عمود "الحالة" لكل طالب لازم يعكس إن مديونيته
       // اتصفّرت فعليًا (راجع research.md § تفصيل تقني مهم).
       final realPaidMap = <int, double>{};
-      for (final p in payments.where((p) => p.note != kDebtWriteOffNote)) {
+      for (final p in payments.where((p) => p.isCollection)) {
         realPaidMap.update(p.studentId, (v) => v + p.amount,
             ifAbsent: () => p.amount);
       }
@@ -825,6 +826,210 @@ class ExportService {
           isEven: even, bold: r.grade != null),
       _td(label, isEven: even, color: color, bold: lvl != RecitationLevel.none),
     ]);
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  كشف حساب طالب (مستحق / مدفوع / مُسقَط / متبقي بالشهور)
+  // ─────────────────────────────────────────────────────────────────
+  Future<ExportResult> exportStudentStatementPDF({
+    required Student student,
+    required String groupName,
+    required StudentStatement statement,
+    String teacherName = '',
+  }) async {
+    try {
+      await _loadFonts();
+      final doc = pw.Document();
+      final s = statement;
+      final bal = s.balance;
+      String mLabel(DateTime d) => DateFormat('MMMM yyyy', 'ar').format(d);
+
+      final rows = <pw.TableRow>[
+        pw.TableRow(children: [
+          _th('الشهر'),
+          _th('المستحق'),
+          _th('المدفوع'),
+          _th('مُسقَط'),
+          _th('المتبقي'),
+        ]),
+      ];
+      for (var i = 0; i < s.months.length; i++) {
+        final m = s.months[i];
+        final even = i.isEven;
+        rows.add(pw.TableRow(children: [
+          _td(mLabel(m.month), isEven: even),
+          _td(_fmt(m.due), isEven: even),
+          _td(_fmt(m.paid), isEven: even, color: _success),
+          _td(m.writtenOff > 0 ? _fmt(m.writtenOff) : '—', isEven: even),
+          _td(m.remaining > 0.5 ? _fmt(m.remaining) : '—',
+              isEven: even,
+              bold: m.remaining > 0.5,
+              color: m.remaining > 0.5 ? _error : null),
+        ]));
+      }
+
+      final payRows = <pw.TableRow>[
+        pw.TableRow(children: [_th('التاريخ'), _th('المبلغ'), _th('عن شهر')]),
+      ];
+      for (var i = 0; i < s.payments.length; i++) {
+        final pm = s.payments[i];
+        payRows.add(pw.TableRow(children: [
+          _td(DateFormat('yyyy-MM-dd').format(pm.date), isEven: i.isEven),
+          _td(_fmt(pm.amount), isEven: i.isEven, color: _success),
+          _td(pm.months.isEmpty ? '—' : pm.months.map(mLabel).join('، '),
+              isEven: i.isEven, size: 9),
+        ]));
+      }
+
+      doc.addPage(pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        textDirection: pw.TextDirection.rtl,
+        margin: const pw.EdgeInsets.all(28),
+        header: (_) => _pageHeader('كشف حساب — ${student.name}'),
+        footer: (ctx) => _pageFooter(ctx),
+        build: (ctx) => [
+          pw.Text(
+              fixArabicForPdf(
+                  '${student.code} • $groupName${teacherName.isEmpty ? '' : ' • $teacherName'}'),
+              style: _style(size: 10, color: _grey)),
+          pw.SizedBox(height: 10),
+          pw.Container(
+            padding: const pw.EdgeInsets.all(14),
+            decoration: pw.BoxDecoration(
+              color: _lightGrey,
+              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+              border: pw.Border.all(color: _accent, width: 0.5),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+              children: [
+                _statBox('المستحق', _fmt(s.totalDue), _grey),
+                _statBox('المدفوع', _fmt(s.totalPaid), _success),
+                if (s.totalWrittenOff > 0.5)
+                  _statBox('مُسقَط', _fmt(s.totalWrittenOff), _warning),
+                _statBox('المتبقي', _fmt(bal), bal > 0.5 ? _error : _success),
+              ],
+            ),
+          ),
+          if (s.advance > 0.5) ...[
+            pw.SizedBox(height: 6),
+            pw.Text(fixArabicForPdf('رصيد زيادة: ${_fmt(s.advance)}'),
+                style: _style(size: 10, color: _success)),
+          ],
+          pw.SizedBox(height: 14),
+          pw.Text(fixArabicForPdf('تفصيل الشهور'),
+              style: _style(size: 12, bold: true, color: _primary)),
+          pw.SizedBox(height: 4),
+          if (s.months.isEmpty)
+            pw.Text(fixArabicForPdf('لا توجد مستحقات'),
+                style: _style(size: 10, color: _grey))
+          else
+            pw.Table(
+              border: pw.TableBorder.all(color: _grey, width: 0.3),
+              children: rows,
+            ),
+          pw.SizedBox(height: 14),
+          pw.Text(fixArabicForPdf('الدفعات'),
+              style: _style(size: 12, bold: true, color: _primary)),
+          pw.SizedBox(height: 4),
+          if (s.payments.isEmpty)
+            pw.Text(fixArabicForPdf('لا توجد دفعات'),
+                style: _style(size: 10, color: _grey))
+          else
+            pw.Table(
+              columnWidths: const {
+                0: pw.FlexColumnWidth(1.5),
+                1: pw.FlexColumnWidth(1.5),
+                2: pw.FlexColumnWidth(3),
+              },
+              border: pw.TableBorder.all(color: _grey, width: 0.3),
+              children: payRows,
+            ),
+        ],
+      ));
+
+      return _savePdf(doc, 'statement_${_sanitizeFileName(student.code)}');
+    } catch (e) {
+      return ExportResult.fail('فشل إنشاء PDF: $e');
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  إيصال دفع واحد (A5)
+  // ─────────────────────────────────────────────────────────────────
+  Future<ExportResult> exportPaymentReceiptPDF({
+    required Student student,
+    required String groupName,
+    required double amount,
+    required DateTime date,
+    required List<DateTime> months,
+    double? remaining,
+    String teacherName = '',
+    String teacherSpecialization = '',
+  }) async {
+    try {
+      await _loadFonts();
+      final doc = pw.Document();
+      String mLabel(DateTime d) => DateFormat('MMMM yyyy', 'ar').format(d);
+      pw.Widget line(String k, String v, {PdfColor? color, bool bold = false}) =>
+          pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(vertical: 4),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(fixArabicForPdf(k),
+                    style: _style(size: 11, color: _grey)),
+                pw.Flexible(
+                  child: pw.Text(fixArabicForPdf(v),
+                      style: _style(
+                          size: 12,
+                          bold: bold,
+                          color: color ?? PdfColors.black),
+                      textAlign: pw.TextAlign.left),
+                ),
+              ],
+            ),
+          );
+
+      doc.addPage(pw.Page(
+        pageFormat: PdfPageFormat.a5,
+        textDirection: pw.TextDirection.rtl,
+        margin: const pw.EdgeInsets.all(28),
+        build: (ctx) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          children: [
+            _pageHeader('إيصال دفع'),
+            pw.SizedBox(height: 14),
+            if (teacherName.isNotEmpty)
+              pw.Text(
+                  fixArabicForPdf(
+                      '$teacherName${teacherSpecialization.isEmpty ? '' : ' — $teacherSpecialization'}'),
+                  style: _style(size: 11, bold: true)),
+            pw.SizedBox(height: 10),
+            line('الطالب', '${student.name} (${student.code})'),
+            if (groupName.trim().isNotEmpty) line('المجموعة', groupName),
+            pw.Divider(color: _grey, thickness: 0.4),
+            line('المبلغ المدفوع', _fmt(amount), color: _success, bold: true),
+            if (months.isNotEmpty) line('عن', months.map(mLabel).join('، ')),
+            line('التاريخ', DateFormat('yyyy-MM-dd').format(date)),
+            if (remaining != null)
+              line('المتبقي', remaining > 0.5 ? _fmt(remaining) : 'لا يوجد',
+                  color: remaining > 0.5 ? _error : _success, bold: true),
+            pw.Spacer(),
+            pw.Center(
+                child: pw.Text(fixArabicForPdf('شكرًا لكم'),
+                    style: _style(size: 11, color: _grey))),
+          ],
+        ),
+      ));
+
+      return _savePdf(
+          doc,
+          'receipt_${_sanitizeFileName(student.code)}_'
+          '${DateFormat('yyyyMMdd_HHmm').format(date)}');
+    } catch (e) {
+      return ExportResult.fail('فشل إنشاء PDF: $e');
+    }
   }
 
   Future<void> sharePDF(String path) async {

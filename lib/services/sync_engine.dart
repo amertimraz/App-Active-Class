@@ -677,6 +677,7 @@ class SyncEngine with WidgetsBindingObserver {
           'date': payload[COL_PAYMENT_DATE],
           'amount': payload[COL_PAYMENT_AMOUNT],
           'note': payload[COL_PAYMENT_NOTE],
+          'kind': payload[COL_PAYMENT_KIND],
         };
       case TABLE_HOMEWORK:
         final studentLocalId = payload[COL_HOMEWORK_STUDENT_ID] as int?;
@@ -1950,6 +1951,7 @@ class SyncEngine with WidgetsBindingObserver {
           COL_PAYMENT_DATE: remote['date'],
           COL_PAYMENT_AMOUNT: remote['amount'],
           COL_PAYMENT_NOTE: remote['note'],
+          COL_PAYMENT_KIND: remote['kind'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };

@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 40;
+const int DATABASE_VERSION = 42;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -210,6 +210,9 @@ const String COL_PAYMENT_DATE = 'date';
 const String COL_PAYMENT_AMOUNT = 'amount';
 const String COL_PAYMENT_NOTE = 'note';
 const String COL_PAYMENT_CREATED_AT = 'created_at';
+// نوع الدفعة (v41): collection = تحصيل فعلي، write_off = إسقاط مديونية. null في
+// الصفوف القديمة/من أجهزة قديمة → بيتشتق من الملاحظة (Payment.kind).
+const String COL_PAYMENT_KIND = 'kind';
 
 // Column Names - Report Logs
 const String COL_REPORT_ID = 'id';
@@ -375,6 +378,15 @@ const int DEFAULT_SESSION_MINUTES = 60;
 //  بنفس آلية outbox الموجودة (زي TABLE_HOMEWORK/TABLE_PAYMENTS).
 // ─────────────────────────────────────────────────────────────────
 const String TABLE_STUDENT_FOLLOW_UPS = 'student_follow_ups';
+
+// مصاريف المعلم (v42) — محلية على الجهاز فقط (غير مُزامَنة).
+const String TABLE_EXPENSES = 'expenses';
+const String COL_EXP_ID = 'id';
+const String COL_EXP_DATE = 'date';
+const String COL_EXP_AMOUNT = 'amount';
+const String COL_EXP_CATEGORY = 'category';
+const String COL_EXP_NOTE = 'note';
+const String ROUTE_EXPENSES = '/expenses';
 
 // رسائل واتساب المحفوظة (v40) — محلية للمعلم فقط (غير مُزامَنة).
 const String TABLE_MESSAGE_TEMPLATES = 'message_templates';

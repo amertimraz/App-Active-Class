@@ -12,7 +12,17 @@ import 'package:active_class/services/backup_service.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/duplicate_detection.dart';
+import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/utils/merge_plan.dart';
+import 'package:active_class/utils/payment_note.dart';
+
+/// دفعة ملاحظتها فيها شهر مش منطقي (مثلًا سنة قدّام) — بتبوّظ «آخر شهر مدفوع».
+class OddMonthPayment {
+  final Payment payment;
+  final String studentName;
+  final List<DateTime> oddMonths;
+  const OddMonthPayment(this.payment, this.studentName, this.oddMonths);
+}
 
 /// نتيجة الفحص.
 class ScanResult {
@@ -24,6 +34,9 @@ class ScanResult {
 
   /// اسم المجموعة لكل id (للعرض).
   final Map<int, String> groupNames;
+
+  /// دفعات بشهور مش منطقية.
+  final List<OddMonthPayment> oddPayments;
   const ScanResult({
     required this.groupCases,
     required this.studentCases,
@@ -31,9 +44,11 @@ class ScanResult {
     required this.studentsScanned,
     required this.at,
     required this.groupNames,
+    this.oddPayments = const [],
   });
 
-  bool get isClean => groupCases.isEmpty && studentCases.isEmpty;
+  bool get isClean =>
+      groupCases.isEmpty && studentCases.isEmpty && oddPayments.isEmpty;
 }
 
 /// سبب منع التنفيذ.
@@ -181,7 +196,19 @@ class DataHealthService {
           )
     ];
 
+    final now = DateTime.now();
+    final nameById = {for (final s in students) s.id: s.name};
+    final odd = <OddMonthPayment>[];
+    for (final p in await _db.getAllPayments()) {
+      if (p.isWriteOff) continue;
+      final bad = PaymentNote.parse(p.note).implausibleMonths(now);
+      if (bad.isNotEmpty) {
+        odd.add(OddMonthPayment(p, nameById[p.studentId] ?? 'طالب', bad));
+      }
+    }
+
     return ScanResult(
+      oddPayments: odd,
       groupCases: detectGroupDuplicates(groupInputs),
       studentCases:
           detectStudentDuplicates(studentInputs, groupClusters: clusters),
@@ -193,6 +220,31 @@ class DataHealthService {
           if (g.id != null) g.id!: g.name
       },
     );
+  }
+
+  /// يشيل الشهور المش منطقية من ملاحظة الدفعة (الدفعة نفسها ومبلغها زي ما هي).
+  Future<void> fixOddMonths(OddMonthPayment o) async {
+    final n = PaymentNote.parse(o.payment.note);
+    final keep = [
+      for (final m in n.months)
+        if (!o.oddMonths.any((b) => b.year == m.year && b.month == m.month)) m
+    ];
+    final note = PaymentNote.encode(
+      months: keep,
+      custom: n.custom,
+      text: n.text,
+      siblings: n.siblings,
+      sessions: n.sessions,
+    );
+    await _db.updatePayment(Payment(
+      id: o.payment.id,
+      studentId: o.payment.studentId,
+      date: o.payment.date,
+      amount: o.payment.amount,
+      note: note,
+      createdAt: o.payment.createdAt,
+      storedKind: o.payment.storedKind,
+    ));
   }
 
   /// يبني الخطة من الحالات المحدّدة (كل حالة بأساسيها الحالي).

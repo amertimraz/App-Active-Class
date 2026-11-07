@@ -1,8 +1,8 @@
 // lib/views/payments/payments_page.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:active_class/config/constants.dart';
+import 'package:intl/intl.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/controllers/payment_controller.dart';
@@ -80,6 +80,11 @@ class _PaymentsPageState extends State<PaymentsPage> {
         actions: [
           const HelpButton(topicId: 'payments'),
           IconButton(
+            tooltip: 'المصاريف وصافي الدخل',
+            icon: const Icon(Icons.account_balance_wallet_rounded),
+            onPressed: () => Get.toNamed(ROUTE_EXPENSES),
+          ),
+          IconButton(
             tooltip: 'تحديث',
             icon: const Icon(Icons.refresh),
             onPressed: () async {
@@ -150,7 +155,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
             // في إجمالي "المحصّل" المعروض أعلى الشاشة (راجع research.md
             // § تفصيل تقني مهم في specs/038-debt-write-off).
             final realPaid = studentPayments
-                .where((p) => p.note != kDebtWriteOffNote)
+                .where((p) => p.isCollection)
                 .fold<double>(0.0, (sum, p) => sum + p.amount);
             final due = PricingHelper.totalDueThrough(
               student: s,
@@ -175,7 +180,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 .where((p) =>
                     p.date.year == month.year &&
                     p.date.month == month.month &&
-                    p.note != kDebtWriteOffNote)
+                    p.isCollection)
                 .fold<double>(0.0, (sum, p) => sum + p.amount);
             allRows.add(_StudentMonthRow(
               student: s,
@@ -571,7 +576,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 ..sort((a, b) => b.date.compareTo(a.date));
               // إجمالي الشهر بدون إسقاط المديونية (مش فلوس اتحصّلت فعلًا).
               final total = payments
-                  .where((p) => p.note != kDebtWriteOffNote)
+                  .where((p) => p.isCollection)
                   .fold<double>(0.0, (sum, p) => sum + p.amount);
 
               return Column(
@@ -668,7 +673,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                 const SizedBox(height: AppSpace.sm),
                             itemBuilder: (_, i) {
                               final p = payments[i];
-                              final writeOff = p.note == kDebtWriteOffNote;
+                              final writeOff = p.isWriteOff;
                               final ink = writeOff ? t.caution : t.positive;
                               final soft =
                                   writeOff ? t.cautionSoft : t.positiveSoft;

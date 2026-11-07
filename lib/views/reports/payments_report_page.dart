@@ -383,7 +383,7 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
       // spec 038 — "إجمالي اليوم" رقم مالي حقيقي، فيستبعد صفوف إسقاط
       // المديونية (لا تُحتسب كفلوس محصّلة فعليًا).
       final total = payments
-          .where((p) => p.note != kDebtWriteOffNote)
+          .where((p) => p.isCollection)
           .fold<double>(0.0, (sum, p) => sum + p.amount);
       final dateLabel = DateFormat('d MMMM yyyy', 'ar').format(_selectedDay);
 
@@ -469,7 +469,7 @@ class _PaymentsReportPageState extends State<PaymentsReportPage> {
                               : null;
                           // spec 038 — سطر إسقاط مديونية موسوم بوضوح (أيقونة
                           // ولون مختلفين) عشان يتفرق عن دفعة نقدية فعلية.
-                          final isWriteOff = p.note == kDebtWriteOffNote;
+                          final isWriteOff = p.isWriteOff;
                           return ListTile(
                             leading: Icon(
                                 isWriteOff

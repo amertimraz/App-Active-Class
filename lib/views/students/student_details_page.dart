@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:active_class/widgets/whatsapp_send_sheet.dart';
+import 'package:active_class/widgets/payment_share_actions.dart';
 import 'package:active_class/utils/session_guest.dart';
 import 'package:get/get.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
@@ -533,7 +534,7 @@ class _StudentDetailsPageState extends State<StudentDetailsPage>
         // المتبقية تحت (accumulatedDebt) تفضل تاخد studentPays الكاملة
         // عشان الإسقاط يصفّرها فعليًا (راجع research.md § تفصيل تقني مهم).
         final totalPaid = studentPays
-            .where((p) => p.note != kDebtWriteOffNote)
+            .where((p) => p.isCollection)
             .fold<double>(0.0, (sum, p) => sum + p.amount);
         final accumulatedDebt = PricingHelper.accumulatedDebt(
           student: s,
@@ -2108,6 +2109,21 @@ class _PaymentsTab extends StatelessWidget {
         ],
         // spec 041 — الملازم (منفصلة تمامًا عن مديونية الاشتراك)
         StudentBookletsSection(studentId: student.id!),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: () => showStatementActions(
+              context,
+              student: student,
+              group: group,
+              allAttendance: allAttendance,
+              payments: payments,
+              siblingGroupMembers: siblingGroupMembers,
+            ),
+            icon: const Icon(Icons.description_rounded, size: 18),
+            label: const Text('كشف حساب'),
+          ),
+        ),
         // إجمالي
         Container(
           padding: const EdgeInsets.all(16),
@@ -2182,7 +2198,7 @@ class _PaymentsTab extends StatelessWidget {
                       final p = list[i];
                       // spec 038 — سطر إسقاط مديونية له شكل مميز (أيقونة/لون
                       // مختلفين) عشان يتفرق فورًا عن دفعة نقدية فعلية.
-                      final isWriteOff = p.note == kDebtWriteOffNote;
+                      final isWriteOff = p.isWriteOff;
                       final rowColor = isWriteOff
                           ? context.tokens.caution
                           : context.tokens.positive;
@@ -2214,11 +2230,28 @@ class _PaymentsTab extends StatelessWidget {
                                         ? context.tokens.caution
                                         : context.tokens.inkSoft))
                             : null,
-                        trailing: CurrencyText(p.amount,
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: rowColor,
-                                fontSize: 14)),
+                        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                          CurrencyText(p.amount,
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: rowColor,
+                                  fontSize: 14)),
+                          if (!isWriteOff)
+                            IconButton(
+                              icon: const Icon(Icons.receipt_long_rounded,
+                                  size: 20),
+                              tooltip: 'إيصال',
+                              constraints: const BoxConstraints(
+                                  minWidth: 44, minHeight: 44),
+                              onPressed: () => showReceiptActions(
+                                context,
+                                student: student,
+                                group: group,
+                                payment: p,
+                                remaining: accumulatedDebt,
+                              ),
+                            ),
+                        ]),
                       );
                     },
                   ),

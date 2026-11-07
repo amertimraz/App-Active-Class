@@ -88,7 +88,9 @@ String buildMonthlyReportMessage({
     if (disengagedCount > 0) '😴 $disengagedCount يوم',
   ];
 
-  final totalPaid = monthPays.fold<double>(0.0, (s, p) => s + p.amount);
+  final totalPaid = monthPays
+      .where((p) => p.isCollection)
+      .fold<double>(0.0, (s, p) => s + p.amount);
 
   final attsSorted = List.of(monthAtt)..sort((a, b) => b.date.compareTo(a.date));
   final hwSorted = List.of(monthHw)..sort((a, b) => b.date.compareTo(a.date));

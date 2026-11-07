@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import 'package:active_class/core/platform/db_factory.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/merge_plan.dart';
+import 'package:active_class/models/expense_model.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
@@ -29,6 +30,7 @@ import 'package:active_class/utils/archive_history.dart';
 
 // spec 052 — صحة البيانات (دمج المكرّر): extension بنفس الـlibrary.
 part 'database_service_data_health.dart';
+part 'database_service_expenses.dart';
 
 /// ملخص أعداد البيانات (مجموعات، طلاب، إلخ) في لحظة معيّنة.
 class DataSummary {
@@ -102,6 +104,17 @@ const String _examSubmissionsTableSql = '''
 const String _examQuestionsExamIdIndexSql =
     'CREATE INDEX IF NOT EXISTS idx_${TABLE_EXAM_QUESTIONS}_exam_id '
     'ON $TABLE_EXAM_QUESTIONS($COL_EQ_EXAM_ID, $COL_EQ_POSITION)';
+
+// مصاريف المعلم (v42) — محلية، غير مُزامَنة.
+const String _expensesTableSql = '''
+  CREATE TABLE IF NOT EXISTS $TABLE_EXPENSES (
+    $COL_EXP_ID       INTEGER PRIMARY KEY AUTOINCREMENT,
+    $COL_EXP_DATE     TEXT NOT NULL,
+    $COL_EXP_AMOUNT   REAL NOT NULL CHECK($COL_EXP_AMOUNT > 0),
+    $COL_EXP_CATEGORY TEXT NOT NULL DEFAULT 'other',
+    $COL_EXP_NOTE     TEXT
+  )
+''';
 
 // رسائل واتساب المحفوظة (v40) — محلية، غير مُزامَنة.
 const String _messageTemplatesTableSql = '''
@@ -395,6 +408,7 @@ class DatabaseService {
         $COL_PAYMENT_DATE TEXT NOT NULL,
         $COL_PAYMENT_AMOUNT REAL NOT NULL CHECK($COL_PAYMENT_AMOUNT > 0),
         $COL_PAYMENT_NOTE TEXT,
+        $COL_PAYMENT_KIND TEXT,
         $COL_PAYMENT_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_SYNC_UPDATED_AT TEXT,
         $COL_SYNC_REMOTE_ID TEXT,
@@ -476,6 +490,7 @@ class DatabaseService {
     // Student Follow-ups (spec 021) — واقعة "تمّت المتابعة"، متزامَنة عبر الفريق.
     await db.execute(_studentFollowUpsTableSql);
     await db.execute(_messageTemplatesTableSql);
+    await db.execute(_expensesTableSql);
     await db.execute(_studentFollowUpsIndexSql);
 
     // Bank Questions (spec 025) — بنك أسئلة قابل لإعادة الاستخدام، متزامن عبر الفريق.
@@ -930,6 +945,24 @@ class DatabaseService {
       try {
         await db.execute(_sessionOverridesIndexSql);
       } catch (_) {}
+    }
+
+    if (oldVersion < 42) {
+      try {
+        await db.execute(_expensesTableSql);
+      } catch (_) {}
+    }
+
+    if (oldVersion < 41) {
+      // نوع الدفعة: تحصيل / إسقاط مديونية (كان مخزّن كنص في الملاحظة).
+      try {
+        await db.execute(
+            'ALTER TABLE $TABLE_PAYMENTS ADD COLUMN $COL_PAYMENT_KIND TEXT');
+      } catch (_) {}
+      await db.execute(
+          "UPDATE $TABLE_PAYMENTS SET $COL_PAYMENT_KIND = 'write_off' "
+          "WHERE $COL_PAYMENT_NOTE = ?",
+          [kDebtWriteOffNote]);
     }
 
     if (oldVersion < 40) {
@@ -2403,6 +2436,7 @@ class DatabaseService {
       // Delete children first to avoid FK issues (even if FKs are disabled)
       await txn.delete(TABLE_ATTENDANCE);
       await txn.delete(TABLE_PAYMENTS);
+      await txn.delete(TABLE_EXPENSES);
       await txn.delete(TABLE_EXAM_GRADES);
       await txn.delete(TABLE_EXAM_GROUPS);
       await txn.delete(TABLE_EXAMS);

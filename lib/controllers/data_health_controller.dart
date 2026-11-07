@@ -62,6 +62,12 @@ class DataHealthController extends GetxController {
     }
   }
 
+  /// تصحيح دفعة بشهر مش منطقي ثم إعادة الفحص.
+  Future<void> fixOddPayment(OddMonthPayment o) async {
+    await _svc.fixOddMonths(o);
+    await scan();
+  }
+
   bool isSelected(DuplicateCase c) => selected.contains(keyOf(c));
 
   void toggle(DuplicateCase c) {

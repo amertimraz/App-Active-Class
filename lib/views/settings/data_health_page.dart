@@ -11,6 +11,7 @@ import 'package:active_class/controllers/data_health_controller.dart';
 import 'package:active_class/services/data_health_service.dart';
 import 'package:active_class/utils/duplicate_detection.dart';
 import 'package:active_class/utils/merge_plan.dart';
+import 'package:active_class/utils/payment_note.dart';
 
 class DataHealthPage extends StatefulWidget {
   const DataHealthPage({super.key});
@@ -166,6 +167,25 @@ class _DataHealthPageState extends State<DataHealthPage> {
                     c: c,
                     cs: cs,
                     groupNames: r.groupNames),
+            ],
+            if (r != null && r.oddPayments.isNotEmpty) ...[
+              const _SectionTitle('دفعات بشهر مش منطقي'),
+              for (final o in r.oddPayments)
+                Card(
+                  child: ListTile(
+                    title: Text(o.studentName,
+                        style: const TextStyle(fontFamily: 'Cairo')),
+                    subtitle: Text(
+                        'مسجّلة على ${o.oddMonths.map(PaymentNote.monthKey).join('، ')} '
+                        '— بتأثّر على «آخر شهر مدفوع». التصحيح بيشيل الشهر من '
+                        'الملاحظة والمبلغ يفضل زي ما هو.',
+                        style: const TextStyle(fontFamily: 'Cairo')),
+                    isThreeLine: true,
+                    trailing: TextButton(
+                        onPressed: () => c.fixOddPayment(o),
+                        child: const Text('صحّح')),
+                  ),
+                ),
             ],
             const SizedBox(height: 24),
             _HistorySection(c: c),

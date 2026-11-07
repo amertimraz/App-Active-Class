@@ -99,7 +99,9 @@ class PaymentController extends GetxController {
   }
 
   void calculateTotalPayments() {
-    totalPayments.value = payments.fold(0.0, (sum, payment) => sum + payment.amount);
+    totalPayments.value = payments
+        .where((p) => p.isCollection)
+        .fold(0.0, (sum, payment) => sum + payment.amount);
   }
 
   void bindStudentNameResolver(String? Function(int) resolver) {
@@ -248,7 +250,8 @@ class PaymentController extends GetxController {
         studentId: student.id!,
         date: DateTime.now(),
         amount: prepared.amount,
-        note: kDebtWriteOffNote,
+        note: kDebtWriteOffNote, // بنكتبها كمان عشان الأجهزة القديمة
+        storedKind: PaymentKind.writeOff,
       );
       await _dbService.insertPayment(payment);
       await loadPayments();

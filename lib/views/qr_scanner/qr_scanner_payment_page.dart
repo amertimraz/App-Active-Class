@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:active_class/utils/payment_note.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/qr_controller.dart';
@@ -124,7 +125,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
               p.date.day == now.day &&
               // spec 038 — إسقاط المديونية مش دفعة فعلية، فمالوش مكان في
               // "دفعوا اليوم" ولا إجمالي جلسة الدفع ولا مشاركة واتساب.
-              p.note != kDebtWriteOffNote)
+              p.isCollection)
           .toList();
       if (today.isEmpty) {
         _session.hydrateOnce(const []);
@@ -135,12 +136,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
       };
       final entries = today.map((p) {
         final s = byId[p.studentId];
-        final note = p.note ?? '';
-        final monthsPart =
-            note.split(';').firstWhere((e) => e.startsWith('months='), orElse: () => '');
-        final monthCount = monthsPart.isEmpty
-            ? 1
-            : monthsPart.substring(7).split(',').where((e) => e.trim().isNotEmpty).length;
+        final monthCount = PaymentNote.parse(p.note).months.length;
         return SessionEntry(
           studentName: s?.name ?? 'طالب',
           amount: p.amount,

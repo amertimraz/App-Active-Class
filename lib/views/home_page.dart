@@ -708,6 +708,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           fmtExpected: !canSeeFinancials || !_statsVisible
                               ? '••••'
                               : fmtMoney(expected),
+                          fmtWrittenOff: _dashboardController
+                                      .paymentCardWrittenOff.value >
+                                  0.5
+                              ? (!canSeeFinancials || !_statsVisible
+                                  ? '••••'
+                                  : fmtMoney(_dashboardController
+                                      .paymentCardWrittenOff.value))
+                              : null,
                           onTapUnpaid: canSeeFinancials
                               ? () => _showUnpaidSheet(context)
                               : showLockedPermissionHint,
@@ -1321,6 +1329,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 color: Color(0xFFEF4444),
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12)),
+                        if (d.paymentCardWrittenOff.value > 0.5)
+                          Text(
+                              'مُسقَط ${FormatHelper.formatCurrency(d.paymentCardWrittenOff.value)}',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: isDark
+                                      ? Colors.white38
+                                      : Colors.grey.shade600)),
                         Text('${pct.toInt()}% محصّل',
                             style: TextStyle(
                                 fontSize: 11,
@@ -2171,6 +2187,7 @@ class _PaymentProgressCard extends StatelessWidget {
     required this.unpaidCount,
     required this.fmtPaid,
     required this.fmtExpected,
+    this.fmtWrittenOff,
     required this.onTapUnpaid,
     this.onTapSummary,
     required this.month,
@@ -2184,6 +2201,8 @@ class _PaymentProgressCard extends StatelessWidget {
   final double paid, expected, rate;
   final int unpaidCount;
   final String fmtPaid, fmtExpected;
+  // مبلغ المديونية المُسقَطة للشهر (null/فاضي = مفيش).
+  final String? fmtWrittenOff;
   final VoidCallback onTapUnpaid;
   // spec 036 — الضغط على جسم الكارت (منفصل عن السحب وعن شريحة "لم يدفع").
   final VoidCallback? onTapSummary;
@@ -2288,6 +2307,12 @@ class _PaymentProgressCard extends StatelessWidget {
                                 style:
                                     AppType.caption.copyWith(color: t.inkSoft),
                               ),
+                              if (fmtWrittenOff != null)
+                                Text(
+                                  'مُسقَط $fmtWrittenOff',
+                                  style: AppType.caption
+                                      .copyWith(color: t.inkSoft),
+                                ),
                             ],
                           ),
                         ),
@@ -2317,7 +2342,7 @@ class _PaymentProgressCard extends StatelessWidget {
                         else
                           _StatusChip(
                             icon: Icons.check_circle_rounded,
-                            label: 'الكل دفع',
+                            label: fmtWrittenOff != null ? 'مسدّد (بإسقاط)' : 'الكل دفع',
                             color: t.positive,
                             background: t.positiveSoft,
                           ),

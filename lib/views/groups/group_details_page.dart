@@ -1669,7 +1669,7 @@ void _gdShowFeesBreakdownDialog(
               .where((p) =>
                   !p.date.isBefore(monthStart) &&
                   !p.date.isAfter(monthEnd) &&
-                  p.note != kDebtWriteOffNote)
+                  p.isCollection)
               .fold<double>(0, (sum, p) => sum + p.amount);
 
           // "مين لسه عليه فلوس لحد الشهر ده" لازم يعتمد على المديونية

@@ -5,7 +5,6 @@
 // والكود لولي الأمر. القواعد هنا نفس اللي في ParentPortalService بالظبط
 // (آخر 4 أرقام، والكود المطلوب) عشان اللي المدرس بيشوفه في القسم هو اللي
 // بيتنشر فعلًا.
-import 'package:active_class/config/constants.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/utils/phone_helper.dart';
@@ -145,4 +144,4 @@ String buildPortalInviteMessage({
 /// ولي الأمر ماكنش بيفهم ليه "دفع ٤٬٥٠٠" وهو ما دفعهاش. الإسقاط بيفضل
 /// محسوب في "المتبقي" (accumulatedDebt بياخد كل الصفوف).
 List<Payment> portalVisiblePayments(Iterable<Payment> payments) =>
-    payments.where((p) => p.note != kDebtWriteOffNote).toList();
+    payments.where((p) => p.isCollection).toList();

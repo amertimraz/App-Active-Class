@@ -116,7 +116,7 @@ List<SiblingFamily> buildSiblingFamilies({
         siblingGroupMembers: active,
       );
       final paid = pays
-          .where((p) => p.note != kDebtWriteOffNote)
+          .where((p) => p.isCollection)
           .fold<double>(0, (t, p) => t + p.amount);
       final inMonth = atts.where(
           (a) => a.date.year == now.year && a.date.month == now.month);

@@ -153,4 +153,25 @@ void main() {
     expect(notLanded.groupBreakdown.every((g) => g.unpaidStudentsCount == 0),
         true);
   });
+
+  test('إسقاط المديونية = مُسقَط مش محصّل، والباقي صفر', () {
+    final s = student(1, 1, 200);
+    final writeOff = Payment(
+        studentId: 1,
+        date: prevMonth,
+        amount: 5000,
+        storedKind: PaymentKind.writeOff);
+    final b = computeMonthlyBreakdown(
+      students: [s],
+      paymentsByStudent: {1: [writeOff]},
+      groupById: groupById,
+      allAttendance: const [],
+      month: month,
+      prevMonth: prevMonth,
+    );
+    expect(b.collected, 0);
+    expect(b.writtenOff, b.expected);
+    expect(b.unpaidEntries, isEmpty);
+    expect(b.groupBreakdown.single.remaining, 0);
+  });
 }

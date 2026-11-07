@@ -33,6 +33,8 @@ class GroupPaymentSummaryEntry {
   final String groupName;
   final double expected;
   final double collected;
+  // مبلغ اتمسح بإسقاط مديونية (مش فلوس دخلت) — بيتخصم من الباقي.
+  final double writtenOff;
   final int unpaidStudentsCount;
 
   const GroupPaymentSummaryEntry({
@@ -40,23 +42,26 @@ class GroupPaymentSummaryEntry {
     required this.groupName,
     required this.expected,
     required this.collected,
+    this.writtenOff = 0,
     required this.unpaidStudentsCount,
   });
 
   double get remaining =>
-      (expected - collected).clamp(0.0, double.infinity).toDouble();
+      (expected - collected - writtenOff).clamp(0.0, double.infinity).toDouble();
 }
 
 // spec 036 — نتيجة computeMonthlyBreakdown (راجع أسفل).
 class MonthlyPaymentBreakdown {
   final double expected;
   final double collected;
+  final double writtenOff;
   final List<UnpaidStudentEntry> unpaidEntries;
   final List<GroupPaymentSummaryEntry> groupBreakdown;
 
   const MonthlyPaymentBreakdown({
     required this.expected,
     required this.collected,
+    this.writtenOff = 0,
     required this.unpaidEntries,
     required this.groupBreakdown,
   });
@@ -79,6 +84,7 @@ MonthlyPaymentBreakdown computeMonthlyBreakdown({
 }) {
   double expected = 0;
   double collected = 0;
+  double writtenOff = 0;
   final unpaidEntries = <UnpaidStudentEntry>[];
   final groupTotals = <int?, GroupPaymentSummaryEntry>{};
 
@@ -123,15 +129,18 @@ MonthlyPaymentBreakdown computeMonthlyBreakdown({
     // بنفس منطق FIFO، عشان الرقمين (الحقيقي مقابل "لم يدفع") يفضلوا
     // متسقين مع بعض لنفس الطالب.
     final realPayments = studentPayments
-        .where((p) => p.note != kDebtWriteOffNote)
+        .where((p) => p.isCollection)
         .toList();
     final realTotalPaid =
         realPayments.fold<double>(0, (sum, p) => sum + p.amount);
     final realPaidThisMonth =
         (realTotalPaid - dueBefore).clamp(0.0, dueThisMonth);
 
+    final writtenOffThisMonth =
+        (paidThisMonth - realPaidThisMonth).clamp(0.0, dueThisMonth).toDouble();
     expected += dueThisMonth;
     collected += realPaidThisMonth;
+    writtenOff += writtenOffThisMonth;
 
     // "لم يدفع [الشهر]" = ما غطّاش مستحق الشهر ده تحديدًا (بيختلف من
     // شهر لشهر — الشهر الجاري بدري بيبقى الرقم شبه كامل). مفيش مهلة
@@ -152,6 +161,7 @@ MonthlyPaymentBreakdown computeMonthlyBreakdown({
       groupName: group?.name ?? 'بلا مجموعة',
       expected: (existing?.expected ?? 0) + dueThisMonth,
       collected: (existing?.collected ?? 0) + realPaidThisMonth,
+      writtenOff: (existing?.writtenOff ?? 0) + writtenOffThisMonth,
       unpaidStudentsCount:
           (existing?.unpaidStudentsCount ?? 0) + (isUnpaid ? 1 : 0),
     );
@@ -166,6 +176,7 @@ MonthlyPaymentBreakdown computeMonthlyBreakdown({
   return MonthlyPaymentBreakdown(
     expected: expected,
     collected: collected,
+    writtenOff: writtenOff,
     unpaidEntries: unpaidEntries,
     groupBreakdown: groupBreakdown,
   );
@@ -214,6 +225,7 @@ class DashboardController extends GetxController {
   final RxDouble paymentCardExpected = 0.0.obs;
   final RxDouble paymentCardCollected = 0.0.obs;
   final RxDouble paymentCardRemaining = 0.0.obs;
+  final RxDouble paymentCardWrittenOff = 0.0.obs;
   final RxDouble paymentCardRate = 0.0.obs;
   final RxInt paymentCardUnpaid = 0.obs;
   // الطلاب اللي ما غطّوش مستحق الشهر المعروض (لكل شهر قائمته) — بالمبلغ
@@ -521,8 +533,10 @@ class DashboardController extends GetxController {
     // سحبة أحدث سبقتنا → مانكتبش نتيجة قديمة
     if (token != _payCardToken) return;
 
-    final remaining =
-        (expected - collected).clamp(0.0, double.infinity).toDouble();
+    final writtenOff = breakdown.writtenOff;
+    final remaining = (expected - collected - writtenOff)
+        .clamp(0.0, double.infinity)
+        .toDouble();
     paymentCardMinMonth.value = minMonth;
     if (month != paymentCardMonth.value) paymentCardMonth.value = month;
     paymentCardUnpaidList.assignAll(breakdown.unpaidEntries);
@@ -530,6 +544,7 @@ class DashboardController extends GetxController {
     paymentCardExpected.value = expected;
     paymentCardCollected.value = collected;
     paymentCardRemaining.value = remaining;
+    paymentCardWrittenOff.value = writtenOff;
     paymentCardRate.value =
         expected > 0 ? (collected / expected).clamp(0.0, 1.0).toDouble() : 0.0;
     paymentCardUnpaid.value = breakdown.unpaidEntries.length;
@@ -586,7 +601,7 @@ class DashboardController extends GetxController {
         .where((p) =>
             !p.date.isBefore(todayStart) &&
             !p.date.isAfter(todayEnd) &&
-            p.note != kDebtWriteOffNote)
+            p.isCollection)
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
 

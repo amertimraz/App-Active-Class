@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:get/get.dart';
+import 'package:active_class/utils/payment_note.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/utils/archive_history.dart';
 import 'package:active_class/utils/auto_absent.dart';
@@ -183,17 +184,10 @@ class AttendanceController extends GetxController {
   /// عشان يعرف إن فيه فاتورة قديمة اتسجلت على أساس الشهر الغلط ومحتاجة
   /// مراجعة يدوية — التعديل هنا مش هيغيّر الدفعة القديمة تلقائيًا.
   Future<String?> paidMonthWarning(int studentId, DateTime oldDate) async {
-    final monthKey =
-        '${oldDate.year.toString().padLeft(4, '0')}-${oldDate.month.toString().padLeft(2, '0')}';
     try {
       final payments = await _dbService.getPaymentsByStudent(studentId);
-      final matched = payments.any((p) {
-        final note = p.note ?? '';
-        final monthsPart = note.split(';').first;
-        if (!monthsPart.startsWith('months=')) return false;
-        final months = monthsPart.substring('months='.length).split(',');
-        return months.contains(monthKey);
-      });
+      final matched =
+          payments.any((p) => PaymentNote.parse(p.note).coversMonth(oldDate));
       if (matched) {
         final label = DateFormat('MMMM yyyy', 'ar').format(oldDate);
         return 'فيه دفعة مسجّلة بالفعل على شهر $label — تعديل تاريخ الحضور مش هيغيّر الفاتورة القديمة تلقائيًا، لازم تراجعها يدويًا';

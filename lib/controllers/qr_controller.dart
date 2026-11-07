@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:active_class/utils/payment_note.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/payment_model.dart';
@@ -249,26 +250,8 @@ class QRController extends GetxController {
 
   DateTime? _extractLastPaidMonth(Payment? payment) {
     if (payment == null) return null;
-    final note = payment.note ?? '';
-    final monthsPart = note.split(';').first;
-    if (monthsPart.startsWith('months=')) {
-      final raw = monthsPart
-          .substring('months='.length)
-          .split(',')
-          .where((item) => item.trim().isNotEmpty)
-          .toList();
-      if (raw.isNotEmpty) {
-        final value = raw.last.trim();
-        final parts = value.split('-');
-        if (parts.length == 2) {
-          final year = int.tryParse(parts[0]);
-          final month = int.tryParse(parts[1]);
-          if (year != null && month != null) {
-            return DateTime(year, month);
-          }
-        }
-      }
-    }
+    final last = PaymentNote.parse(payment.note).lastMonth;
+    if (last != null) return last;
     return DateTime(payment.date.year, payment.date.month);
   }
 
@@ -460,6 +443,12 @@ class QRController extends GetxController {
       final now = DateTime.now();
       final labels = selectedMonths.map(formatMonth).toList();
       final keys = selectedMonths.map(_encodeMonth).toList();
+      // حماية من شهر مش منطقي (مثلًا سنة قدّام) بيبوّظ حساب «آخر شهر مدفوع».
+      if (selectedMonths.any((m) => PaymentNote.isImplausibleMonth(m, now))) {
+        ToastHelper.error(
+            'فيه شهر بعيد عن الوقت الحالي — راجع الشهور المختارة');
+        return false;
+      }
       final custom = overrideAmount.value;
       final customNote = overrideNote.value.trim();
       // للمجموعات بالحصة بيبقى النص "تم دفع X حصة" مش اسم الشهر — عشان

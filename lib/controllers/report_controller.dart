@@ -84,7 +84,7 @@ class ReportController extends GetxController {
   // spec 038 — "المحصَّل" هنا رقم مالي حقيقي (فلوس دخلت فعليًا)، فلازم
   // يستبعد صفوف إسقاط المديونية (راجع research.md § تفصيل تقني مهم).
   double get monthTotalCollected => monthPayments
-      .where((p) => p.note != kDebtWriteOffNote)
+      .where((p) => p.isCollection)
       .fold(0.0, (s, p) => s + p.amount);
 
   // "متأخر" يُحتسب حضورًا (spec 011)
@@ -133,7 +133,7 @@ class ReportController extends GetxController {
     // يستبعد صفوف إسقاط المديونية. isFullyPaid تحت بتحسب "الحالة" من
     // accumulatedDebtThrough على allPayments كاملة (بدون فلترة) — مقصود.
     final paidByStudent = <int, double>{};
-    for (final p in monthPayments.where((p) => p.note != kDebtWriteOffNote)) {
+    for (final p in monthPayments.where((p) => p.isCollection)) {
       paidByStudent.update(p.studentId, (v) => v + p.amount,
           ifAbsent: () => p.amount);
     }
@@ -488,7 +488,9 @@ class ReportController extends GetxController {
   RxInt get totalAttendance => RxInt(allAttendance.length);
   RxDouble get attendancePercentage => RxDouble(0.0);
   RxDouble get totalPayments =>
-      RxDouble(allPayments.fold(0.0, (s, p) => s + p.amount));
+      RxDouble(allPayments
+          .where((p) => p.isCollection)
+          .fold(0.0, (s, p) => s + p.amount));
   RxInt get paymentCount => RxInt(allPayments.length);
   RxInt get totalStudents => RxInt(allStudents.length);
   RxInt get totalGroups => RxInt(allGroups.length);
