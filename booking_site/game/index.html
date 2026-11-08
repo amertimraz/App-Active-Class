@@ -436,7 +436,6 @@
     ladder:'<svg viewBox="0 0 64 64"><rect x="14" y="6" width="6" height="52" rx="3" fill="#4F46E5"/><rect x="44" y="6" width="6" height="52" rx="3" fill="#4F46E5"/><rect x="20" y="14" width="24" height="5" rx="2" fill="#6D28D9"/><rect x="20" y="26" width="24" height="5" rx="2" fill="#6D28D9"/><rect x="20" y="38" width="24" height="5" rx="2" fill="#6D28D9"/><rect x="20" y="50" width="24" height="5" rx="2" fill="#6D28D9"/><circle cx="32" cy="9" r="5" fill="#F43F5E"/></svg>',
     monster:'<svg viewBox="0 0 64 64"><path d="M14 28c-4-8 0-16 6-18l2 8zM50 28c4-8 0-16-6-18l-2 8z" fill="#FFF1C9"/><path d="M32 12c16 0 24 14 20 30-2 8-10 12-20 12S14 50 12 42C8 26 16 12 32 12z" fill="#22A06B"/><circle cx="24" cy="30" r="6" fill="#fff"/><circle cx="40" cy="30" r="6" fill="#fff"/><circle cx="25" cy="31" r="3" fill="#1B1747"/><circle cx="39" cy="31" r="3" fill="#1B1747"/><path d="M20 42q12 10 24 0z" fill="#3A0F2E"/><path d="M25 42l3 5 3-5zM33 42l3 5 3-5z" fill="#fff"/></svg>',
     catcher:'<svg viewBox="0 0 64 64"><rect x="22" y="6" width="20" height="14" rx="4" fill="#F43F5E"/><path d="M8 28h48l-6 26q-18 6-36 0z" fill="#E9B25C"/><rect x="6" y="22" width="52" height="10" rx="5" fill="#9A5E1D"/><path d="M20 34l3 18M32 34v20M44 34l-3 18" stroke="#8A5214" stroke-width="2"/></svg>',
-    memory:'<svg viewBox="0 0 64 64"><rect x="6" y="12" width="26" height="36" rx="5" fill="#8B5CF6"/><rect x="32" y="16" width="26" height="36" rx="5" fill="#10B981" transform="rotate(8 45 34)"/><path d="M19 22l2.4 5 5.4.6-4 3.8 1 5.4L19 34l-4.8 2.8 1-5.4-4-3.8 5.4-.6z" fill="#FFE08A"/></svg>',
     basket:'<svg viewBox="0 0 64 64"><circle cx="32" cy="38" r="20" fill="#F97316"/><path d="M12 38h40M32 18v40" stroke="#7C2D12" stroke-width="2.5"/><path d="M16 28q16 10 32 0M16 48q16-10 32 0" fill="none" stroke="#7C2D12" stroke-width="2.5"/><rect x="20" y="4" width="24" height="8" rx="3" fill="#EF4444"/></svg>',
     targets:'<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" fill="#fff" stroke="#E11D48" stroke-width="3"/><circle cx="32" cy="32" r="19" fill="#E11D48"/><circle cx="32" cy="32" r="12" fill="#fff"/><circle cx="32" cy="32" r="6" fill="#E11D48"/><path d="M32 32L56 8" stroke="#92400E" stroke-width="3"/><path d="M56 8l-2 8-6-6z" fill="#64748B"/></svg>',
     treasure:'<svg viewBox="0 0 64 64"><path d="M8 32q24-26 48 0v22H8z" fill="#B45309"/><path d="M8 36h48v6H8z" fill="#FBBF24"/><rect x="28" y="34" width="8" height="12" rx="2" fill="#FDE68A" stroke="#78350F" stroke-width="2"/><path d="M8 32q24-26 48 0" fill="none" stroke="#451A03" stroke-width="3"/></svg>',
@@ -457,15 +456,15 @@
         for (let i = 0; i < 60 && !window.Phaser; i++) await new Promise(r => setTimeout(r, 100));
         const core = await import('./engine/engine.js');
         if (!core.supported()) return null;
-        const [bal, race, mon, cat, mem, whl, tf, lad, bsk, tgt, trs] = await Promise.all([
+        const [bal, race, mon, cat, whl, tf, lad, bsk, tgt, trs] = await Promise.all([
           import('./engine/balloons.js'), import('./engine/race.js'), import('./engine/monster.js'),
-          import('./engine/catcher.js'), import('./engine/memory.js'), import('./engine/wheel.js'),
+          import('./engine/catcher.js'), import('./engine/wheel.js'),
           import('./engine/truefalse.js'), import('./engine/ladder.js'),
           import('./engine/basketball.js'), import('./engine/targets.js'), import('./engine/treasure.js')]);
         return {
           createBalloonStage: bal.createBalloonStage, createRaceStage: race.createRaceStage,
           createMonsterStage: mon.createMonsterStage, createCatcherStage: cat.createCatcherStage,
-          createMemoryStage: mem.createMemoryStage, createWheelStage: whl.createWheelStage,
+          createWheelStage: whl.createWheelStage,
           createTfStage: tf.createTfStage, createLadderStage: lad.createLadderStage,
           createBasketStage: bsk.createBasketStage, createTargetsStage: tgt.createTargetsStage,
           createTreasureStage: trs.createTreasureStage,
@@ -516,7 +515,6 @@
     const f = Math.max(0, Math.min(1, frac));
     if (type === 'true_false') return 100 + Math.round(50*f);
     if (type === 'ladder') return 100 * ((idx || 0) + 1) + Math.round(50*f);
-    if (type === 'memory') return 100 + Math.round(100*f); // لكل زوج
     return 500 + Math.round(500*f); // سباق وبالونات ووحش واصطياد وعجلة
   }
 
@@ -673,7 +671,6 @@
   const isLadder = () => game.gameType === 'ladder';
   const isMonster = () => game.gameType === 'monster';
   const isCatcher = () => game.gameType === 'catcher';
-  const isMemory = () => game.gameType === 'memory';
   const isWheel = () => game.gameType === 'wheel';
   // ألعاب «اختار من الساحة» (الإجابات جوّه المحرك): show(options,onPick) + reveal(chosen,correct)
   const PICK_KINDS = ['balloons', 'catcher', 'basket', 'targets', 'treasure'];
@@ -683,7 +680,7 @@
     : game.gameType === 'basketball' ? 'basket' : game.gameType === 'targets' ? 'targets'
     : game.gameType === 'treasure' ? 'treasure' : 'race';
   // نسبة العرض/الارتفاع المبدئية للساحة (بتتظبط على الحقيقية بعد التركيب).
-  const AR = { balloons:1.26, catcher:1.26, tf:1.92, race:2.526, monster:1.92, ladder:2.4, memory:0.923, wheel:1.4545, basket:1.263, targets:1.263, treasure:1.4545 };
+  const AR = { balloons:1.26, catcher:1.26, tf:1.92, race:2.526, monster:1.92, ladder:2.4, wheel:1.4545, basket:1.263, targets:1.263, treasure:1.4545 };
   const MODES = {
     race:       { title:'سباق الأسئلة',  icon:'rocket',  secs:20, note:'⚡ الأسرع بيكسب أكتر' },
     true_false: { title:'صح ولا غلط',     icon:'scale',   secs:10, note:'⚡ الأسرع بيكسب أكتر' },
@@ -691,7 +688,6 @@
     ladder:     { title:'سلم المليون',   icon:'ladder',  secs:30, note:'🪜 غلطة واحدة وتقف' },
     monster:    { title:'معركة الوحش',   icon:'monster', secs:15, note:'⚔️ ٣ قلوب — اهزم الوحش' },
     catcher:    { title:'اصطياد الإجابة', icon:'catcher', secs:20, note:'🧺 التقط الإجابة الصح' },
-    memory:     { title:'ذاكرة الكروت',  icon:'memory',  secs:12, note:'🃏 طابق السؤال بإجابته' },
     wheel:      { title:'عجلة الحظ',     icon:'wheel',   secs:20, note:'🎡 جاوب صح والف العجلة' },
     basketball: { title:'كرة السلة',     icon:'basket',  secs:15, note:'🏀 اشوط الكورة الصح في السلة' },
     targets:    { title:'الرماية على الأهداف', icon:'targets', secs:15, note:'🎯 اصطاد اللوحة الصح' },
@@ -710,7 +706,7 @@
       <p class="h-sub">أهلًا ${esc(ctx.name || '')} 👋 — ${modeOf().title}</p>
       <div class="chips">
         <span class="chip">❓ ${n} سؤال</span>
-        <span class="chip">⏱ ${secsOf()} ثانية${isMemory() ? ' لكل زوج' : ''}</span>
+        <span class="chip">⏱ ${secsOf()} ثانية</span>
         <span class="chip">${modeOf().note}</span>
       </div>
       ${best ? `<div class="best">🏆 أفضل نتيجة ليك: ${best.score} نقطة</div>` : ''}
@@ -742,7 +738,6 @@
   function startGame(){
     destroyStages();
     unlockAudio(); sfx.start();
-    if (isMemory()) { startMemory(); return; }
     run = { items: buildQuestions(), i:0, score:0, correct:0, timeMs:0, streak:0, secs: secsOf(),
             life5050:true, lifeSkip:true, over:false, hearts:3 };
     showQuestion();
@@ -760,7 +755,7 @@
         <circle class="bg" cx="28" cy="28" r="24" fill="none" stroke-width="6"/>
         <circle class="fg" id="rfg" cx="28" cy="28" r="24" fill="none" stroke-width="6" stroke-linecap="round"
           stroke-dasharray="${CIRC}" stroke-dashoffset="0"/></svg><b id="rn">${run.secs}</b></div>
-      <div class="prog"><div class="dots">${dots}</div><small>${run.memory ? 'الجولة' : 'السؤال'} ${run.i+1} من ${total}${isMonster() ? ' • ' + '❤️'.repeat(Math.max(0, run.hearts)) + '🖤'.repeat(Math.max(0, 3 - run.hearts)) : ''}</small></div>
+      <div class="prog"><div class="dots">${dots}</div><small>السؤال ${run.i+1} من ${total}${isMonster() ? ' • ' + '❤️'.repeat(Math.max(0, run.hearts)) + '🖤'.repeat(Math.max(0, 3 - run.hearts)) : ''}</small></div>
       <div class="scorebox"><b id="sc">${run.score}</b><small>نقطة</small>
         ${run.streak >= 2 ? `<span class="streak">🔥 ×${run.streak}</span>` : ''}</div>
     </div>`;
@@ -999,96 +994,6 @@
     }, 100);
   }
 
-  // ── ذاكرة الكروت: لوحات من حتى 6 أزواج (سؤال ↔ إجابته الصح) ───────────
-  function memoryPairs(){
-    const usable = (game.questions || []).filter(q =>
-      !(q.optionImageUrls || []).some(u => u) && q.options[q.correctIndex] != null
-      && String(q.options[q.correctIndex]).length <= 60 && String(q.text).length <= 140);
-    return shuffle(usable).map(q => ({ q: q.text, a: q.options[q.correctIndex] }));
-  }
-
-  async function startMemory(){
-    const pairs = memoryPairs();
-    appEl.innerHTML = '<div class="spinner"></div>';
-    const E = await loadEngine();
-    if (!E || pairs.length < 2) {   // مفيش محرك أو أزواج كفاية → نلعبها سباق عادي
-      game.gameType = 'race';
-      run = { items: buildQuestions(), i:0, score:0, correct:0, timeMs:0, streak:0, secs: secsOf(),
-              life5050:true, lifeSkip:true, over:false, hearts:3 };
-      showQuestion();
-      return;
-    }
-    const rounds = [];
-    for (let i = 0; i < pairs.length; i += 6) rounds.push(pairs.slice(i, i + 6));
-    // آخر لوحة صغيرة (أقل من 3) تتضم للي قبلها لو ينفع
-    if (rounds.length > 1 && rounds[rounds.length - 1].length < 3 && rounds[rounds.length - 2].length + rounds[rounds.length - 1].length <= 8) {
-      rounds[rounds.length - 2] = rounds[rounds.length - 2].concat(rounds.pop());
-    }
-    run = { memory: true, items: pairs, rounds, ri: 0, i: 0, score: 0, correct: 0, timeMs: 0, streak: 0,
-            secs: 0, over: false, hearts: 3 };
-    showMemoryRound(E);
-  }
-
-  async function showMemoryRound(E){
-    clearTimer();
-    const token = ++qToken;
-    const round = run.rounds[run.ri];
-    const n = round.length;
-    run.i = run.ri;
-    run.secs = (game.secondsPerQuestion || 12) * n;
-    const limit = run.secs * 1000;
-    view(`${hudHtml(run.rounds.length)}
-      <p class="h-sub" style="margin:0 0 10px">طابق كل سؤال مع إجابته الصح 🃏</p>
-      <div id="stage" class="stage memory" style="--ar:${AR.memory}"></div><div id="after"></div>`);
-    const rfg = document.getElementById('rfg'), rn = document.getElementById('rn'), ring = document.getElementById('ring');
-    const api = await mountStage('memory', E.createMemoryStage);
-    if (token !== qToken) return;
-    if (!api) {
-      game.gameType = 'race';
-      run = { items: buildQuestions(), i:0, score:0, correct:0, timeMs:0, streak:0, secs: secsOf(),
-              life5050:true, lifeSkip:true, over:false, hearts:3 };
-      showQuestion();
-      return;
-    }
-    let startedAt = performance.now(), done = false, matched = 0;
-    const endRound = (timeUp) => {
-      if (done) return;
-      done = true; clearTimer();
-      run.timeMs += Math.round(Math.min(performance.now() - startedAt, limit));
-      api.lock();
-      if (timeUp) { api.timeUp(); sfx.timeout(); } else { sfx.win(3); buzz(30); }
-      const last = run.ri + 1 >= run.rounds.length;
-      document.getElementById('after').innerHTML = `
-        <div class="fb ${matched === n ? 'good' : 'late'}"><div class="row"><span>${timeUp ? 'الوقت خلص ⏰' : 'برافو! خلّصت اللوحة 🎉'}</span><span class="pts">${matched} من ${n} أزواج</span></div>
-          <button class="btn violet" id="next">${last ? 'شوف نتيجتك 🏁' : 'اللوحة اللي بعدها'}</button></div>`;
-      const nb = document.getElementById('next');
-      nb.onclick = () => { run.ri++; last ? showResult() : showMemoryRound(E); };
-      nb.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
-    };
-    api.start(round, {
-      onMatch: () => {
-        const left = Math.max(0, limit - (performance.now() - startedAt));
-        const gained = points('memory', true, left / limit, 0);
-        run.score += gained; run.correct++; matched++; run.streak++;
-        animateScore(gained); sfx.correct(run.streak); buzz(20);
-      },
-      onMiss: () => { run.streak = 0; sfx.wrong(); buzz([40, 30, 40]); },
-      onComplete: () => endRound(false),
-    });
-    startedAt = performance.now();
-    let lastSec = Infinity;
-    timer = setInterval(() => {
-      const left = Math.max(0, limit - (performance.now() - startedAt));
-      const sec = Math.ceil(left / 1000);
-      if (sec <= 3 && sec > 0 && sec < lastSec) sfx.tick(sec === 1);
-      lastSec = Math.min(lastSec, sec);
-      rfg.style.strokeDashoffset = String(CIRC * (1 - left / limit));
-      rn.textContent = Math.ceil(left / 1000);
-      ring.classList.toggle('low', left / limit < 0.3);
-      if (left <= 0) endRound(true);
-    }, 100);
-  }
-
   async function showResult(){
     clearTimer();
     destroyStages();
@@ -1109,7 +1014,7 @@
         best = { score: run.score };
       } catch (e) { saved = false; }
     }
-    const heading = isMonster() ? (run.over ? 'الوحش غلبك — جرّب تاني 💪' : 'هزمت الوحش! 🏆') : isMemory() ? (starsOn === 3 ? 'ذاكرة حديد! 🧠' : starsOn >= 1 ? 'شغل حلو — كمّل 💪' : 'جرّب تاني') : isLadder() && run.over ? `السلم وقّفك عند السؤال ${run.i} 🪜` : isLadder() && run.i >= total && starsOn >= 2 ? 'وصلت لآخر السلم! 🏆' : starsOn === 3 ? 'أسطورة! 🎉' : starsOn === 2 ? 'شغل جامد 👏' : starsOn === 1 ? 'بداية حلوة — جرّب تاني 💪' : 'محتاجة مذاكرة — جرّب تاني';
+    const heading = isMonster() ? (run.over ? 'الوحش غلبك — جرّب تاني 💪' : 'هزمت الوحش! 🏆') : isLadder() && run.over ? `السلم وقّفك عند السؤال ${run.i} 🪜` : isLadder() && run.i >= total && starsOn >= 2 ? 'وصلت لآخر السلم! 🏆' : starsOn === 3 ? 'أسطورة! 🎉' : starsOn === 2 ? 'شغل جامد 👏' : starsOn === 1 ? 'بداية حلوة — جرّب تاني 💪' : 'محتاجة مذاكرة — جرّب تاني';
     view(`
       ${starsOn >= 2 ? ICON.trophy : `<div class="emblem" style="margin-top:6px">${ICON.rocket}</div>`}
       <p class="h-title" style="margin-bottom:0">${heading}</p>

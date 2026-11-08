@@ -40,7 +40,10 @@ List<GameQuestion> mergeGameQuestions(
 class OnlineGameEditorPage extends StatefulWidget {
   /// الشكل اللي اتختار من كروت الألعاب (الخطوة الأولى).
   final OnlineGameType type;
-  const OnlineGameEditorPage({super.key, required this.type});
+
+  /// لو متبعتة: وضع التعديل على لعبة منشورة (نفس الرابط).
+  final OnlineGame? existing;
+  const OnlineGameEditorPage({super.key, required this.type, this.existing});
 
   @override
   State<OnlineGameEditorPage> createState() => _OnlineGameEditorPageState();
@@ -53,8 +56,10 @@ class _OnlineGameEditorPageState extends State<OnlineGameEditorPage> {
       ? Get.find<GroupController>()
       : Get.put(GroupController());
 
-  OnlineGameType get _type => widget.type;
-  late int _seconds = widget.type.defaultSeconds;
+  late OnlineGameType _type = widget.existing?.type ?? widget.type;
+  late int _seconds =
+      widget.existing?.secondsPerQuestion ?? widget.type.defaultSeconds;
+  bool get _editing => widget.existing != null;
   final Set<int> _groupIds = {};
   List<GameQuestion> _questions = [];
   bool _publishing = false;
@@ -65,6 +70,54 @@ class _OnlineGameEditorPageState extends State<OnlineGameEditorPage> {
   final _scroll = ScrollController();
   final _titleKey = GlobalKey();
   final _questionsKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    final g = widget.existing;
+    if (g == null) return;
+    _title.text = g.title;
+    _questions = List.of(g.questions);
+    for (final gr in _gc.groups) {
+      if (g.allowedGroupNames.contains(gr.name) && gr.id != null) {
+        _groupIds.add(gr.id!);
+      }
+    }
+  }
+
+  /// تغيير نوع اللعبة في وضع التعديل (نفس الأسئلة).
+  Future<void> _pickType() async {
+    final t = context.tokens;
+    final picked = await showModalBottomSheet<OnlineGameType>(
+      context: context,
+      backgroundColor: t.surface,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(
+              AppSpace.lg, 0, AppSpace.lg, AppSpace.lg),
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpace.sm),
+              child: Text('اختار شكل اللعبة',
+                  style: AppType.title.copyWith(color: t.ink)),
+            ),
+            for (final ty in OnlineGameType.values)
+              ListTile(
+                leading: Icon(gameTypeIcon(ty), color: t.brand),
+                title: Text(ty.title),
+                subtitle: Text(ty.description),
+                selected: ty == _type,
+                onTap: () => Navigator.of(context).pop(ty),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && picked != _type) setState(() => _type = picked);
+  }
 
   @override
   void dispose() {
@@ -164,6 +217,26 @@ class _OnlineGameEditorPageState extends State<OnlineGameEditorPage> {
     });
     try {
       final svc = OnlineGameService();
+      final groupNames = [
+        for (final g in _gc.groups)
+          if (_groupIds.contains(g.id)) g.name
+      ];
+      if (_editing) {
+        await svc
+            .update(
+              gameId: widget.existing!.id,
+              title: title,
+              type: _type,
+              secondsPerQuestion: _seconds,
+              allowedGroupNames: groupNames,
+              questions: _questions,
+            )
+            .timeout(const Duration(seconds: 40));
+        if (!mounted) return;
+        ToastHelper.success('اتحفظت التعديلات');
+        Get.back(result: 'updated');
+        return;
+      }
       final id = await svc
           .publish(
             title: title,
@@ -198,7 +271,8 @@ class _OnlineGameEditorPageState extends State<OnlineGameEditorPage> {
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       backgroundColor: t.page,
-      appBar: buildBoardAppBar(context, title: 'لعبة جديدة'),
+      appBar: buildBoardAppBar(
+          context, title: _editing ? 'تعديل اللعبة' : 'لعبة جديدة'),
       bottomNavigationBar: Padding(
         padding: EdgeInsets.fromLTRB(
             AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.md + bottom),
@@ -240,7 +314,9 @@ class _OnlineGameEditorPageState extends State<OnlineGameEditorPage> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.rocket_launch_rounded),
-              label: Text(_publishing ? 'جاري النشر...' : 'انشر اللعبة'),
+              label: Text(_publishing
+                  ? (_editing ? 'جاري الحفظ...' : 'جاري النشر...')
+                  : (_editing ? 'احفظ التعديلات' : 'انشر اللعبة')),
             ),
           ],
         ),
@@ -258,7 +334,8 @@ class _OnlineGameEditorPageState extends State<OnlineGameEditorPage> {
                 const InputDecoration(hintText: 'مثال: مراجعة الباب الأول'),
           ),
           const SizedBox(height: AppSpace.xl),
-          _TypeBanner(type: _type, onChange: () => Get.back()),
+          _TypeBanner(
+              type: _type, onChange: _editing ? _pickType : () => Get.back()),
           const SizedBox(height: AppSpace.xl),
           _label(t, 'الوقت لكل سؤال'),
           AppPanel(

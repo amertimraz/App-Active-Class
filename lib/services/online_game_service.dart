@@ -79,6 +79,30 @@ class OnlineGameService {
     return id;
   }
 
+  /// تعديل لعبة منشورة: الاسم/النوع/الوقت/المجموعات/الأسئلة. نفس الرابط
+  /// والنتايج، والحالة (مفتوحة/مقفولة) ما بتتغيّرش.
+  Future<void> update({
+    required String gameId,
+    required String title,
+    required OnlineGameType type,
+    required int secondsPerQuestion,
+    required List<String> allowedGroupNames,
+    required List<GameQuestion> questions,
+  }) async {
+    await _ensureAuth();
+    final s = await slug();
+    await _games(s).doc(gameId).set({
+      ...OnlineGame.cloudContent(
+        title: title,
+        type: type,
+        secondsPerQuestion: secondsPerQuestion,
+        allowedGroupNames: allowedGroupNames,
+        questions: questions,
+      ),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   /// كل ألعاب المدرس (الأحدث أولًا).
   Future<List<OnlineGame>> listGames() async {
     await _ensureAuth();

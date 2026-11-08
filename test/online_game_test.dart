@@ -74,7 +74,7 @@ void main() {
                 remainingFraction: f));
       }
     });
-    test('وحش واصطياد وعجلة بنفس نقاط السباق، والذاكرة 100 + حتى 100', () {
+    test('وحش واصطياد وعجلة وسلة ورماية وكنز بنفس نقاط السباق', () {
       for (final f in [0.0, 0.5, 1.0]) {
         final race = gameQuestionPoints(
             type: OnlineGameType.race, correct: true, remainingFraction: f);
@@ -92,13 +92,6 @@ void main() {
               reason: '$ty');
         }
       }
-      int mem(double f) => gameQuestionPoints(
-          type: OnlineGameType.memory, correct: true, remainingFraction: f);
-      expect([mem(0), mem(0.5), mem(1)], [100, 150, 200]);
-      expect(
-          gameQuestionPoints(
-              type: OnlineGameType.memory, correct: false, remainingFraction: 1),
-          0);
     });
     test('الأنواع الجديدة: عنوان ووصف ووقت افتراضي وقيمة سحابية فريدة', () {
       final cloud = <String>{};
@@ -110,7 +103,7 @@ void main() {
         expect(cloud.add(ty.cloudValue), isTrue, reason: 'مكرّر: ${ty.cloudValue}');
         expect(OnlineGameTypeX.fromCloud(ty.cloudValue), ty);
       }
-      expect(OnlineGameType.values.length, 11);
+      expect(OnlineGameType.values.length, 10);
     });
     test('سلم المليون: النقاط بتزيد مع رقم السؤال', () {
       int p(int i) => gameQuestionPoints(

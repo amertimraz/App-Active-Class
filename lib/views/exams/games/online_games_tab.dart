@@ -16,6 +16,7 @@ import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/views/exams/games/game_leaderboard_page.dart';
 import 'package:active_class/views/exams/games/game_type_picker_page.dart';
+import 'package:active_class/views/exams/games/online_game_editor_page.dart';
 import 'package:active_class/widgets/app_panel.dart';
 
 class OnlineGamesTab extends StatefulWidget {
@@ -71,6 +72,11 @@ class OnlineGamesTabState extends State<OnlineGamesTab> {
     } catch (_) {
       ToastHelper.error('تعذّر التعديل — حاول تاني');
     }
+  }
+
+  Future<void> _edit(OnlineGame g) async {
+    await Get.to(() => OnlineGameEditorPage(type: g.type, existing: g));
+    reload();
   }
 
   Future<void> _delete(OnlineGame g) async {
@@ -210,6 +216,7 @@ class OnlineGamesTabState extends State<OnlineGamesTab> {
           onLink: () => _showLink(games[i]),
           onResults: () => Get.to(() => GameLeaderboardPage(game: games[i])),
           onToggle: () => _toggleOpen(games[i]),
+          onEdit: () => _edit(games[i]),
           onDelete: () => _delete(games[i]),
         ),
       ),
@@ -223,6 +230,7 @@ class _GameCard extends StatelessWidget {
   final VoidCallback onLink;
   final VoidCallback onResults;
   final VoidCallback onToggle;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
   const _GameCard({
     required this.game,
@@ -230,6 +238,7 @@ class _GameCard extends StatelessWidget {
     required this.onLink,
     required this.onResults,
     required this.onToggle,
+    required this.onEdit,
     required this.onDelete,
   });
 
@@ -307,8 +316,13 @@ class _GameCard extends StatelessWidget {
             if (canManage)
               PopupMenuButton<String>(
                 tooltip: 'المزيد',
-                onSelected: (v) => v == 'toggle' ? onToggle() : onDelete(),
+                onSelected: (v) => v == 'toggle'
+                    ? onToggle()
+                    : v == 'edit'
+                        ? onEdit()
+                        : onDelete(),
                 itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'edit', child: Text('تعديل اللعبة')),
                   PopupMenuItem(
                       value: 'toggle',
                       child: Text(open ? 'قفل اللعبة' : 'فتح اللعبة')),
