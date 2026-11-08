@@ -131,13 +131,6 @@ class _Att extends AttendanceController {
   Future<void> loadAttendance() async {}
 }
 
-class _Pay extends PaymentController {
-  @override
-  void onInit() {}
-  @override
-  Future<void> loadPayments() async {}
-}
-
 class _Hw extends HomeworkController {
   @override
   Future<void> loadHomework() async {}
@@ -259,33 +252,6 @@ Future<void> _pump(WidgetTester t, Widget home,
     home: const Scaffold(body: SizedBox()),
   ));
   Get.to(() => home, arguments: args);
-  await t.pump(const Duration(milliseconds: 500));
-  await t.pump(const Duration(milliseconds: 500));
-}
-
-/// يفتح نافذة (showDialog) من زرار ويستنى ظهورها.
-Future<void> _openDialog(
-    WidgetTester t, Future<void> Function(BuildContext) open,
-    {required Size size, double scale = 1, bool dark = false}) async {
-  t.view.devicePixelRatio = 1;
-  t.view.physicalSize = size;
-  addTearDown(t.view.reset);
-  await t.pumpWidget(GetMaterialApp(
-    theme: _cairo(dark ? AppTheme.darkTheme : AppTheme.lightTheme),
-    locale: const Locale('ar'),
-    builder: (c, ch) => MediaQuery(
-      data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
-      child: Directionality(textDirection: TextDirection.rtl, child: ch!),
-    ),
-    home: Scaffold(
-      body: Builder(
-        builder: (ctx) => Center(
-            child: ElevatedButton(
-                onPressed: () => open(ctx), child: const Text('افتح'))),
-      ),
-    ),
-  ));
-  await t.tap(find.text('افتح'));
   await t.pump(const Duration(milliseconds: 500));
   await t.pump(const Duration(milliseconds: 500));
 }
