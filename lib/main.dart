@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:active_class/tour/tour.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/theme_controller.dart';
@@ -167,8 +168,9 @@ void main() async {
     if (!kIsWeb) {
       try {
         await FirebaseAppCheck.instance.activate(
-          androidProvider:
-              kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+          androidProvider: kDebugMode
+              ? AndroidProvider.debug
+              : AndroidProvider.playIntegrity,
         );
       } catch (_) {}
     }
@@ -267,8 +269,11 @@ class MyApp extends StatelessWidget {
                 child: Directionality(
                   textDirection: ui.TextDirection.rtl,
                   // spec 055: إطار الشاشات العريضة (ويب فقط، لا أثر على أندرويد).
-                  child: WebResponsiveFrame(
-                      child: child ?? const SizedBox.shrink()),
+                  child: Stack(children: [
+                    WebResponsiveFrame(child: child ?? const SizedBox.shrink()),
+                    // «جرّبها بنفسك»: فوق كل الشاشات والشيتات.
+                    const Positioned.fill(child: TourLayer()),
+                  ]),
                 ),
               )),
           home: const SplashPage(),
@@ -324,14 +329,12 @@ class MyApp extends StatelessWidget {
                 page: () => const PaymentsReportPage()),
             GetPage(name: ROUTE_EXPENSES, page: () => const ExpensesPage()),
             GetPage(name: ROUTE_DEBTS, page: () => const DebtsPage()),
-            GetPage(
-                name: ROUTE_BULK_SEND,
-                page: () => const BulkSendPage()),
+            GetPage(name: ROUTE_BULK_SEND, page: () => const BulkSendPage()),
             GetPage(name: ROUTE_ACTIVATION, page: () => const ActivationPage()),
-            GetPage(name: ROUTE_PLANS,     page: () => const PlansPage()),
-            GetPage(name: ROUTE_EXAMS,     page: () => const ExamsPage()),
-            GetPage(name: ROUTE_SCHEDULE,  page: () => const SchedulePage()),
-            GetPage(name: ROUTE_BOOKINGS,  page: () => const BookingsPage()),
+            GetPage(name: ROUTE_PLANS, page: () => const PlansPage()),
+            GetPage(name: ROUTE_EXAMS, page: () => const ExamsPage()),
+            GetPage(name: ROUTE_SCHEDULE, page: () => const SchedulePage()),
+            GetPage(name: ROUTE_BOOKINGS, page: () => const BookingsPage()),
             GetPage(
                 name: ROUTE_PARENT_PORTAL,
                 page: () => const ParentPortalPage()),
@@ -341,18 +344,20 @@ class MyApp extends StatelessWidget {
             GetPage(
                 name: ROUTE_BOOKING_SETTINGS,
                 page: () => const BookingSettingsPage()),
-            GetPage(name: ROUTE_LOGIN,    page: () => const LoginScreen()),
+            GetPage(name: ROUTE_LOGIN, page: () => const LoginScreen()),
             GetPage(name: ROUTE_REGISTER, page: () => const RegisterScreen()),
-            GetPage(name: ROUTE_ACCOUNT,  page: () => const AccountTeamScreen()),
-            GetPage(name: ROUTE_TEAM_MODE,    page: () => const TeamModeScreen()),
-            GetPage(name: ROUTE_TEAM_JOIN,    page: () => const JoinTeamScreen()),
-            GetPage(name: ROUTE_TEAM_MEMBERS, page: () => const ManageMembersScreen()),
+            GetPage(name: ROUTE_ACCOUNT, page: () => const AccountTeamScreen()),
+            GetPage(name: ROUTE_TEAM_MODE, page: () => const TeamModeScreen()),
+            GetPage(name: ROUTE_TEAM_JOIN, page: () => const JoinTeamScreen()),
+            GetPage(
+                name: ROUTE_TEAM_MEMBERS,
+                page: () => const ManageMembersScreen()),
             GetPage(
               name: ROUTE_STUDENT_EXAM_HISTORY,
               page: () {
                 final args = Get.arguments as Map<String, dynamic>;
                 return StudentExamHistoryPage(
-                  studentId:   args['studentId'] as int,
+                  studentId: args['studentId'] as int,
                   studentName: args['studentName'] as String,
                 );
               },

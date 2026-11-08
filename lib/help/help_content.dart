@@ -48,6 +48,9 @@ class HelpTopic {
   /// مواضيع مرتبطة (معرّفات).
   final List<String> related;
 
+  /// جولة «جرّبها بنفسك» (معرّف من kTours في lib/tour/tour.dart) — اختياري.
+  final String? tourId;
+
   const HelpTopic({
     required this.id,
     required this.title,
@@ -61,6 +64,7 @@ class HelpTopic {
     this.route,
     this.routeLabel,
     this.related = const [],
+    this.tourId,
   });
 
   /// وقت القراءة التقريبي بالدقايق (≈ 150 كلمة في الدقيقة، دقيقة على الأقل).
@@ -168,6 +172,7 @@ const kHelpTopics = <HelpTopic>[
     route: ROUTE_STUDENTS,
     routeLabel: 'افتح الطلاب',
     related: ['exemption_siblings', 'student_page', 'qr'],
+    tourId: 'add_student',
   ),
   HelpTopic(
     id: 'attendance',

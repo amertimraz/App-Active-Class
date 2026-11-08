@@ -1,6 +1,7 @@
 // lib/widgets/add_student_sheet.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:active_class/tour/tour.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
@@ -524,11 +525,14 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                                 ),
                               )),
                     NameWithCodeRow(
-                      nameField: CustomTextField(
-                        dense: true,
-                        controller: _nameCtrl,
-                        label: 'اسم الطالب *',
-                        focusNode: _nameFocus,
+                      nameField: TourTarget(
+                        id: 'student.name',
+                        child: CustomTextField(
+                          dense: true,
+                          controller: _nameCtrl,
+                          label: 'اسم الطالب *',
+                          focusNode: _nameFocus,
+                        ),
                       ),
                       codeController: _codeCtrl,
                       isManual: _codeIsManual,
@@ -582,57 +586,61 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                     const SizedBox(height: 12),
                     // ── اختيار المجموعة (فقط لو مش preselected) ────────
                     if (!hasPreselectedGroup) ...[
-                      DropdownButtonFormField<Group>(
-                        isExpanded: true,
-                        value: _selectedGroup,
-                        style: TextStyle(fontSize: 14, color: t.ink),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          labelText: 'المجموعة *',
-                          labelStyle: const TextStyle(fontSize: 13),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 11),
-                          border: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.circular(AppRadius.control),
-                              borderSide: BorderSide(color: t.line)),
-                          enabledBorder: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.circular(AppRadius.control),
-                              borderSide: BorderSide(color: t.line)),
+                      TourTarget(
+                        id: 'student.group',
+                        child: DropdownButtonFormField<Group>(
+                          isExpanded: true,
+                          value: _selectedGroup,
+                          style: TextStyle(fontSize: 14, color: t.ink),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            labelText: 'المجموعة *',
+                            labelStyle: const TextStyle(fontSize: 13),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 11),
+                            border: OutlineInputBorder(
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.control),
+                                borderSide: BorderSide(color: t.line)),
+                            enabledBorder: OutlineInputBorder(
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.control),
+                                borderSide: BorderSide(color: t.line)),
+                          ),
+                          hint: const Text('اختر المجموعة'),
+                          items: _groups
+                              .map((g) => DropdownMenuItem(
+                                    value: g,
+                                    child: Row(children: [
+                                      if (g.color != null)
+                                        Container(
+                                          width: 10,
+                                          height: 10,
+                                          margin:
+                                              const EdgeInsets.only(left: 8),
+                                          decoration: BoxDecoration(
+                                              color: Color(g.color!),
+                                              shape: BoxShape.circle),
+                                        ),
+                                      // Expanded — من غيرها الـText كان ياخد
+                                      // عرضه الطبيعي الكامل ("الاسم • السعر")
+                                      // بدل ما يحترم عرض القائمة المنسدلة،
+                                      // فالـellipsis ميشتغلش وكان بيعمل
+                                      // overflow حقيقي بدل ما يقص بـ"...".
+                                      Expanded(
+                                        child: Text(
+                                          g.price != null
+                                              ? '${g.name} • ${FormatHelper.formatCurrency(g.price)}'
+                                              : g.name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ]),
+                                  ))
+                              .toList(),
+                          onChanged: _onGroupChanged,
                         ),
-                        hint: const Text('اختر المجموعة'),
-                        items: _groups
-                            .map((g) => DropdownMenuItem(
-                                  value: g,
-                                  child: Row(children: [
-                                    if (g.color != null)
-                                      Container(
-                                        width: 10,
-                                        height: 10,
-                                        margin: const EdgeInsets.only(left: 8),
-                                        decoration: BoxDecoration(
-                                            color: Color(g.color!),
-                                            shape: BoxShape.circle),
-                                      ),
-                                    // Expanded — من غيرها الـText كان ياخد
-                                    // عرضه الطبيعي الكامل ("الاسم • السعر")
-                                    // بدل ما يحترم عرض القائمة المنسدلة،
-                                    // فالـellipsis ميشتغلش وكان بيعمل
-                                    // overflow حقيقي بدل ما يقص بـ"...".
-                                    Expanded(
-                                      child: Text(
-                                        g.price != null
-                                            ? '${g.name} • ${FormatHelper.formatCurrency(g.price)}'
-                                            : g.name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ]),
-                                ))
-                            .toList(),
-                        onChanged: _onGroupChanged,
                       ),
                       const SizedBox(height: 14),
                     ],
@@ -642,18 +650,22 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                     // ── ولي الأمر ───────────────────────────────────────
                     const FormSectionTitle('ولي الأمر',
                         icon: Icons.family_restroom_rounded),
-                    GuardianPhoneSection(
-                      phoneController: _phoneCtrl,
-                      whatsappController: _whatsappCtrl,
-                      dialCode: _dialCode,
-                      label: 'رقم ولي الأمر',
-                      onContactPick: () async {
-                        final phone =
-                            await ContactPickerService.pickPhoneNumber(context);
-                        if (phone != null && mounted) {
-                          setState(() => _phoneCtrl.text = phone);
-                        }
-                      },
+                    TourTarget(
+                      id: 'student.phone',
+                      child: GuardianPhoneSection(
+                        phoneController: _phoneCtrl,
+                        whatsappController: _whatsappCtrl,
+                        dialCode: _dialCode,
+                        label: 'رقم ولي الأمر',
+                        onContactPick: () async {
+                          final phone =
+                              await ContactPickerService.pickPhoneNumber(
+                                  context);
+                          if (phone != null && mounted) {
+                            setState(() => _phoneCtrl.text = phone);
+                          }
+                        },
+                      ),
                     ),
                     // رقم الطالب نفسه (اختياري) — لرسائل واتساب للطالب
                     Obx(() => Get.find<SettingsController>()
@@ -896,24 +908,28 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
               const SizedBox(width: AppSpace.md),
               Expanded(
                 flex: 2,
-                child: FilledButton.icon(
-                  onPressed: _loading ? null : _submit,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: t.chalk,
-                    foregroundColor: t.onChalk,
-                    minimumSize: const Size.fromHeight(48),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppRadius.control)),
+                child: TourTarget(
+                  id: 'student.save',
+                  child: FilledButton.icon(
+                    onPressed: _loading ? null : _submit,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: t.chalk,
+                      foregroundColor: t.onChalk,
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(AppRadius.control)),
+                    ),
+                    icon: _loading
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: t.onChalk))
+                        : const Icon(Icons.person_add_rounded),
+                    label: Text('إضافة الطالب',
+                        style: AppType.label.copyWith(color: t.onChalk)),
                   ),
-                  icon: _loading
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: t.onChalk))
-                      : const Icon(Icons.person_add_rounded),
-                  label: Text('إضافة الطالب',
-                      style: AppType.label.copyWith(color: t.onChalk)),
                 ),
               ),
             ]),

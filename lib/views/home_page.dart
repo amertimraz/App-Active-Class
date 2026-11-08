@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:active_class/tour/tour.dart';
 import 'package:active_class/views/web/web_session.dart';
 import 'package:active_class/utils/responsive.dart';
 import 'package:active_class/config/constants.dart';
@@ -285,8 +286,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             const SizedBox(width: AppSpace.xs),
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
-              child:
-                  Image.asset('assets/icon/logo.png', width: 22, height: 22),
+              child: Image.asset('assets/icon/logo.png', width: 22, height: 22),
             ),
             // على الشاشات الضيقة الأيقونات مش سايبة مكان للاسم كامل.
             const SizedBox(width: 6),
@@ -382,12 +382,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ),
                 itemBuilder: (context, index) {
                   final item = entries[index];
-                  return _MenuGridItem(
+                  final tile = _MenuGridItem(
                     icon: item.icon,
                     label: item.label,
                     onTap: item.onTap,
                     locked: item.locked,
                   );
+                  // «جرّبها بنفسك»: جولة «ضيف أول طالب» بتبدأ من هنا.
+                  return item.label == 'الطلاب'
+                      ? TourTarget(id: 'home.students', child: tile)
+                      : tile;
                 },
               );
             });
@@ -538,8 +542,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 iconSize: 20,
                 color: faint,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                    width: 44, height: 44),
+                constraints:
+                    const BoxConstraints.tightFor(width: 44, height: 44),
               )),
         IconButton(
           tooltip: _statsVisible ? 'إخفاء الأرقام' : 'إظهار الأرقام',
@@ -556,8 +560,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           iconSize: 20,
           color: faint,
           padding: EdgeInsets.zero,
-          constraints:
-              const BoxConstraints.tightFor(width: 44, height: 44),
+          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
         ),
       ],
     );
@@ -738,14 +741,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           fmtExpected: !canSeeFinancials || !_statsVisible
                               ? '••••'
                               : fmtMoney(expected),
-                          fmtWrittenOff: _dashboardController
-                                      .paymentCardWrittenOff.value >
-                                  0.5
-                              ? (!canSeeFinancials || !_statsVisible
-                                  ? '••••'
-                                  : fmtMoney(_dashboardController
-                                      .paymentCardWrittenOff.value))
-                              : null,
+                          fmtWrittenOff:
+                              _dashboardController.paymentCardWrittenOff.value >
+                                      0.5
+                                  ? (!canSeeFinancials || !_statsVisible
+                                      ? '••••'
+                                      : fmtMoney(_dashboardController
+                                          .paymentCardWrittenOff.value))
+                                  : null,
                           onTapUnpaid: canSeeFinancials
                               ? () => _showUnpaidSheet(context)
                               : showLockedPermissionHint,
@@ -1653,8 +1656,8 @@ class _AppBarIcon extends StatelessWidget {
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints.tightFor(width: 44, height: 44),
       // الافتراضي بيفرض 48؛ الـ44 كفاية للمس وبتسيب مكان لاسم التطبيق.
-      style: IconButton.styleFrom(
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+      style:
+          IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
     );
   }
 }
@@ -1958,8 +1961,7 @@ class _AtRiskDashboardCard extends StatelessWidget {
               color: t.dangerSoft,
               borderRadius: BorderRadius.circular(AppRadius.chip),
             ),
-            child:
-                Icon(Icons.warning_amber_rounded, size: 22, color: t.danger),
+            child: Icon(Icons.warning_amber_rounded, size: 22, color: t.danger),
           ),
           const SizedBox(width: AppSpace.md),
           Expanded(
@@ -2229,7 +2231,9 @@ class _PaymentProgressCard extends StatelessWidget {
                         else
                           _StatusChip(
                             icon: Icons.check_circle_rounded,
-                            label: fmtWrittenOff != null ? 'مسدّد (بإسقاط)' : 'الكل دفع',
+                            label: fmtWrittenOff != null
+                                ? 'مسدّد (بإسقاط)'
+                                : 'الكل دفع',
                             color: t.positive,
                             background: t.positiveSoft,
                           ),
@@ -2463,8 +2467,7 @@ class _ActivityButton extends StatelessWidget {
             Expanded(
               child: Text(label, style: AppType.label.copyWith(color: t.ink)),
             ),
-            if (locked)
-              Icon(Icons.lock_rounded, size: 16, color: t.inkFaint),
+            if (locked) Icon(Icons.lock_rounded, size: 16, color: t.inkFaint),
           ],
         ),
       ),

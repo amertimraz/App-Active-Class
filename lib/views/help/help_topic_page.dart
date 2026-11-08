@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import 'package:active_class/tour/tour.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/help/help_content.dart';
@@ -94,6 +95,23 @@ class HelpTopicPage extends StatelessWidget {
               ),
             ]),
           ),
+          if (topic.tourId != null) ...[
+            const SizedBox(height: AppSpace.md),
+            FilledButton.icon(
+              onPressed: () {
+                // الجولة بتبدأ من الرئيسية: نقفل المساعدة ونرجع لها.
+                Get.until((r) => r.settings.name == ROUTE_HOME || r.isFirst);
+                TourController.instance.start(topic.tourId!);
+              },
+              icon: const Icon(Icons.touch_app_rounded, size: 20),
+              label: Text('جرّبها بنفسك',
+                  style: AppType.label.copyWith(color: t.onChalk)),
+              style: FilledButton.styleFrom(
+                  backgroundColor: t.brand,
+                  foregroundColor: t.onChalk,
+                  minimumSize: const Size(44, 48)),
+            ),
+          ],
           if (topic.route != null) ...[
             const SizedBox(height: AppSpace.md),
             FilledButton.icon(

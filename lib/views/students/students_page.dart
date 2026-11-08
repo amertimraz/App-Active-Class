@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:active_class/tour/tour.dart';
 import 'package:active_class/utils/responsive.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/widgets/guardian_phone_line.dart';
@@ -190,12 +191,15 @@ class _StudentsPageState extends State<StudentsPage>
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showAddStudentSheet(context, controller: controller),
-        backgroundColor: t.chalk,
-        foregroundColor: t.onChalk,
-        icon: const Icon(Icons.person_add_rounded),
-        label: const Text('إضافة طالب'),
+      floatingActionButton: TourTarget(
+        id: 'students.add',
+        child: FloatingActionButton.extended(
+          onPressed: () => showAddStudentSheet(context, controller: controller),
+          backgroundColor: t.chalk,
+          foregroundColor: t.onChalk,
+          icon: const Icon(Icons.person_add_rounded),
+          label: const Text('إضافة طالب'),
+        ),
       ),
       body: ColoredBox(
         color: t.page,
@@ -278,8 +282,8 @@ class _StudentsPageState extends State<StudentsPage>
         ),
         child: Row(children: [
           Expanded(
-              child: BoardStat(
-                  label: 'طالب', value: '$total', color: t.boardInk)),
+              child:
+                  BoardStat(label: 'طالب', value: '$total', color: t.boardInk)),
           Expanded(
               child: BoardStat(
                   label: 'مجموعة',
@@ -293,8 +297,8 @@ class _StudentsPageState extends State<StudentsPage>
         ]),
       ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(
-            AppSpace.lg, AppSpace.md, AppSpace.lg, 0),
+        padding:
+            const EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.md, AppSpace.lg, 0),
         child: Column(children: [
           // Search bar + ترتيب (السيرش قابل للانكماش عشان الأيقونات تفضل
           // ظاهرة كاملة على الشاشات الضيقة بدل ما يحصل overflow)
@@ -339,11 +343,10 @@ class _StudentsPageState extends State<StudentsPage>
                       ),
                     ),
                     ..._groups.map((g) {
-                      final color =
-                          g.color != null ? Color(g.color!) : t.brand;
+                      final color = g.color != null ? Color(g.color!) : t.brand;
                       return Padding(
-                        padding:
-                            const EdgeInsetsDirectional.only(start: AppSpace.sm),
+                        padding: const EdgeInsetsDirectional.only(
+                            start: AppSpace.sm),
                         child: Center(
                           child: AppFilterChip(
                             label: g.name,
@@ -368,8 +371,8 @@ class _StudentsPageState extends State<StudentsPage>
   // ── List ─────────────────────────────────────────────────────────
   Widget _buildList(BuildContext context, List<Student> students) {
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(
-          AppSpace.lg, AppSpace.xs, AppSpace.lg, 100),
+      padding:
+          const EdgeInsets.fromLTRB(AppSpace.lg, AppSpace.xs, AppSpace.lg, 100),
       itemCount: students.length,
       itemBuilder: (_, i) => _StudentCard(
         student: students[i],
@@ -390,13 +393,13 @@ class _StudentsPageState extends State<StudentsPage>
         padding: const EdgeInsets.fromLTRB(
             AppSpace.lg, AppSpace.xs, AppSpace.lg, 100),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount:
-              adaptiveColumns(box.maxWidth, phone: 2, minTileWidth: 230, max: 5),
+          crossAxisCount: adaptiveColumns(box.maxWidth,
+              phone: 2, minTileWidth: 230, max: 5),
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
           // ارتفاع ثابت بيكبر مع حجم الخط بدل نسبة ثابتة (عشان الاسم لسطرين).
-          mainAxisExtent: 112 +
-              105 * MediaQuery.textScalerOf(context).scale(14) / 14,
+          mainAxisExtent:
+              112 + 105 * MediaQuery.textScalerOf(context).scale(14) / 14,
         ),
         itemCount: students.length,
         itemBuilder: (_, i) => _StudentGridTile(
@@ -421,10 +424,12 @@ class _StudentsPageState extends State<StudentsPage>
         future: DatabaseService().getGroup(student.groupId),
         builder: (context, snapshot) {
           final group = snapshot.data;
-          final borderColor =
-              group?.color != null ? Color(group!.color!) : AppTheme.primaryColor;
+          final borderColor = group?.color != null
+              ? Color(group!.color!)
+              : AppTheme.primaryColor;
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             contentPadding: EdgeInsets.zero,
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -435,7 +440,8 @@ class _StudentsPageState extends State<StudentsPage>
                   padding: const EdgeInsets.symmetric(vertical: 20),
                   decoration: BoxDecoration(
                     color: borderColor.withValues(alpha: 0.1),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(20)),
                   ),
                   child: Column(children: [
                     Text(
@@ -464,8 +470,7 @@ class _StudentsPageState extends State<StudentsPage>
                       : Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            border:
-                                Border.all(color: borderColor, width: 3),
+                            border: Border.all(color: borderColor, width: 3),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: QrImageView(
@@ -508,7 +513,8 @@ class _StudentsPageState extends State<StudentsPage>
                         if (!ctx.mounted) return;
                         Navigator.of(ctx).pop();
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(ok ? 'تم حفظ صورة QR بنجاح' : 'تعذر حفظ الصورة'),
+                          content: Text(
+                              ok ? 'تم حفظ صورة QR بنجاح' : 'تعذر حفظ الصورة'),
                           behavior: SnackBarBehavior.floating,
                           backgroundColor: ok ? Colors.green : Colors.red,
                           duration: const Duration(seconds: 2),
@@ -563,16 +569,20 @@ class _StudentsPageState extends State<StudentsPage>
       );
       final ui.Image qrImage = await painter.toImage(qrSize.toDouble());
       final textStyleTitle = const TextStyle(
-          color: Colors.black, fontSize: 48, fontWeight: FontWeight.w600, fontFamily: 'Cairo');
-      final textStyleSub =
-          const TextStyle(color: Colors.black, fontSize: 36, fontFamily: 'Cairo');
+          color: Colors.black,
+          fontSize: 48,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'Cairo');
+      final textStyleSub = const TextStyle(
+          color: Colors.black, fontSize: 36, fontFamily: 'Cairo');
       final tpName = TextPainter(
         text: TextSpan(text: student.name, style: textStyleTitle),
         textAlign: TextAlign.center,
         textDirection: ui.TextDirection.rtl,
       )..layout(maxWidth: qrSize.toDouble());
-      final groupLine =
-          (groupName == null || groupName.isEmpty) ? null : 'المجموعة: $groupName';
+      final groupLine = (groupName == null || groupName.isEmpty)
+          ? null
+          : 'المجموعة: $groupName';
       final TextPainter? tpGroup = groupLine == null
           ? null
           : (TextPainter(
@@ -588,7 +598,8 @@ class _StudentsPageState extends State<StudentsPage>
       final double textHeight =
           tpName.height + (tpGroup?.height ?? 0) + tpCode.height + spacing * 2;
       final int widthPx = (qrSize + padding * 2).round();
-      final int heightPx = (padding + qrSize + spacing + textHeight + padding).round();
+      final int heightPx =
+          (padding + qrSize + spacing + textHeight + padding).round();
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
       canvas.drawRect(
@@ -610,7 +621,8 @@ class _StudentsPageState extends State<StudentsPage>
       }
       tpCode.paint(canvas, Offset((widthPx - tpCode.width) / 2, y));
       final composed = await recorder.endRecording().toImage(widthPx, heightPx);
-      final byteData = await composed.toByteData(format: ui.ImageByteFormat.png);
+      final byteData =
+          await composed.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return false;
       await Permission.storage.request();
       await MediaStore.ensureInitialized();
@@ -633,10 +645,11 @@ class _StudentsPageState extends State<StudentsPage>
         final sUri = saveInfo?.uri;
         if (sUri != null) {
           try {
-            final path =
-                await MediaStore().getFilePathFromUri(uriString: sUri.toString());
+            final path = await MediaStore()
+                .getFilePathFromUri(uriString: sUri.toString());
             if (path != null && path.isNotEmpty) {
-              await DatabaseService().updateStudent(student.copyWith(qrPath: path));
+              await DatabaseService()
+                  .updateStudent(student.copyWith(qrPath: path));
             }
           } catch (_) {}
         }
