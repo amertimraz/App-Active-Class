@@ -30,8 +30,7 @@ void main() {
     final missing = <String>[
       for (final t in kTours)
         for (final s in t.steps)
-          if (!RegExp("TourTarget\\(\\s*id:\\s*'${RegExp.escape(s.target)}'")
-              .hasMatch(source))
+          if (s.target.isNotEmpty && !source.contains("'${s.target}'"))
             '${t.id}: ${s.target}',
     ];
     expect(missing, isEmpty, reason: 'عناصر الجولة مش موجودة:\n${missing.join('\n')}');

@@ -16,7 +16,7 @@ import 'package:active_class/config/theme.dart';
 
 /// إزاي الخطوة بتخلص: بالضغط على العنصر نفسه، أو بزرار «التالي» في الفقاعة
 /// (للخانات اللي بتتكتب).
-enum TourAdvance { tap, next }
+enum TourAdvance { tap, next, auto }
 
 class TourStep {
   /// معرّف العنصر ([TourTarget.id]).
@@ -27,6 +27,12 @@ class TourStep {
   final TourAdvance advance;
 
   const TourStep(this.target, this.text, {this.advance = TourAdvance.tap});
+
+  /// خطوة بلا عنصر معيّن (نافذة اختيار مثلًا): الفقاعة بس، وبتكمّل لوحدها
+  /// أول ما عنصر الخطوة اللي بعدها يظهر.
+  const TourStep.free(this.text)
+      : target = '',
+        advance = TourAdvance.auto;
 }
 
 class TourDef {
@@ -46,6 +52,27 @@ class TourDef {
 /// كل الجولات. المعرّفات بتتربط من موضوع المساعدة (HelpTopic.tourId).
 const List<TourDef> kTours = [
   TourDef(
+    id: 'add_group',
+    title: 'ضيف أول مجموعة',
+    steps: [
+      TourStep('home.groups', 'من الرئيسية اضغط **المجموعات**.'),
+      TourStep('groups.add', 'اضغط **مجموعة جديدة**.'),
+      TourStep('group.name', 'اكتب **اسم المجموعة** وبعدين اضغط التالي.',
+          advance: TourAdvance.next),
+      TourStep('group.codePrice',
+          'اكتب **بادئة الكود** (حروف قصيرة زي G4A، منها بتتولّد أكواد الطلاب) وسعر الاشتراك، وبعدين اضغط التالي.',
+          advance: TourAdvance.next),
+      TourStep('group.pricing',
+          'اختار **شهري** أو **بالحصة**. لو بالحصة بيتحسب على كل حصة يحضرها الطالب.',
+          advance: TourAdvance.next),
+      TourStep('group.schedule',
+          'ضيف مواعيد الحصص من **إضافة موعد**. منها بيتحدد مين عليه حصة النهارده وبتوصلك إشعارات الحصص. وبعدين اضغط التالي.',
+          advance: TourAdvance.next),
+      TourStep('group.save', 'اضغط **إضافة المجموعة** — وخلاص!'),
+    ],
+    done: 'برافو! ضفت مجموعة 🎉 دلوقتي ضيف طلابها من الطلاب.',
+  ),
+  TourDef(
     id: 'add_student',
     title: 'ضيف أول طالب',
     steps: [
@@ -62,6 +89,53 @@ const List<TourDef> kTours = [
       TourStep('student.save', 'اضغط **إضافة الطالب** — وخلاص!'),
     ],
     done: 'برافو! ضفت طالب 🎉 الكود والـQR بتوعه بتلاقيهم في صفحته.',
+  ),
+  TourDef(
+    id: 'attendance',
+    title: 'سجّل حضور حصة',
+    steps: [
+      TourStep('home.attendance', 'من الرئيسية اضغط **الحضور**.'),
+      TourStep('attendance.session',
+          'دي مجموعات النهارده حسب جدولها. اضغط كارت المجموعة.'),
+      TourStep('attendance.markAll',
+          'اضغط **تحضير الكل** لو أغلب الطلاب حاضرين، وبعدين عدّل الغايبين بس.',
+          advance: TourAdvance.next),
+      TourStep('attendance.row',
+          'أو اختار لكل طالب **حاضر** أو **متأخر** أو **غائب**. اضغط على الصف علشان تخلّص.'),
+    ],
+    done: 'تمام! كده سجّلت الحضور 🎉 تقدر تبعت تقرير الحصة لأولياء الأمور من نفس النافذة.',
+  ),
+  TourDef(
+    id: 'payment',
+    title: 'سجّل أول دفعة',
+    steps: [
+      TourStep('home.payments', 'من الرئيسية اضغط **المدفوعات**.'),
+      TourStep('payments.add', 'اضغط **تسجيل دفعة**.'),
+      TourStep.free('اختار الطالب من القايمة اللي ظهرت (**اختر الطالب**).'),
+      TourStep('payment.amount',
+          'اكتب **المبلغ** اللي دفعه (الدفعة الجزئية عادية)، وبعدين اضغط التالي.',
+          advance: TourAdvance.next),
+      TourStep('payment.save', 'اضغط **تسجيل الدفعة** — وخلاص!'),
+    ],
+    done: 'برافو! سجّلت أول دفعة 🎉 مديونية الطالب بتتحدّث لوحدها.',
+  ),
+  TourDef(
+    id: 'online_exam',
+    title: 'اعمل أول امتحان إلكتروني',
+    steps: [
+      TourStep('home.exams', 'من الرئيسية اضغط **الامتحانات**.'),
+      TourStep('exams.onlineTab', 'اختار تاب **إلكتروني**.'),
+      TourStep('exams.newOnline', 'اضغط **امتحان إلكتروني جديد**.'),
+      TourStep('exam.name', 'اكتب **اسم الامتحان** وبعدين اضغط التالي.',
+          advance: TourAdvance.next),
+      TourStep('exam.bank',
+          'ضيف أسئلتك: إما من **أضف من بنك الأسئلة** هنا، أو بزرار **اختيار من متعدد** تحت. وبعدين اضغط التالي.',
+          advance: TourAdvance.next),
+      TourStep('exam.publish',
+          'لما تخلّص اضغط **نشر**، وهيطلعلك رابط تبعته للطلاب. ولو لسه، سيبه واضغط التالي.',
+          advance: TourAdvance.next),
+    ],
+    done: 'تمام! الامتحان الإلكتروني جاهز للنشر 🎉 النتايج بتتجمّع لوحدها في التطبيق.',
   ),
 ];
 
@@ -215,6 +289,17 @@ class _TourLayerState extends State<TourLayer>
   void _measure() {
     final s = _c.step;
     Rect? r;
+    if (s != null && s.advance == TourAdvance.auto) {
+      // خطوة بلا عنصر: نكمّل لما عنصر الخطوة اللي بعدها يظهر.
+      final steps = _c.tour!.steps;
+      final nxt = _c.index + 1 < steps.length ? steps[_c.index + 1] : null;
+      final ctx = nxt == null ? null : _c.keyFor(nxt.target)?.currentContext;
+      final ro = ctx?.findRenderObject();
+      if (ro is RenderBox && ro.attached && ro.hasSize) {
+        scheduleMicrotask(_c.next);
+      }
+      return;
+    }
     if (s != null) {
       final ctx = _c.keyFor(s.target)?.currentContext;
       final box = ctx?.findRenderObject();
@@ -262,6 +347,22 @@ class _TourLayerState extends State<TourLayer>
           step.advance == TourAdvance.tap && hole == null ? 'تخطّي' : null,
       onSkip: _c.next,
     );
+    if (step.advance == TourAdvance.auto) {
+      return Align(
+        alignment: Alignment.bottomCenter,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpace.lg),
+            child: _Bubble(
+              title: '${_c.tour!.title} — ${_c.index + 1} من $total',
+              text: step.text,
+              secondaryLabel: 'إنهاء الجولة',
+              onSecondary: _c.stop,
+            ),
+          ),
+        ),
+      );
+    }
     if (hole == null) {
       // العنصر لسه مش ظاهر: الفقاعة بس تحت، والشاشة شغّالة عادي.
       return Align(

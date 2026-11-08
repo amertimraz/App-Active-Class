@@ -148,6 +148,7 @@ const kHelpTopics = <HelpTopic>[
     route: ROUTE_GROUPS,
     routeLabel: 'افتح المجموعات',
     related: ['students', 'payments', 'backup'],
+    tourId: 'add_group',
   ),
   HelpTopic(
     id: 'students',
@@ -199,6 +200,7 @@ const kHelpTopics = <HelpTopic>[
     route: ROUTE_ATTENDANCE,
     routeLabel: 'افتح الحضور',
     related: ['mark_all', 'cancel_session', 'parent_report', 'fix_group_missing'],
+    tourId: 'attendance',
   ),
   HelpTopic(
     id: 'payments',
@@ -226,6 +228,7 @@ const kHelpTopics = <HelpTopic>[
     route: ROUTE_PAYMENTS,
     routeLabel: 'افتح المدفوعات',
     related: ['remind_debtors', 'billing_settings', 'exemption_siblings'],
+    tourId: 'payment',
   ),
 
   HelpTopic(
@@ -624,6 +627,7 @@ const kHelpTopics = <HelpTopic>[
     route: ROUTE_EXAMS,
     routeLabel: 'افتح الامتحانات',
     related: ['portal', 'student_page'],
+    tourId: 'online_exam',
   ),
   HelpTopic(
     id: 'points',

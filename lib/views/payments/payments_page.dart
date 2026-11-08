@@ -1,6 +1,7 @@
 // lib/views/payments/payments_page.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:active_class/tour/tour.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:intl/intl.dart';
 import 'package:active_class/config/theme.dart';
@@ -101,14 +102,14 @@ class _PaymentsPageState extends State<PaymentsPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: TourTarget(id: 'payments.add', child: FloatingActionButton.extended(
         onPressed: () =>
             _showAddPaymentDialog(context, controller, studentController),
         backgroundColor: t.chalk,
         foregroundColor: t.onChalk,
         icon: const Icon(Icons.add),
         label: const Text('تسجيل دفعة'),
-      ),
+      )),
       body: ColoredBox(
         color: t.page,
         child: Obx(() {
@@ -1729,11 +1730,11 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
                     const SizedBox(height: AppSpace.md),
 
                     // المبلغ
-                    CustomTextField(
+                    TourTarget(id: 'payment.amount', child: CustomTextField(
                       controller: _amountCtrl,
                       label: 'المبلغ *',
                       keyboardType: TextInputType.number,
-                    ),
+                    )),
 
                     const SizedBox(height: AppSpace.md),
 
@@ -1747,7 +1748,7 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
                     const SizedBox(height: AppSpace.lg),
 
                     // زرار الحفظ
-                    FilledButton.icon(
+                    TourTarget(id: 'payment.save', child: FilledButton.icon(
                       style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(52),
                         shape: RoundedRectangleBorder(
@@ -1764,7 +1765,7 @@ class _AddPaymentSheetState extends State<_AddPaymentSheet> {
                           : const Icon(Icons.check_rounded),
                       label: Text(_saving ? 'جاري الحفظ...' : 'تسجيل الدفعة',
                           style: AppType.label.copyWith(color: Colors.white)),
-                    ),
+                    )),
                   ],
                 ),
               ),

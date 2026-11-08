@@ -68,4 +68,40 @@ void main() {
     await tester.tap(find.text('تاني'));
     expect(other, 1);
   });
+
+  testWidgets('خطوة بلا عنصر بتكمّل لوحدها لما عنصر اللي بعدها يظهر',
+      (tester) async {
+    final show = ValueNotifier(false);
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      builder: (c, child) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Stack(children: [
+          child!,
+          const Positioned.fill(child: TourLayer()),
+        ]),
+      ),
+      home: Scaffold(
+        body: ValueListenableBuilder<bool>(
+          valueListenable: show,
+          builder: (_, v, __) => v
+              ? const TourTarget(id: 'payment.amount', child: TextField())
+              : const SizedBox(),
+        ),
+      ),
+    ));
+    final c = TourController.instance;
+    c.start('payment');
+    c.next();
+    c.next(); // الخطوة الحرّة (اختر الطالب)
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(c.index, 2);
+    expect(find.textContaining('اختر الطالب'), findsOneWidget);
+    show.value = true;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(c.index, 3);
+    expect(tester.takeException(), isNull);
+  });
 }

@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import 'package:active_class/tour/tour.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/models/group_model.dart';
@@ -116,13 +117,13 @@ class _GroupsPageState extends State<GroupsPage> {
       appBar: buildBoardAppBar(context, title: 'المجموعات', actions: const [
         HelpButton(topicId: 'groups'),
       ]),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: TourTarget(id: 'groups.add', child: FloatingActionButton.extended(
         onPressed: () => _onAdd(context),
         backgroundColor: t.chalk,
         foregroundColor: t.onChalk,
         icon: const Icon(Icons.add_rounded),
         label: const Text('مجموعة جديدة'),
-      ),
+      )),
       body: ColoredBox(
         color: t.page,
         child: Obx(() {

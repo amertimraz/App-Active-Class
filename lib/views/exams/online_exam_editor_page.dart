@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:active_class/tour/tour.dart';
 import 'package:active_class/widgets/image_crop_picker.dart';
 import 'package:intl/intl.dart';
 
@@ -556,11 +557,11 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
             style: const TextStyle(
                 fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
         actions: [
-          IconButton(
+          TourTarget(id: 'exam.bank', child: IconButton(
             tooltip: 'أضف من بنك الأسئلة',
             icon: const Icon(Icons.library_add_outlined),
             onPressed: _addFromBank,
-          ),
+          )),
           IconButton(
             tooltip: 'معاينة',
             icon: const Icon(Icons.visibility_outlined),
@@ -690,7 +691,7 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: FilledButton(
+            child: TourTarget(id: 'exam.publish', child: FilledButton(
               onPressed: _busy ? null : _publish,
               style: FilledButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor),
@@ -702,7 +703,7 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                           strokeWidth: 2, color: Colors.white))
                   : const Text('نشر',
                       style: TextStyle(fontFamily: 'Cairo')),
-            ),
+            )),
           ),
         ]),
       ),
@@ -791,7 +792,7 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                     fontSize: 14)),
           ]),
           const SizedBox(height: 12),
-          TextField(
+          TourTarget(id: 'exam.name', child: TextField(
             controller: _nameCtrl,
             style: const TextStyle(fontFamily: 'Cairo', fontSize: 14),
             decoration: const InputDecoration(
@@ -800,7 +801,7 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
               isDense: true,
               border: OutlineInputBorder(),
             ),
-          ),
+          )),
           const SizedBox(height: 14),
           _miniLabel('المجموعات المسموح لها'),
           Obx(() => GroupMultiSelectField(

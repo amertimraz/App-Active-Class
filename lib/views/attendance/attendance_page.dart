@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:active_class/tour/tour.dart';
 import 'package:active_class/utils/session_guest.dart';
 import 'package:get/get.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
@@ -377,7 +378,7 @@ class _RegisterTabState extends State<_RegisterTab> {
                         final gTotal = groupStudents.length;
                         final gRate = gTotal > 0 ? gPresent / gTotal : 0.0;
 
-                        return _GroupSummaryCard(
+                        final card = _GroupSummaryCard(
                           group: group,
                           sessionTime: sessionTime,
                           presentCount: gPresent,
@@ -402,6 +403,9 @@ class _RegisterTabState extends State<_RegisterTab> {
                             onReportSent: () => widget.onReportSent(group.id!),
                           ),
                         );
+                        return gi == 0
+                            ? TourTarget(id: 'attendance.session', child: card)
+                            : card;
                       },
                     ),
         ),
@@ -1496,7 +1500,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                   crossAxisAlignment: WrapCrossAlignment.center,
                                   spacing: AppSpace.sm,
                                   children: [
-                                    TextButton.icon(
+                                    TourTarget(id: 'attendance.markAll', child: TextButton.icon(
                                       onPressed: () =>
                                           controller.markGroupAllPresent(
                                         groupStudents
@@ -1520,7 +1524,7 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                               : 'تحضير الكل',
                                           style: AppType.body.copyWith(
                                               fontWeight: FontWeight.w700)),
-                                    ),
+                                    )),
                                     // طالب من مجموعة تانية بيحضر الحصة دي كضيف (تعويضية) —
                                     // بيظهر بس لو الإعداد مفعّل في إعدادات الحضور.
                                     if (cfg.allowGuestStudents.value)
@@ -1629,7 +1633,12 @@ class _AttendanceSheetState extends State<_AttendanceSheet> {
                                                 height: 1,
                                                 thickness: 1,
                                                 color: t.line),
-                                          attendanceRow(visibleStudents[i]),
+                                          i == 0
+                                              ? TourTarget(
+                                                  id: 'attendance.row',
+                                                  child: attendanceRow(
+                                                      visibleStudents[i]))
+                                              : attendanceRow(visibleStudents[i]),
                                         ],
                                       ]),
                                     ),

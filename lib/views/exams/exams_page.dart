@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:active_class/tour/tour.dart';
 import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/exam_controller.dart';
@@ -218,7 +219,7 @@ class _ExamsPageState extends State<ExamsPage>
           dividerColor: Colors.transparent,
           labelStyle: AppType.label,
           unselectedLabelStyle: AppType.label,
-          tabs: const [
+          tabs: [
             Tab(
                 height: 46,
                 child: Row(
@@ -228,7 +229,7 @@ class _ExamsPageState extends State<ExamsPage>
                       SizedBox(width: 6),
                       Text('ورقي'),
                     ])),
-            Tab(
+            TourTarget(id: 'exams.onlineTab', child: Tab(
                 height: 46,
                 child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -236,7 +237,7 @@ class _ExamsPageState extends State<ExamsPage>
                       Icon(Icons.wifi_tethering_rounded, size: 18),
                       SizedBox(width: 6),
                       Text('إلكتروني'),
-                    ])),
+                    ]))),
           ],
         ),
       ),
@@ -254,7 +255,7 @@ class _ExamsPageState extends State<ExamsPage>
               final access = TeamModeService().onlineExamAccessNow;
               if (!access.canCreate) return const SizedBox.shrink();
               final games = OnlineExamsTab.section.value == 1;
-              return FloatingActionButton.extended(
+              return TourTarget(id: 'exams.newOnline', child: FloatingActionButton.extended(
                 onPressed: () async {
                   if (games) {
                     await Get.to(() => const GameTypePickerPage());
@@ -270,7 +271,7 @@ class _ExamsPageState extends State<ExamsPage>
                         fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
                 backgroundColor: AppTheme.primaryColor,
                 foregroundColor: Colors.white,
-              );
+              ));
             }),
       body: TabBarView(
         controller: _tab,

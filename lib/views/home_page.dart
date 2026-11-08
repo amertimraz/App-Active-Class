@@ -389,9 +389,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     locked: item.locked,
                   );
                   // «جرّبها بنفسك»: جولة «ضيف أول طالب» بتبدأ من هنا.
-                  return item.label == 'الطلاب'
-                      ? TourTarget(id: 'home.students', child: tile)
-                      : tile;
+                  const tourIds = {
+                    'الطلاب': 'home.students',
+                    'المجموعات': 'home.groups',
+                    'الحضور': 'home.attendance',
+                    'المدفوعات': 'home.payments',
+                    'الامتحانات': 'home.exams',
+                  };
+                  final tid = tourIds[item.label];
+                  return tid == null ? tile : TourTarget(id: tid, child: tile);
                 },
               );
             });

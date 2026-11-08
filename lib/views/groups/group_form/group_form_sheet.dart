@@ -5,6 +5,7 @@
 // وgroup_details_page.dart معًا بدل نسختين منفصلتين (spec 039،
 // راجع research.md #2).
 import 'package:flutter/material.dart';
+import 'package:active_class/tour/tour.dart';
 import 'package:active_class/utils/whatsapp_targets.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/models/group_model.dart';
@@ -371,16 +372,16 @@ class GroupFormSheetState extends State<GroupFormSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const FormSectionTitle('الأساسي', icon: Icons.badge_rounded),
-                  CustomTextField(
+                  TourTarget(id: 'group.name', child: CustomTextField(
                     dense: true,
                     controller: _nameCtrl,
                     label: 'اسم المجموعة *',
-                  ),
+                  )),
                   if (_nameError != null) ErrorText(_nameError!),
                   const SizedBox(height: 12),
 
                   // بادئة الكود والسعر في صف
-                  Row(
+                  TourTarget(id: 'group.codePrice', child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
@@ -417,13 +418,13 @@ class GroupFormSheetState extends State<GroupFormSheet> {
                         ),
                       ),
                     ],
-                  ),
+                  )),
                   const SizedBox(height: 12),
 
                   // نوع التسعير — شهري أو بالحصة
                   const FormLabel('نوع التسعير'),
                   const SizedBox(height: 6),
-                  Row(children: [
+                  TourTarget(id: 'group.pricing', child: Row(children: [
                     Expanded(
                       child: PricingTypeChip(
                         label: 'شهري',
@@ -441,7 +442,7 @@ class GroupFormSheetState extends State<GroupFormSheet> {
                             () => _pricingType = GroupPricingType.perSession),
                       ),
                     ),
-                  ]),
+                  ])),
                   const SizedBox(height: 18),
 
                   // رابط جروب واتساب (اختياري)
@@ -501,14 +502,14 @@ class GroupFormSheetState extends State<GroupFormSheet> {
                   const SizedBox(height: 18),
 
                   // المواعيد
-                  GroupScheduleEditor(
+                  TourTarget(id: 'group.schedule', child: GroupScheduleEditor(
                     controller: _scheduleCtrl,
                     onChanged: () {
                       if (_scheduleError != null) {
                         setState(() => _scheduleError = null);
                       }
                     },
-                  ),
+                  )),
                   if (_scheduleError != null) ErrorText(_scheduleError!),
                 ],
               ),
@@ -536,7 +537,7 @@ class GroupFormSheetState extends State<GroupFormSheet> {
               const SizedBox(width: AppSpace.md),
               Expanded(
                 flex: 2,
-                child: FilledButton.icon(
+                child: TourTarget(id: 'group.save', child: FilledButton.icon(
                   onPressed: _saving ? null : _submit,
                   style: FilledButton.styleFrom(
                     backgroundColor: t.chalk,
@@ -554,7 +555,7 @@ class GroupFormSheetState extends State<GroupFormSheet> {
                       : Icon(isEdit ? Icons.save_rounded : Icons.add_rounded),
                   label: Text(isEdit ? 'حفظ التعديلات' : 'إضافة المجموعة',
                       style: AppType.label.copyWith(color: t.onChalk)),
-                ),
+                )),
               ),
             ]),
           ),
