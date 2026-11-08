@@ -12,6 +12,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter/widgets.dart'
     show WidgetsBinding, WidgetsBindingObserver, AppLifecycleState;
 import 'package:get/get.dart';
@@ -260,6 +261,9 @@ class SyncEngine with WidgetsBindingObserver {
   /// يبقى التايمر الدوري نفسه توقف (مش بس فشل الإرسال).
   DateTime? lastDrainAt;
 
+  /// آخر مرة صف اترفع للسيرفر بنجاح (للنبضة اللي المدرّس بيشوفها).
+  DateTime? lastPushOkAt;
+
   Future<void> drainOutbox() async {
     if (_draining) return;
     _draining = true;
@@ -299,6 +303,7 @@ class SyncEngine with WidgetsBindingObserver {
         try {
           final done = await _pushOne(table, rowId, op, payloadStr);
           if (done) {
+            lastPushOkAt = DateTime.now();
             // مفيش حد بيقرا صفوف outbox بعد ما تتزامن — نمسحها بدل ما
             // نعلّمها بس synced=1 ونسيبها تتراكم في الداتابيز المحلية
             // للأبد (وضع الفريق شغال باستمرار، يعني آلاف الصفوف بمرور
@@ -365,6 +370,50 @@ class SyncEngine with WidgetsBindingObserver {
       }
     } finally {
       _draining = false;
+      unawaited(reportDeviceStatus());
+    }
+  }
+
+  DateTime? _lastStatusReport;
+  static String? _cachedAppVersion;
+
+  /// نبضة حالة الجهاز للسيرفر (آخر رفع/سحب + معلّق + ناقص + آخر خطأ) علشان
+  /// المدرّس يشوف حالة كل أجهزة الفريق. best-effort: أي فشل (نت، أو الـmigration
+  /// لسه ما اتطبّقتش) بيتتجاهل بهدوء. بحد أدنى 45 ثانية بين نبضتين.
+  Future<void> reportDeviceStatus({bool force = false}) async {
+    final now = DateTime.now();
+    if (!force &&
+        _lastStatusReport != null &&
+        now.difference(_lastStatusReport!) < const Duration(seconds: 45)) {
+      return;
+    }
+    _lastStatusReport = now;
+    try {
+      final pending = await pendingOutboxCount();
+      final unsynced =
+          (await unsyncedRowCounts()).values.fold<int>(0, (a, b) => a + b);
+      _cachedAppVersion ??= await _readAppVersion();
+      await client.rpc('report_device_status', params: {
+        '_team_id': teamId,
+        '_device_id': deviceId,
+        '_pending': pending,
+        '_unsynced': unsynced,
+        '_last_push_at': lastPushOkAt?.toUtc().toIso8601String(),
+        '_last_pull_at': lastFullPullAt?.toUtc().toIso8601String(),
+        '_last_error': lastOutboxErrorIsTransient ? null : lastOutboxError,
+        '_app_version': _cachedAppVersion,
+      }).timeout(_kNetworkTimeout);
+    } catch (e) {
+      debugPrint('SyncEngine: تعذّر إرسال نبضة الحالة — $e');
+    }
+  }
+
+  Future<String?> _readAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      return '${info.version}+${info.buildNumber}';
+    } catch (_) {
+      return null;
     }
   }
 
@@ -630,6 +679,10 @@ class SyncEngine with WidgetsBindingObserver {
           'sibling_group_committed_count':
               payload[COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT],
           'siblings_total': payload[COL_STUDENT_SIBLINGS_TOTAL],
+          // بيتبعت بس لو متحدد — عشان سيرفر لسه ما اتحدّثش بالعمود ما يرفضش
+          // أي تعديل عادي على الطالب.
+          if (payload[COL_STUDENT_SIBLINGS_FROM] != null)
+            'siblings_from': payload[COL_STUDENT_SIBLINGS_FROM],
           'name': payload[COL_STUDENT_NAME],
           'code': payload[COL_STUDENT_CODE],
           'price': payload[COL_STUDENT_PRICE],
@@ -1073,6 +1126,28 @@ class SyncEngine with WidgetsBindingObserver {
     if (await _wasDeviceUnbound()) return;
     onReconnected?.call();
     await _fullPull(includeDeleted: true);
+    _autoRepairUnsynced();
+  }
+
+  DateTime? _lastAutoRepair;
+
+  /// علاج ذاتي: صفوف محلية عمرها ما اتزامنت (بلا remote_id ومش في الطابور)
+  /// بتتعاد للطابور تلقائيًا بعد أي سحب ناجح، بحد أقصى مرة كل 10 دقايق.
+  /// قبل كده كان العلاج ده زرار يدوي («رفع الصفوف الناقصة») في شاشة الفريق،
+  /// وبلاغ 2026-11-08 كان فيه تابلت مساعد عنده ~30 تحضير ما وصلوش
+  /// السيرفر (اتشالوا من الطابور بعد فشل متكرر) فمدرّس شاف أرقام مختلفة.
+  /// آمن: الرفع upsert بمفتاح (team,device,local_id) فمفيش تكرار.
+  void _autoRepairUnsynced() {
+    if (lastFullPullAt == null) return;
+    final now = DateTime.now();
+    if (_lastAutoRepair != null &&
+        now.difference(_lastAutoRepair!) < const Duration(minutes: 10)) {
+      return;
+    }
+    _lastAutoRepair = now;
+    unawaited(enqueueUnsyncedRows().then((n) {
+      if (n > 0) debugPrint('SyncEngine: علاج ذاتي — أعدت $n صف ناقص للطابور');
+    }, onError: (e) => debugPrint('SyncEngine: تعذّر العلاج الذاتي — $e')));
   }
 
   /// بتتحقق من عضوية المستخدم في الفريق ده لسه موجودة على السيرفر —
@@ -1240,6 +1315,7 @@ class SyncEngine with WidgetsBindingObserver {
       if (!failed) lastFullPullAt = DateTime.now();
     } finally {
       _pulling = false;
+      unawaited(reportDeviceStatus());
     }
   }
 
@@ -1772,8 +1848,14 @@ class SyncEngine with WidgetsBindingObserver {
       debugPrint('SyncEngine: صف مكرر وارد أقدم/خاسر — إبقاء المحلي ($table)');
       return;
     }
-    final data = Map<String, Object?>.from(localMap)
-      ..remove(COL_SYNC_REMOTE_ID);
+    // الصف المحلي يتبنّى هوية الفائز (remote_id الوارد) مش بس بياناته. قبل كده
+    // كنا نشيل الـremote_id ونسيبه مربوط بصف الخاسر على السيرفر (A): فأول ما A
+    // يتسحب تاني (طابع أقدم ومفيش تعديل معلّق) كان بيرجّع بياناته القديمة فوق
+    // بيانات الفائز، وبعده الفائز يرجّع، وكل سحب كامل يقلب النتيجة حسب ترتيب
+    // الـid (بلاغ 2026-11-08: حضور المساعد vs غياب المالك التلقائي). دلوقتي
+    // لما A يوصل تاني مفيش صف محلي بـremote_id بتاعه، فيتوفّق مع الفائز
+    // ويخسر بثبات.
+    final data = Map<String, Object?>.from(localMap);
     await db
         .update(table, data, where: '$pkCol = ?', whereArgs: [dupRow[pkCol]]);
     debugPrint('SyncEngine: توفيق صف مكرر — طُبِّق الوارد الأحدث ($table)');
@@ -1899,6 +1981,7 @@ class SyncEngine with WidgetsBindingObserver {
           COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT:
               remote['sibling_group_committed_count'],
           COL_STUDENT_SIBLINGS_TOTAL: remote['siblings_total'],
+          COL_STUDENT_SIBLINGS_FROM: remote['siblings_from'],
           COL_STUDENT_NAME: remote['name'],
           COL_STUDENT_CODE: remote['code'],
           COL_STUDENT_PRICE: remote['price'],

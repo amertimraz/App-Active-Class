@@ -26,6 +26,19 @@ class _FollowupCategoryPage extends StatelessWidget {
             Obx(() => _buildSwitchTile(
                   context,
                   isDark,
+                  icon: Icons.dashboard_customize_rounded,
+                  iconColor: const Color(0xFFEF4444),
+                  title: 'كارت المتابعة في الرئيسية',
+                  subtitle: settings.homeAtRiskCard.value
+                      ? 'ظاهر — كارت عريض في الرئيسية لو فيه طلاب محتاجين متابعة'
+                      : 'مخفي — الأيقونة فوق في الرئيسية كفاية',
+                  rxValue: settings.homeAtRiskCard,
+                  onChanged: (v) async => await settings.setHomeAtRiskCard(v),
+                )),
+            _buildDivider(isDark),
+            Obx(() => _buildSwitchTile(
+                  context,
+                  isDark,
                   icon: Icons.event_busy_rounded,
                   iconColor: const Color(0xFFEF4444),
                   title: 'غياب متتالي',

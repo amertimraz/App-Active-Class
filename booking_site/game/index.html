@@ -144,6 +144,11 @@
     background:rgba(255,255,255,.16);color:#fff;font:700 12px 'Cairo',sans-serif;padding:7px 14px;
     border-radius:999px;transition:opacity .4s;white-space:nowrap;pointer-events:none;}
   .zm-hint.off{opacity:0;}
+  /* ── ساحة المحرك (Phaser) ── */
+  .stage{position:relative;width:100%;aspect-ratio:var(--ar,1.26);border-radius:26px;overflow:hidden;
+    margin-bottom:14px;background:#1B1747;box-shadow:0 18px 40px rgba(0,0,0,.28);touch-action:manipulation;}
+  .stage canvas{display:block;margin:0 auto;}
+  .stage.race{border-radius:22px;margin-bottom:12px;}
   /* ── فرقع البالونة ── */
   .sky{display:grid;grid-template-columns:1fr 1fr;gap:16px 14px;padding:8px 4px 20px;min-height:330px;align-content:start;}
   .sky .bal:nth-child(even){margin-top:28px;}
@@ -235,6 +240,7 @@
 <canvas id="fx"></canvas>
 <div class="wrap" id="app"><div class="spinner"></div></div>
 
+<script defer src="engine/phaser.min.js"></script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getFirestore, doc, getDoc, setDoc, serverTimestamp }
@@ -269,6 +275,20 @@
     return { slug: s || '', gameId: g || '' };
   }
   const { slug, gameId } = parseIds();
+  // تجربة محلية بدون Firestore: localhost فقط (?demo=balloons|race|true_false|ladder)
+  const DEMO = (['localhost','127.0.0.1'].includes(location.hostname))
+    ? new URLSearchParams(location.search).get('demo') : null;
+  const demoGame = (type) => ({
+    title: 'لعبة تجريبية', gameType: type, status: 'closed', secondsPerQuestion: +new URLSearchParams(location.search).get('secs') || 14,
+    questions: [
+      ['عاصمة مصر؟', ['القاهرة','الإسكندرية','أسوان','الأقصر'], 0],
+      ['ناتج 7 × 8؟', ['54','56','64','48'], 1],
+      ['أكبر كوكب في المجموعة الشمسية؟', ['الأرض','المريخ','المشتري','زحل'], 2],
+      ['الماء يتجمّد عند؟', ['0°','50°','100°','-10°'], 0],
+      ['جمع زاويتي المثلث تساوي؟', ['90°','180°','270°','360°'], 1],
+      ['أطول نهر في العالم؟', ['النيل','الأمازون','دجلة','الفرات'], 0],
+    ].map(([text, options, correctIndex]) => ({ text, options, correctIndex })),
+  });
 
   const esc = (str) => { const d = document.createElement('div'); d.innerText = str ?? ''; return d.innerHTML; };
   const imgTag = (url, cls) => url
@@ -414,10 +434,81 @@
     cross:'<svg viewBox="0 0 24 24"><path d="M6.4 4.9L12 10.5l5.6-5.6 1.5 1.5-5.6 5.6 5.6 5.6-1.5 1.5-5.6-5.6-5.6 5.6-1.5-1.5 5.6-5.6-5.6-5.6z"/></svg>',
     balloon:'<svg viewBox="0 0 64 64"><ellipse cx="32" cy="26" rx="17" ry="21" fill="#E11D48"/><ellipse cx="25" cy="18" rx="5" ry="8" fill="#fff" opacity=".35"/><path d="M28 47h8l-4 6z" fill="#BE123C"/><path d="M32 53c-3 4 3 6 0 10" stroke="#2A2200" stroke-width="2" fill="none"/></svg>',
     ladder:'<svg viewBox="0 0 64 64"><rect x="14" y="6" width="6" height="52" rx="3" fill="#4F46E5"/><rect x="44" y="6" width="6" height="52" rx="3" fill="#4F46E5"/><rect x="20" y="14" width="24" height="5" rx="2" fill="#6D28D9"/><rect x="20" y="26" width="24" height="5" rx="2" fill="#6D28D9"/><rect x="20" y="38" width="24" height="5" rx="2" fill="#6D28D9"/><rect x="20" y="50" width="24" height="5" rx="2" fill="#6D28D9"/><circle cx="32" cy="9" r="5" fill="#F43F5E"/></svg>',
+    monster:'<svg viewBox="0 0 64 64"><path d="M14 28c-4-8 0-16 6-18l2 8zM50 28c4-8 0-16-6-18l-2 8z" fill="#FFF1C9"/><path d="M32 12c16 0 24 14 20 30-2 8-10 12-20 12S14 50 12 42C8 26 16 12 32 12z" fill="#22A06B"/><circle cx="24" cy="30" r="6" fill="#fff"/><circle cx="40" cy="30" r="6" fill="#fff"/><circle cx="25" cy="31" r="3" fill="#1B1747"/><circle cx="39" cy="31" r="3" fill="#1B1747"/><path d="M20 42q12 10 24 0z" fill="#3A0F2E"/><path d="M25 42l3 5 3-5zM33 42l3 5 3-5z" fill="#fff"/></svg>',
+    catcher:'<svg viewBox="0 0 64 64"><rect x="22" y="6" width="20" height="14" rx="4" fill="#F43F5E"/><path d="M8 28h48l-6 26q-18 6-36 0z" fill="#E9B25C"/><rect x="6" y="22" width="52" height="10" rx="5" fill="#9A5E1D"/><path d="M20 34l3 18M32 34v20M44 34l-3 18" stroke="#8A5214" stroke-width="2"/></svg>',
+    memory:'<svg viewBox="0 0 64 64"><rect x="6" y="12" width="26" height="36" rx="5" fill="#8B5CF6"/><rect x="32" y="16" width="26" height="36" rx="5" fill="#10B981" transform="rotate(8 45 34)"/><path d="M19 22l2.4 5 5.4.6-4 3.8 1 5.4L19 34l-4.8 2.8 1-5.4-4-3.8 5.4-.6z" fill="#FFE08A"/></svg>',
+    basket:'<svg viewBox="0 0 64 64"><circle cx="32" cy="38" r="20" fill="#F97316"/><path d="M12 38h40M32 18v40" stroke="#7C2D12" stroke-width="2.5"/><path d="M16 28q16 10 32 0M16 48q16-10 32 0" fill="none" stroke="#7C2D12" stroke-width="2.5"/><rect x="20" y="4" width="24" height="8" rx="3" fill="#EF4444"/></svg>',
+    targets:'<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" fill="#fff" stroke="#E11D48" stroke-width="3"/><circle cx="32" cy="32" r="19" fill="#E11D48"/><circle cx="32" cy="32" r="12" fill="#fff"/><circle cx="32" cy="32" r="6" fill="#E11D48"/><path d="M32 32L56 8" stroke="#92400E" stroke-width="3"/><path d="M56 8l-2 8-6-6z" fill="#64748B"/></svg>',
+    treasure:'<svg viewBox="0 0 64 64"><path d="M8 32q24-26 48 0v22H8z" fill="#B45309"/><path d="M8 36h48v6H8z" fill="#FBBF24"/><rect x="28" y="34" width="8" height="12" rx="2" fill="#FDE68A" stroke="#78350F" stroke-width="2"/><path d="M8 32q24-26 48 0" fill="none" stroke="#451A03" stroke-width="3"/></svg>',
+    wheel:'<svg viewBox="0 0 64 64"><circle cx="32" cy="34" r="24" fill="#FFD15C"/><path d="M32 34V10a24 24 0 0 1 20.8 12z" fill="#F43F5E"/><path d="M32 34l20.8-12a24 24 0 0 1 0 24z" fill="#3B82F6"/><path d="M32 34l20.8 12A24 24 0 0 1 32 58z" fill="#10B981"/><path d="M32 34L11.2 46A24 24 0 0 1 11.2 22z" fill="#8B5CF6"/><circle cx="32" cy="34" r="6" fill="#fff"/><path d="M26 4h12l-6 10z" fill="#2A2200"/></svg>',
     star:'<svg viewBox="0 0 24 24"><path class="f" d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z" stroke="#FFE08A" stroke-width="1" stroke-linejoin="round"/></svg>',
     trophy:'<svg class="trophy" viewBox="0 0 128 128"><path d="M36 14h56v34a28 28 0 0 1-56 0z" fill="#FFD15C"/><path d="M36 22H16c0 18 8 30 22 32M92 22h20c0 18-8 30-22 32" fill="none" stroke="#F5B52E" stroke-width="8" stroke-linecap="round"/><rect x="56" y="74" width="16" height="22" fill="#F5B52E"/><rect x="38" y="96" width="52" height="14" rx="6" fill="#6D28D9"/><path d="M50 22v26a14 14 0 0 0 8 12" stroke="#FFF4C7" stroke-width="5" stroke-linecap="round" fill="none" opacity=".8"/></svg>',
   };
   const SHAPES = ['tri','dia','cir','sq'];
+
+  // ── محرك الألعاب (Phaser) ──────────────────────────────────────
+  // بيتحمّل أول ما نحتاجه (بالونات/سباق). لو فشل لأي سبب بنرجع للعرض
+  // العادي (HTML) من غير ما اللعبة تقف.
+  let enginePromise = null;
+  function loadEngine(){
+    if (!enginePromise) enginePromise = (async () => {
+      try {
+        if (DEMO && new URLSearchParams(location.search).get('noengine')) return null; // اختبار الرجوع للعرض العادي
+        for (let i = 0; i < 60 && !window.Phaser; i++) await new Promise(r => setTimeout(r, 100));
+        const core = await import('./engine/engine.js');
+        if (!core.supported()) return null;
+        const [bal, race, mon, cat, mem, whl, tf, lad, bsk, tgt, trs] = await Promise.all([
+          import('./engine/balloons.js'), import('./engine/race.js'), import('./engine/monster.js'),
+          import('./engine/catcher.js'), import('./engine/memory.js'), import('./engine/wheel.js'),
+          import('./engine/truefalse.js'), import('./engine/ladder.js'),
+          import('./engine/basketball.js'), import('./engine/targets.js'), import('./engine/treasure.js')]);
+        return {
+          createBalloonStage: bal.createBalloonStage, createRaceStage: race.createRaceStage,
+          createMonsterStage: mon.createMonsterStage, createCatcherStage: cat.createCatcherStage,
+          createMemoryStage: mem.createMemoryStage, createWheelStage: whl.createWheelStage,
+          createTfStage: tf.createTfStage, createLadderStage: lad.createLadderStage,
+          createBasketStage: bsk.createBasketStage, createTargetsStage: tgt.createTargetsStage,
+          createTreasureStage: trs.createTreasureStage,
+          pickWheelIndex: whl.pickWheelIndex, WHEEL_SEGMENTS: whl.WHEEL_SEGMENTS,
+        };
+      } catch (e) { console.warn('engine unavailable', e); return null; }
+    })();
+    return enginePromise;
+  }
+  const stages = { balloons: null, race: null };   // { api, host }
+  function destroyStages(){
+    for (const k of Object.keys(stages)) {
+      const st = stages[k];
+      if (st) { try { st.api.destroy(); } catch (e) {} st.host.remove(); stages[k] = null; }
+    }
+  }
+  // يركّب ساحة (أو يرجّع اللي موجودة) مكان العنصر #stage الفاضي.
+  async function mountStage(kind, factory){
+    const ph = document.getElementById('stage');
+    if (!ph) return null;
+    try {
+      if (stages[kind]) {
+        ph.replaceWith(stages[kind].host);
+        try { stages[kind].api.game.scale.refresh(); } catch (e) {}
+        return stages[kind].api;
+      }
+      const host = document.createElement('div');
+      host.className = 'stage ' + kind;
+      host.id = 'stage';
+      // نسبة العرض لازم تبقى مظبوطة قبل ما Phaser يقيس حجم الأب (FIT)
+      host.style.setProperty('--ar', ph.style.getPropertyValue('--ar') || String(AR[kind] || 1.26));
+      ph.replaceWith(host);
+      const api = await factory(host);
+      host.style.setProperty('--ar', String(api.aspect));
+      try { api.game.scale.refresh(); } catch (e) {}
+      stages[kind] = { api, host };
+      return api;
+    } catch (e) {
+      console.warn('stage mount failed', e);
+      const h = document.getElementById('stage'); if (h) h.remove();
+      return null;
+    }
+  }
 
   // نفس معادلة gameQuestionPoints في التطبيق (online_game_model.dart).
   function points(type, correct, frac, idx){
@@ -425,7 +516,8 @@
     const f = Math.max(0, Math.min(1, frac));
     if (type === 'true_false') return 100 + Math.round(50*f);
     if (type === 'ladder') return 100 * ((idx || 0) + 1) + Math.round(50*f);
-    return 500 + Math.round(500*f); // race + balloons
+    if (type === 'memory') return 100 + Math.round(100*f); // لكل زوج
+    return 500 + Math.round(500*f); // سباق وبالونات ووحش واصطياد وعجلة
   }
 
   // عدّاد أرقام متحرّك
@@ -559,6 +651,7 @@
 
   async function loadGame(){
     appEl.innerHTML = '<div class="spinner"></div>';
+    if (DEMO) { game = demoGame(DEMO); best = null; showBriefing(); return; }
     let gs;
     try { gs = await getDoc(doc(db, 'online_exams', slug, 'games', gameId)); }
     catch (e) { message('📡','حصل خطأ','تأكد من اتصالك بالإنترنت وافتح الرابط تاني.'); return; }
@@ -578,11 +671,31 @@
   const isTF = () => game.gameType === 'true_false';
   const isBalloons = () => game.gameType === 'balloons';
   const isLadder = () => game.gameType === 'ladder';
+  const isMonster = () => game.gameType === 'monster';
+  const isCatcher = () => game.gameType === 'catcher';
+  const isMemory = () => game.gameType === 'memory';
+  const isWheel = () => game.gameType === 'wheel';
+  // ألعاب «اختار من الساحة» (الإجابات جوّه المحرك): show(options,onPick) + reveal(chosen,correct)
+  const PICK_KINDS = ['balloons', 'catcher', 'basket', 'targets', 'treasure'];
+  const isPick = (k) => PICK_KINDS.includes(k);
+  const kindOf = () => isBalloons() ? 'balloons' : isTF() ? 'tf' : isLadder() ? 'ladder'
+    : isMonster() ? 'monster' : isCatcher() ? 'catcher' : isWheel() ? 'wheel'
+    : game.gameType === 'basketball' ? 'basket' : game.gameType === 'targets' ? 'targets'
+    : game.gameType === 'treasure' ? 'treasure' : 'race';
+  // نسبة العرض/الارتفاع المبدئية للساحة (بتتظبط على الحقيقية بعد التركيب).
+  const AR = { balloons:1.26, catcher:1.26, tf:1.92, race:2.526, monster:1.92, ladder:2.4, memory:0.923, wheel:1.4545, basket:1.263, targets:1.263, treasure:1.4545 };
   const MODES = {
     race:       { title:'سباق الأسئلة',  icon:'rocket',  secs:20, note:'⚡ الأسرع بيكسب أكتر' },
     true_false: { title:'صح ولا غلط',     icon:'scale',   secs:10, note:'⚡ الأسرع بيكسب أكتر' },
     balloons:   { title:'فرقع البالونة',  icon:'balloon', secs:15, note:'🎈 فرقع البالونة الصح' },
     ladder:     { title:'سلم المليون',   icon:'ladder',  secs:30, note:'🪜 غلطة واحدة وتقف' },
+    monster:    { title:'معركة الوحش',   icon:'monster', secs:15, note:'⚔️ ٣ قلوب — اهزم الوحش' },
+    catcher:    { title:'اصطياد الإجابة', icon:'catcher', secs:20, note:'🧺 التقط الإجابة الصح' },
+    memory:     { title:'ذاكرة الكروت',  icon:'memory',  secs:12, note:'🃏 طابق السؤال بإجابته' },
+    wheel:      { title:'عجلة الحظ',     icon:'wheel',   secs:20, note:'🎡 جاوب صح والف العجلة' },
+    basketball: { title:'كرة السلة',     icon:'basket',  secs:15, note:'🏀 اشوط الكورة الصح في السلة' },
+    targets:    { title:'الرماية على الأهداف', icon:'targets', secs:15, note:'🎯 اصطاد اللوحة الصح' },
+    treasure:   { title:'حفر الكنز',     icon:'treasure', secs:15, note:'🪙 افتح الصندوق الصح' },
   };
   const modeOf = () => MODES[game.gameType] || MODES.race;
   const secsOf = () => game.secondsPerQuestion || modeOf().secs;
@@ -597,7 +710,7 @@
       <p class="h-sub">أهلًا ${esc(ctx.name || '')} 👋 — ${modeOf().title}</p>
       <div class="chips">
         <span class="chip">❓ ${n} سؤال</span>
-        <span class="chip">⏱ ${secsOf()} ثانية</span>
+        <span class="chip">⏱ ${secsOf()} ثانية${isMemory() ? ' لكل زوج' : ''}</span>
         <span class="chip">${modeOf().note}</span>
       </div>
       ${best ? `<div class="best">🏆 أفضل نتيجة ليك: ${best.score} نقطة</div>` : ''}
@@ -627,9 +740,11 @@
   }
 
   function startGame(){
+    destroyStages();
     unlockAudio(); sfx.start();
+    if (isMemory()) { startMemory(); return; }
     run = { items: buildQuestions(), i:0, score:0, correct:0, timeMs:0, streak:0, secs: secsOf(),
-            life5050:true, lifeSkip:true, over:false };
+            life5050:true, lifeSkip:true, over:false, hearts:3 };
     showQuestion();
   }
 
@@ -645,16 +760,31 @@
         <circle class="bg" cx="28" cy="28" r="24" fill="none" stroke-width="6"/>
         <circle class="fg" id="rfg" cx="28" cy="28" r="24" fill="none" stroke-width="6" stroke-linecap="round"
           stroke-dasharray="${CIRC}" stroke-dashoffset="0"/></svg><b id="rn">${run.secs}</b></div>
-      <div class="prog"><div class="dots">${dots}</div><small>السؤال ${run.i+1} من ${total}</small></div>
+      <div class="prog"><div class="dots">${dots}</div><small>${run.memory ? 'الجولة' : 'السؤال'} ${run.i+1} من ${total}${isMonster() ? ' • ' + '❤️'.repeat(Math.max(0, run.hearts)) + '🖤'.repeat(Math.max(0, 3 - run.hearts)) : ''}</small></div>
       <div class="scorebox"><b id="sc">${run.score}</b><small>نقطة</small>
         ${run.streak >= 2 ? `<span class="streak">🔥 ×${run.streak}</span>` : ''}</div>
     </div>`;
+  }
+
+  // نتيجة مشتركة: عدّاد النقاط بيتحرّك + «+N» طايرة.
+  function animateScore(gained){
+    const sc = document.getElementById('sc');
+    if (!sc) return;
+    const from = run.score - gained;
+    if (gained && !reduceMotion) {
+      const t0 = performance.now();
+      const step = (t) => { const p = Math.min(1,(t-t0)/500); sc.textContent = Math.round(from + gained*p); if (p<1) requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+      const f = document.createElement('span'); f.className = 'float'; f.textContent = `+${gained}`;
+      sc.parentElement.appendChild(f); setTimeout(() => f.remove(), 1000);
+    } else sc.textContent = run.score;
   }
 
   let qToken = 0;
   async function showQuestion(){
     clearTimer();
     const tf = isTF();
+    const kind = kindOf();
     const it = run.items[run.i];
     const token = ++qToken;
     const need = urlsOf(it).filter(u => u && !imgSeen.has(u));
@@ -668,8 +798,22 @@
     const q = it.q;
     const total = run.items.length;
     const imgs = q.optionImageUrls || [];
+    const optImgs = imgs.some(u => u);
+    if (kind === 'wheel') destroyStages();   // عجلة السؤال اللي فات
+    // المحرك: بالونات واصطياد من غير صور اختيارات، وباقي الأنواع (غير العجلة، بتتحمّل وقت اللفّ).
+    const wantsStage = kind !== 'wheel' && !(isPick(kind) && optImgs);
+    let E = null;
+    if (wantsStage) {
+      if (!enginePromise) view('<div class="prep"><div class="spinner"></div>جاري تجهيز اللعبة…</div>');
+      E = await loadEngine();
+      if (token !== qToken) return;
+    }
+    const replaceStage = !!E && (kind === 'tf' || isPick(kind));
+    const headerStage = !!E && (kind === 'race' || kind === 'monster' || kind === 'ladder');
+    const stageHtml = `<div id="stage" class="stage ${kind}" style="--ar:${AR[kind]}"></div>`;
     const BCOL = [['#FB7185','#E11D48'],['#60A5FA','#2563EB'],['#FBBF24','#D97706'],['#34D399','#059669'],['#C084FC','#7C3AED'],['#F472B6','#DB2777']];
-    const answers = isBalloons()
+    // العرض العادي (HTML) — الأصل، وبنرجعله لو المحرك مش متاح.
+    const legacyAnswers = () => kind === 'balloons'
       ? `<div class="sky" id="opts">` + it.order.map((oi, k) => {
           const c = BCOL[k % BCOL.length];
           return `<button class="bal" data-i="${oi}" style="--c1:${c[0]};--c2:${c[1]};--dl:${(k*0.37).toFixed(2)}s;--dur:${(2.6+k*0.4).toFixed(1)}s">
@@ -679,21 +823,23 @@
       ? `<div class="answers two tf" id="opts">
           <button class="tile" data-v="1"><span class="shape">${ICON.check}</span><span class="tx">صح</span></button>
           <button class="tile" data-v="0"><span class="shape">${ICON.cross}</span><span class="tx">خطأ</span></button></div>`
-      : `<div class="answers${imgs.some(u => u) ? ' imgs' : ''}" id="opts">` + it.order.map((oi, k) =>
+      : `<div class="answers${optImgs ? ' imgs' : ''}" id="opts">` + it.order.map((oi, k) =>
           `<button class="tile" data-i="${oi}"><span class="shape">${ICON[SHAPES[k % 4]]}</span>
             <span class="tx">${esc(q.options[oi])}</span>${imgTag(imgs[oi])}</button>`).join('') + `</div>`;
+    const answers = replaceStage ? stageHtml : legacyAnswers();
 
     const prizeHere = 100 * (run.i + 1);
     const ladderTop = isLadder()
       ? `<div class="life"><button id="l5050" ${run.life5050 && q.options.length > 2 ? '' : 'disabled'}>٥٠:٥٠</button>
            <button id="lskip" ${run.lifeSkip ? '' : 'disabled'}>تخطّي ⏭</button></div>` : '';
-    view(`${hudHtml(total)}${ladderTop}
+    view(`${hudHtml(total)}${headerStage ? stageHtml : ''}${ladderTop}
       <div class="qcard">${isLadder() ? `<span class="prize">🪜 السؤال ${run.i+1} من ${total} — يكسبك ${prizeHere}+ نقطة</span>` : ''}${imgTag(q.imageUrl,'qi')}<p class="q">${esc(tf ? it.statement : q.text)}</p>${tf ? imgTag(it.stmtImg,'qi') : ''}</div>
       ${answers}<div id="after"></div>`);
 
-    const startedAt = performance.now();
+    let startedAt = performance.now();
     const limit = run.secs * 1000;
     let answered = false;
+    let stageApi = null;
     const rfg = document.getElementById('rfg'), rn = document.getElementById('rn'), ring = document.getElementById('ring');
 
     function finish(chosen){
@@ -710,20 +856,27 @@
       if (ok) { run.correct++; run.streak++; } else run.streak = 0;
       run.timeMs += Math.round(chosen === null ? limit : elapsed);
       buzz(ok ? 25 : [60,40,60]);
-      if (isBalloons() && chosen !== null && !skipped) sfx.pop();
+      if (isPick(kind) && chosen !== null && !skipped) sfx.pop();
       if (ok) sfx.correct(run.streak); else if (skipped) sfx.tick(false); else if (chosen === null) sfx.timeout(); else sfx.wrong();
       // سلم المليون: أي غلطة (أو انتهاء الوقت) بتوقّف السلم، والتخطّي لا.
       if (isLadder() && !ok && !skipped) run.over = true;
+      // معركة الوحش: كل غلطة بتكلّفك قلب، ولو القلوب خلصت الجولة تخلص.
+      if (isMonster() && !ok) { run.hearts = Math.max(0, run.hearts - 1); if (run.hearts <= 0) run.over = true; }
+      const last = run.i + 1 >= run.items.length || run.over;
 
-      const sc = document.getElementById('sc');
-      const from = run.score - gained;
-      if (gained && !reduceMotion) {
-        const t0 = performance.now();
-        const step = (t) => { const p = Math.min(1,(t-t0)/500); sc.textContent = Math.round(from + gained*p); if (p<1) requestAnimationFrame(step); };
-        requestAnimationFrame(step);
-        const f = document.createElement('span'); f.className = 'float'; f.textContent = `+${gained}`;
-        sc.parentElement.appendChild(f); setTimeout(() => f.remove(), 1000);
-      } else sc.textContent = run.score;
+      // حركة الساحة
+      if (stageApi) {
+        try {
+          const posOf = (v) => (v === null || v === 'skip') ? null : it.order.indexOf(v);
+          if (isPick(kind)) stageApi.reveal(posOf(chosen), it.order.indexOf(q.correctIndex));
+          else if (kind === 'tf') stageApi.reveal(chosen === null ? null : chosen === 1, it.truth);
+          else if (kind === 'race') stageApi.answer(ok, run.streak, chosen === null);
+          else if (kind === 'monster') { stageApi.answer(ok, chosen === null); if (last) setTimeout(() => stageApi.finish(!run.over), 1000); }
+          else if (kind === 'ladder') { if (ok) { stageApi.climb(run.correct); if (last) setTimeout(() => stageApi.win(), 700); } else if (!skipped) stageApi.fall(); }
+        } catch (e) { console.warn('stage anim', e); }
+      }
+
+      animateScore(gained);
 
       document.querySelectorAll('#opts button').forEach(b => {
         b.onclick = null; b.classList.add('locked');
@@ -738,26 +891,60 @@
         }
       });
 
-      const last = run.i + 1 >= run.items.length || run.over;
       const cls = ok ? 'good' : (skipped || chosen === null ? 'late' : 'bad');
       const title = ok ? (run.streak >= 3 ? 'ولا غلطة! 🔥' : 'برافو!')
-        : (skipped ? 'تخطّيت السؤال ⏭' : chosen === null ? 'الوقت خلص ⏰' : (isLadder() ? 'غلطة… السلم وقف 🪜' : 'غلط للأسف'));
+        : (skipped ? 'تخطّيت السؤال ⏭' : chosen === null ? 'الوقت خلص ⏰'
+          : (isLadder() ? 'غلطة… السلم وقف 🪜' : isMonster() ? (run.over ? 'القلوب خلصت 💔' : 'الوحش ضربك! 💥') : 'غلط للأسف'));
       document.querySelectorAll('.life button').forEach(b => b.disabled = true);
       const correctNote = (!ok && tf && q.options.length > 2) ? `الإجابة الصحيحة: <b>${esc(it.correctText)}</b>` : '';
       const expl = (q.explanation || q.explanationImageUrl)
         ? `<p class="note">💡 ${esc(q.explanation || '')}${imgTag(q.explanationImageUrl)}</p>` : '';
       document.getElementById('after').innerHTML = `
-        <div class="fb ${cls}"><div class="row"><span>${title}</span>${ok ? `<span class="pts">+${gained}</span>` : ''}</div>
+        <div class="fb ${cls}"><div class="row"><span>${title}</span>${ok ? `<span class="pts" id="ptsb">+${gained}</span>` : ''}</div>
           ${correctNote ? `<p class="note">${correctNote}</p>` : ''}${expl}
           <button class="btn violet" id="next">${last ? 'شوف نتيجتك 🏁' : 'السؤال اللي بعده'}</button></div>`;
       const nb = document.getElementById('next');
       nb.onclick = () => { run.i++; last ? showResult() : showQuestion(); };
-      nb.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+
+      // عجلة الحظ: بعد الإجابة الصح العجلة بتدّيك مكافأة.
+      if (isWheel() && ok) {
+        const fb = document.querySelector('#after .fb');
+        const sb = document.createElement('button');
+        sb.className = 'btn'; sb.id = 'spin'; sb.style.marginBottom = '10px';
+        sb.textContent = '🎡 لف العجلة واكسب مكافأة';
+        fb.insertBefore(sb, nb);
+        nb.disabled = true;
+        sb.onclick = async () => {
+          sb.disabled = true; sb.textContent = 'جاري تجهيز العجلة…';
+          const E2 = await loadEngine();
+          const holder = document.createElement('div');
+          holder.id = 'stage'; holder.className = 'stage wheel'; holder.style.setProperty('--ar', String(AR.wheel));
+          fb.insertBefore(holder, sb);
+          const api = E2 ? await mountStage('wheel', E2.createWheelStage) : null;
+          if (!api) { holder.remove(); sb.remove(); nb.disabled = false; return; }
+          sb.remove();
+          holder.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+          const idx = E2.pickWheelIndex();
+          await api.spin(idx);
+          const seg = E2.WHEEL_SEGMENTS[idx];
+          const bonus = seg.kind === 'x2' ? gained : seg.kind === 'add' ? seg.value : 0;
+          if (bonus) {
+            run.score += bonus; animateScore(bonus); sfx.win(2);
+            const pb = document.getElementById('ptsb'); if (pb) pb.textContent = `+${gained + bonus}`;
+          } else sfx.tick(false);
+          nb.disabled = false;
+          nb.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+        };
+        sb.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+      } else {
+        nb.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+      }
     }
 
-    document.querySelectorAll('#opts button').forEach(b => {
+    const bindOpts = () => document.querySelectorAll('#opts button').forEach(b => {
       b.onclick = () => finish(tf ? +b.dataset.v : +b.dataset.i);
     });
+    bindOpts();
     const b5050 = document.getElementById('l5050'), bskip = document.getElementById('lskip');
     if (b5050) b5050.onclick = () => {
       if (!run.life5050 || answered) return;
@@ -768,6 +955,127 @@
     };
     if (bskip) bskip.onclick = () => { if (!run.lifeSkip || answered) return; run.lifeSkip = false; finish('skip'); };
 
+    // ركّب الساحة (لو المحرك شغّال). العدّاد بيبدأ بعد ما الساحة تجهز.
+    if (replaceStage || headerStage) {
+      const factory = { balloons: E.createBalloonStage, catcher: E.createCatcherStage, tf: E.createTfStage,
+        race: E.createRaceStage, monster: E.createMonsterStage, ladder: E.createLadderStage,
+        basket: E.createBasketStage, targets: E.createTargetsStage, treasure: E.createTreasureStage }[kind];
+      const fresh = !stages[kind];
+      stageApi = await mountStage(kind, factory);
+      if (token !== qToken) return;
+      if (!stageApi) {
+        // الساحة فشلت: نرجع للعرض العادي
+        if (replaceStage) {
+          const ph = document.getElementById('stage');
+          const tmp = document.createElement('div'); tmp.innerHTML = legacyAnswers();
+          if (ph) ph.replaceWith(tmp.firstElementChild); else document.getElementById('after').before(tmp.firstElementChild);
+          bindOpts();
+        }
+      } else if (isPick(kind)) {
+        stageApi.show(it.order.map(oi => ({ text: q.options[oi] })), (pos) => finish(it.order[pos]));
+      } else if (kind === 'tf') {
+        stageApi.show((v) => finish(v ? 1 : 0));
+      } else if (kind === 'race') {
+        stageApi.setTotal(total); stageApi.setProgress(run.i / total, run.i > 0);
+      } else if (kind === 'monster') {
+        if (fresh || run.i === 0) stageApi.setup(total);
+      } else if (kind === 'ladder') {
+        if (fresh || run.i === 0) stageApi.setup(total);
+      }
+    }
+    startedAt = performance.now();
+
+    let lastSec = Infinity;
+    timer = setInterval(() => {
+      const left = Math.max(0, limit - (performance.now() - startedAt));
+      const sec = Math.ceil(left / 1000);
+      if (sec <= 3 && sec > 0 && sec < lastSec) sfx.tick(sec === 1);
+      lastSec = Math.min(lastSec, sec);
+      if (stageApi && (kind === 'race' || kind === 'monster')) stageApi.setTime(left / limit);
+      rfg.style.strokeDashoffset = String(CIRC * (1 - left / limit));
+      rn.textContent = Math.ceil(left / 1000);
+      ring.classList.toggle('low', left / limit < 0.3);
+      if (left <= 0) finish(null);
+    }, 100);
+  }
+
+  // ── ذاكرة الكروت: لوحات من حتى 6 أزواج (سؤال ↔ إجابته الصح) ───────────
+  function memoryPairs(){
+    const usable = (game.questions || []).filter(q =>
+      !(q.optionImageUrls || []).some(u => u) && q.options[q.correctIndex] != null
+      && String(q.options[q.correctIndex]).length <= 60 && String(q.text).length <= 140);
+    return shuffle(usable).map(q => ({ q: q.text, a: q.options[q.correctIndex] }));
+  }
+
+  async function startMemory(){
+    const pairs = memoryPairs();
+    appEl.innerHTML = '<div class="spinner"></div>';
+    const E = await loadEngine();
+    if (!E || pairs.length < 2) {   // مفيش محرك أو أزواج كفاية → نلعبها سباق عادي
+      game.gameType = 'race';
+      run = { items: buildQuestions(), i:0, score:0, correct:0, timeMs:0, streak:0, secs: secsOf(),
+              life5050:true, lifeSkip:true, over:false, hearts:3 };
+      showQuestion();
+      return;
+    }
+    const rounds = [];
+    for (let i = 0; i < pairs.length; i += 6) rounds.push(pairs.slice(i, i + 6));
+    // آخر لوحة صغيرة (أقل من 3) تتضم للي قبلها لو ينفع
+    if (rounds.length > 1 && rounds[rounds.length - 1].length < 3 && rounds[rounds.length - 2].length + rounds[rounds.length - 1].length <= 8) {
+      rounds[rounds.length - 2] = rounds[rounds.length - 2].concat(rounds.pop());
+    }
+    run = { memory: true, items: pairs, rounds, ri: 0, i: 0, score: 0, correct: 0, timeMs: 0, streak: 0,
+            secs: 0, over: false, hearts: 3 };
+    showMemoryRound(E);
+  }
+
+  async function showMemoryRound(E){
+    clearTimer();
+    const token = ++qToken;
+    const round = run.rounds[run.ri];
+    const n = round.length;
+    run.i = run.ri;
+    run.secs = (game.secondsPerQuestion || 12) * n;
+    const limit = run.secs * 1000;
+    view(`${hudHtml(run.rounds.length)}
+      <p class="h-sub" style="margin:0 0 10px">طابق كل سؤال مع إجابته الصح 🃏</p>
+      <div id="stage" class="stage memory" style="--ar:${AR.memory}"></div><div id="after"></div>`);
+    const rfg = document.getElementById('rfg'), rn = document.getElementById('rn'), ring = document.getElementById('ring');
+    const api = await mountStage('memory', E.createMemoryStage);
+    if (token !== qToken) return;
+    if (!api) {
+      game.gameType = 'race';
+      run = { items: buildQuestions(), i:0, score:0, correct:0, timeMs:0, streak:0, secs: secsOf(),
+              life5050:true, lifeSkip:true, over:false, hearts:3 };
+      showQuestion();
+      return;
+    }
+    let startedAt = performance.now(), done = false, matched = 0;
+    const endRound = (timeUp) => {
+      if (done) return;
+      done = true; clearTimer();
+      run.timeMs += Math.round(Math.min(performance.now() - startedAt, limit));
+      api.lock();
+      if (timeUp) { api.timeUp(); sfx.timeout(); } else { sfx.win(3); buzz(30); }
+      const last = run.ri + 1 >= run.rounds.length;
+      document.getElementById('after').innerHTML = `
+        <div class="fb ${matched === n ? 'good' : 'late'}"><div class="row"><span>${timeUp ? 'الوقت خلص ⏰' : 'برافو! خلّصت اللوحة 🎉'}</span><span class="pts">${matched} من ${n} أزواج</span></div>
+          <button class="btn violet" id="next">${last ? 'شوف نتيجتك 🏁' : 'اللوحة اللي بعدها'}</button></div>`;
+      const nb = document.getElementById('next');
+      nb.onclick = () => { run.ri++; last ? showResult() : showMemoryRound(E); };
+      nb.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+    };
+    api.start(round, {
+      onMatch: () => {
+        const left = Math.max(0, limit - (performance.now() - startedAt));
+        const gained = points('memory', true, left / limit, 0);
+        run.score += gained; run.correct++; matched++; run.streak++;
+        animateScore(gained); sfx.correct(run.streak); buzz(20);
+      },
+      onMiss: () => { run.streak = 0; sfx.wrong(); buzz([40, 30, 40]); },
+      onComplete: () => endRound(false),
+    });
+    startedAt = performance.now();
     let lastSec = Infinity;
     timer = setInterval(() => {
       const left = Math.max(0, limit - (performance.now() - startedAt));
@@ -777,12 +1085,13 @@
       rfg.style.strokeDashoffset = String(CIRC * (1 - left / limit));
       rn.textContent = Math.ceil(left / 1000);
       ring.classList.toggle('low', left / limit < 0.3);
-      if (left <= 0) finish(null);
+      if (left <= 0) endRound(true);
     }, 100);
   }
 
   async function showResult(){
     clearTimer();
+    destroyStages();
     const total = run.items.length;
     const pct = total ? run.correct / total : 0;
     const starsOn = pct >= 0.85 ? 3 : pct >= 0.6 ? 2 : pct > 0 ? 1 : 0;
@@ -800,7 +1109,7 @@
         best = { score: run.score };
       } catch (e) { saved = false; }
     }
-    const heading = isLadder() && run.over ? `السلم وقّفك عند السؤال ${run.i} 🪜` : isLadder() && run.i >= total && starsOn >= 2 ? 'وصلت لآخر السلم! 🏆' : starsOn === 3 ? 'أسطورة! 🎉' : starsOn === 2 ? 'شغل جامد 👏' : starsOn === 1 ? 'بداية حلوة — جرّب تاني 💪' : 'محتاجة مذاكرة — جرّب تاني';
+    const heading = isMonster() ? (run.over ? 'الوحش غلبك — جرّب تاني 💪' : 'هزمت الوحش! 🏆') : isMemory() ? (starsOn === 3 ? 'ذاكرة حديد! 🧠' : starsOn >= 1 ? 'شغل حلو — كمّل 💪' : 'جرّب تاني') : isLadder() && run.over ? `السلم وقّفك عند السؤال ${run.i} 🪜` : isLadder() && run.i >= total && starsOn >= 2 ? 'وصلت لآخر السلم! 🏆' : starsOn === 3 ? 'أسطورة! 🎉' : starsOn === 2 ? 'شغل جامد 👏' : starsOn === 1 ? 'بداية حلوة — جرّب تاني 💪' : 'محتاجة مذاكرة — جرّب تاني';
     view(`
       ${starsOn >= 2 ? ICON.trophy : `<div class="emblem" style="margin-top:6px">${ICON.rocket}</div>`}
       <p class="h-title" style="margin-bottom:0">${heading}</p>
@@ -821,7 +1130,8 @@
     document.getElementById('again').onclick = () => { closed ? showBriefing() : startGame(); };
   }
 
-  if (!slug || !gameId) message('🔒','الرابط ناقص','اطلب من المدرس يبعتلك الرابط تاني.');
+  if (DEMO) { ctx = { code:'DEMO', last4:'0000', name:'تجربة', groupName:'' }; loadGame(); }
+  else if (!slug || !gameId) message('🔒','الرابط ناقص','اطلب من المدرس يبعتلك الرابط تاني.');
   else renderForm();
 </script>
 </body>

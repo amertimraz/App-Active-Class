@@ -29,6 +29,30 @@ class UnpaidStudentEntry {
 // المجموعة). محسوب من نفس حلقة _computePaymentCardBody — مش مصدر بيانات
 // مستقل — عشان مجموع remaining لكل المجموعات يطابق paymentCardRemaining
 // الإجمالي بالضبط (SC-002).
+// تفصيل طالب واحد داخل مجموعة في شهر معيّن (للتابين متأخر/مدفوع).
+class StudentMonthLine {
+  final Student student;
+  final double due; // مستحق الشهر ده
+  final double paid; // فلوس حقيقية اتحسبت على الشهر ده
+  final double writtenOff; // اتسقط من المديونية (مش فلوس دخلت)
+  final bool unpaid; // ما غطّاش المستحق (متأخر)
+  // كل الدفعات الحقيقية للطالب (أي تاريخ) — بتتوزّع FIFO على الشهور، فدفعة
+  // مؤرَّخة في شهر تاني ممكن تتحسب على الشهر ده.
+  final List<Payment> payments;
+  final double dueBefore; // مستحق الشهور اللي قبل الشهر ده
+  const StudentMonthLine({
+    required this.student,
+    required this.due,
+    required this.paid,
+    required this.writtenOff,
+    required this.unpaid,
+    this.payments = const [],
+    this.dueBefore = 0,
+  });
+  double get shortfall =>
+      (due - paid - writtenOff).clamp(0.0, double.infinity).toDouble();
+}
+
 class GroupPaymentSummaryEntry {
   final int? groupId; // null = طلاب بلا مجموعة
   final String groupName;
@@ -37,6 +61,7 @@ class GroupPaymentSummaryEntry {
   // مبلغ اتمسح بإسقاط مديونية (مش فلوس دخلت) — بيتخصم من الباقي.
   final double writtenOff;
   final int unpaidStudentsCount;
+  final List<StudentMonthLine> lines;
 
   const GroupPaymentSummaryEntry({
     required this.groupId,
@@ -45,6 +70,7 @@ class GroupPaymentSummaryEntry {
     required this.collected,
     this.writtenOff = 0,
     required this.unpaidStudentsCount,
+    this.lines = const [],
   });
 
   double get remaining =>
@@ -165,6 +191,18 @@ MonthlyPaymentBreakdown computeMonthlyBreakdown({
       writtenOff: (existing?.writtenOff ?? 0) + writtenOffThisMonth,
       unpaidStudentsCount:
           (existing?.unpaidStudentsCount ?? 0) + (isUnpaid ? 1 : 0),
+      lines: [
+        ...?existing?.lines,
+        StudentMonthLine(
+          student: s,
+          due: dueThisMonth,
+          paid: realPaidThisMonth,
+          writtenOff: writtenOffThisMonth,
+          unpaid: isUnpaid,
+          payments: realPayments,
+          dueBefore: dueBefore,
+        ),
+      ],
     );
   }
   unpaidEntries.sort((a, b) => b.amountDue.compareTo(a.amountDue));

@@ -16,6 +16,13 @@ List<Color> gameTypeGradient(OnlineGameType type) => switch (type) {
       OnlineGameType.trueFalse => const [Color(0xFF0369A1), Color(0xFF047857)],
       OnlineGameType.balloons => const [Color(0xFFC2410C), Color(0xFFBE123C)],
       OnlineGameType.ladder => const [Color(0xFF1E3A8A), Color(0xFF9A6A12)],
+      OnlineGameType.monster => const [Color(0xFF4C1D95), Color(0xFF15803D)],
+      OnlineGameType.catcher => const [Color(0xFF0E7490), Color(0xFFB45309)],
+      OnlineGameType.memory => const [Color(0xFF9D174D), Color(0xFF6D28D9)],
+      OnlineGameType.wheel => const [Color(0xFFB45309), Color(0xFFBE123C)],
+      OnlineGameType.basketball => const [Color(0xFF7C2D12), Color(0xFF6D28D9)],
+      OnlineGameType.targets => const [Color(0xFF0369A1), Color(0xFF15803D)],
+      OnlineGameType.treasure => const [Color(0xFFB45309), Color(0xFF0E7490)],
     };
 
 IconData gameTypeIcon(OnlineGameType type) => switch (type) {
@@ -23,6 +30,13 @@ IconData gameTypeIcon(OnlineGameType type) => switch (type) {
       OnlineGameType.trueFalse => Icons.balance_rounded,
       OnlineGameType.balloons => Icons.bubble_chart_rounded,
       OnlineGameType.ladder => Icons.stairs_rounded,
+      OnlineGameType.monster => Icons.pest_control_rounded,
+      OnlineGameType.catcher => Icons.shopping_basket_rounded,
+      OnlineGameType.memory => Icons.grid_view_rounded,
+      OnlineGameType.wheel => Icons.casino_rounded,
+      OnlineGameType.basketball => Icons.sports_basketball_rounded,
+      OnlineGameType.targets => Icons.gps_fixed_rounded,
+      OnlineGameType.treasure => Icons.savings_rounded,
     };
 
 class GameTypePickerPage extends StatelessWidget {

@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:active_class/utils/device_sync_status.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -49,6 +50,39 @@ class TeamModeService {
   bool get lastOutboxErrorIsTransient =>
       _engine?.lastOutboxErrorIsTransient ?? false;
   DateTime? get lastDrainAt => _engine?.lastDrainAt;
+
+  /// معرّف جهازي (علشان أعلّم «جهازك» في قايمة أجهزة الفريق).
+  String? get myDeviceId => _engine?.deviceId;
+
+  /// عدد الصفوف اللي ما اتزامنتش أبدًا على الجهاز ده (مجموع كل الجداول).
+  Future<int> unsyncedTotal() async =>
+      (await unsyncedRowCounts()).values.fold<int>(0, (a, b) => a + b);
+
+  /// نبضة فورية لحالة الجهاز (بعد ما المستخدم يدوس «ارفع دلوقتي» مثلًا).
+  Future<void> reportStatusNow() =>
+      _engine?.reportDeviceStatus(force: true) ?? Future.value();
+
+  /// المدرّس بس: حالة كل أجهزة الفريق من السيرفر. null = مش متاحة (مش
+  /// مالك، أو الـmigration لسه ما اتطبّقتش، أو مفيش نت).
+  Future<List<DeviceSyncStatus>?> deviceStatuses() async {
+    final e = _engine;
+    final tId = teamId.value;
+    if (!isEnabled.value || !isOwner.value || e == null || tId == null) {
+      return null;
+    }
+    try {
+      final rows = await e.client
+          .rpc('list_device_status', params: {'_team_id': tId})
+          .timeout(kTeamModeNetworkTimeout) as List;
+      return [
+        for (final r in rows)
+          DeviceSyncStatus.fromRow(Map<String, dynamic>.from(r as Map))
+      ];
+    } catch (err) {
+      debugPrint('TeamModeService: تعذّر قراءة حالة الأجهزة — $err');
+      return null;
+    }
+  }
   Worker? _licenseWorker;
   Worker? _profileWorker;
   Worker? _portalWorker; // spec 044 — مالك: يدفع حالة البوابة للفريق

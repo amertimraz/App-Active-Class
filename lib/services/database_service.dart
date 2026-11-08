@@ -29,6 +29,7 @@ import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/archive_history.dart';
 import 'package:active_class/utils/archive_periods.dart';
 import 'package:active_class/utils/pricing_helper.dart';
+import 'package:active_class/utils/siblings_from_inference.dart';
 
 // spec 052 — صحة البيانات (دمج المكرّر): extension بنفس الـlibrary.
 part 'database_service_data_health.dart';
@@ -347,6 +348,7 @@ class DatabaseService {
         $COL_STUDENT_SIBLING_GROUP_ID INTEGER,
         $COL_STUDENT_SIBLING_GROUP_UUID TEXT,
         $COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT INTEGER,
+        $COL_STUDENT_SIBLINGS_FROM TEXT,
         $COL_STUDENT_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_STUDENT_ATTENDANCE_START TEXT,
         $COL_STUDENT_GUARDIAN_PHONE TEXT,
@@ -949,6 +951,14 @@ class DatabaseService {
       } catch (_) {}
     }
 
+    if (oldVersion < 43) {
+      // تاريخ سريان سعر الإخوة (null = كل الشهور، زي قبل كده).
+      try {
+        await db.execute('ALTER TABLE $TABLE_STUDENTS ADD COLUMN '
+            '$COL_STUDENT_SIBLINGS_FROM TEXT');
+      } catch (_) {}
+    }
+
     if (oldVersion < 42) {
       try {
         await db.execute(_expensesTableSql);
@@ -1475,6 +1485,37 @@ class DatabaseService {
     return n;
   }
 
+  /// مرة واحدة لكل جهاز: الإخوة المربوطين قبل ميزة «سعر الإخوة يسري من شهر»
+  /// بياخدوا تاريخ مقدَّر من أول دفعة بنصيب الإخوة (راجع
+  /// inferSiblingsFrom). اللي مفيش دفعة بنصيبه بيفضل بلا تاريخ. بيرجّع عدد
+  /// الطلاب اللي اتحدّث تاريخهم.
+  Future<int> inferLegacySiblingDates() async {
+    const flag = 'siblings_from_inferred';
+    if (await getSetting(flag) == '1') return 0;
+    final students = (await getAllStudents()).where((s) => !s.isArchived).toList();
+    final payments = await getAllPayments();
+    final byStudent = <int, List<Payment>>{};
+    for (final p in payments) {
+      byStudent.putIfAbsent(p.studentId, () => []).add(p);
+    }
+    var changed = 0;
+    for (final s in students) {
+      if (s.siblingGroupId == null || s.siblingsFrom != null) continue;
+      final live =
+          students.where((x) => x.siblingGroupId == s.siblingGroupId).length;
+      final size = s.siblingGroupCommittedCount ?? live;
+      final from = inferSiblingsFrom(
+          student: s,
+          payments: byStudent[s.id] ?? const <Payment>[],
+          groupSize: size);
+      if (from == null) continue;
+      await updateStudent(s.copyWith(siblingsFrom: from));
+      changed++;
+    }
+    await setSetting(flag, '1');
+    return changed;
+  }
+
   /// يربط مجموعة طلاب (2 أو 3) كإخوة بإجمالي مشترك، بتحديث كل الأعضاء
   /// في عملية واحدة ذرية — إما يتحدّثوا كلهم مع بعض أو ولا واحد. راجع
   /// specs/007-three-sibling-support (بديل linkSiblings الثنائي القديم).
@@ -1482,7 +1523,12 @@ class DatabaseService {
   /// يربط 2-3 إخوة بنفس `sibling_group_id` (= أصغر id بينهم) و`sibling_
   /// group_uuid` (ثابت، للمزامنة) ويرجّعهم — المستدعي محتاجهم عشان
   /// يحدّث النسخة في الذاكرة بنفس القيمتين.
-  Future<(int, String)> linkSiblingGroup(List<Student> members) async {
+  ///
+  /// [autoDate]: العضو اللي ما كانش مربوط قبل كده وملوش تاريخ سريان بياخد
+  /// أول الشهر الحالي تلقائيًا (سعر الإخوة يسري من يوم الربط، والشهور اللي
+  /// فاتت تفضل بسعره الفردي). الأعضاء المربوطين من قبل ما بيتغيّروش.
+  Future<(int, String)> linkSiblingGroup(List<Student> members,
+      {bool autoDate = true}) async {
     if (members.length < 2 || members.length > 3) {
       throw ArgumentError(
           'عدد أعضاء مجموعة الإخوة لازم يكون 2 أو 3 (الحالي: ${members.length})');
@@ -1497,12 +1543,17 @@ class DatabaseService {
             .map((s) => s.siblingGroupUuid)
             .firstWhere((u) => u != null, orElse: () => null) ??
         const Uuid().v4();
-    final now = DateTime.now().toIso8601String();
+    final nowDt = DateTime.now();
+    final now = nowDt.toIso8601String();
+    final monthStart = DateTime(nowDt.year, nowDt.month, 1).toIso8601String();
     final maps = <Map<String, dynamic>>[];
     await db.transaction((txn) async {
       for (final s in members) {
+        final wasLinked = s.siblingGroupId != null || s.siblingId != null;
         final map = {
           ...s.toMap(),
+          if (autoDate && !wasLinked && s.siblingsFrom == null)
+            COL_STUDENT_SIBLINGS_FROM: monthStart,
           COL_STUDENT_SIBLING_GROUP_ID: groupId,
           COL_STUDENT_SIBLING_GROUP_UUID: groupUuid,
           // spec 035 — أي ربط (أولي أو إعادة ربط) قرار واعي بعدد

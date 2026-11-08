@@ -13,7 +13,19 @@ import 'package:active_class/models/bank_question_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
 
 /// نوع اللعبة: بيحدد شكل العرض في صفحة الطالب (نفس الأسئلة).
-enum OnlineGameType { race, trueFalse, balloons, ladder }
+enum OnlineGameType {
+  race,
+  trueFalse,
+  balloons,
+  ladder,
+  monster,
+  catcher,
+  memory,
+  wheel,
+  basketball,
+  targets,
+  treasure,
+}
 
 extension OnlineGameTypeX on OnlineGameType {
   /// القيمة المخزّنة في Firestore وبتقراها صفحة الويب.
@@ -22,12 +34,26 @@ extension OnlineGameTypeX on OnlineGameType {
         OnlineGameType.trueFalse => 'true_false',
         OnlineGameType.balloons => 'balloons',
         OnlineGameType.ladder => 'ladder',
+        OnlineGameType.monster => 'monster',
+        OnlineGameType.catcher => 'catcher',
+        OnlineGameType.memory => 'memory',
+        OnlineGameType.wheel => 'wheel',
+        OnlineGameType.basketball => 'basketball',
+        OnlineGameType.targets => 'targets',
+        OnlineGameType.treasure => 'treasure',
       };
 
   static OnlineGameType fromCloud(String? raw) => switch (raw) {
         'true_false' => OnlineGameType.trueFalse,
         'balloons' => OnlineGameType.balloons,
         'ladder' => OnlineGameType.ladder,
+        'monster' => OnlineGameType.monster,
+        'catcher' => OnlineGameType.catcher,
+        'memory' => OnlineGameType.memory,
+        'wheel' => OnlineGameType.wheel,
+        'basketball' => OnlineGameType.basketball,
+        'targets' => OnlineGameType.targets,
+        'treasure' => OnlineGameType.treasure,
         _ => OnlineGameType.race,
       };
 
@@ -36,6 +62,13 @@ extension OnlineGameTypeX on OnlineGameType {
         OnlineGameType.trueFalse => 'صح ولا غلط',
         OnlineGameType.balloons => 'فرقع البالونة',
         OnlineGameType.ladder => 'سلم المليون',
+        OnlineGameType.monster => 'معركة الوحش',
+        OnlineGameType.catcher => 'اصطياد الإجابة',
+        OnlineGameType.memory => 'ذاكرة الكروت',
+        OnlineGameType.wheel => 'عجلة الحظ',
+        OnlineGameType.basketball => 'كرة السلة',
+        OnlineGameType.targets => 'الرماية على الأهداف',
+        OnlineGameType.treasure => 'حفر الكنز',
       };
 
   String get description => switch (this) {
@@ -46,6 +79,20 @@ extension OnlineGameTypeX on OnlineGameType {
           'الإجابات على بالونات طايرة — فرقع البالونة الصح',
         OnlineGameType.ladder =>
           'سؤال بسؤال والنقاط بتزيد — غلطة واحدة وتقف، ومعاك ٥٠:٥٠ وتخطّي',
+        OnlineGameType.monster =>
+          'وحش قدّامك: كل إجابة صح بتضربه، وكل غلط بيضربك — معاك ٣ قلوب',
+        OnlineGameType.catcher =>
+          'الإجابات بتنزل من فوق — حرّك السلّة والتقط الإجابة الصح',
+        OnlineGameType.memory =>
+          'كروت مقلوبة: طابق السؤال مع إجابته الصح (الإجابات القصيرة أنسب)',
+        OnlineGameType.wheel =>
+          'جاوب صح والف العجلة تكسب نقاط مكافأة (مضاعفة أو زيادة)',
+        OnlineGameType.basketball =>
+          'كل إجابة على كورة — اشوط الصح في السلة، والغلط بيخبط الحلقة',
+        OnlineGameType.targets =>
+          'لوحات رماية متحركة عليها الإجابات — اصطاد اللوحة الصح بالسهم',
+        OnlineGameType.treasure =>
+          'صناديق مدفونة — افتح الصندوق الصح على دهب، والغلط فيه فخ',
       };
 
   /// الوقت الافتراضي للسؤال بالثواني.
@@ -54,6 +101,14 @@ extension OnlineGameTypeX on OnlineGameType {
         OnlineGameType.trueFalse => 10,
         OnlineGameType.balloons => 15,
         OnlineGameType.ladder => 30,
+        OnlineGameType.monster => 15,
+        OnlineGameType.catcher => 20,
+        // الذاكرة: ثواني لكل زوج (وقت اللوحة = ثواني × عدد الأزواج).
+        OnlineGameType.memory => 12,
+        OnlineGameType.wheel => 20,
+        OnlineGameType.basketball => 15,
+        OnlineGameType.targets => 15,
+        OnlineGameType.treasure => 15,
       };
 }
 
@@ -257,6 +312,8 @@ class GameScore {
 /// سباق الأسئلة وفرقع البالونة: 500 أساسية + حتى 500 سرعة (1000 كحد أقصى).
 /// صح ولا غلط: 100 أساسية + حتى 50 سرعة (150 كحد أقصى).
 /// سلم المليون: 100 × (رقم السؤال) + حتى 50 سرعة — [index] يبدأ من 0.
+/// معركة الوحش واصطياد الإجابة وعجلة الحظ: زي السباق (والعجلة بتضيف مكافأتها
+/// فوق النقاط دي في صفحة اللعبة). ذاكرة الكروت: 100 + حتى 100 سرعة لكل زوج.
 int gameQuestionPoints({
   required OnlineGameType type,
   required bool correct,
@@ -266,7 +323,16 @@ int gameQuestionPoints({
   if (!correct) return 0;
   final f = remainingFraction.clamp(0.0, 1.0);
   return switch (type) {
-    OnlineGameType.race || OnlineGameType.balloons => 500 + (500 * f).round(),
+    OnlineGameType.race ||
+    OnlineGameType.balloons ||
+    OnlineGameType.monster ||
+    OnlineGameType.catcher ||
+    OnlineGameType.wheel ||
+    OnlineGameType.basketball ||
+    OnlineGameType.targets ||
+    OnlineGameType.treasure =>
+      500 + (500 * f).round(),
+    OnlineGameType.memory => 100 + (100 * f).round(),
     OnlineGameType.trueFalse => 100 + (50 * f).round(),
     OnlineGameType.ladder => 100 * (index + 1) + (50 * f).round(),
   };

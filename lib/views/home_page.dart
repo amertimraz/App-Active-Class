@@ -75,6 +75,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     unawaited(RatePromptService.instance.registerLaunch());
     // spec 046 — الغياب التلقائي بعد انتهاء الحصة (بيرجع فورًا لو الإعداد مطفي).
     AutoAbsentService.instance.start();
+    // تقدير تاريخ سعر الإخوة للمربوطين قبل الميزة (مرة واحدة، بعدها يتحدّث الكارت).
+    unawaited(DatabaseService().inferLegacySiblingDates().then((n) {
+      if (n > 0) _dashboardController.loadDashboardData();
+    }).catchError((_) {}));
     // فحص التحديث بهدوء بعد ما الداشبورد يخلص رسم — ميتقفلش استخدام
     // التطبيق ولا يظهر أي حاجة لو مفيش تحديث أو لو الفحص فشل.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -680,7 +684,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       // لو فيه طلاب مرصودين، ويفتح الشاشة المخصّصة عند الضغط.
                       Obx(() {
                         final n = _atRiskController.count.value;
-                        if (n == 0) return const SizedBox.shrink();
+                        final show = Get.isRegistered<SettingsController>() &&
+                            Get.find<SettingsController>().homeAtRiskCard.value;
+                        if (n == 0 || !show) return const SizedBox.shrink();
                         return Padding(
                           padding: const EdgeInsets.only(top: AppSpace.sm),
                           child: _AtRiskDashboardCard(
@@ -1291,11 +1297,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         writtenOff: d.paymentCardWrittenOff.value,
         rate: d.paymentCardRate.value,
         groups: d.paymentCardGroupBreakdown.toList(),
-        // US3: drill-down لمتأخري المجموعة دي بس.
-        onGroupTap: (groupId) {
-          Navigator.of(sheetCtx).pop();
-          _showUnpaidSheet(context, groupIdFilter: groupId);
-        },
       ),
     );
   }

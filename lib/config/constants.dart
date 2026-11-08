@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 42;
+const int DATABASE_VERSION = 43;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -152,6 +152,9 @@ const String COL_STUDENT_SIBLING_GROUP_UUID = 'sibling_group_uuid';
 // الرقم ده، مش العدد الحي الحالي، عشان خروج عضو ميقفزش بمديونية
 // الباقيين صامتًا قبل ما المدرّس ياخد قرار واعي.
 const String COL_STUDENT_SIBLING_GROUP_COMMITTED_COUNT = 'sibling_group_committed_count';
+// أول شهر اتحسب فيه سعر الإخوة (أول يوم في الشهر). null = على كل الشهور
+// (السلوك القديم). الشهور قبله بتتحسب بسعر الطالب الفردي.
+const String COL_STUDENT_SIBLINGS_FROM = 'siblings_from';
 const String COL_STUDENT_CREATED_AT = 'created_at';
 const String COL_STUDENT_ATTENDANCE_START = 'attendance_start';
 const String COL_STUDENT_GUARDIAN_PHONE = 'guardian_phone';
@@ -251,6 +254,8 @@ const String SETTING_AUTO_ABSENT_PROCESSED = 'auto_absent_processed';
 // app_settings key — إظهار تنبيه "متأخر في الدفع" جنب اسم الطالب في
 // شاشات الحضور. افتراضيًا مفعّل. محلي، غير مُزامن. (spec 029)
 const String SETTING_ATTENDANCE_OVERDUE_WARNING = 'attendance_overdue_warning';
+// كارت "محتاجين متابعة" العريض في الرئيسية — محلي، افتراضي مخفي.
+const String SETTING_HOME_AT_RISK_CARD = 'home_at_risk_card';
 // app_settings key — تفعيل دعم جهاز قارئ باركود خارجي (HID) في شاشتَي
 // الحضور والدفع. افتراضيًا معطّل — المدرّس يفعّله من الإعدادات. محلي
 // لكل جهاز، غير مُزامن. (spec 027)

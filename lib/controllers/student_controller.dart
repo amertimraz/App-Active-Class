@@ -263,18 +263,24 @@ class StudentController extends GetxController {
   /// يربط مجموعة طلاب (2 أو 3) كإخوة بشكل ذري — تحديث محلي لكل
   /// الأعضاء فقط لو نجحت عملية القاعدة كاملة (منع ربط جزئي لو فشل نص
   /// العملية). راجع specs/007-three-sibling-support.
-  Future<bool> linkSiblingGroup(List<Student> members) async {
+  Future<bool> linkSiblingGroup(List<Student> members,
+      {bool autoDate = true}) async {
     try {
       // القيمة اللي كُتبت فعليًا في القاعدة (أصغر id) — لازم نطبّقها على
       // النسخة في الذاكرة كمان، وإلا العضو الجديد يفضل siblingGroupId
       // بتاعته null محليًا فحساب المديونية بيقسم الإجمالي /2 بدل /3
       // (مديونية وهمية). راجع specs/007-three-sibling-support.
-      final (groupId, groupUuid) = await _dbService.linkSiblingGroup(members);
+      final (groupId, groupUuid) =
+          await _dbService.linkSiblingGroup(members, autoDate: autoDate);
       for (final s in members) {
         final index = students.indexWhere((x) => x.id == s.id);
         if (index != -1) {
-          students[index] =
-              s.copyWith(siblingGroupId: groupId, siblingGroupUuid: groupUuid);
+          // تاريخ السريان ممكن يكون اتحدد تلقائي في القاعدة — نقراه منها.
+          final fresh = await _dbService.getStudent(s.id!);
+          students[index] = s.copyWith(
+              siblingGroupId: groupId,
+              siblingGroupUuid: groupUuid,
+              siblingsFrom: fresh?.siblingsFrom);
         }
       }
       filterStudents();

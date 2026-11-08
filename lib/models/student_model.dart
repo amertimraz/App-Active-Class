@@ -16,6 +16,8 @@ class Student {
       siblingGroupUuid; // نفس المجموعة بس UUID ثابت للمزامنة عبر الأجهزة
   final int?
       siblingGroupCommittedCount; // عدد الأعضاء وقت آخر قرار واعي — spec 035
+  final DateTime?
+      siblingsFrom; // أول شهر بسعر الإخوة؛ null = كل الشهور
   final DateTime? createdAt;
   final DateTime? attendanceStart;
   final String? guardianPhone;
@@ -40,6 +42,7 @@ class Student {
     this.siblingGroupId,
     this.siblingGroupUuid,
     this.siblingGroupCommittedCount,
+    this.siblingsFrom,
     this.createdAt,
     this.attendanceStart,
     this.guardianPhone,
@@ -74,6 +77,7 @@ class Student {
       'sibling_group_id': siblingGroupId,
       'sibling_group_uuid': siblingGroupUuid,
       'sibling_group_committed_count': siblingGroupCommittedCount,
+      'siblings_from': siblingsFrom?.toIso8601String(),
       'created_at': createdAt?.toIso8601String(),
       'attendance_start': attendanceStart?.toIso8601String(),
       'guardian_phone': guardianPhone,
@@ -102,6 +106,9 @@ class Student {
       siblingGroupId: map['sibling_group_id'] as int?,
       siblingGroupUuid: map['sibling_group_uuid'] as String?,
       siblingGroupCommittedCount: map['sibling_group_committed_count'] as int?,
+      siblingsFrom: map['siblings_from'] != null
+          ? DateTime.tryParse(map['siblings_from'] as String)
+          : null,
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,
@@ -135,6 +142,7 @@ class Student {
         clearSiblingGroupId: true,
         clearSiblingGroupUuid: true,
         clearSiblingGroupCommittedCount: true,
+        clearSiblingsFrom: true,
       );
 
   Student copyWith({
@@ -149,6 +157,7 @@ class Student {
     int? siblingGroupId,
     String? siblingGroupUuid,
     int? siblingGroupCommittedCount,
+    DateTime? siblingsFrom,
     DateTime? createdAt,
     DateTime? attendanceStart,
     String? guardianPhone,
@@ -168,6 +177,7 @@ class Student {
     bool clearSiblingGroupId = false,
     bool clearSiblingGroupUuid = false,
     bool clearSiblingGroupCommittedCount = false,
+    bool clearSiblingsFrom = false,
   }) {
     return Student(
       id: id ?? this.id,
@@ -187,6 +197,8 @@ class Student {
       siblingGroupCommittedCount: clearSiblingGroupCommittedCount
           ? null
           : (siblingGroupCommittedCount ?? this.siblingGroupCommittedCount),
+      siblingsFrom:
+          clearSiblingsFrom ? null : (siblingsFrom ?? this.siblingsFrom),
       createdAt: createdAt ?? this.createdAt,
       attendanceStart: attendanceStart ?? this.attendanceStart,
       guardianPhone: guardianPhone ?? this.guardianPhone,

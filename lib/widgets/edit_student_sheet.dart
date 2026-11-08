@@ -92,6 +92,10 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
   late final TextEditingController _sibTotalCtrl;
 
   DateTime? _attendanceStart;
+  // أول شهر بسعر الإخوة (null = كل الشهور). لو المدرس ما لمسهوش وربط إخوة جداد
+  // بيتحدد تلقائي بالشهر الحالي، عشان الشهور اللي فاتت تفضل بسعره القديم.
+  DateTime? _siblingsFrom;
+  bool _sibFromTouched = false;
   DateTime? _birthDate;
   bool _saving = false;
   late String _code;
@@ -129,6 +133,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
     _sibTotalCtrl =
         TextEditingController(text: s.siblingsTotal?.toString() ?? '');
     _attendanceStart = s.attendanceStart ?? DateTime.now();
+    _siblingsFrom = s.siblingsFrom;
     _birthDate = s.birthDate;
     _code = s.code;
     _codeCtrl = TextEditingController(text: _code);
@@ -303,6 +308,7 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
           ? double.tryParse(_sibTotalCtrl.text.trim())
           : null;
 
+      final explicit = _sibFromTouched;
       final updated = widget.student.copyWith(
         name: name,
         code: _code,
@@ -313,6 +319,9 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
         clearSiblingGroupId: _siblings.isEmpty,
         clearSiblingGroupUuid: _siblings.isEmpty,
         clearSiblingGroupCommittedCount: _siblings.isEmpty,
+        siblingsFrom: explicit ? _siblingsFrom : null,
+        clearSiblingsFrom:
+            _siblings.isEmpty || (explicit && _siblingsFrom == null),
         attendanceStart: _attendanceStart,
         guardianPhone:
             _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
@@ -350,16 +359,21 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
         // updateStudent منفصلة له.
         final members = [
           updated.copyWith(siblingsTotal: newTotal),
-          for (final s in _siblings) s.copyWith(siblingsTotal: newTotal),
+          for (final s in _siblings)
+            s.copyWith(
+                siblingsTotal: newTotal,
+                siblingsFrom: explicit ? _siblingsFrom : null,
+                clearSiblingsFrom: explicit && _siblingsFrom == null),
         ];
-        await _sc.linkSiblingGroup(members);
+        await _sc.linkSiblingGroup(members, autoDate: !explicit);
       } else {
         await _sc.updateStudent(updated);
       }
       NotificationService().syncAllScheduledNotifications();
       _sc.filterStudents();
 
-      if (mounted) Navigator.of(context).pop(updated);
+      final fresh = updated.id == null ? null : await db.getStudent(updated.id!);
+      if (mounted) Navigator.of(context).pop(fresh ?? updated);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -671,6 +685,62 @@ class _EditStudentSheetState extends State<EditStudentSheet> {
                           label: 'الإجمالي المشترك للإخوة للشهر',
                           keyboardType: TextInputType.number,
                         ),
+                        const SizedBox(height: 10),
+                        Builder(builder: (_) {
+                          final newly = _initialSiblings.isEmpty;
+                          final shown = _sibFromTouched
+                              ? _siblingsFrom
+                              : (newly
+                                  ? DateTime(DateTime.now().year,
+                                      DateTime.now().month, 1)
+                                  : widget.student.siblingsFrom);
+                          return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                StudentDateButton(
+                                  fieldLabel: 'سعر الإخوة يسري من شهر',
+                                  dense: true,
+                                  icon: Icons.event_available_rounded,
+                                  label: shown != null
+                                      ? '${shown.month}/${shown.year}'
+                                      : 'كل الشهور',
+                                  hasValue: shown != null,
+                                  color: primary,
+                                  onTap: () async {
+                                    final p = await showDatePicker(
+                                      context: context,
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime(2100),
+                                      initialDate: shown ?? DateTime.now(),
+                                    );
+                                    if (p != null) {
+                                      setState(() {
+                                        _siblingsFrom =
+                                            DateTime(p.year, p.month, 1);
+                                        _sibFromTouched = true;
+                                      });
+                                    }
+                                  },
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                      shown != null
+                                          ? 'الشهور قبل ${shown.month}/${shown.year} بتتحسب بسعره الفردي، وبعده بسعر الإخوة.'
+                                          : 'سعر الإخوة بيتطبّق على كل الشهور من أول ما بدأ.',
+                                      style: TextStyle(
+                                          fontSize: 12, color: t.inkSoft)),
+                                ),
+                                if (shown != null)
+                                  TextButton(
+                                    onPressed: () => setState(() {
+                                      _siblingsFrom = null;
+                                      _sibFromTouched = true;
+                                    }),
+                                    child: const Text('طبّق على كل الشهور'),
+                                  ),
+                              ]);
+                        }),
                       ],
                       const SizedBox(height: 12),
                       ExemptionSection(

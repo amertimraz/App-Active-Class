@@ -13,6 +13,7 @@ import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/views/auth/login_screen.dart';
 import 'package:active_class/views/team/join_team_screen.dart';
 import 'package:active_class/views/team/manage_members_screen.dart';
+import 'package:active_class/views/team/team_sync_widgets.dart';
 import 'package:active_class/widgets/team_disconnect_dialog.dart';
 
 class TeamModeScreen extends StatelessWidget {
@@ -329,6 +330,15 @@ class _EnabledCard extends StatelessWidget {
                   color: isDark ? Colors.white60 : Colors.black45),
             )),
         const SizedBox(height: 12),
+        SyncCloud(isDark: isDark, team: team),
+        const SizedBox(height: 10),
+        // المدرّس بس: حالة كل أجهزة الفريق (مين رفع، ومين عنده بيانات عالقة).
+        Obx(() => team.isOwner.value
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TeamDevicesCard(isDark: isDark, team: team),
+              )
+            : const SizedBox.shrink()),
         _SyncDiagnostics(isDark: isDark, team: team),
         const SizedBox(height: 20),
         Obx(() {

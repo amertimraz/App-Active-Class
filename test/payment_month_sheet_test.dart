@@ -7,7 +7,8 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/dashboard_controller.dart'
-    show GroupPaymentSummaryEntry;
+    show GroupPaymentSummaryEntry, StudentMonthLine;
+import 'package:active_class/models/student_model.dart';
 import 'package:active_class/widgets/payment_month_sheet.dart';
 
 GroupPaymentSummaryEntry _g(int? id, String name, double expected,
@@ -22,9 +23,7 @@ GroupPaymentSummaryEntry _g(int? id, String name, double expected,
         unpaidStudentsCount: late);
 
 PaymentMonthSheet _sheet(
-        {List<GroupPaymentSummaryEntry>? groups,
-        double wo = 0,
-        void Function(int?)? onTap}) =>
+        {List<GroupPaymentSummaryEntry>? groups, double wo = 0}) =>
     PaymentMonthSheet(
       monthName: 'نوفمبر',
       collected: 2500,
@@ -38,7 +37,6 @@ PaymentMonthSheet _sheet(
             _g(2, 'أولى ثانوي', 1500, 1500, 0),
             _g(null, 'طلاب بلا مجموعة', 500, 0, 2),
           ],
-      onGroupTap: onTap ?? (_) {},
     );
 
 Widget _host(Widget sheet, {bool dark = false, double scale = 1.0}) =>
@@ -114,27 +112,44 @@ void main() {
     expect(find.text('مُسقَط'), findsNothing);
   });
 
-  testWidgets('الضغط على مجموعة عليها متأخرين بينادي onGroupTap', (tester) async {
-    final taps = <int?>[];
-    await tester.pumpWidget(_host(_sheet(onTap: taps.add)));
+  testWidgets('الضغط على مجموعة بيفتح تابين متأخر ومدفوع', (tester) async {
+    final late = Student(
+        id: 1, name: 'أحمد', code: 'A1', groupId: 1, price: 100);
+    final paid = Student(
+        id: 2, name: 'منى', code: 'A2', groupId: 1, price: 100);
+    final g = GroupPaymentSummaryEntry(
+      groupId: 1,
+      groupName: 'سادسة',
+      expected: 200,
+      collected: 100,
+      unpaidStudentsCount: 1,
+      lines: [
+        StudentMonthLine(
+            student: late,
+            due: 100,
+            paid: 0,
+            writtenOff: 0,
+            unpaid: true),
+        StudentMonthLine(
+            student: paid,
+            due: 100,
+            paid: 100,
+            writtenOff: 0,
+            unpaid: false),
+      ],
+    );
+    await tester.pumpWidget(_host(_sheet(groups: [g])));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('طلاب بلا مجموعة'));
+    await tester.tap(find.text('سادسة'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('طلاب بلا مجموعة'));
+    expect(find.text('متأخر (1)'), findsOneWidget);
+    expect(find.text('مدفوع (1)'), findsOneWidget);
+    expect(find.text('أحمد'), findsOneWidget);
+    await tester.tap(find.text('مدفوع (1)'));
     await tester.pumpAndSettle();
-    expect(taps, [null]);
-    await tester.ensureVisible(find.textContaining('العواسجة'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('العواسجة'));
-    await tester.pumpAndSettle();
-    expect(taps, [null, 1]);
-    // المجموعة المكتملة مش بتتضغط
-    await tester.ensureVisible(find.text('أولى ثانوي'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('أولى ثانوي'));
-    await tester.pumpAndSettle();
-    expect(taps.length, 2);
+    expect(find.text('منى'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('من غير مجموعات: رسالة فاضية', (tester) async {

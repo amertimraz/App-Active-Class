@@ -115,6 +115,15 @@ class PricingHelper {
     return (oldCount: committed, newCount: liveCount);
   }
 
+  /// سعر الإخوة بيسري من شهر [Student.siblingsFrom]؛ الشهور قبله بالسعر الفردي.
+  /// null = على كل الشهور (سلوك قديم لمجموعات اتربطت قبل الميزة دي).
+  static bool _siblingPriceApplies(Student s, DateTime month) {
+    final from = s.siblingsFrom;
+    if (from == null) return true;
+    return !DateTime(month.year, month.month, 1)
+        .isBefore(DateTime(from.year, from.month, 1));
+  }
+
   static double monthlyDue({
     required Student student,
     required Group? group,
@@ -134,7 +143,8 @@ class PricingHelper {
           student: student, month: month, allAttendance: allAttendance);
       base = student.price * attended;
     } else if (student.siblingGroupId != null &&
-        student.siblingsTotal != null) {
+        student.siblingsTotal != null &&
+        _siblingPriceApplies(student, month)) {
       // عرض الإخوة (2-3): المستحق الشهري الفعلي على كل طالب = الإجمالي
       // المشترك (siblingsTotal) ÷ عدد الأعضاء الفعلي، مش سعره الفردي
       // (student.price) — وإلا كان بيُحتسب عليه كل شهر سعر كامل رغم إن
@@ -145,7 +155,9 @@ class PricingHelper {
       // قبل ما المدرّس يشوف تنبيه ويقرر.
       final count = _committedOrLiveCount(student, siblingGroupMembers);
       base = student.siblingsTotal! / count;
-    } else if (student.siblingId != null && student.siblingsTotal != null) {
+    } else if (student.siblingId != null &&
+        student.siblingsTotal != null &&
+        _siblingPriceApplies(student, month)) {
       // بيانات قديمة لسه ما اتحوّلتش لـsiblingGroupId (نادر جدًا بعد
       // migration الإصدار 18 — لو حصل، نفترض زوج بس زي القديم).
       base = student.siblingsTotal! / 2.0;

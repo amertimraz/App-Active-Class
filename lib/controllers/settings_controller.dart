@@ -321,8 +321,19 @@ class SettingsController extends GetxController {
   // إظهار تنبيه "متأخر في الدفع" في شاشات الحضور (spec 029) — افتراضي مفعّل.
   final RxBool attendanceOverdueWarning = true.obs;
 
+  // كارت "محتاجين متابعة" العريض في الرئيسية — افتراضي مخفي (الأيقونة فوق كفاية).
+  final RxBool homeAtRiskCard = false.obs;
+
+  Future<void> setHomeAtRiskCard(bool v) async {
+    homeAtRiskCard.value = v;
+    try {
+      await _dbSet(SETTING_HOME_AT_RISK_CARD, v ? '1' : '0');
+    } catch (_) {}
+  }
+
   Future<void> _loadLateAttendanceSettings() async {
     try {
+      homeAtRiskCard.value = (await _dbGet(SETTING_HOME_AT_RISK_CARD)) == '1';
       lateGraceMinutes.value =
           await _migrateInt(SETTING_LATE_GRACE_MINUTES) ?? 15;
       qrAutoLateEnabled.value =
