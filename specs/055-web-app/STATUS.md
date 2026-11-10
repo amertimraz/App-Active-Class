@@ -30,3 +30,17 @@
 `specs/055-web-app/*`, `lib/core/platform/*`, `lib/views/web/*`, `lib/utils/{responsive,web_login_notice,web_owner_license}.dart`, `lib/widgets/web_responsive_frame.dart`, `web/sqlite3.wasm`, اختبارات `test/{web_auth_pages,responsive,web_login_notice,web_owner_license}_test.dart`.
 ## ملفات متعدّلة
 `pubspec.{yaml,lock}`, `web/{index.html,manifest.json}`, `lib/main.dart`, `lib/config/theme.dart`, `lib/controllers/license_controller.dart`, `lib/services/{database_service,team_mode_service,sync_engine}.dart`, `lib/views/{splash_page,home_page}.dart`, `lib/views/auth/account_screen.dart`, `lib/views/students/students_page.dart`, `lib/views/qr_scanner/qr_gallery_page.dart`.
+
+## النشر بأمر واحد (`tool/deploy_web.sh`)
+```bash
+tool/deploy_web.sh                # اختبارات + بناء + رفع + فحص HTTPS (ورجوع تلقائي لو فشل الفحص)
+tool/deploy_web.sh --skip-tests   # أسرع
+tool/deploy_web.sh --reuse-build  # يرفع build/web الموجود من غير بناء
+tool/deploy_web.sh --build-only   # بناء محلي بس
+tool/deploy_web.sh --rollback     # رجوع للإصدار اللي قبل الحالي
+```
+- بيرفع لـ `releases/<الإصدار>-<شهريوم-ساعةدقيقة>` ويبدّل symlink `current` ذرّيًا، ويحتفظ بآخر 4 إصدارات.
+- بيرفض ينشر لو البناء فيه علامة `PREVIEW_NO_AUTH`، وبيسأل لو فيه تعديلات غير مدموجة (`--yes` يتخطّى السؤال).
+- بيعيد البناء مرة لو فشل (مترجم Dart بيقع أحيانًا لو الذاكرة قليلة: `Could not start thread DartWorker`).
+- اتجرّب على مجلد تجريبي في `/tmp` على السيرفر (رفع، تبديل، رجوع تلقائي، رجوع يدوي، تنضيف)؛ متغيّرات `WEB_HOST/WEB_KEY/WEB_BASE/WEB_URL` للتجارب.
+- **الويب نفس كود التطبيق**: أي تعديل في `lib/` بيوصل للويب مع أول نشر. اللي محتاج انتباه: ميزات بتعتمد على الموبايل (كاميرا/إشعارات/ملفات/نسخ احتياطي) لازم تتخفي أو يتعملها بديل على الويب.
