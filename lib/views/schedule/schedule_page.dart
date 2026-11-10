@@ -12,11 +12,19 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/schedule_week.dart';
 import 'package:active_class/views/attendance/session_detail_page.dart';
+import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/widgets/clock_text.dart';
 
 // ─── أيام الأسبوع (تبدأ السبت) ────────────────────────────────────────────────
 const List<String> _kDays = [
-  'السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة',
+  'السبت',
+  'الأحد',
+  'الاثنين',
+  'الثلاثاء',
+  'الأربعاء',
+  'الخميس',
+  'الجمعة',
 ];
 
 // تحويل DateTime.weekday → فهرس اليوم العربي (السبت=0)
@@ -24,11 +32,11 @@ int _todayIndex() => (DateTime.now().weekday + 1) % 7;
 
 // ─── حصة واحدة في الجدول ──────────────────────────────────────────────────────
 class _ClassSlot {
-  final Group     group;
-  final int       dayIndex;   // 0=السبت
+  final Group group;
+  final int dayIndex; // 0=السبت
   final TimeOfDay from;
   final TimeOfDay to;
-  final int       studentCount;
+  final int studentCount;
   // spec 053 — استثناء الحصة في التاريخ المعروض (ملغاة/تعويضية/إضافية).
   final SessionOverrideType? override;
 
@@ -50,10 +58,11 @@ class _ClassSlot {
       override: o);
 
   int get fromMinutes => from.hour * 60 + from.minute;
-  int get toMinutes   => to.hour * 60 + to.minute;
+  int get toMinutes => to.hour * 60 + to.minute;
   int get durationMin => toMinutes - fromMinutes;
 
-  Color get color => group.color != null ? Color(group.color!) : AppTheme.primaryColor;
+  Color get color =>
+      group.color != null ? Color(group.color!) : AppTheme.primaryColor;
 }
 
 class SchedulePage extends StatefulWidget {
@@ -72,12 +81,28 @@ class _SchedulePageState extends State<SchedulePage> {
   Map<int, int> _countByGroup = {};
   SessionOverrideController? _so;
   bool _loading = true;
+  // مفاتيح شرايح الأيام عشان نحرّك اليوم المختار لنص الشريط.
+  final List<GlobalKey> _chipKeys = List.generate(7, (_) => GlobalKey());
 
   @override
   void initState() {
     super.initState();
     _selectedDay = _todayIndex();
     _load();
+  }
+
+  void _scrollSelectedIntoView() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final c = _chipKeys[_selectedDay].currentContext;
+      if (c == null) return;
+      Scrollable.ensureVisible(c,
+          alignment: 0.5,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 250),
+          curve: Curves.easeOut);
+    });
   }
 
   Future<void> _load() async {
@@ -112,6 +137,7 @@ class _SchedulePageState extends State<SchedulePage> {
         _slots = slots;
         _loading = false;
       });
+      _scrollSelectedIntoView();
     }
   }
 
@@ -136,7 +162,7 @@ class _SchedulePageState extends State<SchedulePage> {
     }
 
     final from = parse(range[0]);
-    final to   = parse(range[1]);
+    final to = parse(range[1]);
     if (from == null || to == null) return null;
 
     return _ClassSlot(
@@ -157,10 +183,13 @@ class _SchedulePageState extends State<SchedulePage> {
 
   DateTime get _selectedDate => _dateOf(_selectedDay);
 
-  void _goToDate(DateTime d) => setState(() {
-        _weekOffset = weekOffsetFor(DateTime.now(), d);
-        _selectedDay = dayIndexOf(d);
-      });
+  void _goToDate(DateTime d) {
+    setState(() {
+      _weekOffset = weekOffsetFor(DateTime.now(), d);
+      _selectedDay = dayIndexOf(d);
+    });
+    _scrollSelectedIntoView();
+  }
 
   static TimeOfDay? _parseHm(String v) {
     final p = v.trim().split(':');
@@ -179,7 +208,8 @@ class _SchedulePageState extends State<SchedulePage> {
     final result = <_ClassSlot>[];
     final covered = <int?>{};
     for (final sl in base) {
-      final ov = sl.group.id == null ? null : so.overrideFor(sl.group.id!, date);
+      final ov =
+          sl.group.id == null ? null : so.overrideFor(sl.group.id!, date);
       covered.add(sl.group.id);
       result.add(ov != null && ov.type == SessionOverrideType.cancelled
           ? sl.withOverride(SessionOverrideType.cancelled)
@@ -244,70 +274,117 @@ class _SchedulePageState extends State<SchedulePage> {
     if (d != null) _goToDate(d);
   }
 
-  Widget _dateNav(bool isDark) {
+  // ── كتلة السبورة: التنقل بين التواريخ + ملخص الأسبوع + شريط الأيام ──────────
+  Widget _board(BuildContext context, AppTokens t) {
     final d = _selectedDate;
     final fmt = DateFormat('EEEE d MMMM yyyy', 'ar');
-    Widget btn(IconData i, String tip, VoidCallback f) => IconButton(
-          tooltip: tip,
-          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-          icon: Icon(i, size: 22),
-          onPressed: f,
-        );
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-      child: Row(children: [
-        btn(Icons.keyboard_double_arrow_right_rounded, 'شهر قبل',
-            () => _goToDate(DateTime(d.year, d.month - 1, d.day))),
-        btn(Icons.chevron_right_rounded, 'أسبوع قبل',
-            () => setState(() => _weekOffset -= 1)),
-        Expanded(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: _pickDate,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text(fmt.format(d),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontFamily: 'Cairo',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800)),
-                if (_weekOffset != 0 || _selectedDay != _todayIndex())
-                  GestureDetector(
-                    onTap: () => _goToDate(DateTime.now()),
-                    child: const Text('الرجوع لليوم',
-                        style: TextStyle(
-                            fontFamily: 'Cairo',
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primaryColor)),
+    final showBack = _weekOffset != 0 || _selectedDay != _todayIndex();
+    return Container(
+      width: double.infinity,
+      padding:
+          const EdgeInsets.fromLTRB(AppSpace.sm, 0, AppSpace.sm, AppSpace.lg),
+      decoration: BoxDecoration(
+        color: t.board,
+        borderRadius: const BorderRadius.vertical(
+            bottom: Radius.circular(AppRadius.board)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            BoardIconButton(
+                icon: Icons.keyboard_double_arrow_right_rounded,
+                tooltip: 'شهر قبل',
+                onPressed: () =>
+                    _goToDate(DateTime(d.year, d.month - 1, d.day))),
+            BoardIconButton(
+                icon: Icons.chevron_right_rounded,
+                tooltip: 'أسبوع قبل',
+                onPressed: () => setState(() => _weekOffset -= 1)),
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(AppRadius.control),
+                onTap: _pickDate,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: Center(
+                    child: Text(fmt.format(d),
+                        textAlign: TextAlign.center,
+                        maxLines: 3,
+                        style: AppType.title
+                            .copyWith(fontSize: 16, color: t.boardInk)),
                   ),
-              ]),
+                ),
+              ),
             ),
+            BoardIconButton(
+                icon: Icons.chevron_left_rounded,
+                tooltip: 'أسبوع بعد',
+                onPressed: () => setState(() => _weekOffset += 1)),
+            BoardIconButton(
+                icon: Icons.keyboard_double_arrow_left_rounded,
+                tooltip: 'شهر بعد',
+                onPressed: () =>
+                    _goToDate(DateTime(d.year, d.month + 1, d.day))),
+          ]),
+          if (showBack)
+            Center(
+              child: TextButton(
+                onPressed: () => _goToDate(DateTime.now()),
+                style: TextButton.styleFrom(
+                    foregroundColor: t.chalk, minimumSize: const Size(44, 44)),
+                child: Text('الرجوع لليوم',
+                    style: AppType.label.copyWith(color: t.chalk)),
+              ),
+            ),
+          const SizedBox(height: AppSpace.sm),
+          _WeekSummary(slots: _slots),
+          const SizedBox(height: AppSpace.md),
+          // شريط الأيام: Row جوه تمرير أفقي (من غير ارتفاع ثابت) عشان الخط
+          // الكبير يكبّر الشرائح بدل ما يعمل overflow.
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.xs),
+            child: Row(children: [
+              for (var i = 0; i < _kDays.length; i++) ...[
+                if (i > 0) const SizedBox(width: AppSpace.sm),
+                Builder(builder: (_) {
+                  final dayDate = _dateOf(i);
+                  final count = _slotsForDate(dayDate)
+                      .where((x) => x.override != SessionOverrideType.cancelled)
+                      .length;
+                  return _DayChip(
+                    key: _chipKeys[i],
+                    label: _kDays[i],
+                    dateText: '${dayDate.day}/${dayDate.month}',
+                    count: count,
+                    isToday: _cmpToday(dayDate) == 0,
+                    selected: i == _selectedDay,
+                    onTap: () {
+                      setState(() => _selectedDay = i);
+                      _scrollSelectedIntoView();
+                    },
+                  );
+                }),
+              ],
+            ]),
           ),
-        ),
-        btn(Icons.chevron_left_rounded, 'أسبوع بعد',
-            () => setState(() => _weekOffset += 1)),
-        btn(Icons.keyboard_double_arrow_left_rounded, 'شهر بعد',
-            () => _goToDate(DateTime(d.year, d.month + 1, d.day))),
-      ]),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final cs     = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     final selectedDate = _selectedDate;
     final daySlots = _slotsForDate(selectedDate);
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF0B1020) : const Color(0xFFF4F6FC),
-      appBar: AppBar(
-        title: const Text('جدول الحصص',
-            style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+      backgroundColor: t.page,
+      appBar: buildBoardAppBar(
+        context,
+        title: 'جدول الحصص',
         actions: [
           IconButton(
             tooltip: 'تحديث',
@@ -323,67 +400,35 @@ class _SchedulePageState extends State<SchedulePage> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // ── لوحة ملخص أسبوعي ──────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: _WeekSummary(slots: _slots),
-                ),
-
-                _dateNav(isDark),
-
-                // ── شريط الأيام ───────────────────────────────────
-                SizedBox(
-                  height: 108,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    itemCount: _kDays.length,
-                    itemBuilder: (_, i) {
-                      final dayDate = _dateOf(i);
-                      final count = _slotsForDate(dayDate)
-                          .where((x) =>
-                              x.override != SessionOverrideType.cancelled)
-                          .length;
-                      return _DayChip(
-                        label:     _kDays[i],
-                        dateText:  '${dayDate.day}/${dayDate.month}',
-                        count:     count,
-                        isToday:   _cmpToday(dayDate) == 0,
-                        selected:  i == _selectedDay,
-                        onTap:     () => setState(() => _selectedDay = i),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 4),
+                _board(context, t),
 
                 // ── حصص اليوم المختار ─────────────────────────────
                 Expanded(
                   child: daySlots.isEmpty
-                      ? _EmptyDay(
-                          day: _kDays[_selectedDay], isDark: isDark, cs: cs)
+                      ? _EmptyDay(day: _kDays[_selectedDay])
                       : ClockBuilder(builder: (_) {
                           // إعادة بناء القائمة عند تغيير نظام الساعة 12/24
                           // من الإعدادات (الصفحة دي مش GetX-reactive أصلًا).
                           return ListView.builder(
-                            padding:
-                                const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            padding: const EdgeInsets.fromLTRB(
+                                AppSpace.lg, AppSpace.lg, AppSpace.lg, 24),
                             itemCount: daySlots.length,
                             itemBuilder: (_, i) {
                               final s = daySlots[i];
                               return _ClassCard(
-                                slot:      s,
-                                isNow:     _isNow(s, selectedDate),
-                                isPast:    _isPast(s, selectedDate),
-                                isLast:    i == daySlots.length - 1,
-                                timeFrom:  _fmtTime(s.from),
-                                timeTo:    _fmtTime(s.to),
+                                slot: s,
+                                isNow: _isNow(s, selectedDate),
+                                isPast: _isPast(s, selectedDate),
+                                isLast: i == daySlots.length - 1,
+                                timeFrom: _fmtTime(s.from),
+                                timeTo: _fmtTime(s.to),
                                 // spec 053: تفاصيل الحصة بتاريخها، والضغط
                                 // المطوّل لتفاصيل المجموعة (السلوك القديم).
                                 onTap: () => Get.to(() => SessionDetailPage(
                                     group: s.group, day: selectedDate)),
                                 onLongPress: () => Get.toNamed(
-                                    ROUTE_GROUP_DETAILS, arguments: s.group),
+                                    ROUTE_GROUP_DETAILS,
+                                    arguments: s.group),
                               );
                             },
                           );
@@ -395,80 +440,48 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 }
 
-// ─── ملخص الأسبوع ─────────────────────────────────────────────────────────────
+// ─── ملخص الأسبوع (فوق السبورة) ───────────────────────────────────────────────
 class _WeekSummary extends StatelessWidget {
   final List<_ClassSlot> slots;
   const _WeekSummary({required this.slots});
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     final totalClasses = slots.length;
     final totalMinutes = slots.fold<int>(0, (s, c) => s + c.durationMin);
-    final hours        = (totalMinutes / 60);
-    final groupsCount  = slots.map((s) => s.group.id).toSet().length;
+    final hours = totalMinutes / 60;
+    final groupsCount = slots.map((s) => s.group.id).toSet().length;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF4F46E5).withValues(alpha: 0.3),
-            blurRadius: 16, offset: const Offset(0, 6)),
-        ],
-      ),
-      child: Row(
-        children: [
-          _summaryStat(
-              '$totalClasses', 'حصة أسبوعياً', Icons.event_note_rounded),
-          _divider(),
-          _summaryStat(
-              hours == hours.toInt()
-                  ? '${hours.toInt()}'
-                  : hours.toStringAsFixed(1),
-              'ساعة تدريس', Icons.schedule_rounded),
-          _divider(),
-          _summaryStat(
-              '$groupsCount', 'مجموعة نشطة', Icons.groups_rounded),
-        ],
-      ),
-    );
+    Widget cell(Widget c) => Expanded(
+        child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.xs),
+            child: c));
+    return Row(children: [
+      cell(BoardStat(
+          label: 'حصة أسبوعياً', value: '$totalClasses', color: t.boardInk)),
+      cell(BoardStat(
+          label: 'ساعة تدريس',
+          value: hours == hours.toInt()
+              ? '${hours.toInt()}'
+              : hours.toStringAsFixed(1),
+          color: t.boardInk)),
+      cell(BoardStat(
+          label: 'مجموعة نشطة', value: '$groupsCount', color: t.chalk)),
+    ]);
   }
-
-  Widget _divider() => Container(
-      width: 1, height: 38, color: Colors.white.withValues(alpha: 0.2));
-
-  Widget _summaryStat(String value, String label, IconData icon) => Expanded(
-        child: Column(children: [
-          Icon(icon, size: 18, color: Colors.white.withValues(alpha: 0.85)),
-          const SizedBox(height: 5),
-          Text(value,
-              style: const TextStyle(
-                  fontFamily: 'Cairo', fontSize: 20,
-                  fontWeight: FontWeight.w900, color: Colors.white,
-                  height: 1.1)),
-          Text(label,
-              style: TextStyle(
-                  fontFamily: 'Cairo', fontSize: 10,
-                  color: Colors.white.withValues(alpha: 0.75))),
-        ]),
-      );
 }
 
-// ─── شريحة اليوم ──────────────────────────────────────────────────────────────
+// ─── شريحة اليوم (فوق السبورة): المختار بالطباشير الأصفر ───────────────────────
 class _DayChip extends StatelessWidget {
   final String label;
   final String dateText;
-  final int    count;
-  final bool   isToday;
-  final bool   selected;
+  final int count;
+  final bool isToday;
+  final bool selected;
   final VoidCallback onTap;
   const _DayChip({
+    super.key,
     required this.label,
     required this.dateText,
     required this.count,
@@ -479,106 +492,74 @@ class _DayChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: 64,
-        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: selected
-              ? const LinearGradient(
-                  colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter)
-              : null,
-          color: selected
-              ? null
-              : (isDark ? const Color(0xFF141B2D) : Colors.white),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isToday && !selected
-                ? AppTheme.primaryColor
-                : cs.onSurface.withValues(alpha: 0.08),
+    final t = context.tokens;
+    final fg = selected ? t.onChalk : t.boardInk;
+    final soft = selected ? t.onChalk : t.boardInkSoft;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '$label $dateText، $count حصة${isToday ? '، اليوم' : ''}',
+      excludeSemantics: true,
+      child: Material(
+        color: selected ? t.chalk : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          side: BorderSide(
+            color: selected ? t.chalk : (isToday ? t.chalk : t.boardLine),
             width: isToday && !selected ? 1.5 : 1,
           ),
-          boxShadow: selected
-              ? [BoxShadow(
-                  color: const Color(0xFF4F46E5).withValues(alpha: 0.3),
-                  blurRadius: 10, offset: const Offset(0, 4))]
-              : null,
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (isToday)
-              Container(
-                margin: const EdgeInsets.only(bottom: 3),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? Colors.white.withValues(alpha: 0.25)
-                      : AppTheme.primaryColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text('اليوم',
-                    style: TextStyle(
-                        fontFamily: 'Cairo', fontSize: 8,
-                        fontWeight: FontWeight.w800,
-                        color: selected
-                            ? Colors.white
-                            : AppTheme.primaryColor)),
-              ),
-            Text(label,
-                style: TextStyle(
-                    fontFamily: 'Cairo', fontSize: 12.5,
-                    fontWeight: FontWeight.w800,
-                    color: selected
-                        ? Colors.white
-                        : cs.onSurface.withValues(alpha: 0.8))),
-            Text(dateText,
-                style: TextStyle(
-                    fontFamily: 'Cairo', fontSize: 9.5,
-                    color: selected
-                        ? Colors.white.withValues(alpha: 0.85)
-                        : cs.onSurface.withValues(alpha: 0.5))),
-            const SizedBox(height: 3),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
-              decoration: BoxDecoration(
-                color: selected
-                    ? Colors.white.withValues(alpha: 0.22)
-                    : (count > 0
-                        ? AppTheme.primaryColor.withValues(alpha: 0.12)
-                        : cs.onSurface.withValues(alpha: 0.06)),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text('$count',
-                  style: TextStyle(
-                      fontFamily: 'Cairo', fontSize: 10,
-                      fontWeight: FontWeight.w900,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 64, minHeight: 44),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpace.sm, vertical: AppSpace.sm),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isToday)
+                    Text('اليوم',
+                        style: AppType.caption.copyWith(
+                            color: selected ? t.onChalk : t.chalk,
+                            fontWeight: FontWeight.w700)),
+                  Text(label, style: AppType.label.copyWith(color: fg)),
+                  Text(dateText, style: AppType.caption.copyWith(color: soft)),
+                  const SizedBox(height: AppSpace.xs),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpace.sm, vertical: 1),
+                    decoration: BoxDecoration(
                       color: selected
-                          ? Colors.white
+                          ? t.onChalk.withValues(alpha: 0.12)
                           : (count > 0
-                              ? AppTheme.primaryColor
-                              : cs.onSurface.withValues(alpha: 0.4)))),
+                              ? t.chalk.withValues(alpha: 0.16)
+                              : t.boardLine),
+                      borderRadius: BorderRadius.circular(AppRadius.chip),
+                    ),
+                    child: Text('$count',
+                        style: AppType.caption.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: selected
+                                ? t.onChalk
+                                : (count > 0 ? t.chalk : t.boardInkSoft))),
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ─── بطاقة الحصة (بتصميم timeline) ────────────────────────────────────────────
+// ─── بطاقة الحصة (timeline) ───────────────────────────────────────────────────
 class _ClassCard extends StatelessWidget {
   final _ClassSlot slot;
-  final bool   isNow, isPast, isLast;
+  final bool isNow, isPast, isLast;
   final String timeFrom, timeTo;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
@@ -593,235 +574,37 @@ class _ClassCard extends StatelessWidget {
     this.onLongPress,
   });
 
-  Widget? _overrideBadge() {
+  Widget _badge(String label, Color bg, Color fg) => Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: 2),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(AppRadius.chip),
+        ),
+        child: Text(label,
+            style: AppType.caption
+                .copyWith(fontWeight: FontWeight.w700, color: fg)),
+      );
+
+  Widget? _overrideBadge(AppTokens t) {
     final o = slot.override;
     if (o == null) return null;
-    final (String label, Color c) = switch (o) {
-      SessionOverrideType.cancelled => ('ملغاة', const Color(0xFFEF4444)),
-      SessionOverrideType.makeup => ('تعويضية', const Color(0xFF10B981)),
-      SessionOverrideType.extra => ('إضافية', const Color(0xFF6366F1)),
+    return switch (o) {
+      SessionOverrideType.cancelled => _badge('ملغاة', t.dangerSoft, t.danger),
+      SessionOverrideType.makeup =>
+        _badge('تعويضية', t.positiveSoft, t.positive),
+      SessionOverrideType.extra => _badge('إضافية', t.rosterTint, t.rosterInk),
     };
-    return Container(
-      margin: const EdgeInsetsDirectional.only(start: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              fontFamily: 'Cairo', fontSize: 10,
-              fontWeight: FontWeight.w800, color: c)),
-    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final cs     = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color  = slot.color;
-
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ── عمود الوقت + خط الـ timeline ──────────────────────
-          SizedBox(
-            width: 56,
-            child: Column(
-              children: [
-                Text(timeFrom,
-                    style: TextStyle(
-                        fontFamily: 'Cairo', fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: isNow
-                            ? color
-                            : cs.onSurface.withValues(alpha: 0.7))),
-                const SizedBox(height: 2),
-                // نقطة + خط
-                Expanded(
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 12, height: 12,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isNow ? color : Colors.transparent,
-                          border: Border.all(color: color, width: 2),
-                        ),
-                      ),
-                      if (!isLast)
-                        Expanded(
-                          child: Container(
-                            width: 2,
-                            color: color.withValues(alpha: 0.25),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-
-          // ── بطاقة المجموعة ────────────────────────────────────
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Opacity(
-                opacity: isPast ? 0.55 : 1.0,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: onTap,
-                    onLongPress: onLongPress,
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? const Color(0xFF141B2D)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isNow
-                              ? color
-                              : color.withValues(alpha: 0.18),
-                          width: isNow ? 1.5 : 1,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: isNow
-                                ? color.withValues(alpha: 0.2)
-                                : Colors.black.withValues(
-                                    alpha: isDark ? 0.2 : 0.04),
-                            blurRadius: isNow ? 14 : 8,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          // أيقونة ملوّنة
-                          Container(
-                            width: 46, height: 46,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  color,
-                                  Color.lerp(color, Colors.black, 0.2)!,
-                                ],
-                                begin: Alignment.topRight,
-                                end: Alignment.bottomLeft,
-                              ),
-                              borderRadius: BorderRadius.circular(13),
-                            ),
-                            child: const Icon(Icons.groups_rounded,
-                                color: Colors.white, size: 24),
-                          ),
-                          const SizedBox(width: 12),
-                          // التفاصيل
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Row(children: [
-                                  Expanded(
-                                    child: Text(slot.group.name,
-                                        style: TextStyle(
-                                            fontFamily: 'Cairo',
-                                            fontSize: 14.5,
-                                            fontWeight: FontWeight.w800,
-                                            color: cs.onSurface),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis),
-                                  ),
-                                  if (_overrideBadge() != null)
-                                    _overrideBadge()!,
-                                  if (isNow)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: color,
-                                        borderRadius:
-                                            BorderRadius.circular(8),
-                                      ),
-                                      child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            _PulseDot(),
-                                            SizedBox(width: 4),
-                                            Text('الآن',
-                                                style: TextStyle(
-                                                    fontFamily: 'Cairo',
-                                                    fontSize: 10,
-                                                    fontWeight:
-                                                        FontWeight.w900,
-                                                    color: Colors.white)),
-                                          ]),
-                                    )
-                                  else if (isPast)
-                                    Icon(Icons.check_circle_rounded,
-                                        size: 16,
-                                        color: cs.onSurface
-                                            .withValues(alpha: 0.3)),
-                                ]),
-                                const SizedBox(height: 6),
-                                Row(children: [
-                                  Flexible(
-                                    child: _miniInfo(
-                                        Icons.access_time_rounded,
-                                        '$timeFrom - $timeTo',
-                                        color, cs),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Flexible(
-                                    child: _miniInfo(
-                                        Icons.hourglass_bottom_rounded,
-                                        _durationLabel(slot.durationMin),
-                                        color, cs),
-                                  ),
-                                ]),
-                                if (slot.studentCount > 0) ...[
-                                  const SizedBox(height: 6),
-                                  _miniInfo(
-                                      Icons.person_rounded,
-                                      '${slot.studentCount} طالب',
-                                      color, cs),
-                                ],
-                              ],
-                            ),
-                          ),
-                          Icon(Icons.arrow_forward_ios_rounded,
-                              size: 13,
-                              color: cs.onSurface.withValues(alpha: 0.3)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _miniInfo(IconData icon, String text, Color color, ColorScheme cs) =>
+  Widget _info(AppTokens t, IconData icon, String text) =>
       Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 13, color: color.withValues(alpha: 0.8)),
-        const SizedBox(width: 3),
+        Icon(icon, size: 16, color: t.inkFaint),
+        const SizedBox(width: AppSpace.xs),
         Flexible(
           child: Text(text,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontFamily: 'Cairo', fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface.withValues(alpha: 0.6))),
+              style: AppType.body.copyWith(color: t.inkSoft)),
         ),
       ]);
 
@@ -833,9 +616,167 @@ class _ClassCard extends StatelessWidget {
     if (h > 0) return '$h ساعة';
     return '$m دقيقة';
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final color = slot.color;
+    final badge = _overrideBadge(t);
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── عمود الوقت + خط الـ timeline ──────────────────────
+          SizedBox(
+            width: 64,
+            child: Column(
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(timeFrom,
+                      style: AppType.label
+                          .copyWith(color: isNow ? t.ink : t.inkSoft)),
+                ),
+                const SizedBox(height: AppSpace.xs),
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isNow ? color : Colors.transparent,
+                    border: Border.all(color: color, width: 2),
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(child: Container(width: 2, color: t.line)),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpace.sm),
+
+          // ── بطاقة المجموعة ────────────────────────────────────
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: AppSpace.md),
+              child: Material(
+                color: t.surface,
+                clipBehavior: Clip.antiAlias,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.panel),
+                  side: BorderSide(
+                      color: isNow ? color : t.line, width: isNow ? 2 : 1),
+                ),
+                child: InkWell(
+                  onTap: onTap,
+                  onLongPress: onLongPress,
+                  child: IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // شريط لون المجموعة على حافة البطاقة
+                        Container(width: 6, color: color),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.all(AppSpace.md),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(slot.group.name,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppType.title.copyWith(
+                                        color: isPast ? t.inkSoft : t.ink)),
+                                if (badge != null || isNow || isPast) ...[
+                                  const SizedBox(height: AppSpace.xs),
+                                  Wrap(
+                                    spacing: AppSpace.sm,
+                                    runSpacing: AppSpace.xs,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      if (badge != null) badge,
+                                      if (isNow)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: AppSpace.sm,
+                                              vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: t.positive,
+                                            borderRadius: BorderRadius.circular(
+                                                AppRadius.chip),
+                                          ),
+                                          child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const _PulseDot(),
+                                                const SizedBox(
+                                                    width: AppSpace.xs),
+                                                Text('الآن',
+                                                    style: AppType.caption
+                                                        .copyWith(
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color:
+                                                                Colors.white)),
+                                              ]),
+                                        )
+                                      else if (isPast)
+                                        Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.check_circle_rounded,
+                                                  size: 16, color: t.positive),
+                                              const SizedBox(
+                                                  width: AppSpace.xs),
+                                              Text('انتهت',
+                                                  style: AppType.caption
+                                                      .copyWith(
+                                                          color: t.inkFaint)),
+                                            ]),
+                                    ],
+                                  ),
+                                ],
+                                const SizedBox(height: AppSpace.sm),
+                                Wrap(
+                                  spacing: AppSpace.md,
+                                  runSpacing: AppSpace.xs,
+                                  children: [
+                                    _info(t, Icons.access_time_rounded,
+                                        '$timeFrom - $timeTo'),
+                                    _info(t, Icons.hourglass_bottom_rounded,
+                                        _durationLabel(slot.durationMin)),
+                                    if (slot.studentCount > 0)
+                                      _info(t, Icons.person_rounded,
+                                          '${slot.studentCount} طالب'),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(
+                              end: AppSpace.md),
+                          child: Center(
+                            child: Icon(Icons.arrow_forward_ios_rounded,
+                                size: 16, color: t.inkFaint),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-// نقطة نابضة لشارة "الآن"
+// نقطة نابضة لشارة "الآن" (بتقف لو المستخدم مفعّل "تقليل الحركة")
 class _PulseDot extends StatefulWidget {
   const _PulseDot();
   @override
@@ -845,12 +786,21 @@ class _PulseDot extends StatefulWidget {
 class _PulseDotState extends State<_PulseDot>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c;
+  bool _started = false;
+
   @override
   void initState() {
     super.initState();
     _c = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 800))
-      ..repeat(reverse: true);
+        vsync: this, duration: const Duration(milliseconds: 800));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (!MediaQuery.disableAnimationsOf(context)) _c.repeat(reverse: true);
   }
 
   @override
@@ -863,9 +813,10 @@ class _PulseDotState extends State<_PulseDot>
   Widget build(BuildContext context) => FadeTransition(
         opacity: Tween(begin: 0.4, end: 1.0).animate(_c),
         child: Container(
-          width: 6, height: 6,
-          decoration: const BoxDecoration(
-              shape: BoxShape.circle, color: Colors.white),
+          width: 8,
+          height: 8,
+          decoration:
+              const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
         ),
       );
 }
@@ -873,36 +824,33 @@ class _PulseDotState extends State<_PulseDot>
 // ─── يوم فارغ ─────────────────────────────────────────────────────────────────
 class _EmptyDay extends StatelessWidget {
   final String day;
-  final bool   isDark;
-  final ColorScheme cs;
-  const _EmptyDay(
-      {required this.day, required this.isDark, required this.cs});
+  const _EmptyDay({required this.day});
 
   @override
-  Widget build(BuildContext context) => Center(
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpace.xl),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
-            width: 90, height: 90,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppTheme.primaryColor.withValues(alpha: 0.08),
-            ),
+            width: 88,
+            height: 88,
+            decoration:
+                BoxDecoration(shape: BoxShape.circle, color: t.rosterTint),
             child: Icon(Icons.event_available_rounded,
-                size: 44,
-                color: AppTheme.primaryColor.withValues(alpha: 0.5)),
+                size: 40, color: t.rosterInk),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.lg),
           Text('لا توجد حصص يوم $day',
-              style: TextStyle(
-                  fontFamily: 'Cairo', fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: cs.onSurface.withValues(alpha: 0.5))),
-          const SizedBox(height: 6),
+              textAlign: TextAlign.center,
+              style: AppType.title.copyWith(color: t.ink)),
+          const SizedBox(height: AppSpace.xs),
           Text('أضف مواعيد للمجموعات من صفحة تفاصيل المجموعة',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontFamily: 'Cairo', fontSize: 12,
-                  color: cs.onSurface.withValues(alpha: 0.35))),
+              style: AppType.body.copyWith(color: t.inkSoft)),
         ]),
-      );
+      ),
+    );
+  }
 }
