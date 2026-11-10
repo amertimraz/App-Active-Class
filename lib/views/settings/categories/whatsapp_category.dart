@@ -19,6 +19,26 @@ class _WhatsappCategoryPage extends StatelessWidget {
         _buildSection(
           context,
           isDark,
+          title: 'إرسال تلقائي',
+          icon: Icons.bolt_rounded,
+          color: const Color(0xFF25D366),
+          children: [
+            Obx(() => _buildNavTile(
+                  context,
+                  isDark,
+                  icon: Icons.send_rounded,
+                  iconColor: const Color(0xFF25D366),
+                  title: 'إرسال تلقائي',
+                  subtitle: settings.waAutoEnabled.value
+                      ? 'مفعّل — الإعدادات والموافقات والحصة وآخر الرسايل'
+                      : 'مقفول — فعّله وسجّل موافقات أولياء الأمور',
+                  onTap: () => Get.to(() => const _WaAutoCategoryPage()),
+                )),
+          ],
+        ),
+        _buildSection(
+          context,
+          isDark,
           title: 'الواتساب والتقارير',
           icon: Icons.chat_rounded,
           color: const Color(0xFF25D366),

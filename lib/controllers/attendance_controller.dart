@@ -7,6 +7,7 @@ import 'package:active_class/utils/payment_note.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/utils/archive_history.dart';
 import 'package:active_class/utils/auto_absent.dart';
+import 'package:active_class/services/whatsapp_auto_service.dart';
 import 'package:active_class/utils/recitation.dart';
 import 'package:flutter/material.dart';
 import 'package:active_class/models/attendance_model.dart';
@@ -275,11 +276,25 @@ class AttendanceController extends GetxController {
       _applyFilter();
       unawaited(ParentPortalService().pushStudentSummary(studentId));
       unawaited(NotificationService().scheduleLatePaymentReminder());
+      _waAutoAfterStatus(studentId, day, status, wasAbsent: existing.status == ATTENDANCE_ABSENT);
       return;
     }
     await loadAttendance();
     unawaited(ParentPortalService().pushStudentSummary(studentId));
     unawaited(NotificationService().scheduleLatePaymentReminder());
+    _waAutoAfterStatus(studentId, day, status,
+        wasAbsent: existing?.status == ATTENDANCE_ABSENT);
+  }
+
+  /// spec 056 — واتساب تلقائي: غياب → طلب إرسال، وتحويل غياب لغير غياب (أو
+  /// حذفه) → إلغاء الطلب لو لسه pending. fire-and-forget: ما يعطّلش التسجيل.
+  void _waAutoAfterStatus(int studentId, DateTime day, String? status,
+      {required bool wasAbsent}) {
+    if (status == ATTENDANCE_ABSENT) {
+      unawaited(WhatsAppAutoService.instance.enqueueAbsence(studentId, day));
+    } else if (wasAbsent) {
+      unawaited(WhatsAppAutoService.instance.cancelAbsence(studentId, day));
+    }
   }
 
   /// يضيف [studentId] كضيف في حصة المجموعة [groupId] يوم [day] (حصة تعويضية/

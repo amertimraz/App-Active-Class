@@ -313,6 +313,12 @@ const List<SettingsItem> kSettingsItems = [
 
   // ── الواتساب والتقارير ──
   SettingsItem(
+      id: 'whatsapp.auto_send',
+      categoryId: 'whatsapp',
+      title: 'إرسال تلقائي',
+      kind: SettingsItemKind.nav,
+      keywords: ['واتساب تلقائي', 'غياب', 'موافقة', 'حصة', 'رسايل']),
+  SettingsItem(
       id: 'whatsapp.country_dial',
       categoryId: 'whatsapp',
       title: 'رمز دولة الواتساب',

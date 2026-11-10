@@ -331,8 +331,28 @@ class SettingsController extends GetxController {
     } catch (_) {}
   }
 
+  // spec 056 — واتساب تلقائي: التفعيل العام + نوع تنبيه الغياب. افتراضي مقفول.
+  final RxBool waAutoEnabled = false.obs;
+  final RxBool waAutoAbsence = true.obs;
+
+  Future<void> setWaAutoEnabled(bool v) async {
+    waAutoEnabled.value = v;
+    try {
+      await _dbSet(SETTING_WA_AUTO_ENABLED, v ? '1' : '0');
+    } catch (_) {}
+  }
+
+  Future<void> setWaAutoAbsence(bool v) async {
+    waAutoAbsence.value = v;
+    try {
+      await _dbSet(SETTING_WA_AUTO_ABSENCE, v ? '1' : '0');
+    } catch (_) {}
+  }
+
   Future<void> _loadLateAttendanceSettings() async {
     try {
+      waAutoEnabled.value = (await _dbGet(SETTING_WA_AUTO_ENABLED)) == '1';
+      waAutoAbsence.value = (await _dbGet(SETTING_WA_AUTO_ABSENCE)) != '0';
       homeAtRiskCard.value = (await _dbGet(SETTING_HOME_AT_RISK_CARD)) == '1';
       lateGraceMinutes.value =
           await _migrateInt(SETTING_LATE_GRACE_MINUTES) ?? 15;

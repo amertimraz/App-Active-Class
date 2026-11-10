@@ -256,6 +256,10 @@ const String SETTING_AUTO_ABSENT_PROCESSED = 'auto_absent_processed';
 const String SETTING_ATTENDANCE_OVERDUE_WARNING = 'attendance_overdue_warning';
 // كارت "محتاجين متابعة" العريض في الرئيسية — محلي، افتراضي مخفي.
 const String SETTING_HOME_AT_RISK_CARD = 'home_at_risk_card';
+
+// spec 056 — واتساب تلقائي (محلية؛ النسخة المرجعية للتفعيل على السيرفر في wa_teacher_settings)
+const String SETTING_WA_AUTO_ENABLED = 'wa_auto_enabled';
+const String SETTING_WA_AUTO_ABSENCE = 'wa_auto_absence';
 // app_settings key — تفعيل دعم جهاز قارئ باركود خارجي (HID) في شاشتَي
 // الحضور والدفع. افتراضيًا معطّل — المدرّس يفعّله من الإعدادات. محلي
 // لكل جهاز، غير مُزامن. (spec 027)

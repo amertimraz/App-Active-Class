@@ -1,0 +1,15 @@
+{
+  "name": "wa-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "خدمة إرسال واتساب التلقائي لـ Active Class (spec 056)",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/worker.test.js"
+  },
+  "dependencies": {
+    "pg": "^8.11.0"
+  }
+}

@@ -20,6 +20,7 @@ import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/sync_engine.dart';
 import 'package:active_class/services/parent_portal_service.dart';
+import 'package:active_class/services/whatsapp_auto_service.dart';
 import 'package:active_class/utils/auto_absent.dart';
 
 class AutoAbsentService {
@@ -163,6 +164,8 @@ class AutoAbsentService {
               ));
               touched.add(s.id!);
               added++;
+              // spec 056 — طلب واتساب تلقائي (لو مفعّل؛ best-effort).
+              unawaited(WhatsAppAutoService.instance.enqueueAbsence(s.id!, c.day));
             } catch (e) {
               // UNIQUE (طالب+يوم): اتسجّل من جهاز/مسار تاني — عادي.
               debugPrint('auto-absent skip ${s.id}: $e');
