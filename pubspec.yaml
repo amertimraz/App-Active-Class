@@ -97,6 +97,9 @@ dependencies:
   sqflite_common_ffi_web: ^1.1.1
   sqflite_common: ^2.5.8
   web: ^1.1.1
+  android_intent_plus: ^6.1.0
+  image: ^4.3.0
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:

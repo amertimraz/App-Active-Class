@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/group_controller.dart';
@@ -231,7 +230,7 @@ class _WhatsappSheetState extends State<_WhatsappSheet> {
     await Clipboard.setData(ClipboardData(text: withTeacherSignature(text)));
     ToastHelper.info('اتنسخت الرسالة — الصقها في الجروب');
     try {
-      await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication);
+      await openWhatsappLink(link);
     } catch (_) {
       ToastHelper.error('تعذّر فتح واتساب');
       return;

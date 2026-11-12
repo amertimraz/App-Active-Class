@@ -44,17 +44,20 @@ export async function applyWebhook(db, payload, log = console) {
 }
 
 // معالج HTTP: GET للتحقق (hub.challenge) وPOST للأحداث الموقّعة.
+const val = async (v) => (typeof v === 'function' ? await v() : v);
+
 export function createWebhookHandler({ db, appSecret, verifyToken, log = console }) {
   return async function handle(req, res, rawBody) {
     const url = new URL(req.url, 'http://x');
     if (req.method === 'GET') {
+      const vt = await val(verifyToken);
       const ok = url.searchParams.get('hub.mode') === 'subscribe'
-        && verifyToken && url.searchParams.get('hub.verify_token') === verifyToken;
+        && vt && url.searchParams.get('hub.verify_token') === vt;
       res.writeHead(ok ? 200 : 403);
       return res.end(ok ? url.searchParams.get('hub.challenge') : 'forbidden');
     }
     if (req.method === 'POST') {
-      if (!verifySignature(rawBody, req.headers['x-hub-signature-256'], appSecret)) {
+      if (!verifySignature(rawBody, req.headers['x-hub-signature-256'], await val(appSecret))) {
         res.writeHead(401); return res.end('bad signature');
       }
       let payload;

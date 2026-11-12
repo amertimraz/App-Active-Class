@@ -32,6 +32,7 @@ import 'package:active_class/widgets/update_dialog.dart';
 import 'package:active_class/services/in_app_update_service.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/services/auto_absent_service.dart';
+import 'package:active_class/services/whatsapp_auto_service.dart';
 import 'package:active_class/models/announcement_model.dart';
 import 'package:active_class/widgets/announcement_slot.dart';
 import 'package:active_class/widgets/announcement_popup.dart';
@@ -76,6 +77,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     unawaited(RatePromptService.instance.registerLaunch());
     // spec 046 — الغياب التلقائي بعد انتهاء الحصة (بيرجع فورًا لو الإعداد مطفي).
     AutoAbsentService.instance.start();
+    // spec 056 — تذكير تأخر الدفع الأسبوعي بالواتساب (لو مفعّل).
+    WhatsAppAutoService.instance.start();
     // تقدير تاريخ سعر الإخوة للمربوطين قبل الميزة (مرة واحدة، بعدها يتحدّث الكارت).
     unawaited(DatabaseService().inferLegacySiblingDates().then((n) {
       if (n > 0) _dashboardController.loadDashboardData();

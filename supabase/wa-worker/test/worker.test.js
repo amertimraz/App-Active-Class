@@ -7,6 +7,7 @@ import { classifyError, verifySignature, parseWebhook, isStopWord, createMeta } 
 import { inSendWindow, nextWindowStart, retryDelayMs, createBucket } from '../src/rules.js';
 import { decide, afterFailure } from '../src/sender.js';
 import { createWebhookHandler } from '../src/webhook.js';
+import { createSecrets } from '../src/secrets.js';
 
 const cfg = { killSwitch: false, fromHour: 8, toHour: 22 };
 // 12:00 ظهرًا بتوقيت القاهرة (UTC+2 شتاءً أو +3 صيفًا): نستخدم 10:00 UTC = 12/13 قاهرة
@@ -16,9 +17,9 @@ const row = (o = {}) => ({ kind: 'absence', attempts: 0, ...o });
 const base = { cfg, settings: { enabled: true, kinds: {}, pausedByAdmin: false }, consent: 'granted', globalStopped: false, now: noon };
 
 test('قالب الغياب: متغيرات بالترتيب وتنضيف السطور', () => {
-  const p = buildTemplatePayload('absence', '2010', { student: 'أحمد\nعلي', group: 'ج1', date: '2026-11-09', teacher: 'أ/ سعد' });
+  const p = buildTemplatePayload('absence', '2010', { student: 'أحمد\nعلي', group: 'ج1', date: '2026-11-09', teacher: 'أ/ سعد', teacher_phone: '+201012345678' });
   assert.equal(p.template.name, 'ac_absence_ar');
-  assert.deepEqual(p.template.components[0].parameters.map((x) => x.text), ['أحمد علي', 'ج1', '2026-11-09', 'أ/ سعد']);
+  assert.deepEqual(p.template.components[0].parameters.map((x) => x.text), ['أحمد علي', 'ج1', '2026-11-09', 'أ/ سعد', '+201012345678']);
 });
 
 test('متغير ناقص يرمي خطأ', () => {
@@ -114,13 +115,13 @@ test('afterFailure: مؤقت يعيد حتى 3 ثم يفشل، الدائم يف
 
 test('meta.send: نجاح وفشل بدون شبكة حقيقية', async () => {
   const ok = createMeta({ token: 't', phoneNumberId: '1', fetchFn: async () => ({ ok: true, status: 200, json: async () => ({ messages: [{ id: 'wamid.X' }] }) }) });
-  assert.deepEqual(await ok.send('absence', '2010', { student: 'a', group: 'b', date: 'c', teacher: 'd' }), { ok: true, id: 'wamid.X' });
+  assert.deepEqual(await ok.send('absence', '2010', { student: 'a', group: 'b', date: 'c', teacher: 'd', teacher_phone: '+20' }), { ok: true, id: 'wamid.X' });
   const bad = createMeta({ token: 't', phoneNumberId: '1', fetchFn: async () => ({ ok: false, status: 400, json: async () => ({ error: { code: 131026, message: 'x' } }) }) });
-  const r = await bad.send('absence', '2010', { student: 'a', group: 'b', date: 'c', teacher: 'd' });
+  const r = await bad.send('absence', '2010', { student: 'a', group: 'b', date: 'c', teacher: 'd', teacher_phone: '+20' });
   assert.equal(r.ok, false);
   assert.equal(r.reason, 'not_on_whatsapp');
   const net = createMeta({ token: 't', phoneNumberId: '1', fetchFn: async () => { throw new Error('down'); } });
-  assert.equal((await net.send('absence', '2010', { student: 'a', group: 'b', date: 'c', teacher: 'd' })).kind, 'temp');
+  assert.equal((await net.send('absence', '2010', { student: 'a', group: 'b', date: 'c', teacher: 'd', teacher_phone: '+20' })).kind, 'temp');
   const noVars = createMeta({ token: 't', phoneNumberId: '1', fetchFn: async () => { throw new Error('should not call'); } });
   assert.equal((await noVars.send('absence', '2010', {})).reason, 'template_vars');
 });
@@ -146,4 +147,35 @@ test('webhook handler: GET تحقق، POST توقيع غلط = 401', async () =>
   r = res();
   await h({ method: 'POST', url: '/wa/webhook', headers: { 'x-hub-signature-256': sig } }, r, body);
   assert.equal(r.code, 200);
+});
+
+test('secrets: الجدول يغلب البيئة، PENDING يتجاهل، والكاش يتجدد', async () => {
+  let rows = [{ key: 'WA_TOKEN', value: 'db-token' }, { key: 'WA_APP_SECRET', value: 'PENDING_SET_ME' }];
+  let t = 0;
+  const db = { query: async () => ({ rows }) };
+  const s = createSecrets({ db, env: { WA_TOKEN: 'env-token', WA_APP_SECRET: 'env-secret', WA_VERIFY_TOKEN: 'v' }, ttlMs: 1000, now: () => t });
+  assert.equal(await s.get('WA_TOKEN'), 'db-token');
+  assert.equal(await s.get('WA_APP_SECRET'), 'env-secret');
+  assert.equal(await s.get('WA_VERIFY_TOKEN'), 'v');
+  assert.equal(await s.get('GROQ_API_KEY'), null);
+  rows = [{ key: 'WA_TOKEN', value: 'new' }];
+  assert.equal(await s.get('WA_TOKEN'), 'db-token'); // لسه في الكاش
+  t += 1500;
+  assert.equal(await s.get('WA_TOKEN'), 'new');
+});
+
+test('secrets: الجدول غير موجود → البيئة فقط', async () => {
+  const s = createSecrets({ db: { query: async () => { throw new Error('no table'); } }, env: { WA_TOKEN: 'e' } });
+  assert.equal(await s.get('WA_TOKEN'), 'e');
+});
+
+test('meta.send: المفتاح من getter، وناقص = temp بدون استدعاء شبكة', async () => {
+  let calls = 0;
+  const f = async () => { calls++; return { ok: true, status: 200, json: async () => ({ messages: [{ id: 'x' }] }) }; };
+  const none = createMeta({ token: async () => null, phoneNumberId: async () => '1', fetchFn: f });
+  const r1 = await none.send('absence', '2010', { student: 'a', group: 'b', date: 'c', teacher: 'd', teacher_phone: '+20' });
+  assert.equal(r1.kind, 'temp');
+  assert.equal(calls, 0);
+  const ok = createMeta({ token: async () => 't', phoneNumberId: async () => '1', fetchFn: f });
+  assert.equal((await ok.send('absence', '2010', { student: 'a', group: 'b', date: 'c', teacher: 'd', teacher_phone: '+20' })).ok, true);
 });

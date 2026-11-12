@@ -4,21 +4,21 @@
 export const TEMPLATES = {
   absence: {
     name: 'ac_absence_ar',
-    language: 'ar',
-    // {{1}} اسم الطالب  {{2}} المجموعة  {{3}} التاريخ  {{4}} اسم المدرس
-    params: ['student', 'group', 'date', 'teacher'],
+    language: 'ar_EG', // لازم يطابق لغة القالب المقدَّم في Meta (Arabic (EGY))
+    // {{1}} اسم الطالب  {{2}} المجموعة  {{3}} التاريخ  {{4}} اسم المدرس  {{5}} رقم المدرس
+    params: ['student', 'group', 'date', 'teacher', 'teacher_phone'],
   },
   late_payment: {
     name: 'ac_late_payment_ar',
-    language: 'ar',
-    // {{1}} اسم الطالب  {{2}} المبلغ المتأخر  {{3}} اسم المدرس
-    params: ['student', 'amount', 'teacher'],
+    language: 'ar_EG', // لازم يطابق لغة القالب المقدَّم في Meta (Arabic (EGY))
+    // {{1}} اسم الطالب  {{2}} المبلغ المتأخر  {{3}} اسم المدرس  {{4}} رقم المدرس
+    params: ['student', 'amount', 'teacher', 'teacher_phone'],
   },
   receipt: {
     name: 'ac_receipt_ar',
-    language: 'ar',
-    // {{1}} المبلغ المدفوع  {{2}} اسم الطالب  {{3}} الشهر  {{4}} المتبقي  {{5}} اسم المدرس
-    params: ['amount', 'student', 'month', 'remaining', 'teacher'],
+    language: 'ar_EG', // لازم يطابق لغة القالب المقدَّم في Meta (Arabic (EGY))
+    // {{1}} المبلغ المدفوع  {{2}} اسم الطالب  {{3}} الشهر  {{4}} المتبقي  {{5}} اسم المدرس  {{6}} رقم المدرس
+    params: ['amount', 'student', 'month', 'remaining', 'teacher', 'teacher_phone'],
   },
   // رسالة اختبار للمدرس نفسه: نفس قالب الغياب
   test: null,

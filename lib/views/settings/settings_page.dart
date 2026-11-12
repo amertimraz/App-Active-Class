@@ -47,8 +47,10 @@ import 'package:active_class/views/license/trial_banner.dart';
 import 'package:active_class/widgets/update_dialog.dart';
 import 'package:active_class/widgets/hardware_reader_widgets.dart';
 import 'package:active_class/views/settings/delete_records_page.dart';
+import 'package:active_class/views/settings/wipe_data_page.dart';
 import 'package:active_class/views/whatsapp/wa_consent_page.dart';
 import 'package:active_class/services/whatsapp_auto_service.dart';
+import 'package:active_class/utils/whatsapp_auto_rules.dart';
 import 'package:active_class/views/messages/message_templates_page.dart';
 
 import 'package:active_class/views/settings/settings_registry.dart';

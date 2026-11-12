@@ -1,0 +1,4 @@
+node_modules/
+.env
+spike/samples/
+spike/out/

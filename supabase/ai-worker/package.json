@@ -1,0 +1,14 @@
+{
+  "name": "ai-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "خدمة قراءة الصور وتوليد أسئلة الامتحانات (spec 057)",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/ai.test.js test/jobs.test.js test/types.test.js",
+    "compare": "node spike/compare.js"
+  },
+  "dependencies": { "pg": "^8.11.0" }
+}

@@ -3,10 +3,12 @@
 import http from 'node:http';
 import pg from 'pg';
 import { createMeta } from './meta.js';
+import { createSecrets } from './secrets.js';
 import { createSender } from './sender.js';
 import { createWebhookHandler } from './webhook.js';
 
-const need = ['DB_URL', 'WA_TOKEN', 'WA_PHONE_NUMBER_ID', 'WA_APP_SECRET', 'WA_VERIFY_TOKEN'];
+// المفاتيح بتيجي من لوحة الأدمن (app_secrets) أو البيئة — الإلزامي DB_URL بس.
+const need = ['DB_URL'];
 const missing = need.filter((k) => !process.env[k]);
 if (missing.length) {
   console.error('[wa] متغيرات ناقصة:', missing.join(', '));
@@ -14,10 +16,16 @@ if (missing.length) {
 }
 
 const db = new pg.Pool({ connectionString: process.env.DB_URL, max: 4 });
-const meta = createMeta({ token: process.env.WA_TOKEN, phoneNumberId: process.env.WA_PHONE_NUMBER_ID });
+const secrets = createSecrets({ db });
+const meta = createMeta({
+  token: () => secrets.get('WA_TOKEN'),
+  phoneNumberId: () => secrets.get('WA_PHONE_NUMBER_ID'),
+});
 const sender = createSender({ db, meta });
 const webhook = createWebhookHandler({
-  db, appSecret: process.env.WA_APP_SECRET, verifyToken: process.env.WA_VERIFY_TOKEN,
+  db,
+  appSecret: () => secrets.get('WA_APP_SECRET'),
+  verifyToken: () => secrets.get('WA_VERIFY_TOKEN'),
 });
 
 const server = http.createServer((req, res) => {
@@ -36,7 +44,11 @@ let busy = false;
 setInterval(async () => {
   if (busy) return;
   busy = true;
-  try { await sender.tick(); } catch (e) { console.error('[wa] tick', e.message); } finally { busy = false; }
+  try {
+    // لسه المفاتيح مش متضبوطة (من اللوحة أو البيئة) → ما نبعتش ولا نفشّل الطلبات.
+    if (!(await secrets.get('WA_TOKEN')) || !(await secrets.get('WA_PHONE_NUMBER_ID'))) return;
+    await sender.tick();
+  } catch (e) { console.error('[wa] tick', e.message); } finally { busy = false; }
 }, 2000);
 
 // تنظيف يومي للسجل القديم

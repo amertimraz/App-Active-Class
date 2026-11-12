@@ -15,6 +15,7 @@ import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/student_follow_up_model.dart';
 import 'package:active_class/models/deletable_record_type.dart';
+import 'package:active_class/models/wipe_scope.dart';
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
@@ -2681,6 +2682,88 @@ class DatabaseService {
       await _queueDelete(p.table, p.id, p.remoteId);
     }
 
+    return deleted;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  حذف بيانات مختارة بالقسم (بديل «حذف جميع البيانات» القديم)
+  //  الإعدادات والترخيص ما بتتمسش أبدًا.
+  // ═══════════════════════════════════════════════════════════════════
+
+  /// الجداول اللي بتتعد لقسم: كل جداول نتايج الامتحانات، وللباقي الجدول
+  /// الأب (آخر جدول في القايمة) — عشان الرقم يبقى "عدد الحاجة" مش مجموع صفوف.
+  List<WipeTable> _countTables(WipeScope s) =>
+      s == WipeScope.examResults ? s.tables : [s.tables.last];
+
+  /// معاينة: عدد الصفوف اللي هتتحذف لكل قسم (بعد إضافة الأقسام التابعة).
+  Future<Map<WipeScope, int>> countWipeScopes(Set<WipeScope> scopes) async {
+    final db = await database;
+    final out = <WipeScope, int>{};
+    for (final s in wipeClosure(scopes)) {
+      var n = 0;
+      for (final t in _countTables(s)) {
+        final r = await db.rawQuery('SELECT COUNT(*) c FROM ${t.name}');
+        n += (r.first['c'] as int?) ?? 0;
+      }
+      out[s] = n;
+    }
+    return out;
+  }
+
+  /// يحذف الأقسام المختارة (+ التابعة) في transaction واحدة، وبعدها بيبلّغ
+  /// المزامنة بحذف كل صف مُزامَن (وضع الفريق فقط). يرجع العدد الفعلي لكل قسم.
+  Future<Map<WipeScope, int>> wipeScopes(Set<WipeScope> scopes) async {
+    final db = await database;
+    final eff = wipeClosure(scopes);
+    final ordered = kWipeOrder.where(eff.contains).toList();
+
+    // خطة الجداول بترتيب آمن، من غير تكرار (بعض الجداول مشتركة بين قسمين).
+    final seen = <String>{};
+    final plan = <WipeTable>[];
+    for (final s in ordered) {
+      for (final t in s.tables) {
+        if (seen.add(t.name)) plan.add(t);
+      }
+    }
+
+    // (1) اجمع (جدول، id، remote_id) للصفوف المُزامَنة — قبل الحذف.
+    final pending = <({String table, int id, String? remoteId})>[];
+    if (teamModeEnabled) {
+      for (final t in plan.where((t) => t.synced)) {
+        final rows = await db.query(t.name,
+            columns: ['id', COL_SYNC_REMOTE_ID]);
+        for (final r in rows) {
+          pending.add((
+            table: t.name,
+            id: r['id'] as int,
+            remoteId: r[COL_SYNC_REMOTE_ID] as String?,
+          ));
+        }
+      }
+    }
+
+    // (2) الحذف الذرّي: لو أي جدول فشل، مفيش حاجة بتتحذف.
+    final byTable = <String, int>{};
+    await db.transaction((txn) async {
+      for (final t in plan) {
+        byTable[t.name] = await txn.delete(t.name);
+      }
+    });
+
+    // رقم كل قسم زي ما المعاينة بتعده.
+    final deleted = <WipeScope, int>{
+      for (final s in ordered)
+        s: _countTables(s).fold<int>(0, (a, t) => a + (byTable[t.name] ?? 0)),
+    };
+
+    // لو اتمسح كل شيء (المجموعات) مانشعرش الحفظ التلقائي، عشان ما يكتبش
+    // نسخة فاضية فوق آخر نسخة سليمة (نفس منطق deleteAllData القديم).
+    if (!eff.contains(WipeScope.groups)) _notifyChanged();
+
+    // (3) بلّغ المزامنة بالحذف (وضع الفريق فقط).
+    for (final p in pending) {
+      await _queueDelete(p.table, p.id, p.remoteId);
+    }
     return deleted;
   }
 

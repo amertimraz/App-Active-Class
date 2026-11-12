@@ -1,6 +1,7 @@
 part of '../settings_page.dart';
 
-// spec 051 — فئة «الفلوس والتحصيل»
+// spec 051 — فئة «الفلوس والتحصيل» بتصميم السبورة والكروت:
+// سبورة بملخص الإعدادات، كروت تشغيل/إيقاف، وقايمة المواعيد والعملة.
 
 class _BillingCategoryPage extends StatelessWidget {
   const _BillingCategoryPage({this.highlightId});
@@ -11,17 +12,103 @@ class _BillingCategoryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = _tk(isDark);
     final SettingsController settings = Get.find();
+    const green = Color(0xFF10B981);
+    const sky = Color(0xFF0EA5E9);
+    const gap = SizedBox(height: AppSpace.lg);
     return _CategoryScaffold(
       title: 'الفلوس والتحصيل',
       highlightId: highlightId,
       children: [
+        // ── السبورة: ملخص الإعدادات الحالية ──
+        Obx(() {
+          final arrears = settings.billingArrears.value;
+          final day = settings.billingDay.value;
+          final grace = settings.paymentGraceDays.value;
+          final code = settings.currencyCode.value; // اشتراك في تغيير العملة
+          final cur = SettingsController.supported.firstWhere(
+              (c) => c.code == code,
+              orElse: () => settings.currentCurrency);
+          return _boardSummary(
+            t,
+            icon: Icons.payments_rounded,
+            title: 'الفلوس والتحصيل',
+            subtitle: 'ملخص الإعدادات الحالية',
+            stats: [
+              (label: 'العملة', value: '${cur.nameAr} (${cur.symbol})'),
+              (label: 'نظام التحصيل', value: arrears ? 'مؤخّر' : 'مقدّم'),
+              (
+                label: 'مهلة السماح',
+                value: grace == 0 ? 'بدون مهلة' : '$grace يوم'
+              ),
+              (
+                label: 'نزول المديونية',
+                value: arrears
+                    ? 'بعد نهاية الشهر'
+                    : day == 1
+                        ? 'من أول الشهر'
+                        : 'يوم $day'
+              ),
+            ],
+          );
+        }),
+        gap,
+        // ── نظام الفوترة: كروت تشغيل/إيقاف ──
+        _plainSectionBlock(
+          t,
+          'الفوترة والتحصيل',
+          Icons.payments_rounded,
+          green,
+          _cardGrid([
+            _toggleCard(
+              t,
+              rx: settings.billingArrears,
+              icon: Icons.event_repeat_rounded,
+              color: sky,
+              title: 'تحصيل مؤخّر (بالمنقضي)',
+              sharedKey: SETTING_BILLING_ARREARS,
+              onHint: 'الشهر الجاري ما يتحسبش في المديونية لحد ما يخلص',
+              offHint: 'مقدّم — الشهر مستحق من أول يومه',
+              set: (v) async {
+                await settings.setBillingArrears(v);
+                ToastHelper.success(
+                  v
+                      ? 'الشهر الجاري مش هيتحسب لحد ما يخلص'
+                      : 'الشهر مستحق من أول يومه',
+                  title: 'نظام التحصيل',
+                );
+              },
+            ),
+            _toggleCard(
+              t,
+              rx: settings.prorateFirstMonth,
+              icon: Icons.pie_chart_outline_rounded,
+              color: sky,
+              title: 'حساب نسبي للشهر الأول',
+              sharedKey: SETTING_PRORATE_FIRST_MONTH,
+              onHint: 'اللي بينضم نص الشهر يدفع نسبة الأيام (لأقرب 5 ج)',
+              offHint: 'الشهر الأول شهر كامل زي أي شهر',
+              set: (v) async {
+                await settings.setProrateFirstMonth(v);
+                ToastHelper.success(
+                  v
+                      ? 'شهر الانضمام هيتحسب بنسبة أيامه'
+                      : 'شهر الانضمام شهر كامل',
+                  title: 'الحساب النسبي',
+                );
+              },
+            ),
+          ]),
+        ),
+        gap,
+        // ── المواعيد والمهلة: قوايم اختيار ──
         _buildSection(
           context,
           isDark,
-          title: 'الفوترة والتحصيل',
-          icon: Icons.payments_rounded,
-          color: const Color(0xFF10B981),
+          title: 'المواعيد والمهلة',
+          icon: Icons.schedule_rounded,
+          color: green,
           children: [
             // ── مهلة السماح قبل اعتبار الطالب "متأخر" ──
             Obx(() => _buildDropdownTile<int>(
@@ -53,29 +140,6 @@ class _BillingCategoryPage extends StatelessWidget {
                   },
                 )),
             _buildDivider(isDark),
-            // ── نظام التحصيل: مقدّم / مؤخّر (spec 012) ──
-            Obx(() => _buildSwitchTile(
-                  context,
-                  isDark,
-                  icon: Icons.event_repeat_rounded,
-                  iconColor: const Color(0xFF0EA5E9),
-                  title: 'تحصيل مؤخّر (بالمنقضي)',
-                  sharedKey: SETTING_BILLING_ARREARS,
-                  subtitle: settings.billingArrears.value
-                      ? 'الشهر الجاري ما يتحسبش في المديونية لحد ما يخلص'
-                      : 'مقدّم — الشهر مستحق من أول يومه (الافتراضي)',
-                  rxValue: settings.billingArrears,
-                  onChanged: (v) async {
-                    await settings.setBillingArrears(v);
-                    ToastHelper.success(
-                      v
-                          ? 'الشهر الجاري مش هيتحسب لحد ما يخلص'
-                          : 'الشهر مستحق من أول يومه',
-                      title: 'نظام التحصيل',
-                    );
-                  },
-                )),
-            _buildDivider(isDark),
             // ── يوم نزول المديونية (spec 045) ──
             Obx(() {
               final arrears = settings.billingArrears.value;
@@ -89,7 +153,7 @@ class _BillingCategoryPage extends StatelessWidget {
                 context,
                 isDark,
                 icon: Icons.event_available_rounded,
-                iconColor: const Color(0xFF0EA5E9),
+                iconColor: sky,
                 title: 'يوم نزول المديونية',
                 sharedKey: SETTING_BILLING_DAY,
                 value: d,
@@ -118,58 +182,34 @@ class _BillingCategoryPage extends StatelessWidget {
                         : ''),
               );
             }),
-            _buildDivider(isDark),
-            // ── حساب نسبي للشهر الأول (spec 012) ──
-            Obx(() => _buildSwitchTile(
-                  context,
-                  isDark,
-                  icon: Icons.pie_chart_outline_rounded,
-                  iconColor: const Color(0xFF0EA5E9),
-                  title: 'حساب نسبي للشهر الأول',
-                  sharedKey: SETTING_PRORATE_FIRST_MONTH,
-                  subtitle: settings.prorateFirstMonth.value
-                      ? 'الطالب اللي بينضم نص الشهر يدفع نسبة الأيام (تقريب لأقرب 5 ج)'
-                      : 'الشهر الأول شهر كامل زي أي شهر (الافتراضي)',
-                  rxValue: settings.prorateFirstMonth,
-                  onChanged: (v) async {
-                    await settings.setProrateFirstMonth(v);
-                    ToastHelper.success(
-                      v
-                          ? 'شهر الانضمام هيتحسب بنسبة أيامه'
-                          : 'شهر الانضمام شهر كامل',
-                      title: 'الحساب النسبي',
-                    );
-                  },
-                )),
           ],
         ),
-        const SizedBox(height: 20),
-        _buildSection(
-          context,
-          isDark,
-          title: 'تأخّر الدفع',
-          icon: Icons.payments_rounded,
-          color: const Color(0xFF10B981),
-          children: [
-            _buildSwitchTile(
-              context,
-              isDark,
-              icon: Icons.payments_rounded,
-              iconColor: const Color(0xFF10B981),
-              title: 'تأخّر الدفع',
-              subtitle: 'بيظهر في قائمة المتابعة بنفس مهلة السماح فوق',
-              rxValue: settings.atRiskPaymentEnabled,
-              onChanged: settings.setAtRiskPaymentEnabled,
-            ),
-          ],
+        gap,
+        // ── تأخّر الدفع ──
+        _plainSectionBlock(
+          t,
+          'تأخّر الدفع',
+          Icons.payments_rounded,
+          green,
+          _toggleCard(
+            t,
+            rx: settings.atRiskPaymentEnabled,
+            icon: Icons.payments_rounded,
+            color: green,
+            title: 'تأخّر الدفع',
+            onHint: 'بيظهر في قائمة المتابعة بنفس مهلة السماح فوق',
+            offHint: 'مش هيظهر المتأخرين في قائمة المتابعة',
+            set: (v) async => settings.setAtRiskPaymentEnabled(v),
+          ),
         ),
-        const SizedBox(height: 20),
+        gap,
+        // ── العملة ──
         _buildSection(
           context,
           isDark,
           title: 'العملة',
           icon: Icons.language_rounded,
-          color: const Color(0xFF10B981),
+          color: green,
           children: [
             Obx(() {
               final items = SettingsController.supported;
@@ -177,7 +217,7 @@ class _BillingCategoryPage extends StatelessWidget {
                 context,
                 isDark,
                 icon: Icons.attach_money_rounded,
-                iconColor: const Color(0xFF10B981),
+                iconColor: green,
                 title: 'العملة',
                 sharedKey: 'currency_code',
                 value: settings.currencyCode.value,

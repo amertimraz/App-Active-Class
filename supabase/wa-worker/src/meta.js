@@ -25,6 +25,8 @@ export function classifyError(httpStatus, err) {
   return { kind: 'permanent', reason: 'provider_error' };
 }
 
+const val = async (v) => (typeof v === 'function' ? await v() : v);
+
 export function createMeta({ token, phoneNumberId, fetchFn = fetch }) {
   return {
     // بيرجع { ok:true, id } أو { ok:false, kind, reason, detail }
@@ -35,11 +37,16 @@ export function createMeta({ token, phoneNumberId, fetchFn = fetch }) {
       } catch (e) {
         return { ok: false, kind: 'permanent', reason: 'template_vars', detail: e.message };
       }
+      const tk = await val(token);
+      const pid = await val(phoneNumberId);
+      if (!tk || !pid) {
+        return { ok: false, kind: 'temp', reason: 'provider_error', detail: 'not configured' };
+      }
       let res, body;
       try {
-        res = await fetchFn(`${GRAPH}/${phoneNumberId}/messages`, {
+        res = await fetchFn(`${GRAPH}/${pid}/messages`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          headers: { Authorization: `Bearer ${tk}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
         body = await res.json().catch(() => ({}));

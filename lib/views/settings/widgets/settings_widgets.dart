@@ -279,32 +279,6 @@ Widget _buildDropdownTile<T>(
   );
 }
 
-Widget _buildInfoTile(
-  bool isDark, {
-  required IconData icon,
-  required Color iconColor,
-  required String title,
-  required String trailing,
-}) {
-  final t = _tk(isDark);
-  return _tileRow(
-    t,
-    icon: icon,
-    iconColor: iconColor,
-    title: title,
-    trailing: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 150),
-      child: Text(
-        trailing,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.end,
-        style: AppType.body.copyWith(color: t.inkSoft),
-      ),
-    ),
-  );
-}
-
 Widget _buildTextField(
   bool isDark, {
   required String label,
@@ -350,6 +324,238 @@ Widget _buildDivider(bool isDark) {
     indent: _kTilePadH + _kTileIcon + _kTileGap,
     endIndent: 0,
     color: _tk(isDark).line,
+  );
+}
+
+// ─── مكوّنات «السبورة والكروت» المشتركة بين صفحات الفئات ──────────────────
+
+/// ملخص بخلفية السبورة: أيقونة + عنوان + سطر، وتحتها خانات حالة (قيمة لكل إعداد).
+/// بيتحدّث لوحده لو اتلفّ في Obx.
+Widget _boardSummary(
+  AppTokens t, {
+  required IconData icon,
+  required String title,
+  required String subtitle,
+  required List<({String label, String value})> stats,
+}) {
+  final rows = <Widget>[];
+  for (var i = 0; i < stats.length; i += 2) {
+    Widget box(({String label, String value}) s) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.md, vertical: AppSpace.sm + 2),
+            decoration: BoxDecoration(
+              color: t.boardLine,
+              borderRadius: BorderRadius.circular(AppRadius.control),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.label,
+                    style: AppType.caption.copyWith(color: t.boardInkSoft)),
+                const SizedBox(height: 2),
+                Text(s.value,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppType.label.copyWith(color: t.boardInk)),
+              ],
+            ),
+          ),
+        );
+    rows.add(IntrinsicHeight(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        box(stats[i]),
+        const SizedBox(width: AppSpace.sm),
+        i + 1 < stats.length ? box(stats[i + 1]) : const Expanded(child: SizedBox()),
+      ]),
+    ));
+    if (i + 2 < stats.length) rows.add(const SizedBox(height: AppSpace.sm));
+  }
+  return Material(
+    color: t.board,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(AppRadius.board),
+      side: BorderSide(color: t.boardLine),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(AppSpace.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: t.chalk,
+                borderRadius: BorderRadius.circular(AppRadius.control),
+              ),
+              child: Icon(icon, color: t.onChalk, size: 24),
+            ),
+            const SizedBox(width: AppSpace.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: AppType.title.copyWith(color: t.boardInk)),
+                  Text(subtitle,
+                      style: AppType.caption.copyWith(color: t.boardInkSoft)),
+                ],
+              ),
+            ),
+          ]),
+          const SizedBox(height: AppSpace.md),
+          ...rows,
+        ],
+      ),
+    ),
+  );
+}
+
+/// كارت تشغيل/إيقاف (الصف كله بيقلب الإعداد). بيتلوّن لما يشتغل، وبيتقفل
+/// على المساعد لو الإعداد مشترك في وضع الفريق (sharedKey).
+Widget _toggleCard(
+  AppTokens t, {
+  required RxBool rx,
+  required IconData icon,
+  required Color color,
+  required String title,
+  required String onHint,
+  required String offHint,
+  required Future<void> Function(bool) set,
+  String? sharedKey,
+}) {
+  final locked = sharedKey != null && TeamSettingsService.isLocked(sharedKey);
+  return Obx(() {
+    final on = rx.value;
+    return Semantics(
+      button: true,
+      toggled: on,
+      label: title,
+      child: Material(
+        color: on ? color.withValues(alpha: 0.12) : t.surface,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.panel),
+          side: BorderSide(color: on ? color : t.line, width: on ? 1.6 : 1),
+        ),
+        child: InkWell(
+          onTap: locked ? TeamSettingsService.notifyLocked : () => set(!on),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpace.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: on ? color : color.withValues(alpha: 0.12),
+                    ),
+                    child: Icon(icon,
+                        size: 21, color: on ? Colors.white : color),
+                  ),
+                  const Spacer(),
+                  if (locked)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 6),
+                      child: Icon(Icons.lock_rounded,
+                          size: 16, color: t.inkFaint),
+                    ),
+                  Icon(on ? Icons.check_circle_rounded : Icons.circle_outlined,
+                      size: 20, color: on ? color : t.inkFaint),
+                ]),
+                const SizedBox(height: 10),
+                Text(title, style: AppType.label.copyWith(color: t.ink)),
+                const SizedBox(height: 2),
+                Text(
+                  locked
+                      ? '${on ? onHint : offHint} — بيتحكم فيه المدرس'
+                      : (on ? onHint : offHint),
+                  style: AppType.caption.copyWith(color: t.inkFaint),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  });
+}
+
+/// كروت في صفوف من اتنين بنفس الارتفاع (آخر صف فيه كارت واحد لو العدد فردي).
+Widget _cardGrid(List<Widget> cards) {
+  final rows = <Widget>[];
+  for (var i = 0; i < cards.length; i += 2) {
+    rows.add(IntrinsicHeight(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: cards[i]),
+        const SizedBox(width: AppSpace.sm),
+        Expanded(child: i + 1 < cards.length ? cards[i + 1] : const SizedBox()),
+      ]),
+    ));
+    if (i + 2 < cards.length) rows.add(const SizedBox(height: AppSpace.sm));
+  }
+  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
+}
+
+/// كارت إجراء (أيقونة دايرية + عنوان + سطر توضيح) بدل صف قايمة.
+Widget _actionCard(
+  AppTokens t, {
+  required IconData icon,
+  required Color color,
+  required String title,
+  required String hint,
+  required VoidCallback onTap,
+}) {
+  return Material(
+    color: t.surface,
+    clipBehavior: Clip.antiAlias,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(AppRadius.panel),
+      side: BorderSide(color: t.line),
+    ),
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpace.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color.withValues(alpha: 0.14),
+              ),
+              child: Icon(icon, size: 22, color: color),
+            ),
+            const SizedBox(height: 10),
+            Text(title, style: AppType.label.copyWith(color: t.ink)),
+            const SizedBox(height: 2),
+            Text(hint, style: AppType.caption.copyWith(color: t.inkFaint)),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// قسم بعنوان فوق المحتوى من غير كارت يلفّه (المحتوى كروت لوحده).
+Widget _plainSectionBlock(
+    AppTokens t, String title, IconData icon, Color color, Widget child) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, AppSpace.sm),
+        child: _sectionHeader(t, title, icon, color),
+      ),
+      child,
+    ],
   );
 }
 
@@ -453,44 +659,38 @@ class _GenderChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: selected
-              ? color.withValues(alpha: 0.14)
-              : (isDark
-                  ? Colors.white.withValues(alpha: 0.04)
-                  : const Color(0xFFF3F4F6)),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected ? color : Colors.transparent,
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon,
-                size: 20,
-                color: selected
-                    ? color
-                    : (isDark ? Colors.white38 : Colors.grey.shade500)),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: selected
-                    ? color
-                    : (isDark ? Colors.white38 : Colors.grey.shade500),
-              ),
+    final t = _tk(isDark);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          constraints: const BoxConstraints(minHeight: 48),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? color.withValues(alpha: 0.13) : t.page,
+            borderRadius: BorderRadius.circular(AppRadius.control),
+            border: Border.all(
+              color: selected ? color : t.line,
+              width: selected ? 1.6 : 1,
             ),
-          ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 20, color: selected ? color : t.inkFaint),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: AppType.label
+                    .copyWith(color: selected ? color : t.inkFaint),
+              ),
+            ],
+          ),
         ),
       ),
     );

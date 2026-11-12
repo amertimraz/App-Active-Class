@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:active_class/utils/whatsapp_launcher.dart';
 
 import 'package:active_class/utils/payment_note.dart';
 import 'package:active_class/config/constants.dart';
@@ -471,10 +471,7 @@ class _QRScannerPaymentPageState extends State<QRScannerPaymentPage>
     buf.writeln('💰 الإجمالي: ${FormatHelper.formatCurrency(_session.total)}');
 
     final encoded = Uri.encodeComponent(buf.toString());
-    final uri = Uri.parse('https://wa.me/?text=$encoded');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    await openWhatsappLink('https://wa.me/?text=$encoded');
   }
 
   // ── build ────────────────────────────────────────────────────

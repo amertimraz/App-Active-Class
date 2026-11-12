@@ -126,6 +126,7 @@ const List<TourDef> kTours = [
       TourStep('home.exams', 'من الرئيسية اضغط **الامتحانات**.'),
       TourStep('exams.onlineTab', 'اختار تاب **إلكتروني**.'),
       TourStep('exams.newOnline', 'اضغط **امتحان إلكتروني جديد**.'),
+      TourStep('exams.manualChoice', 'اختار **أكتب الأسئلة بنفسي** (أو جرّب **من صورة أو ملف** بعدين).'),
       TourStep('exam.name', 'اكتب **اسم الامتحان** وبعدين اضغط التالي.',
           advance: TourAdvance.next),
       TourStep('exam.bank',

@@ -260,6 +260,12 @@ const String SETTING_HOME_AT_RISK_CARD = 'home_at_risk_card';
 // spec 056 — واتساب تلقائي (محلية؛ النسخة المرجعية للتفعيل على السيرفر في wa_teacher_settings)
 const String SETTING_WA_AUTO_ENABLED = 'wa_auto_enabled';
 const String SETTING_WA_AUTO_ABSENCE = 'wa_auto_absence';
+const String SETTING_WA_AUTO_LATE = 'wa_auto_late';
+const String SETTING_WA_AUTO_RECEIPT = 'wa_auto_receipt';
+const String SETTING_WA_AUTO_LATE_LAST_RUN = 'wa_auto_late_last_run';
+
+// تطبيق واتساب اللي بتتبعت منه الرسايل اليدوية: default / ask / whatsapp / business
+const String SETTING_WA_APP = 'wa_app';
 // app_settings key — تفعيل دعم جهاز قارئ باركود خارجي (HID) في شاشتَي
 // الحضور والدفع. افتراضيًا معطّل — المدرّس يفعّله من الإعدادات. محلي
 // لكل جهاز، غير مُزامن. (spec 027)

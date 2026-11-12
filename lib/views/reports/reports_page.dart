@@ -5,6 +5,7 @@ import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/utils/payment_reminder_message.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/controllers/report_controller.dart';
+import 'package:active_class/utils/billing_period.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
@@ -29,6 +30,9 @@ class _ReportsPageState extends State<ReportsPage> {
   @override
   void initState() {
     super.initState();
+    // الـcontroller بيفضل عايش، فالشهر القديم كان بيتفتح عليه تاني — نرجّعه
+    // للشهر الافتراضي في كل دخول.
+    ctrl.setMonth(defaultCollectionMonth());
     ctrl.loadReports();
   }
 
@@ -110,8 +114,7 @@ class _ReportsPageState extends State<ReportsPage> {
                                 context: context,
                                 initialDate: month,
                                 firstDate: DateTime(2020),
-                                lastDate: DateTime.now()
-                                    .add(const Duration(days: 365)),
+                                lastDate: DateTime.now(),
                                 helpText: 'اختر شهرًا',
                               );
                               if (picked != null) {
@@ -140,8 +143,12 @@ class _ReportsPageState extends State<ReportsPage> {
                           tooltip: 'الشهر التالي',
                           icon: Icon(Icons.chevron_left_rounded,
                               color: t.boardInk),
-                          onPressed: () => ctrl
-                              .setMonth(DateTime(month.year, month.month + 1)),
+                          onPressed: !DateTime(month.year, month.month + 1)
+                                  .isAfter(DateTime(
+                                      DateTime.now().year, DateTime.now().month))
+                              ? () => ctrl.setMonth(
+                                  DateTime(month.year, month.month + 1))
+                              : null,
                         ),
                       ],
                     ),
@@ -221,8 +228,7 @@ class _ReportsPageState extends State<ReportsPage> {
                               Expanded(
                                 child: _IncomeBox(
                                   label: 'المتوقع',
-                                  amount: groupSummaries.fold(
-                                      0.0, (s, g) => s + g.expectedIncome),
+                                  amount: ctrl.monthExpected,
                                   color: t.brand,
                                 ),
                               ),
@@ -230,22 +236,22 @@ class _ReportsPageState extends State<ReportsPage> {
                               Expanded(
                                 child: _IncomeBox(
                                   label: 'المتأخر',
-                                  amount: groupSummaries.fold(
-                                      0.0,
-                                      (s, g) =>
-                                          s +
-                                          (g.expectedIncome - g.collectedIncome)
-                                              .clamp(0, double.infinity)),
+                                  // نفس مجموع قايمة «غير المسددين» (متراكم)
+                                  amount: ctrl.totalOverdue,
                                   color: t.danger,
                                 ),
                               ),
                             ],
                           ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'المتأخر = المتبقي من مستحق الشهر ده (نفس رقم الرئيسية)',
+                            style: TextStyle(fontSize: 11, color: t.inkSoft),
+                          ),
                           const SizedBox(height: 12),
                           // Collection progress bar
                           Builder(builder: (context) {
-                            final expected = groupSummaries.fold(
-                                0.0, (s, g) => s + g.expectedIncome);
+                            final expected = ctrl.monthExpected;
                             final collected = ctrl.monthTotalCollected;
                             final progress = expected == 0
                                 ? 0.0
@@ -721,7 +727,9 @@ class _UnpaidStudentCard extends StatelessWidget {
       studentName: data.student.name,
       studentCode: data.student.code,
       groupName: data.group?.name ?? '',
-      monthLabel: monthLabel,
+      // لو المتبقي متراكم (فيه شهور أقدم) ما نحطش اسم شهر واحد عشان الرسالة
+      // ما تقولش إن كل المبلغ عن الشهر ده.
+      monthLabel: data.includesOlderMonths ? '' : monthLabel,
       remainingText:
           remaining > 0 ? FormatHelper.formatCurrency(remaining) : '',
       teacherName: settings.teacherFullName.value.trim(),

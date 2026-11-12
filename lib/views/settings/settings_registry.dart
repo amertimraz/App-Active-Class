@@ -319,6 +319,12 @@ const List<SettingsItem> kSettingsItems = [
       kind: SettingsItemKind.nav,
       keywords: ['واتساب تلقائي', 'غياب', 'موافقة', 'حصة', 'رسايل']),
   SettingsItem(
+      id: 'whatsapp.app',
+      categoryId: 'whatsapp',
+      title: 'تطبيق واتساب للإرسال',
+      kind: SettingsItemKind.dropdown,
+      keywords: ['واتساب بيزنس', 'business', 'حسابين', 'أكتر من رقم', 'تبديل']),
+  SettingsItem(
       id: 'whatsapp.country_dial',
       categoryId: 'whatsapp',
       title: 'رمز دولة الواتساب',
@@ -484,7 +490,7 @@ const List<SettingsItem> kSettingsItems = [
       title: 'حذف جميع البيانات',
       kind: SettingsItemKind.nav,
       visibility: SettingsVisibility.ownerOnlyAction,
-      keywords: ['حذف', 'مسح', 'تصفير']),
+      keywords: ['حذف', 'مسح', 'تصفير', 'اختيار الأقسام', 'حذف الطلاب', 'حذف الامتحانات']),
 
   // ── حول التطبيق والدعم ──
   SettingsItem(

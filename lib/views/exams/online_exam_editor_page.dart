@@ -21,10 +21,15 @@ import 'package:active_class/services/online_exam_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/views/exams/online_exam_preview_page.dart';
 import 'package:active_class/views/question_bank/question_bank_picker_page.dart';
+import 'package:active_class/models/ai_draft_question.dart';
+import 'package:active_class/views/exams/ai_exam_source_page.dart';
 
 class OnlineExamEditorPage extends StatefulWidget {
   final Exam? existing;
-  const OnlineExamEditorPage({super.key, this.existing});
+
+  /// spec 057 — يفتح «من ملف أو صورة» أول ما المحرر يظهر (من اختيار «امتحان جديد»).
+  final bool startWithAi;
+  const OnlineExamEditorPage({super.key, this.existing, this.startWithAi = false});
 
   @override
   State<OnlineExamEditorPage> createState() => _OnlineExamEditorPageState();
@@ -40,6 +45,12 @@ class _QDraft {
   String? imageUrl; // spec 019
   final TextEditingController explanation; // spec 023
   bool uploadingImage = false;
+
+  // spec 057 — علامات مسودة الذكاء الاصطناعي (في الذاكرة بس): محتاج مراجعة،
+  // فيه شكل، مكرر؟. correctIndex = -1 = الإجابة لسه مش محددة.
+  bool needsReview = false;
+  bool hasFigure = false;
+  bool duplicate = false;
 
   // spec 043 — صورة شرح (محلية فقط، زي النص) + صورة لكل اختيار (في
   // toCloudMap). القائمتان بتتزامنا مع options طول ما الاختيارات بتتضاف
@@ -95,6 +106,20 @@ class _QDraft {
         explanationImageUrl: bq.explanationImageUrl,
         optionImageUrls: List<String?>.of(bq.optionImageUrls),
       );
+
+  // spec 057 — سؤال من الذكاء الاصطناعي (id = null → صف جديد).
+  factory _QDraft.fromAi(AiDraftQuestion q) => _QDraft(
+        type: q.looksTrueFalse ? ExamQuestionType.trueFalse : ExamQuestionType.mcq,
+        text: q.text,
+        options: List<String>.from(q.options),
+        correctIndex: q.hasAnswer ? q.correctIndex : -1,
+        explanation: q.explanation,
+      )
+        ..needsReview = q.needsReview
+        ..hasFigure = q.hasFigure
+        ..duplicate = q.duplicate;
+
+  bool get hasAnswer => correctIndex >= 0 && correctIndex < options.length;
 
   void addOption() {
     options.add(TextEditingController());
@@ -153,6 +178,11 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.startWithAi) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _addFromAi();
+      });
+    }
     if (widget.existing != null) {
       _examId = widget.existing!.id;
       _nameCtrl.text = widget.existing!.name;
@@ -377,6 +407,9 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
             q.options.any((o) => o.text.trim().isEmpty)) {
           gaps.add('كل اختيارات السؤال رقم ${i + 1}');
         }
+        if (!q.hasAnswer) {
+          gaps.add('اختيار الإجابة الصحيحة للسؤال رقم ${i + 1}');
+        }
       }
     }
     if (_opensAt == null) gaps.add('وقت فتح الامتحان');
@@ -393,6 +426,20 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
       await _blockingMsg('محتاج تكمّل قبل النشر',
           'الناقص:\n\n${gaps.map((g) => '•  $g').join('\n')}');
       return;
+    }
+    // spec 057 — أسئلة الذكاء الاصطناعي اللي لسه معلّمة «محتاج مراجعة».
+    final unreviewed = _questions.where((q) => q.needsReview).length;
+    if (unreviewed > 0) {
+      final go = await Get.dialog<bool>(AlertDialog(
+        title: const Text('في أسئلة لسه محتاجة مراجعة'),
+        content: Text('$unreviewed سؤال من الذكاء الاصطناعي لسه معلّمين «محتاج مراجعة». '
+            'متأكد إنك راجعتهم وعايز تنشر؟'),
+        actions: [
+          TextButton(onPressed: () => Get.back(result: false), child: const Text('رجوع أراجع')),
+          FilledButton(onPressed: () => Get.back(result: true), child: const Text('راجعت، انشر')),
+        ],
+      ));
+      if (go != true || !mounted) return;
     }
     setState(() => _busy = true);
     String? err;
@@ -462,6 +509,18 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
         ]),
       ),
     );
+  }
+
+  // spec 057 — أسئلة من صورة/ملف بالذكاء الاصطناعي، كمسودة للمراجعة.
+  Future<void> _addFromAi() async {
+    final r = await Get.to<AiExamResult>(() => const AiExamSourcePage());
+    if (r == null || r.questions.isEmpty || !mounted) return;
+    setState(() {
+      for (final q in r.questions) {
+        _questions.add(_QDraft.fromAi(q));
+      }
+    });
+    ToastHelper.success('اتضافت ${r.questions.length} سؤال — راجعهم قبل النشر');
   }
 
   // spec 025 — أضف أسئلة من البنك كنسخ مستقلة.
@@ -557,6 +616,11 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
             style: const TextStyle(
                 fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
         actions: [
+          IconButton(
+            tooltip: 'من ملف أو صورة',
+            icon: const Icon(Icons.auto_awesome_rounded),
+            onPressed: _addFromAi,
+          ),
           TourTarget(id: 'exam.bank', child: IconButton(
             tooltip: 'أضف من بنك الأسئلة',
             icon: const Icon(Icons.library_add_outlined),
@@ -656,6 +720,16 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                 ),
                 const SizedBox(height: 8),
                 ..._questions.asMap().entries.map((e) => _questionCard(e.key)),
+                if (_questions.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: FilledButton.tonalIcon(
+                      onPressed: _addFromAi,
+                      icon: const Icon(Icons.auto_awesome_rounded),
+                      label: const Text('ابدأ من صورة أو ملف (ذكاء اصطناعي)',
+                          style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w700)),
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 Row(children: [
                   Expanded(
@@ -1017,6 +1091,37 @@ class _OnlineExamEditorPageState extends State<OnlineExamEditorPage> {
                 }),
               ),
             ]),
+            if (q.needsReview || q.hasFigure || q.duplicate || !q.hasAnswer)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Wrap(spacing: 6, runSpacing: 4, children: [
+                  if (q.needsReview)
+                    ActionChip(
+                      avatar: const Icon(Icons.rule_rounded, size: 15),
+                      label: const Text('محتاج مراجعة — اضغط لما تراجعه',
+                          style: TextStyle(fontFamily: 'Cairo', fontSize: 11)),
+                      onPressed: () => setState(() => q.needsReview = false),
+                    ),
+                  if (!q.hasAnswer)
+                    const Chip(
+                      avatar: Icon(Icons.help_outline_rounded, size: 15),
+                      label: Text('اختار الإجابة الصحيحة',
+                          style: TextStyle(fontFamily: 'Cairo', fontSize: 11)),
+                    ),
+                  if (q.hasFigure)
+                    const Chip(
+                      avatar: Icon(Icons.image_outlined, size: 15),
+                      label: Text('فيه شكل — ضيف صورته',
+                          style: TextStyle(fontFamily: 'Cairo', fontSize: 11)),
+                    ),
+                  if (q.duplicate)
+                    const Chip(
+                      avatar: Icon(Icons.content_copy_rounded, size: 15),
+                      label: Text('مكرر؟',
+                          style: TextStyle(fontFamily: 'Cairo', fontSize: 11)),
+                    ),
+                ]),
+              ),
             TextField(
               controller: q.text,
               style: const TextStyle(fontFamily: 'Cairo', fontSize: 13),

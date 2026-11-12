@@ -4,6 +4,8 @@
 //   1) رابط wa.me صالح في حقل الواتساب → يُفتح مباشرة.
 //   2) رقم صالح (من حقل الرقم أو حقل الواتساب) → wa.me/<رقم>?text=.
 //   3) اسم مستخدم → يفتح واتساب + ينسخ الرسالة + تنبيه.
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -84,7 +86,57 @@ Future<bool> launchGuardianWhatsapp({
   return false;
 }
 
-Future<bool> _open(String url) async {
+Future<bool> _open(String url) => openWhatsappLink(url);
+
+const _kWaPackage = 'com.whatsapp';
+const _kWaBusinessPackage = 'com.whatsapp.w4b';
+
+/// wa.me/<رقم>?text=… → whatsapp://send?phone=<رقم>&text=… (بيفتحه واتساب
+/// وWhatsApp Business بس، عكس wa.me اللي ممكن يروح للمتصفح).
+String waSchemeUrl(String url) {
+  final u = Uri.tryParse(url);
+  if (u == null || !u.host.toLowerCase().endsWith('wa.me')) return url;
+  final phone = u.pathSegments.isNotEmpty
+      ? u.pathSegments.first.replaceAll(RegExp(r'\D'), '')
+      : '';
+  final text = u.queryParameters['text'] ?? '';
+  final q = <String>[
+    if (phone.isNotEmpty) 'phone=$phone',
+    if (text.isNotEmpty) 'text=${Uri.encodeComponent(text)}',
+  ];
+  return 'whatsapp://send${q.isEmpty ? '' : '?${q.join('&')}'}';
+}
+
+/// يفتح رابط واتساب حسب إعداد «تطبيق واتساب»: الافتراضي (زي الأول)، أو
+/// اسأل كل مرة (قايمة اختيار: واتساب / Business / نسخة تانية)، أو تطبيق محدد.
+/// الاختيار بس على أندرويد؛ أي حالة تانية أو فشل → الفتح العادي.
+Future<bool> openWhatsappLink(String url) async {
+  final mode = Get.isRegistered<SettingsController>()
+      ? Get.find<SettingsController>().waApp.value
+      : 'default';
+  if (!kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.android &&
+      mode != 'default') {
+    try {
+      final data = waSchemeUrl(url);
+      // قايمة الاختيار بس لروابط الرسايل (whatsapp://) — غير كده هتعرض متصفحات.
+      if (mode == 'ask' && data != url) {
+        await AndroidIntent(action: 'action_view', data: data)
+            .launchChooser('اختار حساب الواتساب');
+        return true;
+      }
+      if (mode != 'ask') {
+        await AndroidIntent(
+          action: 'action_view',
+          data: data,
+          package: mode == 'business' ? _kWaBusinessPackage : _kWaPackage,
+        ).launch();
+        return true;
+      }
+    } catch (_) {
+      // التطبيق المطلوب مش متثبّت → نكمل بالفتح العادي.
+    }
+  }
   try {
     return await launchUrl(Uri.parse(url),
         mode: LaunchMode.externalApplication);

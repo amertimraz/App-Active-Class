@@ -261,7 +261,7 @@ class _ExamsPageState extends State<ExamsPage>
                     await Get.to(() => const GameTypePickerPage());
                     OnlineExamsTab.gamesKey.currentState?.reload();
                   } else {
-                    await Get.to(() => const OnlineExamEditorPage());
+                    await _newOnlineExam();
                     _ec.loadExams();
                   }
                 },
@@ -281,6 +281,39 @@ class _ExamsPageState extends State<ExamsPage>
         ],
       ),
     );
+  }
+
+  /// spec 057 — امتحان إلكتروني جديد: كتابة يدوي، أو من صورة/ملف بالذكاء الاصطناعي.
+  Future<void> _newOnlineExam() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.auto_awesome_rounded),
+            title: const Text('من صورة أو ملف',
+                style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+            subtitle: const Text('صوّر ورقة امتحان أو صفحات درس والتطبيق يطلّع الأسئلة',
+                style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+            onTap: () => Navigator.pop(ctx, 'ai'),
+          ),
+          TourTarget(
+            id: 'exams.manualChoice',
+            child: ListTile(
+              leading: const Icon(Icons.edit_note_rounded),
+              title: const Text('أكتب الأسئلة بنفسي',
+                  style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
+              subtitle: const Text('محرر الأسئلة العادي أو من بنك الأسئلة',
+                  style: TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+              onTap: () => Navigator.pop(ctx, 'manual'),
+            ),
+          ),
+        ]),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    await Get.to(() => OnlineExamEditorPage(startWithAi: choice == 'ai'));
   }
 
   Widget _buildPaperTab(ThemeData theme, bool isDark, ColorScheme cs) {

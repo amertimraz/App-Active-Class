@@ -1,61 +1,7 @@
 part of '../settings_page.dart';
 
-// spec 051 — فئة «حول التطبيق والدعم» (نقل حرفي)
-
-Widget _buildAboutSection(BuildContext context, bool isDark) {
-  return _buildSection(
-    context,
-    isDark,
-    title: 'عن التطبيق',
-    icon: Icons.info_rounded,
-    color: const Color(0xFF64748B),
-    children: [
-      FutureBuilder<PackageInfo>(
-        future: PackageInfo.fromPlatform(),
-        builder: (context, snapshot) {
-          final version = snapshot.data?.version ?? '—';
-          return _buildInfoTile(
-            isDark,
-            icon: Icons.verified_rounded,
-            iconColor: const Color(0xFF4F46E5),
-            title: 'الإصدار',
-            trailing: version,
-          );
-        },
-      ),
-      _buildDivider(isDark),
-      _buildNavTile(
-        context,
-        isDark,
-        icon: Icons.system_update_rounded,
-        iconColor: const Color(0xFF10B981),
-        title: 'تحقق من التحديثات',
-        subtitle: 'ابحث عن نسخة أحدث من التطبيق',
-        onTap: () => checkAndShowUpdateDialog(context, silent: false),
-      ),
-      _buildDivider(isDark),
-      _buildNavTile(
-        context,
-        isDark,
-        icon: Icons.help_outline_rounded,
-        iconColor: const Color(0xFFF59E0B),
-        title: 'المساعدة والدعم',
-        subtitle: 'تواصل معنا',
-        onTap: () => _openSupportWhatsApp(),
-      ),
-      _buildDivider(isDark),
-      _buildNavTile(
-        context,
-        isDark,
-        icon: Icons.privacy_tip_outlined,
-        iconColor: const Color(0xFF6366F1),
-        title: 'سياسة الخصوصية',
-        subtitle: 'كيف نتعامل مع بياناتك',
-        onTap: () => _openPrivacyPolicy(),
-      ),
-    ],
-  );
-}
+// spec 051 — فئة «حول التطبيق والدعم» بتصميم السبورة والكروت:
+// سبورة بالإصدار وزر التحديث، كروت الدعم والخصوصية، وكارت قناة المجتمع.
 
 // spec 017 — قناة واتساب المجتمع (تحديثات + دعم + اقتراحات). رابط ثابت.
 const String _kCommunityChannelUrl =
@@ -70,53 +16,6 @@ Future<void> _openCommunityChannel() async {
   }
 }
 
-Widget _buildCommunitySection(BuildContext context, bool isDark) {
-  return _buildSection(
-    context,
-    isDark,
-    title: 'المجتمع والدعم',
-    icon: Icons.forum_rounded,
-    color: const Color(0xFF25D366),
-    children: [
-      Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'قناة التحديثات والدعم — تابع الجديد أول بأول، وشارك مشاكلك واقتراحاتك مع مجتمع المدرسين.',
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontSize: 12,
-                height: 1.7,
-                color: isDark ? Colors.white60 : Colors.black54,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _openCommunityChannel,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF25D366),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                icon: const Icon(Icons.chat_rounded, size: 18),
-                label: const Text('انضم لقناة التحديثات والدعم',
-                    style: TextStyle(
-                        fontFamily: 'Cairo', fontWeight: FontWeight.w800)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ],
-  );
-}
-
 Future<void> _openPrivacyPolicy() async {
   final uri = Uri.parse(
       'https://amertimraz.github.io/App-Active-Class/privacy-policy.html');
@@ -129,8 +28,6 @@ Future<void> _openPrivacyPolicy() async {
 
 Future<void> _openSupportWhatsApp() => openSupportWhatsApp();
 
-// ─── Tile Builders ────────────────────────────────────────────────────────
-
 class _AboutCategoryPage extends StatelessWidget {
   const _AboutCategoryPage({this.highlightId});
 
@@ -140,13 +37,143 @@ class _AboutCategoryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = _tk(isDark);
+    const green = Color(0xFF25D366);
+    const gap = SizedBox(height: AppSpace.lg);
     return _CategoryScaffold(
       title: 'حول التطبيق والدعم',
       highlightId: highlightId,
       children: [
-        _buildCommunitySection(context, isDark),
-        const SizedBox(height: 20),
-        _buildAboutSection(context, isDark),
+        // ── السبورة: الإصدار + تحقق من التحديثات ──
+        Material(
+          color: t.board,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.board),
+            side: BorderSide(color: t.boardLine),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpace.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: t.chalk,
+                      borderRadius: BorderRadius.circular(AppRadius.control),
+                    ),
+                    child: Icon(Icons.info_rounded, color: t.onChalk, size: 24),
+                  ),
+                  const SizedBox(width: AppSpace.md),
+                  Expanded(
+                    child: FutureBuilder<PackageInfo>(
+                      future: PackageInfo.fromPlatform(),
+                      builder: (context, snapshot) {
+                        final version = snapshot.data?.version ?? '—';
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Active Class',
+                                style:
+                                    AppType.title.copyWith(color: t.boardInk)),
+                            Text('الإصدار $version',
+                                style: AppType.caption
+                                    .copyWith(color: t.boardInkSoft)),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: AppSpace.md),
+                FilledButton.icon(
+                  onPressed: () =>
+                      checkAndShowUpdateDialog(context, silent: false),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: t.chalk,
+                    foregroundColor: t.onChalk,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.control)),
+                  ),
+                  icon: const Icon(Icons.system_update_rounded, size: 20),
+                  label: const Text('تحقق من التحديثات'),
+                ),
+                const SizedBox(height: 6),
+                Text('ابحث عن نسخة أحدث من التطبيق',
+                    textAlign: TextAlign.center,
+                    style: AppType.caption.copyWith(color: t.boardInkSoft)),
+              ],
+            ),
+          ),
+        ),
+        gap,
+        // ── الدعم والخصوصية: كروت ──
+        _plainSectionBlock(
+          t,
+          'عن التطبيق',
+          Icons.info_rounded,
+          const Color(0xFF64748B),
+          _cardGrid([
+            _actionCard(
+              t,
+              icon: Icons.help_outline_rounded,
+              color: const Color(0xFFF59E0B),
+              title: 'المساعدة والدعم',
+              hint: 'تواصل معنا',
+              onTap: () => _openSupportWhatsApp(),
+            ),
+            _actionCard(
+              t,
+              icon: Icons.privacy_tip_outlined,
+              color: const Color(0xFF6366F1),
+              title: 'سياسة الخصوصية',
+              hint: 'كيف نتعامل مع بياناتك',
+              onTap: () => _openPrivacyPolicy(),
+            ),
+          ]),
+        ),
+        gap,
+        // ── قناة المجتمع ──
+        _plainSectionBlock(
+          t,
+          'المجتمع والدعم',
+          Icons.forum_rounded,
+          green,
+          _settingsCard(
+            t,
+            Padding(
+              padding: const EdgeInsets.all(AppSpace.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'قناة التحديثات والدعم — تابع الجديد أول بأول، وشارك مشاكلك واقتراحاتك مع مجتمع المدرسين.',
+                    style: AppType.caption
+                        .copyWith(color: t.inkSoft, height: 1.7),
+                  ),
+                  const SizedBox(height: AppSpace.md),
+                  FilledButton.icon(
+                    onPressed: _openCommunityChannel,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: green,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(AppRadius.control)),
+                    ),
+                    icon: const Icon(Icons.chat_rounded, size: 18),
+                    label: const Text('انضم لقناة التحديثات والدعم'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }

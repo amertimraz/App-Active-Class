@@ -334,11 +334,38 @@ class SettingsController extends GetxController {
   // spec 056 — واتساب تلقائي: التفعيل العام + نوع تنبيه الغياب. افتراضي مقفول.
   final RxBool waAutoEnabled = false.obs;
   final RxBool waAutoAbsence = true.obs;
+  final RxBool waAutoLate = true.obs; // تذكير تأخر الدفع (أسبوعي)
+  final RxBool waAutoReceipt = true.obs; // إيصال عند تسجيل دفعة
+
+  /// تطبيق واتساب للإرسال اليدوي (أندرويد): default = اختيار الجهاز،
+  /// ask = اسأل كل مرة (واتساب / Business / نسخة تانية)، whatsapp، business.
+  final RxString waApp = 'default'.obs;
+
+  Future<void> setWaApp(String v) async {
+    waApp.value = v;
+    try {
+      await _dbSet(SETTING_WA_APP, v);
+    } catch (_) {}
+  }
 
   Future<void> setWaAutoEnabled(bool v) async {
     waAutoEnabled.value = v;
     try {
       await _dbSet(SETTING_WA_AUTO_ENABLED, v ? '1' : '0');
+    } catch (_) {}
+  }
+
+  Future<void> setWaAutoLate(bool v) async {
+    waAutoLate.value = v;
+    try {
+      await _dbSet(SETTING_WA_AUTO_LATE, v ? '1' : '0');
+    } catch (_) {}
+  }
+
+  Future<void> setWaAutoReceipt(bool v) async {
+    waAutoReceipt.value = v;
+    try {
+      await _dbSet(SETTING_WA_AUTO_RECEIPT, v ? '1' : '0');
     } catch (_) {}
   }
 
@@ -351,8 +378,11 @@ class SettingsController extends GetxController {
 
   Future<void> _loadLateAttendanceSettings() async {
     try {
+      waApp.value = (await _dbGet(SETTING_WA_APP)) ?? 'default';
       waAutoEnabled.value = (await _dbGet(SETTING_WA_AUTO_ENABLED)) == '1';
       waAutoAbsence.value = (await _dbGet(SETTING_WA_AUTO_ABSENCE)) != '0';
+      waAutoLate.value = (await _dbGet(SETTING_WA_AUTO_LATE)) != '0';
+      waAutoReceipt.value = (await _dbGet(SETTING_WA_AUTO_RECEIPT)) != '0';
       homeAtRiskCard.value = (await _dbGet(SETTING_HOME_AT_RISK_CARD)) == '1';
       lateGraceMinutes.value =
           await _migrateInt(SETTING_LATE_GRACE_MINUTES) ?? 15;

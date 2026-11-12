@@ -1,6 +1,6 @@
 part of '../settings_page.dart';
 
-// spec 051 — فئة «المظهر والعرض»
+// spec 051 — فئة «المظهر والعرض» بتصميم السبورة والكروت.
 
 class _AppearanceCategoryPage extends StatelessWidget {
   const _AppearanceCategoryPage({this.highlightId});
@@ -11,43 +11,60 @@ class _AppearanceCategoryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = _tk(isDark);
     final SettingsController settings = Get.find();
     final ThemeController themeController = Get.find();
+    const gap = SizedBox(height: AppSpace.lg);
     return _CategoryScaffold(
       title: 'المظهر والعرض',
       highlightId: highlightId,
       children: [
-        _buildSection(
-          context,
-          isDark,
-          title: 'المظهر والتوقيت',
-          icon: Icons.palette_rounded,
-          color: const Color(0xFF8B5CF6),
-          children: [
-            _buildSwitchTile(
-              context,
-              isDark,
+        Obx(() => _boardSummary(
+              t,
+              icon: Icons.palette_rounded,
+              title: 'المظهر والعرض',
+              subtitle: 'شكل التطبيق وعرض الوقت',
+              stats: [
+                (
+                  label: 'المظهر',
+                  value: themeController.isDarkMode.value ? 'ليلي' : 'نهاري'
+                ),
+                (
+                  label: 'نظام الساعة',
+                  value: settings.use24hFormat.value
+                      ? '24 ساعة (14:30)'
+                      : '12 ساعة (2:30 م)'
+                ),
+              ],
+            )),
+        gap,
+        _plainSectionBlock(
+          t,
+          'المظهر والتوقيت',
+          Icons.palette_rounded,
+          const Color(0xFF8B5CF6),
+          _cardGrid([
+            _toggleCard(
+              t,
+              rx: themeController.isDarkMode,
               icon: Icons.dark_mode_rounded,
-              iconColor: const Color(0xFF8B5CF6),
+              color: const Color(0xFF8B5CF6),
               title: 'الوضع الليلي',
-              subtitle: 'تغيير مظهر التطبيق',
-              rxValue: themeController.isDarkMode,
-              onChanged: themeController.setTheme,
+              onHint: 'التطبيق بالمظهر الداكن',
+              offHint: 'تغيير مظهر التطبيق للداكن',
+              set: (v) async => themeController.setTheme(v),
             ),
-            _buildDivider(isDark),
-            Obx(() => _buildSwitchTile(
-                  context,
-                  isDark,
+            Obx(() => _toggleCard(
+                  t,
+                  rx: settings.use24hFormat,
                   icon: Icons.access_time_rounded,
-                  iconColor: const Color(0xFF06B6D4),
+                  color: const Color(0xFF06B6D4),
                   title: 'نظام الساعة 24',
-                  subtitle: settings.use24hFormat.value
-                      ? 'يعرض 14:30'
-                      : 'يعرض 2:30 م',
-                  rxValue: settings.use24hFormat,
-                  onChanged: (v) async => await settings.setUse24hFormat(v),
+                  onHint: 'يعرض 14:30',
+                  offHint: 'يعرض 2:30 م',
+                  set: (v) async => await settings.setUse24hFormat(v),
                 )),
-          ],
+          ]),
         ),
       ],
     );

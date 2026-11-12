@@ -13,6 +13,7 @@ import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/notification_service.dart';
+import 'package:active_class/services/whatsapp_auto_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/pricing_helper.dart';
@@ -176,6 +177,8 @@ class PaymentController extends GetxController {
       // حد يعدّل مجموعة/طالب — دفعة جديدة/محذوفة هي أكتر حدث بيغيّر
       // "مين متأخر" فعليًا، ومكانش بيحصّل تحديث خالص.
       unawaited(NotificationService().scheduleLatePaymentReminder());
+      // spec 056 — إيصال واتساب تلقائي لولي الأمر (لو مفعّل، best-effort).
+      unawaited(WhatsAppAutoService.instance.enqueueReceipt(payment));
       ToastHelper.success('تم إضافة الدفع بنجاح');
     } catch (e) {
       ToastHelper.error('حدث خطأ في إضافة الدفع');
