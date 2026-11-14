@@ -2,7 +2,7 @@
 import { inSendWindow, nextWindowStart, retryDelayMs, MAX_ATTEMPTS, createBucket } from './rules.js';
 
 // بيقرر إيه اللي يحصل لطلب قبل ما نتصل بالمزوّد. بلا أي I/O.
-// ctx: { cfg:{killSwitch,fromHour,toHour}, settings:{enabled,kinds,pausedByAdmin}|null,
+// ctx: { cfg:{killSwitch,fromHour,toHour}, settings:{enabled,kinds,pausedByAdmin,adminActivated}|null,
 //        consent: 'granted'|'stopped'|null (حالة الرقم عند المدرس), globalStopped:boolean, now:Date }
 export function decide(row, ctx) {
   const { cfg, settings, consent, globalStopped, now } = ctx;
@@ -11,6 +11,10 @@ export function decide(row, ctx) {
   const isTest = row.kind === 'test';
   if (!settings || !settings.enabled || settings.pausedByAdmin) {
     return { action: 'block', reason: 'disabled' };
+  }
+  // قفل افتراضي: الخدمة ما بتشتغلش لمدرس غير لما الأدمن يفتحها (حتى رسايل الاختبار).
+  if (!settings.adminActivated) {
+    return { action: 'block', reason: 'not_activated' };
   }
   if (!isTest && settings.kinds && settings.kinds[row.kind] === false) {
     return { action: 'block', reason: 'disabled' };
@@ -57,7 +61,7 @@ export function createSender({ db, meta, log = console }) {
   async function processRow(row, cfg) {
     const now = new Date();
     const [{ rows: [st] }, { rows: cons }] = await Promise.all([
-      db.query(`select enabled, kinds, paused_by_admin as "pausedByAdmin" from wa_teacher_settings where owner_id=$1`, [row.owner_id]),
+      db.query(`select enabled, kinds, paused_by_admin as "pausedByAdmin", admin_activated as "adminActivated" from wa_teacher_settings where owner_id=$1`, [row.owner_id]),
       db.query(
         `select owner_id, student_local_id, status from wa_consents where phone=$1
          and (status='stopped' or (owner_id=$2 and student_local_id=$3))`,

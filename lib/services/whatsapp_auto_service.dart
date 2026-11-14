@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:active_class/config/constants.dart';
@@ -22,11 +23,24 @@ import 'package:active_class/services/auth_service.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/whatsapp_auto_rules.dart';
+import 'package:active_class/utils/support_contact.dart';
 
 /// حالة موافقة ولي أمر طالب كما هي على السيرفر.
 enum WaConsent { none, granted, stopped }
 
 /// خطأ بسيط برسالة عربي تتعرض للمدرس.
+/// حالة تفعيل الخدمة (قفل افتراضي: الأدمن هو اللي يفتحها).
+class WaActivation {
+  final bool activated;
+  final bool paused;
+  final DateTime? requestedAt;
+  const WaActivation(
+      {required this.activated, required this.paused, this.requestedAt});
+
+  /// الإرسال فعليًا مسموح من ناحية الإدارة.
+  bool get allowed => activated && !paused;
+}
+
 class WaAutoException implements Exception {
   final String message;
   const WaAutoException(this.message);
@@ -84,6 +98,88 @@ class WhatsAppAutoService {
       debugPrint('wa syncSettings: $e');
       return false;
     }
+  }
+
+  /// حالة تفعيل الخدمة عند الإدارة: مفتوحة؟ موقوفة؟ ومتى اتطلب التفعيل.
+  /// null لو مفيش اتصال/تسجيل دخول. مفيش صف = لسه ما اتفعّلتش.
+  Future<WaActivation?> loadActivation() async {
+    // المساعد: التفعيل والرصيد عند المدرس (صاحب الحساب) مش عنده.
+    if (TeamModeService().isAssistant) return null;
+    final c = await _client();
+    if (c == null) return null;
+    try {
+      final row = await c
+          .from('wa_teacher_settings')
+          .select('admin_activated,paused_by_admin,activation_requested_at')
+          .eq('owner_id', c.auth.currentUser!.id)
+          .maybeSingle();
+      final act = WaActivation(
+        activated: row?['admin_activated'] == true,
+        paused: row?['paused_by_admin'] == true,
+        requestedAt: row?['activation_requested_at'] == null
+            ? null
+            : DateTime.tryParse('${row!['activation_requested_at']}'),
+      );
+      unawaited(_saveActivationCache(act));
+      return act;
+    } catch (e) {
+      debugPrint('wa loadActivation: $e');
+      return null;
+    }
+  }
+
+  // آخر حالة معروفة (ok/locked/paused) عشان الشاشات تعرضها فورًا من غير وميض
+  // لحد ما الرد من السيرفر يوصل، وتفضل صح لو مفيش نت.
+  static const _kActCache = 'wa_activation_cache';
+
+  Future<void> _saveActivationCache(WaActivation a) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(
+          _kActCache, a.paused ? 'paused' : (a.activated ? 'ok' : 'locked'));
+    } catch (_) {}
+  }
+
+  Future<WaActivation?> cachedActivation() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      return switch (p.getString(_kActCache)) {
+        'ok' => const WaActivation(activated: true, paused: false),
+        'locked' => const WaActivation(activated: false, paused: false),
+        'paused' => const WaActivation(activated: true, paused: true),
+        _ => null,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// بيسجّل إن المدرس طلب التفعيل (الأدمن يشوفه في اللوحة) ويفتح واتساب
+  /// برسالة جاهزة على رقم الإدارة. بيرجع true لو اتفتح واتساب.
+  Future<bool> requestActivation() async {
+    if (TeamModeService().isAssistant) return false;
+    final c = await _client();
+    final s =
+        Get.isRegistered<SettingsController>() ? Get.find<SettingsController>() : null;
+    final user = c?.auth.currentUser;
+    if (c != null && user != null) {
+      try {
+        await c.from('wa_teacher_settings').upsert({
+          'owner_id': user.id,
+          'activation_requested_at': DateTime.now().toUtc().toIso8601String(),
+        }, onConflict: 'owner_id');
+      } catch (e) {
+        debugPrint('wa requestActivation mark: $e');
+      }
+    }
+    final account = (user?.phone?.isNotEmpty ?? false) ? user!.phone : user?.email;
+    return openWaActivationRequest(
+      teacherName: s?.teacherFullName.value,
+      teacherPhone: s == null
+          ? null
+          : waTeacherPhoneText(s.teacherPhone.value, s.countryDial.value),
+      account: account,
+    );
   }
 
   /// يحط طلب تنبيه غياب. بيرجع true لو اتبعت الطلب للسيرفر.

@@ -192,7 +192,7 @@ void main() {
     final now = DateTime.now();
     expect(find.text(DateFormat('MMMM yyyy', 'ar').format(DateTime(now.year, now.month, 1))),
         findsOneWidget);
-    expect(find.text('محصّل الشهر'), findsOneWidget);
+    expect(find.text('كاش الشهر'), findsOneWidget);
     for (final l in ['مدفوع', 'جزئي', 'متأخر', 'الكل']) {
       expect(find.text(l), findsWidgets, reason: l);
     }

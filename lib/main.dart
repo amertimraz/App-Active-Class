@@ -33,6 +33,7 @@ import 'package:active_class/views/settings/settings_page.dart';
 import 'package:active_class/views/settings/notification_settings_page.dart';
 import 'package:active_class/views/reports/payments_report_page.dart';
 import 'package:active_class/views/expenses/expenses_page.dart';
+import 'package:active_class/views/income/income_page.dart';
 import 'package:active_class/views/payments/debts_page.dart';
 import 'package:active_class/views/messages/bulk_send_page.dart';
 import 'package:active_class/utils/system_messages.dart';
@@ -328,6 +329,7 @@ class MyApp extends StatelessWidget {
                 name: ROUTE_PAYMENTS_REPORT,
                 page: () => const PaymentsReportPage()),
             GetPage(name: ROUTE_EXPENSES, page: () => const ExpensesPage()),
+            GetPage(name: ROUTE_INCOME, page: () => const IncomePage()),
             GetPage(name: ROUTE_DEBTS, page: () => const DebtsPage()),
             GetPage(name: ROUTE_BULK_SEND, page: () => const BulkSendPage()),
             GetPage(name: ROUTE_ACTIVATION, page: () => const ActivationPage()),

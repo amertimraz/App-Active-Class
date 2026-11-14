@@ -1,0 +1,95 @@
+// lib/utils/whats_new.dart
+//
+// «الجديد في هذا التحديث»: ملاحظات كل إصدار (بالعربي المختصر) + منطق صرف بيحدّد
+// إيه اللي يتعرض للمدرس بعد التحديث. بلا Flutter ولا SharedPreferences.
+//
+// لإضافة إصدار جديد: ضيف ReleaseNote في أول kReleaseNotes بنفس رقم version في
+// pubspec.yaml (من غير +build). النافذة بتظهر مرة واحدة بعد ما التطبيق يتحدّث.
+
+/// ميزة واحدة: عنوان قصير + سطر شرح. [icon] مفتاح نصّي بتترجمه النافذة لأيقونة
+/// (علشان الملف ده يفضل من غير Flutter): chat, reports, income, exam, delete,
+/// settings، وأي مفتاح تاني بياخد أيقونة عامة.
+class ReleaseItem {
+  final String title;
+  final String body;
+  final String icon;
+  const ReleaseItem(this.title, this.body, {this.icon = 'star'});
+}
+
+class ReleaseNote {
+  /// «major.minor.patch» (من غير رقم البناء).
+  final String version;
+  final List<ReleaseItem> items;
+  const ReleaseNote(this.version, this.items);
+}
+
+/// الأحدث أولًا.
+const List<ReleaseNote> kReleaseNotes = [
+  ReleaseNote('1.2.87', [
+    ReleaseItem(
+      'واتساب تلقائي',
+      'رسائل الغياب وتأخر الدفع والإيصالات من رقم Active Class. خدمة بباقات رسايل، اطلب التفعيل من الإعدادات.',
+      icon: 'chat',
+    ),
+    ReleaseItem(
+      'تقارير أوضح',
+      'تبويبات للحضور والدفعات والامتحانات، ومقارنة بالشهر اللي فات ورسم لآخر ٦ شهور.',
+      icon: 'reports',
+    ),
+    ReleaseItem(
+      'دخلي',
+      'الكاش اللي دخل فعلًا الشهر ده، وكارت الرئيسية فيه تابين: الدفعات والدخل.',
+      icon: 'income',
+    ),
+    ReleaseItem(
+      'امتحان من صورة أو ملف',
+      'صوّر الامتحان يتحوّل لمسودة أسئلة تراجعها قبل النشر.',
+      icon: 'exam',
+    ),
+    ReleaseItem(
+      'حذف مرن للبيانات',
+      'اختار الأقسام والفترة اللي تحذفها بدل «احذف كل حاجة».',
+      icon: 'delete',
+    ),
+  ]),
+];
+
+/// «1.2.87» أو «1.2.87+4110» → [1, 2, 87]؛ null لو الصيغة مش مفهومة.
+List<int>? parseVersion(String? v) {
+  if (v == null) return null;
+  final core = v.split('+').first.trim();
+  final parts = core.split('.');
+  if (parts.length != 3) return null;
+  final nums = parts.map(int.tryParse).toList();
+  if (nums.any((n) => n == null)) return null;
+  return nums.cast<int>();
+}
+
+/// -1 / 0 / 1. صيغة مجهولة تتعامل كأنها 0.0.0.
+int compareVersions(String? a, String? b) {
+  final x = parseVersion(a) ?? const [0, 0, 0];
+  final y = parseVersion(b) ?? const [0, 0, 0];
+  for (var i = 0; i < 3; i++) {
+    if (x[i] != y[i]) return x[i].compareTo(y[i]);
+  }
+  return 0;
+}
+
+/// اللي يتعرض: إصدارات أحدث من [lastSeen] وأقدم من أو يساوي [current]، الأحدث
+/// أولًا، وبحد أقصى [max]. أول تثبيت ([lastSeen] == null) = مفيش حاجة تتعرض
+/// (مدرس جديد مايحتاجش «الجديد»). إصدار بلا ملاحظات = مفيش نافذة.
+List<ReleaseNote> notesToShow({
+  required String? lastSeen,
+  required String current,
+  List<ReleaseNote> notes = kReleaseNotes,
+  int max = 3,
+}) {
+  if (lastSeen == null || parseVersion(current) == null) return const [];
+  final out = notes
+      .where((n) =>
+          compareVersions(n.version, lastSeen) > 0 &&
+          compareVersions(n.version, current) <= 0)
+      .toList()
+    ..sort((a, b) => compareVersions(b.version, a.version));
+  return out.take(max).toList();
+}

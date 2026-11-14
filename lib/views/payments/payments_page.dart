@@ -6,6 +6,7 @@ import 'package:active_class/config/constants.dart';
 import 'package:intl/intl.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/widgets/app_panel.dart';
+import 'package:active_class/widgets/income_hint.dart';
 import 'package:active_class/controllers/payment_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
@@ -85,10 +86,12 @@ class _PaymentsPageState extends State<PaymentsPage> {
             icon: const Icon(Icons.money_off_rounded),
             onPressed: () => Get.toNamed(ROUTE_DEBTS),
           ),
+          // أيقونة واحدة للدخل والمصاريف: «دخلي» فيها زر «المصاريف وصافي الدخل».
           IconButton(
-            tooltip: 'المصاريف وصافي الدخل',
+            tooltip: 'دخلي والمصاريف',
             icon: const Icon(Icons.account_balance_wallet_rounded),
-            onPressed: () => Get.toNamed(ROUTE_EXPENSES),
+            onPressed: () =>
+                openIncomePage(month: controller.selectedMonth.value),
           ),
           IconButton(
             tooltip: 'تحديث',
@@ -302,7 +305,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         spacing: AppSpace.sm,
                         children: [
-                          Text('محصّل الشهر',
+                          Text('كاش الشهر',
                               style: AppType.caption
                                   .copyWith(color: t.boardInkSoft)),
                           CurrencyText(
@@ -313,7 +316,13 @@ class _PaymentsPageState extends State<PaymentsPage> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: AppSpace.md),
+                    IncomeBoardHint(
+                      month: month,
+                      text: selectedGroupId == null
+                          ? 'بتاريخ الدفعة، من غير الكراسات.'
+                          : 'لمجموعة ${groupById[selectedGroupId]?.name ?? ''} فقط.',
+                    ),
+                    const SizedBox(height: AppSpace.sm),
                     Row(children: [
                       Expanded(
                           child: BoardStat(

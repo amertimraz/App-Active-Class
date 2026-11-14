@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:get/get.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -161,6 +162,7 @@ class _Report extends ReportController {
             expectedIncome: 600,
             collectedIncome: 300,
             fullyPaidCount: 1,
+            dueStudentCount: 2,
             totalPresentSessions: 14,
             totalHomeworkDone: 9,
             totalHomeworkNotDone: 3),
@@ -170,6 +172,7 @@ class _Report extends ReportController {
             expectedIncome: 0,
             collectedIncome: 0,
             fullyPaidCount: 0,
+            dueStudentCount: 0,
             totalPresentSessions: 0),
       ];
   @override
@@ -304,17 +307,71 @@ void main() {
     }
   }
 
-  testWidgets('التقارير: السبورة والأرقام وكروت المجموعات', (t) async {
+  testWidgets('التقارير: السبورة والتبويبات والأرقام وكروت المجموعات', (t) async {
     _seed();
     await _pump(t, const ReportsPage(), size: const Size(360, 800));
     expect(find.text('التقارير'), findsOneWidget);
     expect(find.text('اضغط لتغيير الشهر'), findsOneWidget);
-    expect(find.text('حضور الشهر'), findsOneWidget);
-    expect(find.text('غياب الشهر'), findsOneWidget);
+    // التبويبات الستة.
+    for (final tab in [
+      'نظرة عامة',
+      'الحضور',
+      'الدفعات',
+      'الواجب والتسميع',
+      'الامتحانات',
+      'المجموعات'
+    ]) {
+      expect(find.text(tab), findsWidgets, reason: tab);
+    }
+    // «نظرة عامة»: كروت الأرقام.
+    for (final k in ['نسبة الحضور', 'المتوقع', 'المحصّل', 'المتأخر']) {
+      expect(find.text(k), findsWidgets, reason: k);
+    }
+
+    // «الدفعات»: المحصّلات ونسبة التحصيل وقايمة غير المسددين.
+    await t.tap(find.text('الدفعات').first);
+    await t.pump(const Duration(milliseconds: 500));
+    await t.pump(const Duration(milliseconds: 500));
     expect(find.text('المحصّلات الشهرية'), findsOneWidget);
     expect(find.text('نسبة التحصيل'), findsOneWidget);
+    expect(find.text('طلاب لم يسددوا بالكامل'), findsOneWidget);
+
+    // «المجموعات»: كرت المجموعة وعدد غير المسددين فيها.
+    // شريط التبويبات بيتحرّك (isScrollable): نظهر «المجموعات» قبل الضغط.
+    await t.ensureVisible(find.text('المجموعات').first);
+    await t.pump(const Duration(milliseconds: 300));
+    await t.tap(find.text('المجموعات').first);
+    await t.pump(const Duration(milliseconds: 500));
+    await t.pump(const Duration(milliseconds: 500));
     expect(find.text(_groups[0].name), findsWidgets);
     expect(find.text('2 طالب لم يسدد بالكامل'), findsOneWidget);
+  });
+
+  testWidgets('مساعد من غير صلاحية الأكاديمي: الامتحانات مقفولة', (t) async {
+    _seed();
+    final team = TeamModeService();
+    team.isEnabled.value = true;
+    team.isOwner.value = false;
+    team.canViewFinancials.value = true;
+    team.canViewAcademics.value = false;
+    addTearDown(() {
+      team.isEnabled.value = false;
+      team.isOwner.value = false;
+      team.canViewFinancials.value = false;
+      team.canViewAcademics.value = false;
+    });
+    await _pump(t, const ReportsPage(), size: const Size(360, 800));
+    // كارت «متوسط الامتحانات» مش موجود في النظرة العامة.
+    expect(find.text('متوسط الامتحانات'), findsNothing);
+    // وتبويب الامتحانات بيعرض قفل بدل الدرجات.
+    await t.ensureVisible(find.text('الامتحانات').first);
+    await t.pump(const Duration(milliseconds: 300));
+    await t.tap(find.text('الامتحانات').first);
+    await t.pump(const Duration(milliseconds: 500));
+    await t.pump(const Duration(milliseconds: 500));
+    expect(find.text('درجات الامتحانات مقفولة عليك'), findsOneWidget);
+    expect(find.text('امتحانات الشهر'), findsNothing);
+    expect(t.takeException(), isNull);
   });
 
   testWidgets('تقرير المدفوعات: التابان والملخص', (t) async {

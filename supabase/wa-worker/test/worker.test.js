@@ -14,7 +14,7 @@ const cfg = { killSwitch: false, fromHour: 8, toHour: 22 };
 const noon = new Date('2026-11-09T10:00:00Z');
 const night = new Date('2026-11-09T21:30:00Z'); // 23:30 قاهرة
 const row = (o = {}) => ({ kind: 'absence', attempts: 0, ...o });
-const base = { cfg, settings: { enabled: true, kinds: {}, pausedByAdmin: false }, consent: 'granted', globalStopped: false, now: noon };
+const base = { cfg, settings: { enabled: true, kinds: {}, pausedByAdmin: false, adminActivated: true }, consent: 'granted', globalStopped: false, now: noon };
 
 test('قالب الغياب: متغيرات بالترتيب وتنضيف السطور', () => {
   const p = buildTemplatePayload('absence', '2010', { student: 'أحمد\nعلي', group: 'ج1', date: '2026-11-09', teacher: 'أ/ سعد', teacher_phone: '+201012345678' });
@@ -178,4 +178,17 @@ test('meta.send: المفتاح من getter، وناقص = temp بدون است�
   assert.equal(calls, 0);
   const ok = createMeta({ token: async () => 't', phoneNumberId: async () => '1', fetchFn: f });
   assert.equal((await ok.send('absence', '2010', { student: 'a', group: 'b', date: 'c', teacher: 'd', teacher_phone: '+20' })).ok, true);
+});
+
+test('قفل افتراضي: من غير تفعيل الأدمن بيتحجب حتى الاختبار', () => {
+  const notOn = { ...base, settings: { ...base.settings, adminActivated: false } };
+  assert.deepEqual(decide(row(), notOn), { action: 'block', reason: 'not_activated' });
+  assert.deepEqual(decide(row({ kind: 'test' }), notOn), { action: 'block', reason: 'not_activated' });
+  assert.deepEqual(decide(row(), { ...notOn, settings: { ...notOn.settings, adminActivated: undefined } }), { action: 'block', reason: 'not_activated' });
+});
+
+test('مفتوح من الأدمن + مفعّل من المدرس → بيتبعت، والإيقاف من الأدمن يغلب', () => {
+  assert.deepEqual(decide(row(), base), { action: 'send' });
+  const paused = { ...base, settings: { ...base.settings, pausedByAdmin: true } };
+  assert.deepEqual(decide(row(), paused), { action: 'block', reason: 'disabled' });
 });

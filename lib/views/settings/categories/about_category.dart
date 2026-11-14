@@ -128,6 +128,14 @@ class _AboutCategoryPage extends StatelessWidget {
             ),
             _actionCard(
               t,
+              icon: Icons.auto_awesome_rounded,
+              color: const Color(0xFF10B981),
+              title: 'الجديد في التحديث',
+              hint: 'آخر ما اتضاف',
+              onTap: () => showWhatsNewNow(context),
+            ),
+            _actionCard(
+              t,
               icon: Icons.privacy_tip_outlined,
               color: const Color(0xFF6366F1),
               title: 'سياسة الخصوصية',

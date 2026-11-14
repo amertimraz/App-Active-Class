@@ -13,6 +13,8 @@ import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/homework_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/models/exam_model.dart';
+import 'package:active_class/models/exam_grade_model.dart';
 import 'package:active_class/config/constants.dart';
 
 class ReportController extends GetxController {
@@ -27,6 +29,9 @@ class ReportController extends GetxController {
   // المؤرشفين: مستبعدين من الطلاب والمستحقات والمتأخرات، لكن دفعاتهم الفعلية
   // لازم تفضل محسوبة في «المحصّل» (الفلوس دخلت فعلًا في شهرها).
   final RxList<Student> archivedStudents = <Student>[].obs;
+  // الامتحانات ودرجاتها (طلاب غير مؤرشفين) — لتبويب «الامتحانات».
+  final RxList<Exam> allExams = <Exam>[].obs;
+  final RxList<ExamGrade> allExamGrades = <ExamGrade>[].obs;
 
   // ─── Selected month ─────────────────────────────────────────────────────────
   // يفتح على "شهر التحصيل الافتراضي" (آخر شهر مكتمل لو أول الشهر أو
@@ -47,6 +52,8 @@ class ReportController extends GetxController {
       final homework = await _dbService.getAllHomework();
       final students = await _dbService.getAllStudents();
       final groups = await _dbService.getAllGroups();
+      allExams.assignAll(await _dbService.getAllExams());
+      allExamGrades.assignAll(await _dbService.getAllExamGradesWithExamInfo());
       allPayments.assignAll(payments);
       allAttendance.assignAll(attendance);
       allHomework.assignAll(homework);
@@ -76,8 +83,9 @@ class ReportController extends GetxController {
         .toList();
   }
 
-  List<Attendance> get monthAttendance {
-    final m = selectedMonth.value;
+  List<Attendance> get monthAttendance => attendanceIn(selectedMonth.value);
+
+  List<Attendance> attendanceIn(DateTime m) {
     final start = DateTime(m.year, m.month, 1);
     final end = DateTime(m.year, m.month + 1, 1)
         .subtract(const Duration(microseconds: 1));
@@ -102,6 +110,9 @@ class ReportController extends GetxController {
   /// الرئيسية، وبيطابق مجموع قايمة «غير المسددين».
   double get totalOverdue => _snapshot.remaining;
 
+  /// اللي دفعه طلاب مؤرشفين وداخل في المتوقع والمحصّل (للتنويه في الشاشة).
+  double get archivedPaidIncluded => _snapshot.archivedPaid;
+
   // "متأخر" يُحتسب حضورًا (spec 011)
   int get monthPresentCount =>
       monthAttendance.where((a) => attendanceCountsAsPresent(a.status)).length;
@@ -114,8 +125,9 @@ class ReportController extends GetxController {
       .where((a) => normalizeAttendanceStatus(a.status) == ATTENDANCE_LATE)
       .length;
 
-  List<Homework> get monthHomework {
-    final m = selectedMonth.value;
+  List<Homework> get monthHomework => homeworkIn(selectedMonth.value);
+
+  List<Homework> homeworkIn(DateTime m) {
     final start = DateTime(m.year, m.month, 1);
     final end = DateTime(m.year, m.month + 1, 1)
         .subtract(const Duration(microseconds: 1));
@@ -127,8 +139,10 @@ class ReportController extends GetxController {
   // ─── Per-group summary for selected month ──────────────────────────────────
 
   // الطلاب الذين كانوا مسجّلين قبل نهاية الشهر المحدد
-  List<Student> get _studentsActiveInMonth {
-    final m = selectedMonth.value;
+  List<Student> get _studentsActiveInMonth =>
+      _studentsActiveIn(selectedMonth.value);
+
+  List<Student> _studentsActiveIn(DateTime m) {
     final monthEnd = DateTime(m.year, m.month + 1, 1)
         .subtract(const Duration(microseconds: 1));
     return allStudents.where((s) {
@@ -151,15 +165,14 @@ class ReportController extends GetxController {
         '${allPayments.length}|${allAttendance.length}|${allHomework.length}|'
         '${archivedStudents.length}|$_dataVersion';
     if (_snap != null && _snapKey == key) return _snap!;
-    _snap = _computeSnapshot();
+    _snap = _computeSnapshot(m);
     _snapKey = key;
     return _snap!;
   }
 
-  _ReportSnapshot _computeSnapshot() {
-    final m = selectedMonth.value;
+  _ReportSnapshot _computeSnapshot(DateTime m) {
     final prevMonth = DateTime(m.year, m.month - 1, 1);
-    final activeStudents = _studentsActiveInMonth;
+    final activeStudents = _studentsActiveIn(m);
     final studentsByGroup = <int, List<Student>>{};
     for (final s in activeStudents) {
       studentsByGroup.putIfAbsent(s.groupId, () => []).add(s);
@@ -167,7 +180,7 @@ class ReportController extends GetxController {
 
     final presentByStudent = <int, int>{};
     final lateByStudent = <int, int>{};
-    for (final a in monthAttendance) {
+    for (final a in attendanceIn(m)) {
       if (attendanceCountsAsPresent(a.status)) {
         presentByStudent.update(a.studentId, (v) => v + 1, ifAbsent: () => 1);
       }
@@ -179,7 +192,7 @@ class ReportController extends GetxController {
     final homeworkDoneByStudent = <int, int>{};
     final homeworkPartialByStudent = <int, int>{};
     final homeworkNotDoneByStudent = <int, int>{};
-    for (final h in monthHomework) {
+    for (final h in homeworkIn(m)) {
       switch (normalizeHomeworkStatus(h.status)) {
         case HOMEWORK_DONE:
           homeworkDoneByStudent.update(h.studentId, (v) => v + 1,
@@ -206,31 +219,51 @@ class ReportController extends GetxController {
       payByStudent.putIfAbsent(p.studentId, () => []).add(p);
     }
 
-    // طلاب اتأرشفوا بعد كده بس كانوا شغالين في الشهر ده: بنحسبهم في أرقام
-    // الشهر (فلوسهم اللي دخلت وقتها ما تختفيش من تقريره). الشهور اللي كانوا
-    // مؤرشفين فيها بالكامل بتتستبعد.
+    // الأرقام الأساسية (المتوقع/المحصّل/المتأخر/قايمة غير المسددين) على الطلاب
+    // النشطين بس — نفس استدعاء الداشبورد بالظبط (مصدر حقيقة واحد)، فتطابق
+    // كارت «دفعات» في الرئيسية.
+    final groupById = <int?, Group>{for (final g in allGroups) g.id: g};
+    final monthLanded = PricingHelper.billingArrears ||
+        monthHasLanded(
+          month: m,
+          now: DateTime.now(),
+          arrears: false,
+          billingDay: PricingHelper.billingDay,
+        );
+    MonthlyPaymentBreakdown breakdownFor(List<Student> students) =>
+        computeMonthlyBreakdown(
+          students: students,
+          paymentsByStudent: payByStudent,
+          groupById: groupById,
+          allAttendance: allAttendance,
+          month: m,
+          prevMonth: prevMonth,
+          monthLanded: monthLanded,
+        );
+    final breakdown = breakdownFor(allStudents.toList());
+
+    // طلاب اتأرشفوا بعد كده بس كانوا شغالين في الشهر ده: فلوسهم اللي دخلت
+    // وقتها ما تختفيش من تقريره. بنضيف **اللي دفعوه بس**: يزيد المحصّل
+    // والمتوقع بنفس المبلغ، من غير ما نحمّلهم مديونية أو نعرضهم في «غير
+    // المسددين» (مش طلاب حاليين). الشهور اللي كانوا مؤرشفين فيها بتتستبعد.
     final archivedInMonth = archivedStudents
         .where((a) => !PricingHelper.isPausedMonth(a, m))
         .toList();
-    final forBreakdown = [...allStudents, ...archivedInMonth];
-
-    final groupById = <int?, Group>{for (final g in allGroups) g.id: g};
-    // نفس استدعاء الداشبورد بالظبط (مصدر حقيقة واحد).
-    final breakdown = computeMonthlyBreakdown(
-      students: forBreakdown,
-      paymentsByStudent: payByStudent,
-      groupById: groupById,
-      allAttendance: allAttendance,
-      month: m,
-      prevMonth: prevMonth,
-      monthLanded: PricingHelper.billingArrears ||
-          monthHasLanded(
-            month: m,
-            now: DateTime.now(),
-            arrears: false,
-            billingDay: PricingHelper.billingDay,
-          ),
-    );
+    final archivedPaidByGroup = <int?, double>{};
+    var archivedPaid = 0.0;
+    if (archivedInMonth.isNotEmpty) {
+      // الحساب مع المؤرشفين عشان توزيع الدفعات (FIFO) والخصومات يفضلوا نفس
+      // منطق الشهور اللي فاتت؛ بنقرا منه سطور المؤرشفين بس.
+      final full = breakdownFor([...allStudents, ...archivedInMonth]);
+      for (final e in full.groupBreakdown) {
+        for (final l in e.lines) {
+          if (!l.student.isArchived || l.paid <= 0) continue;
+          archivedPaidByGroup[l.student.groupId] =
+              (archivedPaidByGroup[l.student.groupId] ?? 0) + l.paid;
+          archivedPaid += l.paid;
+        }
+      }
+    }
 
     final entryByGroup = <int?, GroupPaymentSummaryEntry>{
       for (final e in breakdown.groupBreakdown) e.groupId: e
@@ -256,10 +289,13 @@ class ReportController extends GetxController {
       return GroupMonthSummary(
         group: g,
         studentCount: students.length,
-        expectedIncome: entry?.expected ?? 0,
-        collectedIncome: entry?.collected ?? 0,
+        expectedIncome:
+            (entry?.expected ?? 0) + (archivedPaidByGroup[g.id] ?? 0),
+        collectedIncome:
+            (entry?.collected ?? 0) + (archivedPaidByGroup[g.id] ?? 0),
         // «دافع بالكامل» = غطّى مستحق الشهر ده (نفس منطق الرئيسية).
         fullyPaidCount: lines.where((l) => !l.unpaid).length,
+        dueStudentCount: lines.length,
         totalPresentSessions: totalPresent,
         totalLateSessions: totalLate,
         totalHomeworkDone: totalHomeworkDone,
@@ -293,13 +329,39 @@ class ReportController extends GetxController {
     return _ReportSnapshot(
       groups: groups,
       unpaid: unpaid,
-      expected: breakdown.expected,
-      collected: breakdown.collected,
+      expected: breakdown.expected + archivedPaid,
+      collected: breakdown.collected + archivedPaid,
       remaining: remaining,
+      archivedPaid: archivedPaid,
     );
   }
 
   List<GroupMonthSummary> get groupSummaries => _snapshot.groups;
+
+  // ─── أرقام شهر تاني (للمقارنة والاتجاه) ───────────────────────────────────
+  // نفس حساب الشهر المختار بالظبط، مخزّن لكل شهر لحد ما البيانات تتغيّر.
+  final Map<String, _ReportSnapshot> _otherMonths = {};
+  int _otherVersion = -1;
+
+  /// مجموعات شهر [m] (متوقع/محصّل/واجب لكل مجموعة) — لمقارنة الشهور.
+  List<GroupMonthSummary> groupSummariesFor(DateTime m) {
+    final month = DateTime(m.year, m.month, 1);
+    final sel = selectedMonth.value;
+    if (month.year == sel.year && month.month == sel.month) {
+      return _snapshot.groups;
+    }
+    final ver = _dataVersion * 1000003 +
+        allPayments.length * 31 +
+        allAttendance.length * 17 +
+        allStudents.length;
+    if (_otherVersion != ver) {
+      _otherMonths.clear();
+      _otherVersion = ver;
+    }
+    return _otherMonths
+        .putIfAbsent('${month.year}-${month.month}', () => _computeSnapshot(month))
+        .groups;
+  }
 
   // ─── تفصيل الحصص (بس للمجموعات "بالحصة") ────────────────────────────────────
   /// كل تاريخ حضور فيه الشهر ده لطلاب المجموعة دي — سطر لكل حصة، بعدد
@@ -536,6 +598,10 @@ class GroupMonthSummary {
   final double expectedIncome;
   final double collectedIncome;
   final int fullyPaidCount;
+
+  /// طلاب عليهم مستحق فعلًا في الشهر ده (من غير المعفيين ولا اللي لسه ما
+  /// انضموش) — مقام «مدفوع بالكامل X / Y» (studentCount بيعدّ كل طلاب المجموعة).
+  final int dueStudentCount;
   final int totalPresentSessions; // شامل "متأخر"
   final int totalLateSessions; // منها كام "متأخر" (spec 011)
   final int totalHomeworkDone;
@@ -547,6 +613,7 @@ class GroupMonthSummary {
     required this.expectedIncome,
     required this.collectedIncome,
     required this.fullyPaidCount,
+    required this.dueStudentCount,
     required this.totalPresentSessions,
     this.totalLateSessions = 0,
     this.totalHomeworkDone = 0,
@@ -601,11 +668,15 @@ class _ReportSnapshot {
   final double expected;
   final double collected;
   final double remaining;
+
+  /// فلوس طلاب مؤرشفين اتحسبت في المتوقع والمحصّل (بس اللي دفعوه).
+  final double archivedPaid;
   const _ReportSnapshot({
     required this.groups,
     required this.unpaid,
     required this.expected,
     required this.collected,
     required this.remaining,
+    this.archivedPaid = 0,
   });
 }

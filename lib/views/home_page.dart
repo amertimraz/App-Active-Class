@@ -9,6 +9,8 @@ import 'package:active_class/config/constants.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/widgets/payment_month_sheet.dart';
+import 'package:active_class/widgets/month_income_card.dart';
+import 'package:active_class/widgets/money_tabs.dart';
 import 'package:active_class/widgets/next_session_card.dart';
 import 'package:active_class/views/messages/bulk_send_page.dart';
 import 'package:active_class/services/bulk_send_service.dart';
@@ -37,6 +39,7 @@ import 'package:active_class/models/announcement_model.dart';
 import 'package:active_class/widgets/announcement_slot.dart';
 import 'package:active_class/widgets/announcement_popup.dart';
 import 'package:active_class/widgets/rate_prompt_dialog.dart';
+import 'package:active_class/widgets/whats_new_dialog.dart';
 import 'package:active_class/services/rate_prompt_service.dart';
 import 'package:active_class/views/help/getting_started_card.dart';
 import 'package:flutter/material.dart';
@@ -57,6 +60,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // spec 021 — مسجّل من هنا (أول شاشة بتتفتح) عشان عدّاد "محتاجين
   // متابعة" يفضل حيّ حتى قبل ما المدرس يفتح الشاشة المخصّصة بنفسه.
   final AtRiskController _atRiskController = Get.put(AtRiskController());
+  // تاب كارت الفلوس: الدفعات (مستحق) / الدخل (كاش فعلي)
+  final Rx<MoneyTab> _moneyTab = MoneyTab.payments.obs;
   bool _statsVisible = true;
   Timer? _clockTimer;
 
@@ -92,6 +97,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (kIsWeb) return;
         checkAndShowUpdateDialog(context);
         InAppUpdateService.checkAndPrompt(context);
+      });
+      // «الجديد في هذا التحديث» — مرة بعد ما التطبيق يتحدّث، قبل إعلان الأدمن.
+      Future.delayed(const Duration(seconds: 3), () {
+        if (!mounted || kIsWeb) return;
+        unawaited(maybeShowWhatsNew(context));
       });
       // spec 054 — نافذة إعلان الأدمن (مرة لكل إصدار)، بعد حوار التحديث.
       Future.delayed(const Duration(seconds: 5), () {
@@ -585,7 +595,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         children: [
           Obx(() {
             final canSeeFinancials = TeamModeService().canSeeFinancials;
-            final currency = _settingsController.currencyCode.value;
+            _settingsController.currencyCode.value; // اشتراك في تغيير العملة
+            final currency = _settingsController.symbol;
             // كارت الدفعات: الشهر المختار وحده (مش تراكمي)، تنقّل بالسحب
             // الأفقي داخل [أقدم شهر عليه مستحق .. الشهر الحالي] (spec 013/014).
             final paymentCardMonth =
@@ -626,8 +637,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 _dashboardController.todayPaymentsCount.value;
 
             String fmtMoney(double v) => v >= 1000
-                ? '${(v / 1000).toStringAsFixed(1)}k $currency'
-                : '${v.toStringAsFixed(0)} $currency';
+                ? '${(v / 1000).toStringAsFixed(1)}k\u00A0$currency'
+                : '${v.toStringAsFixed(0)}\u00A0$currency';
 
             final t = context.tokens;
             return Column(
@@ -727,9 +738,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     children: [
                       Padding(
                         padding: const EdgeInsets.only(bottom: AppSpace.sm),
-                        child:
-                            _SectionHeader(title: 'الدفعات', color: t.moneyInk),
+                        child: MoneyTabs(
+                          selected: _moneyTab.value,
+                          onSelect: (v) => _moneyTab.value = v,
+                        ),
                       ),
+                      if (_moneyTab.value == MoneyTab.payments)
                       LockBadge(
                         locked: !canSeeFinancials,
                         child: _PaymentProgressCard(
@@ -766,40 +780,54 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               : showLockedPermissionHint,
                         ),
                       ),
-                      const SizedBox(height: AppSpace.sm),
-                      LockBadge(
-                        locked: !canSeeFinancials,
-                        child: _TodayPaymentsCard(
-                          total: todayPaymentsTotal,
-                          count: todayPaymentsCount,
-                          locked: !canSeeFinancials,
-                          fmtTotal: !canSeeFinancials || !_statsVisible
-                              ? '••••'
-                              : fmtMoney(todayPaymentsTotal),
-                          onTap: !canSeeFinancials
-                              ? showLockedPermissionHint
-                              : (todayPaymentsCount == 0
-                                  ? null
-                                  : () => _showTodayPaymentsSheet(context)),
-                        ),
-                      ),
-                      if (sessionRevenue > 0 || sessionRevenueExpected > 0) ...[
-                        const SizedBox(height: AppSpace.sm),
-                        // ── هنت: إيراد اليوم من المجموعات بالحصة ──
+                      // ── تاب «الدخل»: الكاش الفعلي (بعيد عن حساب المستحق) ──
+                      if (_moneyTab.value == MoneyTab.income) ...[
                         LockBadge(
                           locked: !canSeeFinancials,
-                          child: _SessionRevenueHint(
+                          child: MonthIncomeCard(
+                            refreshKey: _dashboardController.lastUpdated.value,
                             locked: !canSeeFinancials,
-                            actualLabel: !canSeeFinancials || !_statsVisible
-                                ? '••••'
-                                : fmtMoney(sessionRevenue),
-                            actualCount: sessionRevenueCount,
-                            expectedLabel: !canSeeFinancials || !_statsVisible
-                                ? '••••'
-                                : fmtMoney(sessionRevenueExpected),
-                            expectedCount: sessionRevenueExpectedCount,
+                            hidden: !_statsVisible,
+                            onTap: canSeeFinancials
+                                ? () => Get.toNamed(ROUTE_INCOME)
+                                : showLockedPermissionHint,
                           ),
                         ),
+                        const SizedBox(height: AppSpace.sm),
+                        LockBadge(
+                          locked: !canSeeFinancials,
+                          child: _TodayPaymentsCard(
+                            total: todayPaymentsTotal,
+                            count: todayPaymentsCount,
+                            locked: !canSeeFinancials,
+                            fmtTotal: !canSeeFinancials || !_statsVisible
+                                ? '••••'
+                                : fmtMoney(todayPaymentsTotal),
+                            onTap: !canSeeFinancials
+                                ? showLockedPermissionHint
+                                : (todayPaymentsCount == 0
+                                    ? null
+                                    : () => _showTodayPaymentsSheet(context)),
+                          ),
+                        ),
+                        if (sessionRevenue > 0 || sessionRevenueExpected > 0) ...[
+                          const SizedBox(height: AppSpace.sm),
+                          // ── هنت: إيراد اليوم من المجموعات بالحصة ──
+                          LockBadge(
+                            locked: !canSeeFinancials,
+                            child: _SessionRevenueHint(
+                              locked: !canSeeFinancials,
+                              actualLabel: !canSeeFinancials || !_statsVisible
+                                  ? '••••'
+                                  : fmtMoney(sessionRevenue),
+                              actualCount: sessionRevenueCount,
+                              expectedLabel: !canSeeFinancials || !_statsVisible
+                                  ? '••••'
+                                  : fmtMoney(sessionRevenueExpected),
+                              expectedCount: sessionRevenueExpectedCount,
+                            ),
+                          ),
+                        ],
                       ],
                     ],
                   ),
@@ -1445,7 +1473,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   void _showTodayPaymentsSheet(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final currency = _settingsController.currencyCode.value;
+    final currency = _settingsController.symbol;
     final entries = _dashboardController.todayPaymentsList;
     showModalBottomSheet(
       context: context,
@@ -1480,7 +1508,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   Expanded(
                     child: Text(
                       'مدفوعات اليوم (${entries.length}) — '
-                      '${entries.fold<double>(0, (s, e) => s + e.amount).toStringAsFixed(0)} $currency',
+                      '${entries.fold<double>(0, (s, e) => s + e.amount).toStringAsFixed(0)} $currency',
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 15),
@@ -1522,7 +1550,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         style: const TextStyle(fontWeight: FontWeight.w600)),
                     subtitle: Text('${e.studentCode} • ${e.groupName}'),
                     trailing: Text(
-                      '${e.amount.toStringAsFixed(0)} $currency',
+                      '${e.amount.toStringAsFixed(0)} $currency',
                       style: const TextStyle(
                         color: Color(0xFF10B981),
                         fontWeight: FontWeight.bold,

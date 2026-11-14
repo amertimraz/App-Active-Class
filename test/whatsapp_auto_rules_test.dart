@@ -32,7 +32,7 @@ void main() {
     expect(v['student'], 'أحمد');
     expect(v['group'], '-');
     expect(v['date'], '2026-11-09');
-    expect(v['teacher'], 'الأكاديمية');
+    expect(v['teacher'], 'Active Class');
     expect(v['teacher_phone'], 'غير متاح'); // بدون رقم
     final w = waAbsenceVars(
         studentName: 'أ', groupName: 'ج', day: DateTime(2026, 11, 9),
@@ -83,7 +83,7 @@ void main() {
   test('تذكير التأخر: المتغيرات', () {
     final v = waLateVars(studentName: 'أحمد', amount: 150.5, teacherName: '', teacherPhone: '');
     expect(v['amount'], '150.50');
-    expect(v['teacher'], 'الأكاديمية');
+    expect(v['teacher'], 'Active Class');
     expect(v['teacher_phone'], 'غير متاح');
   });
 }

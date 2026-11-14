@@ -127,6 +127,86 @@ void main() {
     });
   });
 
+  group('مدفوع بالكامل X / Y', () {
+    test('المعفي مش بيدخل المقام: الاتنين اللي عليهم مستحق دفعوا = 2 / 2', () {
+      final rc = _rc();
+      rc.allGroups.assignAll([_g1]);
+      final aug = DateTime(2026, 8, 1);
+      final exempt = Student(
+        id: 3,
+        name: 'ط3',
+        code: 'C3',
+        groupId: 1,
+        price: 300,
+        createdAt: aug,
+        exemptPercent: 100,
+      );
+      rc.allStudents.assignAll([_s(1, 1, aug), _s(2, 1, aug), exempt]);
+      rc.allPayments.assignAll([
+        Payment(id: 1, studentId: 1, amount: 300, date: DateTime(2026, 8, 3)),
+        Payment(id: 2, studentId: 2, amount: 300, date: DateTime(2026, 8, 3)),
+      ]);
+      rc.setMonth(DateTime(2026, 8));
+      final gs = rc.groupSummaries.single;
+      expect(gs.studentCount, 3); // كل طلاب المجموعة
+      expect(gs.dueStudentCount, 2); // اللي عليهم مستحق
+      expect(gs.fullyPaidCount, 2);
+    });
+  });
+
+  group('المؤرشف: بقدر ما دفعه بس (الأرقام الأساسية زي الرئيسية)', () {
+    // أكتوبر: نشط واحد (ط1) ومؤرشف (ط2 اتأرشف في نوفمبر) كانوا شغّالين فيه.
+    _RC base(List<Payment> pays) {
+      final rc = _rc();
+      rc.allGroups.assignAll([_g1]);
+      final sep = DateTime(2026, 9, 1);
+      rc.allStudents.assignAll([_s(1, 1, sep)]);
+      rc.archivedStudents.assignAll([
+        _s(2, 1, sep, archived: true, archivedAt: DateTime(2026, 11, 10)),
+      ]);
+      rc.allPayments.assignAll(pays);
+      rc.setMonth(DateTime(2026, 10));
+      return rc;
+    }
+
+    test('مؤرشف ما دفعش: مش في المتوقع ولا المتأخر ولا قايمة غير المسددين', () {
+      final rc = base([
+        Payment(id: 1, studentId: 1, amount: 900, date: DateTime(2026, 9, 2)),
+      ]);
+      expect(rc.monthExpected, 300); // ط1 بس — زي الرئيسية
+      expect(rc.monthTotalCollected, 300);
+      expect(rc.totalOverdue, 0);
+      expect(rc.unpaidStudents, isEmpty);
+      expect(rc.archivedPaidIncluded, 0);
+    });
+
+    test('مؤرشف دفع جزئي: يدخل اللي دفعه بس في المتوقع والمحصّل، من غير متأخر', () {
+      final rc = base([
+        Payment(id: 1, studentId: 1, amount: 900, date: DateTime(2026, 9, 2)),
+        // ط2 دفع 500: غطّى سبتمبر (300) و200 من أكتوبر
+        Payment(id: 2, studentId: 2, amount: 500, date: DateTime(2026, 9, 3)),
+      ]);
+      expect(rc.archivedPaidIncluded, 200);
+      expect(rc.monthExpected, 500); // 300 نشط + 200 مؤرشف (دفعه بس)
+      expect(rc.monthTotalCollected, 500);
+      expect(rc.totalOverdue, 0);
+      expect(rc.unpaidStudents, isEmpty);
+      // نسبة التحصيل ما بتعدّيش 100%
+      expect(rc.groupSummaries.single.collectionRate, 1.0);
+    });
+
+    test('المتأخر بيفضل متأخر النشطين بس حتى لو فيه مؤرشف دافع', () {
+      final rc = base([
+        Payment(id: 1, studentId: 1, amount: 300, date: DateTime(2026, 9, 2)),
+        Payment(id: 2, studentId: 2, amount: 900, date: DateTime(2026, 9, 3)),
+      ]);
+      // ط1 دفع سبتمبر بس → أكتوبر عليه 300 متأخر
+      expect(rc.totalOverdue, 300);
+      expect(rc.unpaidStudents.map((u) => u.student.id), [1]);
+      expect(rc.archivedPaidIncluded, 300); // أكتوبر بتاع ط2
+    });
+  });
+
   group('طالب اتأرشف بعد الدفع', () {
     test('دفعة أكتوبر تفضل في تقرير أكتوبر حتى لو اتأرشف في نوفمبر', () {
       final rc = _rc();

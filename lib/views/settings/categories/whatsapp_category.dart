@@ -19,74 +19,7 @@ class _WhatsappCategoryPage extends StatelessWidget {
       highlightId: highlightId,
       children: [
         // ── 1) الإرسال التلقائي: كارت سبورة ──────────────
-        Obx(() {
-          final t = _tk(isDark);
-          final on = settings.waAutoEnabled.value;
-          return Material(
-            color: t.board,
-            clipBehavior: Clip.antiAlias,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.board),
-              side: BorderSide(color: t.boardLine),
-            ),
-            child: InkWell(
-              onTap: () => Get.to(() => const _WaAutoCategoryPage()),
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpace.lg),
-                child: Row(children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: green,
-                      borderRadius: BorderRadius.circular(AppRadius.panel),
-                    ),
-                    child: const Icon(Icons.bolt_rounded,
-                        color: Colors.white, size: 30),
-                  ),
-                  const SizedBox(width: AppSpace.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('إرسال تلقائي',
-                            style: AppType.title.copyWith(color: t.boardInk)),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: on
-                                ? const Color(0xFF4AD6A3)
-                                : t.boardLine,
-                            borderRadius:
-                                BorderRadius.circular(AppRadius.chip),
-                          ),
-                          child: Text(on ? 'شغّال' : 'مقفول',
-                              style: AppType.caption.copyWith(
-                                  color: on
-                                      ? const Color(0xFF062B20)
-                                      : t.boardInk,
-                                  fontWeight: FontWeight.w700)),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          on
-                              ? 'الموافقات والرصيد وآخر الرسايل'
-                              : 'فعّله وسجّل موافقات أولياء الأمور',
-                          style: AppType.caption
-                              .copyWith(color: t.boardInkSoft),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.arrow_forward_ios_rounded,
-                      size: 14, color: t.boardInkSoft),
-                ]),
-              ),
-            ),
-          );
-        }),
+        _WaAutoHubCard(isDark: isDark, settings: settings),
         const SizedBox(height: AppSpace.lg),
         // ── 2) التقارير والقوالب: كروت إجراءات ───────────
         Padding(
@@ -276,5 +209,126 @@ class _WhatsappCategoryPage extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// كارت «إرسال تلقائي» في فئة الواتساب: بيعرض الحالة الحقيقية (مقفولة من
+/// الإدارة / موقوفة / شغّال / مقفول من المدرس) مش مفتاح المدرس بس.
+class _WaAutoHubCard extends StatefulWidget {
+  const _WaAutoHubCard({required this.isDark, required this.settings});
+  final bool isDark;
+  final SettingsController settings;
+
+  @override
+  State<_WaAutoHubCard> createState() => _WaAutoHubCardState();
+}
+
+class _WaAutoHubCardState extends State<_WaAutoHubCard> {
+  WaActivation? _act;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    if (TeamModeService().isAssistant) return; // الحالة عند المدرس
+    final cached = await WhatsAppAutoService.instance.cachedActivation();
+    if (mounted && cached != null) setState(() => _act = cached);
+    final fresh = await WhatsAppAutoService.instance.loadActivation();
+    if (mounted && fresh != null) setState(() => _act = fresh);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const green = Color(0xFF25D366);
+    final t = _tk(widget.isDark);
+    return Obx(() {
+      final assistant = TeamModeService().isAssistant;
+      final act = assistant ? null : _act;
+      final adminLocked = act != null && !act.allowed;
+      // نقرا الـRx دايمًا (Obx بيشتكي لو ما قراش حاجة، وقفل الإدارة بيقصّر الشرط).
+      final enabledLocal = widget.settings.waAutoEnabled.value;
+      final on = !adminLocked && enabledLocal;
+      final (String badge, String sub) = assistant
+          ? ('بيتحكم فيها المدرس', 'الإعداد من جهاز صاحب الحساب')
+          : adminLocked
+          ? (
+              act.paused ? 'موقوفة من الإدارة' : 'مقفولة — محتاجة تفعيل',
+              act.paused
+                  ? 'كلّمنا لإعادة التشغيل'
+                  : 'خدمة برسوم — اطلب التفعيل من جوّه'
+            )
+          : on
+              ? ('شغّال', 'الموافقات والرصيد وآخر الرسايل')
+              : ('مقفول', 'فعّله وسجّل موافقات أولياء الأمور');
+      return Material(
+        color: t.board,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.board),
+          side: BorderSide(color: t.boardLine),
+        ),
+        child: InkWell(
+          onTap: () async {
+            await Get.to(() => const _WaAutoCategoryPage());
+            if (mounted) _refresh();
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpace.lg),
+            child: Row(children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: adminLocked ? t.boardLine : green,
+                  borderRadius: BorderRadius.circular(AppRadius.panel),
+                ),
+                child: Icon(adminLocked ? Icons.lock_rounded : Icons.bolt_rounded,
+                    color: adminLocked ? t.chalk : Colors.white, size: 30),
+              ),
+              const SizedBox(width: AppSpace.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('إرسال تلقائي',
+                        style: AppType.title.copyWith(color: t.boardInk)),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: on
+                            ? const Color(0xFF4AD6A3)
+                            : adminLocked
+                                ? t.chalk
+                                : t.boardLine,
+                        borderRadius: BorderRadius.circular(AppRadius.chip),
+                      ),
+                      child: Text(badge,
+                          style: AppType.caption.copyWith(
+                              color: on
+                                  ? const Color(0xFF062B20)
+                                  : adminLocked
+                                      ? t.onChalk
+                                      : t.boardInk,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(sub,
+                        style:
+                            AppType.caption.copyWith(color: t.boardInkSoft)),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios_rounded,
+                  size: 14, color: t.boardInkSoft),
+            ]),
+          ),
+        ),
+      );
+    });
   }
 }

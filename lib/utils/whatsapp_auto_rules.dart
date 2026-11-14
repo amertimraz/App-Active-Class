@@ -44,7 +44,7 @@ Map<String, String> waAbsenceVars({
       'student': studentName.trim(),
       'group': groupName.trim().isEmpty ? '-' : groupName.trim(),
       'date': DateFormat('yyyy-MM-dd').format(day),
-      'teacher': teacherName.trim().isEmpty ? 'الأكاديمية' : teacherName.trim(),
+      'teacher': teacherName.trim().isEmpty ? 'Active Class' : teacherName.trim(),
       // القالب بيحتاج قيمة دايمًا؛ لو المدرس ما سجّلش رقمه بنكتب «غير متاح».
       'teacher_phone': teacherPhone.trim().isEmpty ? 'غير متاح' : teacherPhone.trim(),
     };
@@ -84,7 +84,7 @@ Map<String, String> waReceiptVars({
       'student': studentName.trim(),
       'month': monthLabel.trim(),
       'remaining': waAmountText(remaining < 0 ? 0 : remaining),
-      'teacher': teacherName.trim().isEmpty ? 'الأكاديمية' : teacherName.trim(),
+      'teacher': teacherName.trim().isEmpty ? 'Active Class' : teacherName.trim(),
       'teacher_phone': teacherPhone.trim().isEmpty ? 'غير متاح' : teacherPhone.trim(),
     };
 
@@ -98,6 +98,13 @@ Map<String, String> waLateVars({
     {
       'student': studentName.trim(),
       'amount': waAmountText(amount),
-      'teacher': teacherName.trim().isEmpty ? 'الأكاديمية' : teacherName.trim(),
+      'teacher': teacherName.trim().isEmpty ? 'Active Class' : teacherName.trim(),
       'teacher_phone': teacherPhone.trim().isEmpty ? 'غير متاح' : teacherPhone.trim(),
     };
+
+/// «رصيدك قرب يخلص»: المتبقي ≤ 10% من الحد الشهري (وبحد أدنى 10 رسايل).
+/// نفس القاعدة في لوحة الأدمن علشان التنبيه يظهر للطرفين مع بعض.
+bool waLowBalance(int remaining, int limit) {
+  final threshold = (limit * 0.1).ceil();
+  return remaining <= (threshold < 10 ? 10 : threshold);
+}

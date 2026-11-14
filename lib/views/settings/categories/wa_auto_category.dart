@@ -18,6 +18,7 @@ const _kWaFailReasonsAr = <String, String>{
   'network': 'مشكلة اتصال',
   'cancelled': 'اتلغت',
   'disabled': 'الإرسال التلقائي مقفول',
+  'not_activated': 'الخدمة لسه ما اتفعّلتش من الإدارة',
 };
 
 const _kWaStatusAr = <String, (String, Color, IconData)>{
@@ -54,6 +55,8 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
   late Future<_WaQuota?> _quota;
   late Future<List<Map<String, dynamic>>> _recent;
   late Future<Map<int, WaConsent>> _consents;
+  late Future<WaActivation?> _activation;
+  WaActivation? _cachedAct; // آخر حالة معروفة (لحد ما السيرفر يرد)
 
   /// الرصيد وعدد الموافقات للسبورة (null لو فشل التحميل).
   late Future<List<Object?>> _ready;
@@ -67,6 +70,9 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
     final st = Get.find<SettingsController>();
     _phone = TextEditingController(text: st.teacherPhone.value);
     _reload();
+    WhatsAppAutoService.instance.cachedActivation().then((v) {
+      if (mounted && v != null) setState(() => _cachedAct = v);
+    });
   }
 
   @override
@@ -91,9 +97,11 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
         .loadRecent()
         .catchError((_) => <Map<String, dynamic>>[]);
     _consents = WhatsAppAutoService.instance.loadConsents();
+    _activation = WhatsAppAutoService.instance.loadActivation();
     _ready = Future.wait<Object?>([
       _quota.then<Object?>((v) => v, onError: (_) => null),
       _consents.then<Object?>((v) => v, onError: (_) => null),
+      _activation.then<Object?>((v) => v, onError: (_) => null),
     ]);
   }
 
@@ -118,20 +126,38 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
 
   Future<void> _toggleEnabled(SettingsController settings, bool v) async {
     if (v) {
-      final ok = await Get.dialog<bool>(AlertDialog(
-        title: const Text('تفعيل الإرسال التلقائي'),
-        content: const Text(
-            'الرسايل هتتبعت لأولياء الأمور من رقم واتساب الأكاديمية '
-            '(مش من رقمك). لازم تسجّل موافقة ولي الأمر الأول، '
-            'وفيه حصة رسايل شهرية، ولو ولي الأمر رد بكلمة «إيقاف» '
-            'الإرسال له بيقف فورًا. أزرار واتساب اليدوية هتفضل زي ما هي.'),
+      final ok = await Get.dialog<bool>(ChalkDialog(
+        icon: Icons.bolt_rounded,
+        title: 'تفعيل الإرسال التلقائي',
+        subtitle: 'خدمة برسوم · باقات رسايل',
+        body: const [
+          ChalkRule(
+              icon: Icons.chat_rounded,
+              text:
+                  'الرسايل بتتبعت لأولياء الأمور من رقم Active Class، مش من رقمك.'),
+          ChalkRule(
+              icon: Icons.paid_rounded,
+              text:
+                  'الخدمة برسوم: باقات رسايل شهرية، وبتتفعّل من الإدارة بعد ما تتفق على الباقة.'),
+          ChalkRule(
+              icon: Icons.how_to_reg_rounded,
+              text: 'لازم تسجّل موافقة ولي الأمر الأول.'),
+          ChalkRule(
+              icon: Icons.block_rounded,
+              text: 'لو ولي الأمر رد بكلمة «إيقاف» الإرسال له بيقف فورًا.'),
+          ChalkRule(
+              icon: Icons.touch_app_rounded,
+              text: 'أزرار واتساب اليدوية فاضلة زي ما هي ومجانية.'),
+        ],
         actions: [
-          TextButton(
-              onPressed: () => Get.back(result: false),
-              child: const Text('إلغاء')),
-          FilledButton(
-              onPressed: () => Get.back(result: true),
-              child: const Text('فعّل')),
+          ChalkAction(
+              label: 'فعّل',
+              icon: Icons.power_settings_new_rounded,
+              onPressed: () => Get.back(result: true)),
+          ChalkAction(
+              label: 'إلغاء',
+              kind: ChalkActionKind.text,
+              onPressed: () => Get.back(result: false)),
         ],
       ));
       if (ok != true) return;
@@ -142,7 +168,56 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
     if (!synced) {
       ToastHelper.error(
           'اتحفظ على جهازك بس — اتأكد من الإنترنت وتسجيل الدخول عشان يشتغل');
+      return;
     }
+    // قفل افتراضي: لو الإدارة لسه ما فتحتش الخدمة، اعرض طلب التفعيل.
+    if (v) {
+      final act = await WhatsAppAutoService.instance.loadActivation();
+      if (act != null && !act.allowed && mounted) {
+        await _askActivation(act);
+        if (mounted) setState(_reload);
+      }
+    }
+  }
+
+  /// نافذة «الخدمة محتاجة تفعيل من الإدارة» + زر يبعت الطلب على واتساب.
+  Future<void> _askActivation(WaActivation act) async {
+    final go = await Get.dialog<bool>(ChalkDialog(
+      icon: Icons.lock_rounded,
+      tone: act.paused ? ChalkTone.caution : ChalkTone.neutral,
+      title: act.paused ? 'الخدمة موقوفة من الإدارة' : 'محتاجة تفعيل من الإدارة',
+      subtitle: act.paused ? null : 'خدمة برسوم · باقات رسايل شهرية',
+      body: act.paused
+          ? const [
+              ChalkRule(
+                  icon: Icons.support_agent_rounded,
+                  text:
+                      'الإرسال التلقائي موقوف لحسابك. كلّمنا على واتساب عشان نعرف السبب ونرجّعه.'),
+            ]
+          : const [
+              ChalkRule(
+                  icon: Icons.send_rounded,
+                  text:
+                      'ابعت طلب التفعيل على واتساب برسالة جاهزة فيها بياناتك.'),
+              ChalkRule(
+                  icon: Icons.sell_rounded,
+                  text: 'هنرد عليك بالباقات والأسعار.'),
+              ChalkRule(
+                  icon: Icons.lock_open_rounded,
+                  text: 'بعد الاتفاق نفتح الخدمة لحسابك وتشتغل لوحدها.'),
+            ],
+      actions: [
+        ChalkAction(
+            label: act.paused ? 'تواصل معنا' : 'اطلب التفعيل على واتساب',
+            icon: act.paused ? Icons.send_rounded : Icons.paid_rounded,
+            onPressed: () => Get.back(result: true)),
+        ChalkAction(
+            label: 'لاحقًا',
+            kind: ChalkActionKind.text,
+            onPressed: () => Get.back(result: false)),
+      ],
+    ));
+    if (go == true) await WhatsAppAutoService.instance.requestActivation();
   }
 
   // ───────────────── السبورة: التفعيل + الخطوات ─────────────────
@@ -165,6 +240,9 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
             final loading = snap.connectionState != ConnectionState.done;
             final quota = snap.data?[0] as _WaQuota?;
             final consents = snap.data?[1] as Map<int, WaConsent>?;
+            final act = snap.data?[2] as WaActivation?;
+            // null (مفيش اتصال) مانعتبرهوش مقفول — بنعرضه زي ما كان.
+            final locked = act != null && !act.allowed;
             return Obx(() {
               final enabled = settings.waAutoEnabled.value;
               final granted = consents == null
@@ -178,7 +256,7 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
               final quotaOk = quota != null && quota.remaining > 0;
               final oks = [enabled, granted > 0, phoneOk, quotaOk];
               final done = oks.where((e) => e).length;
-              final ready = done == oks.length;
+              final ready = done == oks.length && !locked;
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -204,7 +282,7 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
                                   AppType.title.copyWith(color: t.boardInk)),
                           Text(
                             enabled
-                                ? 'شغّال — من رقم الأكاديمية بدون ما تفتح واتساب'
+                                ? 'شغّال — من رقم Active Class بدون ما تفتح واتساب'
                                 : 'مقفول — بتبعت يدويًا من أزرار واتساب',
                             style: AppType.caption
                                 .copyWith(color: t.boardInkSoft),
@@ -225,6 +303,10 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
                           const WidgetStatePropertyAll(Colors.transparent),
                     ),
                   ]),
+                  if (!loading && locked) ...[
+                    const SizedBox(height: AppSpace.md),
+                    _activationBanner(t, act),
+                  ],
                   const SizedBox(height: AppSpace.lg),
                   // ── حالة الجاهزية ──
                   Row(children: [
@@ -308,6 +390,55 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
             });
           },
         ),
+      ),
+    );
+  }
+
+  // شريط «الخدمة مقفولة» بزر طلب التفعيل (قفل افتراضي من الإدارة).
+  Widget _activationBanner(AppTokens t, WaActivation act) {
+    final requested = act.requestedAt != null;
+    final text = act.paused
+        ? 'الخدمة موقوفة من الإدارة. كلّمنا على واتساب لإعادة تشغيلها.'
+        : requested
+            ? 'طلبك اتبعت — هنرد عليك بالباقات والأسعار ونفعّل الخدمة. تقدر تبعته تاني لو اتأخرنا.'
+            : 'خدمة مدفوعة بباقات رسايل شهرية، ومقفولة لحد ما الإدارة تفتحها لحسابك. ابعت طلب التفعيل على واتساب وهنرد عليك بالباقات والأسعار.';
+    return Container(
+      padding: const EdgeInsets.all(AppSpace.md),
+      decoration: BoxDecoration(
+        color: t.boardLine,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(Icons.lock_rounded, size: 18, color: t.chalk),
+            const SizedBox(width: AppSpace.sm),
+            Expanded(
+              child: Text(text,
+                  style: AppType.body
+                      .copyWith(color: t.boardInk, height: 1.5)),
+            ),
+          ]),
+          const SizedBox(height: AppSpace.sm),
+          FilledButton.icon(
+            onPressed: () async {
+              await WhatsAppAutoService.instance.requestActivation();
+              if (mounted) setState(_reload);
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: t.chalk,
+              foregroundColor: t.onChalk,
+              minimumSize: const Size.fromHeight(44),
+            ),
+            icon: const Icon(Icons.send_rounded, size: 18),
+            label: Text(act.paused
+                ? 'تواصل معنا'
+                : requested
+                    ? 'ابعت الطلب تاني'
+                    : 'اطلب التفعيل على واتساب'),
+          ),
+        ],
       ),
     );
   }
@@ -506,7 +637,7 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-                'الرسايل بتطلع من رقم الأكاديمية، فاكتب رقم موبايلك هنا عشان يظهر لولي الأمر '
+                'الرسايل بتطلع من رقم Active Class، فاكتب رقم موبايلك هنا عشان يظهر لولي الأمر '
                 '(📞 للتواصل) ويقدر يكلّمك.',
                 style: AppType.caption.copyWith(color: t.inkSoft)),
             const SizedBox(height: AppSpace.md),
@@ -626,7 +757,7 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
                 ],
               );
             }
-            final low = q.remaining <= (q.limit * 0.2).ceil();
+            final low = waLowBalance(q.remaining, q.limit);
             final color = low ? t.danger : t.brand;
             final frac = q.limit == 0 ? 1.0 : (q.used / q.limit).clamp(0.0, 1.0);
             return Column(
@@ -659,10 +790,32 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
                 const SizedBox(height: AppSpace.sm),
                 Row(children: [
                   Expanded(
-                    child: Text('المجاني: ${q.used} من ${q.limit} · بيتجدد أول كل شهر',
+                    child: Text('باقتك: استهلكت ${q.used} من ${q.limit} رسالة · بتتجدد أول كل شهر',
                         style: AppType.caption.copyWith(color: t.inkFaint)),
                   ),
                 ]),
+                if (low)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpace.sm),
+                    child: Row(children: [
+                      Icon(Icons.warning_amber_rounded,
+                          size: 18, color: t.danger),
+                      const SizedBox(width: AppSpace.sm),
+                      Expanded(
+                        child: Text(
+                            q.remaining == 0
+                                ? 'خلصت رسايل باقتك — الرسايل مش هتتبعت لحد ما تزوّد الباقة.'
+                                : 'رسايل باقتك قربت تخلص — زوّد الباقة أو اطلب رصيد إضافي.',
+                            style: AppType.caption
+                                .copyWith(color: t.danger, height: 1.5)),
+                      ),
+                      TextButton(
+                        onPressed: () => openSupportWhatsApp(
+                            topic: 'تزويد باقة رسايل الواتساب التلقائي'),
+                        child: const Text('زوّد الباقة'),
+                      ),
+                    ]),
+                  ),
                 if (q.extra > 0)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -689,9 +842,228 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
     final t = _tk(isDark);
     final SettingsController settings = Get.find();
     const gap = SizedBox(height: AppSpace.lg);
+    // المساعد في وضع الفريق: الإرسال التلقائي بيتحكم فيه المدرس من جهازه.
+    if (TeamModeService().isAssistant) {
+      return _CategoryScaffold(
+        title: 'إرسال تلقائي',
+        children: [_assistantView(t)],
+      );
+    }
+    // وضع «مقفولة»: لو الإدارة لسه ما فتحتش الخدمة (أو موقوفة) مفيش إعدادات
+    // تتعرض، بس شرح الخدمة وزر طلب التفعيل. مفيش اتصال (null) = العرض الكامل.
     return _CategoryScaffold(
       title: 'إرسال تلقائي',
       children: [
+        FutureBuilder<WaActivation?>(
+          future: _activation,
+          builder: (context, snap) {
+            final act = snap.data ?? _cachedAct;
+            // لسه مش عارفين الحالة: مانعرضش الإعدادات (كانت بتلمع ثانية وتختفي).
+            if (act == null && snap.connectionState != ConnectionState.done) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 80),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (act != null && !act.allowed) {
+              return _lockedView(context, t, act);
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: _unlockedChildren(context, isDark, t, settings, gap),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  /// عرض المساعد: معلومة بس، من غير إعدادات ولا طلب تفعيل (ده عند المدرس).
+  Widget _assistantView(AppTokens t) {
+    return Material(
+      color: t.board,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.board),
+        side: BorderSide(color: t.boardLine),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpace.lg),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: t.boardLine,
+              borderRadius: BorderRadius.circular(AppRadius.control),
+            ),
+            child: Icon(Icons.groups_rounded, color: t.chalk, size: 24),
+          ),
+          const SizedBox(width: AppSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('بيتحكم فيها المدرس',
+                    style: AppType.title.copyWith(color: t.boardInk)),
+                const SizedBox(height: 6),
+                Text(
+                  'الإرسال التلقائي على واتساب بيتفعّل ويتضبط من جهاز المدرس (صاحب الحساب)، والرسايل بتتبعت من حسابه. مفيش حاجة تضبطها هنا.',
+                  style: AppType.body
+                      .copyWith(color: t.boardInkSoft, height: 1.6),
+                ),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// صفحة الخدمة وهي مقفولة: شرح + باقات + زر طلب التفعيل (من غير إعدادات).
+  Widget _lockedView(BuildContext context, AppTokens t, WaActivation act) {
+    final requested = act.requestedAt != null;
+    final steps = <(IconData, String)>[
+      (Icons.event_busy_rounded, 'تنبيه الغياب لولي الأمر أول بأول'),
+      (Icons.receipt_long_rounded, 'إيصال الدفعة بعد كل تحصيل'),
+      (Icons.payments_rounded, 'تذكير تأخر الدفع أسبوعيًا'),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: t.board,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.board),
+            side: BorderSide(color: t.boardLine),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpace.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: t.boardLine,
+                      borderRadius: BorderRadius.circular(AppRadius.control),
+                    ),
+                    child: Icon(Icons.lock_rounded, color: t.chalk, size: 24),
+                  ),
+                  const SizedBox(width: AppSpace.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('إرسال واتساب تلقائي',
+                            style: AppType.title.copyWith(color: t.boardInk)),
+                        Text(
+                            act.paused
+                                ? 'موقوف من الإدارة'
+                                : 'مقفولة لحد ما تتفعّل',
+                            style: AppType.caption
+                                .copyWith(color: t.boardInkSoft)),
+                        const SizedBox(height: 6),
+                        // شارة واضحة إن الخدمة برسوم (باقات رسايل).
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 3),
+                          decoration: BoxDecoration(
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.chip),
+                            border: Border.all(color: t.chalk),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.paid_rounded, size: 16, color: t.chalk),
+                            const SizedBox(width: 6),
+                            Text('خدمة برسوم · باقات رسايل',
+                                style: AppType.caption
+                                    .copyWith(color: t.chalk)),
+                          ]),
+                        ),
+                      ],
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: AppSpace.md),
+                Text(
+                  act.paused
+                      ? 'الإرسال التلقائي موقوف لحسابك. كلّمنا على واتساب عشان نعرف السبب ونرجّعه.'
+                      : requested
+                          ? 'طلبك اتبعت — هنرد عليك بالباقات والأسعار ونفتح الخدمة لحسابك.'
+                          : 'خدمة مدفوعة بباقات رسايل شهرية. ابعت طلب التفعيل وهنرد عليك بالباقات والأسعار ونفتحها لحسابك.',
+                  style: AppType.body.copyWith(color: t.boardInk, height: 1.6),
+                ),
+                const SizedBox(height: AppSpace.md),
+                FilledButton.icon(
+                  onPressed: () async {
+                    await WhatsAppAutoService.instance.requestActivation();
+                    if (mounted) setState(_reload);
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: t.chalk,
+                    foregroundColor: t.onChalk,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  icon: Icon(act.paused ? Icons.send_rounded : Icons.paid_rounded,
+                      size: 20),
+                  label: Text(act.paused
+                      ? 'تواصل معنا'
+                      : requested
+                          ? 'ابعت الطلب تاني'
+                          : 'اطلب التفعيل على واتساب'),
+                ),
+                if (!act.paused) ...[
+                  const SizedBox(height: 6),
+                  Text('هنرد عليك بالباقات والأسعار',
+                      textAlign: TextAlign.center,
+                      style:
+                          AppType.caption.copyWith(color: t.boardInkSoft)),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpace.lg),
+        _plainSection(
+          t,
+          'الخدمة بتعمل إيه',
+          Icons.bolt_rounded,
+          const Color(0xFF25D366),
+          _settingsCard(
+            t,
+            Padding(
+              padding: const EdgeInsets.all(AppSpace.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ChalkRule(
+                      icon: Icons.paid_rounded,
+                      text:
+                          'الخدمة برسوم: باقات رسايل شهرية، وأسعارها بنبعتها لك مع الرد على طلبك.',
+                      color: t.caution),
+                  for (final (icon, text) in steps)
+                    ChalkRule(icon: icon, text: text, color: t.brand),
+                  const SizedBox(height: AppSpace.sm),
+                  Text(
+                      'الرسايل بتطلع من رقم Active Class، وأزرار واتساب اليدوية فضلت زي ما هي ومجانية.',
+                      style: AppType.caption
+                          .copyWith(color: t.inkSoft, height: 1.5)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _unlockedChildren(BuildContext context, bool isDark,
+      AppTokens t, SettingsController settings, Widget gap) {
+    return [
         _hero(context, isDark, settings),
         gap,
         _plainSection(
@@ -780,8 +1152,7 @@ class _WaAutoCategoryPageState extends State<_WaAutoCategoryPage> {
             ),
           ],
         ),
-      ],
-    );
+    ];
   }
 
   Widget _recentRow(BuildContext context, bool isDark, Map<String, dynamic> r) {

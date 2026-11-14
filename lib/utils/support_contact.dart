@@ -21,6 +21,37 @@ String buildSupportMessage({String? teacherName, String? topic}) {
   return b.toString().trimRight();
 }
 
+/// نص طلب تفعيل الواتساب التلقائي (صرف — بيتختبر). بيوصل لرقم الإدارة.
+String buildWaActivationRequest(
+    {String? teacherName, String? teacherPhone, String? account}) {
+  final b = StringBuffer()
+    ..writeln('مرحبًا، عايز أفعّل خدمة الواتساب التلقائي في Active Class وأعرف الباقات والأسعار.');
+  void line(String label, String? v) {
+    final t = v?.trim() ?? '';
+    if (t.isNotEmpty) b.writeln('$label: $t');
+  }
+
+  line('الاسم', teacherName);
+  line('رقم الهاتف', teacherPhone);
+  line('حساب الدخول', account);
+  return b.toString().trimRight();
+}
+
+/// يفتح واتساب برسالة طلب التفعيل جاهزة على رقم الإدارة. بيرجع true لو اتفتح.
+Future<bool> openWaActivationRequest(
+    {String? teacherName, String? teacherPhone, String? account}) async {
+  final message = buildWaActivationRequest(
+      teacherName: teacherName, teacherPhone: teacherPhone, account: account);
+  final uri = Uri.parse(
+      'https://wa.me/$kSupportPhone?text=${Uri.encodeComponent(message)}');
+  try {
+    return await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    ToastHelper.error('تعذر فتح واتساب');
+    return false;
+  }
+}
+
 Future<void> openSupportWhatsApp({String? topic}) async {
   final name = Get.isRegistered<SettingsController>()
       ? Get.find<SettingsController>().teacherFullName.value

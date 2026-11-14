@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -118,6 +119,7 @@ Future<void> _finish(WidgetTester t) async {
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
+    await initializeDateFormatting('ar'); // كارت «الدخل» بيستخدم أسماء الشهور
     SharedPreferences.setMockInitialValues({});
     // خط الاختبار الافتراضي حروفه مربعة وأعرض بكتير، فالقياسات بيه مش حقيقية.
     await (FontLoader('Cairo')
@@ -241,9 +243,12 @@ void main() {
 
   testWidgets('قسم الدفعات بيجمع الشهر ومدفوعات اليوم والإيراد', (t) async {
     _seed();
-    await _pumpHome(t, size: const Size(360, 3000));
+    await _pumpHome(t, size: const Size(360, 5000));
     double top(String text) => t.getTopLeft(find.text(text)).dy;
     expect(top('حضور اليوم'), lessThan(top('الدفعات')));
+    // «مدفوعات اليوم» وإيراد الحصص في تاب «الدخل» من كارت الفلوس.
+    await t.tap(find.text('الدخل'));
+    await t.pumpAndSettle();
     expect(top('الدفعات'), lessThan(top('مدفوعات اليوم')));
     expect(top('مدفوعات اليوم'),
         lessThan(top('إيراد اليوم من المجموعات بالحصة')));

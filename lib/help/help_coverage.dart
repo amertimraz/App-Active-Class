@@ -25,6 +25,7 @@ const kHelpTopicForRoute = <String, String>{
   ROUTE_QR_SCANNER_PAYMENT: 'payments',
   ROUTE_PAYMENTS_REPORT: 'remind_debtors',
   ROUTE_EXPENSES: 'expenses',
+  ROUTE_INCOME: 'income',
   ROUTE_DEBTS: 'debts',
   ROUTE_BULK_SEND: 'bulk_send',
   ROUTE_QR_GALLERY: 'qr',

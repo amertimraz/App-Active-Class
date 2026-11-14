@@ -62,4 +62,5 @@ export const FAIL_REASON_AR = {
   network: 'مشكلة اتصال، سنعيد المحاولة',
   cancelled: 'اتلغت',
   disabled: 'الخدمة متوقفة',
+  not_activated: 'الخدمة لسه ما اتفعّلتش من الإدارة',
 };

@@ -78,7 +78,7 @@ class _WaConsentPageState extends State<WaConsentPage> {
       title: const Text('تأكيد الموافقة'),
       content: Text(
           'بسجّل إن ${items.length} من أولياء الأمور وافقوا على استلام رسايل '
-          'الغياب على واتساب من رقم الأكاديمية. وأي ولي أمر يرد بكلمة «إيقاف» '
+          'الغياب على واتساب من رقم Active Class. وأي ولي أمر يرد بكلمة «إيقاف» '
           'هيتوقف الإرسال له فورًا.'),
       actions: [
         TextButton(onPressed: () => Get.back(result: false), child: const Text('إلغاء')),
