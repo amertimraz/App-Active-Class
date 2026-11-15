@@ -298,7 +298,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         context,
         title: _isSelectionMode
             ? '${_selectedStudents.length} محدد'
-            : 'تفاصيل المجموعة',
+            : 'المجموعة',
         leading: _isSelectionMode
             ? IconButton(
                 icon: const Icon(Icons.close_rounded),
@@ -337,6 +337,35 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                   tooltip: 'تعديل المجموعة',
                   icon: const Icon(Icons.edit_rounded),
                   onPressed: () => _showEditGroupSheet(context, g),
+                ),
+                // إجراءات خطرة (مسح): بعيد عن الأزرار العادية عشان ما تتضغطش بالغلط.
+                PopupMenuButton<String>(
+                  tooltip: 'المزيد',
+                  onSelected: (v) {
+                    if (v == 'reset') _confirmResetStudents(g);
+                    if (v == 'delete') _confirmDeleteGroup(g);
+                  },
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: 'reset',
+                      child: Row(children: [
+                        Icon(Icons.clear_all_rounded,
+                            size: 20, color: context.tokens.caution),
+                        const SizedBox(width: 10),
+                        const Text('تصفير الطلاب'),
+                      ]),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Row(children: [
+                        Icon(Icons.delete_rounded,
+                            size: 20, color: context.tokens.danger),
+                        const SizedBox(width: 10),
+                        Text('حذف المجموعة',
+                            style: TextStyle(color: context.tokens.danger)),
+                      ]),
+                    ),
+                  ],
                 ),
               ],
       ),
@@ -599,19 +628,28 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                         style: AppType.greeting.copyWith(color: t.boardInk),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 2),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(AppRadius.chip),
-                        border: Border.all(color: t.boardLine),
+                    if ((g.code ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 2),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(AppRadius.chip),
+                          border: Border.all(color: t.boardLine),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Text('الكود',
+                              style: AppType.caption
+                                  .copyWith(color: t.boardInkSoft)),
+                          const SizedBox(width: 6),
+                          Text(g.code!.trim(),
+                              textDirection: ui.TextDirection.ltr,
+                              style: AppType.caption.copyWith(
+                                  color: t.boardInk,
+                                  fontWeight: FontWeight.w700)),
+                        ]),
                       ),
-                      child: Text(g.code ?? '-',
-                          textDirection: ui.TextDirection.ltr,
-                          style:
-                              AppType.caption.copyWith(color: t.boardInkSoft)),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -720,20 +758,6 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             onTap: students.isEmpty
                 ? () => ToastHelper.info('لا يوجد طلاب في هذه المجموعة')
                 : () => _exportGroupRosterPdf(g, students),
-          ),
-          const SizedBox(width: 8),
-          GroupActionChip(
-            icon: Icons.clear_all_rounded,
-            label: 'تصفير الطلاب',
-            color: context.tokens.caution,
-            onTap: () => _confirmResetStudents(g),
-          ),
-          const SizedBox(width: 8),
-          GroupActionChip(
-            icon: Icons.delete_rounded,
-            label: 'حذف',
-            color: context.tokens.danger,
-            onTap: () => _confirmDeleteGroup(g),
           ),
         ],
       ),

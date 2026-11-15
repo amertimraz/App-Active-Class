@@ -11,6 +11,7 @@ import 'package:active_class/config/theme.dart';
 import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/app_chrome.dart';
+import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/license_controller.dart';
@@ -86,7 +87,7 @@ class _GroupsPageState extends State<GroupsPage> {
         .toList();
   }
 
-  void _onAdd(BuildContext context) {
+  void _onAdd(BuildContext context, {String? center}) {
     final lic = Get.find<LicenseController>();
     final err = lic.checkCanCreateGroup(controller.groups.length);
     if (err != null) {
@@ -104,7 +105,7 @@ class _GroupsPageState extends State<GroupsPage> {
       ));
       return;
     }
-    _showGroupFormDialog(context);
+    _showGroupFormDialog(context, initialCenter: center);
   }
 
   @override
@@ -132,7 +133,18 @@ class _GroupsPageState extends State<GroupsPage> {
           }
 
           final query = _searchController.text.trim();
-          final List<Group> items = controller.groups.where((g) {
+          // فلتر السنتر: لو السنتر المختار اتشال من كل المجموعات نرجع لـ«الكل».
+          final centers = controller.centers;
+          var centerFilter = controller.selectedCenter.value;
+          if (centerFilter != null &&
+              centerFilter != GroupController.kNoCenterFilter &&
+              !centers.contains(centerFilter)) {
+            centerFilter = null;
+          }
+          final scoped = controller.groups
+              .where((g) => GroupController.matchesCenter(g, centerFilter))
+              .toList();
+          final List<Group> items = scoped.where((g) {
             if (query.isEmpty) return true;
             final byGroup =
                 g.name.contains(query) || (g.code?.contains(query) ?? false);
@@ -141,10 +153,12 @@ class _GroupsPageState extends State<GroupsPage> {
             return byGroup || byStudent;
           }).toList();
 
-          final totalStudents = studentController.students.length;
-          final emptyGroups = controller.groups
-              .where((g) => _studentCount(g.id) == 0)
+          final scopedIds = {for (final g in scoped) g.id};
+          final totalStudents = studentController.students
+              .where((st) => scopedIds.contains(st.groupId))
               .length;
+          final emptyGroups =
+              scoped.where((g) => _studentCount(g.id) == 0).length;
 
           return Column(
             children: [
@@ -162,7 +176,7 @@ class _GroupsPageState extends State<GroupsPage> {
                   Expanded(
                       child: BoardStat(
                           label: 'مجموعة',
-                          value: '${controller.groups.length}',
+                          value: '${scoped.length}',
                           color: t.boardInk)),
                   Expanded(
                       child: BoardStat(
@@ -192,6 +206,61 @@ class _GroupsPageState extends State<GroupsPage> {
                 ),
               ),
 
+              // ── السناتر: عنوان + زر «سنتر جديد»، وتحتهم الشريط ──────
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                    AppSpace.lg, AppSpace.xs, AppSpace.sm, 0),
+                child: Row(children: [
+                  Icon(Icons.apartment_rounded, size: 18, color: t.inkSoft),
+                  const SizedBox(width: AppSpace.xs),
+                  Expanded(
+                    child: Text('السناتر',
+                        style: AppType.label.copyWith(color: t.ink)),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _showNewCenterDialog(context),
+                    icon: const Icon(Icons.add_rounded, size: 20),
+                    label: const Text('سنتر جديد'),
+                  ),
+                ]),
+              ),
+              if (centers.isNotEmpty)
+                SizedBox(
+                  height: 48,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: AppSpace.lg),
+                    children: [
+                      for (final entry in <MapEntry<String?, String>>[
+                        const MapEntry(null, 'الكل'),
+                        for (final c in centers) MapEntry(c, c),
+                        if (controller.groups.any((g) =>
+                            GroupController.normalizeCenter(g.center) == null))
+                          const MapEntry(
+                              GroupController.kNoCenterFilter, 'بدون سنتر'),
+                      ])
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 8),
+                          child: _CenterChip(
+                            label: entry.value,
+                            selected: centerFilter == entry.key,
+                            onTap: () =>
+                                controller.selectedCenter.value = entry.key,
+                          ),
+                        ),
+                    ],
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                      AppSpace.lg, 0, AppSpace.lg, AppSpace.xs),
+                  child: Text(
+                      'بتشتغل في أكتر من سنتر؟ اعمل سنتر وحط مجموعاتك تحته.',
+                      style: AppType.caption.copyWith(color: t.inkSoft)),
+                ),
+
               // ── القائمة ─────────────────────────────────────────
               Expanded(
                 child: controller.groups.isEmpty
@@ -213,30 +282,8 @@ class _GroupsPageState extends State<GroupsPage> {
                                 style: AppType.body
                                     .copyWith(color: t.inkSoft)),
                           )
-                        : ListView.builder(
-                            padding: const EdgeInsets.fromLTRB(
-                                AppSpace.lg, AppSpace.sm, AppSpace.lg, 100),
-                            itemCount: items.length,
-                            itemBuilder: (_, i) => GroupCard(
-                              key: ValueKey('group-${items[i].id}'),
-                              group: items[i],
-                              studentCount: _studentCount(items[i].id),
-                              archivedCount: _archivedStudentCount(items[i].id),
-                              students: _groupStudents(items[i].id),
-                              onEdit: () => _showGroupFormDialog(context,
-                                  group: items[i]),
-                              onDelete: () {
-                                if (!requireDeletePermission(context,
-                                    TeamModeService().canDeleteStudentsNow)) {
-                                  return;
-                                }
-                                if (items[i].id != null) {
-                                  controller.deleteGroup(items[i].id!);
-                                }
-                              },
-                              parseSlots: _parseScheduleSlots,
-                            ),
-                          ),
+                        : _buildSectionedList(
+                            context, items, centers.isNotEmpty),
               ),
             ],
           );
@@ -245,8 +292,236 @@ class _GroupsPageState extends State<GroupsPage> {
     );
   }
 
+  // ── القايمة مقسّمة لأقسام: كل سنتر وتحته مجموعاته ──────────────────
+  Widget _buildSectionedList(
+      BuildContext context, List<Group> items, bool hasCenters) {
+    final sections = GroupController.sectionsOf(items);
+    final entries = <Object>[];
+    for (final sec in sections) {
+      if (hasCenters) entries.add(sec);
+      entries.addAll(sec.groups);
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpace.lg, AppSpace.sm, AppSpace.lg, 100),
+      itemCount: entries.length,
+      itemBuilder: (_, i) {
+        final e = entries[i];
+        if (e is CenterSection) return _buildCenterHeader(context, e);
+        final g = e as Group;
+        return GroupCard(
+          key: ValueKey('group-${g.id}'),
+          group: g,
+          studentCount: _studentCount(g.id),
+          archivedCount: _archivedStudentCount(g.id),
+          students: _groupStudents(g.id),
+          onEdit: () => _showGroupFormDialog(context, group: g),
+          onDelete: () {
+            if (!requireDeletePermission(
+                context, TeamModeService().canDeleteStudentsNow)) {
+              return;
+            }
+            if (g.id != null) controller.deleteGroup(g.id!);
+          },
+          parseSlots: _parseScheduleSlots,
+          showCenter: !hasCenters,
+        );
+      },
+    );
+  }
+
+  Widget _buildCenterHeader(BuildContext context, CenterSection sec) {
+    final t = context.tokens;
+    final name = sec.center;
+    final students =
+        sec.groups.fold<int>(0, (n, g) => n + _studentCount(g.id));
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpace.md, bottom: AppSpace.xs),
+      child: Row(children: [
+        Icon(name == null ? Icons.folder_off_outlined : Icons.apartment_rounded,
+            size: 20, color: t.brand),
+        const SizedBox(width: AppSpace.sm),
+        Expanded(
+          child: Text(name ?? 'بدون سنتر',
+              style: AppType.title.copyWith(color: t.ink)),
+        ),
+        Text('${sec.groups.length} مجموعة · $students طالب',
+            style: AppType.caption.copyWith(color: t.inkSoft)),
+        if (name != null) ...[
+          IconButton(
+            tooltip: 'مجموعة جديدة في $name',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.add_circle_outline_rounded),
+            onPressed: () => _onAdd(context, center: name),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'خيارات السنتر',
+            onSelected: (v) {
+              if (v == 'rename') _showRenameCenterDialog(context, name);
+              if (v == 'dissolve') _confirmDissolveCenter(context, name);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'rename', child: Text('تعديل اسم السنتر')),
+              PopupMenuItem(value: 'dissolve', child: Text('فك السنتر')),
+            ],
+          ),
+        ],
+      ]),
+    );
+  }
+
+  /// «سنتر جديد»: اسم + (اختياري) مجموعات موجودة تتنقل تحته. لو ما اخترتش
+  /// ولا مجموعة بيفتحلك فورم مجموعة جديدة جوّه السنتر ده.
+  Future<void> _showNewCenterDialog(BuildContext context) async {
+    final nameCtrl = TextEditingController();
+    final picked = <int>{};
+    String? error;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSt) {
+        return ChalkDialog(
+          icon: Icons.add_business_rounded,
+          title: 'سنتر جديد',
+          subtitle:
+              'اكتب اسم السنتر، واختار مجموعات تنقلها تحته، أو سيبها فاضية وهتضيف مجموعة جديدة.',
+          body: [
+            CustomTextField(
+              dense: true,
+              controller: nameCtrl,
+              label: 'اسم السنتر',
+            ),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(error!,
+                    style:
+                        AppType.caption.copyWith(color: ctx.tokens.danger)),
+              ),
+            if (controller.groups.isNotEmpty) ...[
+              const SizedBox(height: AppSpace.md),
+              Text('انقل مجموعات تحت السنتر (اختياري)',
+                  style: AppType.label.copyWith(color: ctx.tokens.ink)),
+              for (final g in controller.groups)
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: picked.contains(g.id),
+                  title: Text(g.name),
+                  subtitle: (g.center ?? '').trim().isEmpty
+                      ? null
+                      : Text('حاليًا: ${g.center!.trim()}'),
+                  onChanged: (v) => setSt(() {
+                    final id = g.id;
+                    if (id == null) return;
+                    if (v == true) {
+                      picked.add(id);
+                    } else {
+                      picked.remove(id);
+                    }
+                  }),
+                ),
+            ],
+          ],
+          actions: [
+            ChalkAction(
+              label: 'حفظ',
+              icon: Icons.check_rounded,
+              onPressed: () {
+                if (GroupController.normalizeCenter(nameCtrl.text) == null) {
+                  setSt(() => error = 'اكتب اسم السنتر');
+                  return;
+                }
+                Navigator.of(ctx).pop(true);
+              },
+            ),
+            ChalkAction(
+              label: 'إلغاء',
+              kind: ChalkActionKind.text,
+              onPressed: () => Navigator.of(ctx).pop(false),
+            ),
+          ],
+        );
+      }),
+    );
+    final name = GroupController.normalizeCenter(nameCtrl.text);
+    nameCtrl.dispose();
+    if (go != true || name == null || !context.mounted) return;
+    if (picked.isNotEmpty) {
+      await controller.setCenterForGroups(picked, name);
+      controller.selectedCenter.value = name;
+      ToastHelper.success('تم إنشاء السنتر "$name"', title: 'تم');
+    } else {
+      _onAdd(context, center: name);
+    }
+  }
+
+  Future<void> _showRenameCenterDialog(
+      BuildContext context, String current) async {
+    final ctrl = TextEditingController(text: current);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => ChalkDialog(
+        icon: Icons.edit_rounded,
+        title: 'تعديل اسم السنتر',
+        body: [
+          CustomTextField(dense: true, controller: ctrl, label: 'اسم السنتر'),
+        ],
+        actions: [
+          ChalkAction(
+            label: 'حفظ',
+            icon: Icons.check_rounded,
+            onPressed: () => Navigator.of(ctx).pop(true),
+          ),
+          ChalkAction(
+            label: 'إلغاء',
+            kind: ChalkActionKind.text,
+            onPressed: () => Navigator.of(ctx).pop(false),
+          ),
+        ],
+      ),
+    );
+    final name = GroupController.normalizeCenter(ctrl.text);
+    ctrl.dispose();
+    if (ok != true || name == null || name == current) return;
+    await controller.renameCenter(current, name);
+    if (controller.selectedCenter.value == current) {
+      controller.selectedCenter.value = name;
+    }
+  }
+
+  Future<void> _confirmDissolveCenter(
+      BuildContext context, String name) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => ChalkDialog(
+        icon: Icons.folder_off_outlined,
+        tone: ChalkTone.caution,
+        title: 'فك السنتر "$name"؟',
+        subtitle:
+            'المجموعات والطلاب مش هيتمسحوا. المجموعات هترجع «بدون سنتر».',
+        actions: [
+          ChalkAction(
+            label: 'فك السنتر',
+            onPressed: () => Navigator.of(ctx).pop(true),
+          ),
+          ChalkAction(
+            label: 'إلغاء',
+            kind: ChalkActionKind.text,
+            onPressed: () => Navigator.of(ctx).pop(false),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await controller.dissolveCenter(name);
+    if (controller.selectedCenter.value == name) {
+      controller.selectedCenter.value = null;
+    }
+  }
+
   Future<void> _showGroupFormDialog(BuildContext context,
-      {Group? group}) async {
+      {Group? group, String? initialCenter}) async {
     double? savedNewPrice;
     await showDialog(
       context: context,
@@ -270,6 +545,7 @@ class _GroupsPageState extends State<GroupsPage> {
             ),
             child: GroupFormSheet(
               group: group,
+              initialCenter: initialCenter,
               existingGroups: controller.groups,
               onSave: (newGroup) => group == null
                   ? controller.addGroup(newGroup)
@@ -296,5 +572,45 @@ class _GroupsPageState extends State<GroupsPage> {
       await offerBulkStudentPriceUpdate(
           context, Get.find<StudentController>(), groupId, savedNewPrice!);
     }
+  }
+}
+
+/// زر اختيار سنتر في الشريط: مساحة لمس مريحة وحالة «مختار» واضحة من غير الاعتماد
+/// على اللون بس (الخط أتقل).
+class _CenterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _CenterChip(
+      {required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: Align(
+        child: Material(
+          color: selected ? t.board : t.surface,
+          shape: StadiumBorder(
+              side: BorderSide(color: selected ? t.board : t.line)),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpace.lg, vertical: 10),
+              child: Text(label,
+                  style: AppType.label.copyWith(
+                      color: selected ? t.boardInk : t.ink,
+                      fontWeight:
+                          selected ? FontWeight.w800 : FontWeight.w600)),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

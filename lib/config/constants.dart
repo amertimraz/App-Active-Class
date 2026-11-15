@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 43;
+const int DATABASE_VERSION = 44;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -131,6 +131,8 @@ const String COL_GROUP_CREATED_AT = 'created_at';
 const String COL_GROUP_PRICING_TYPE = 'pricing_type'; // monthly / per_session
 // رابط جروب واتساب المجموعة (اختياري، مُزامَن) — v40.
 const String COL_GROUP_WHATSAPP_LINK = 'whatsapp_link';
+// اسم السنتر اللي المجموعة تابعة له (اختياري، مُزامَن) — v44. تنظيم وفلترة بس.
+const String COL_GROUP_CENTER = 'center';
 
 // Column Names - Students
 const String COL_STUDENT_ID = 'id';

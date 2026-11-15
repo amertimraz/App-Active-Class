@@ -330,6 +330,7 @@ class DatabaseService {
         $COL_GROUP_CREATED_AT TEXT DEFAULT CURRENT_TIMESTAMP,
         $COL_GROUP_PRICING_TYPE TEXT DEFAULT 'monthly',
         $COL_GROUP_WHATSAPP_LINK TEXT,
+        $COL_GROUP_CENTER TEXT,
         $COL_SYNC_UPDATED_AT TEXT,
         $COL_SYNC_REMOTE_ID TEXT
       )
@@ -949,6 +950,14 @@ class DatabaseService {
       } catch (_) {}
       try {
         await db.execute(_sessionOverridesIndexSql);
+      } catch (_) {}
+    }
+
+    if (oldVersion < 44) {
+      // السنتر: اسم نصّي اختياري على المجموعة (تنظيم وفلترة، من غير أي عزل).
+      try {
+        await db.execute(
+            'ALTER TABLE $TABLE_GROUPS ADD COLUMN $COL_GROUP_CENTER TEXT');
       } catch (_) {}
     }
 

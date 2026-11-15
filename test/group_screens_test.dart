@@ -278,7 +278,7 @@ void main() {
     _seed();
     await _pump(t, const GroupDetailsPage(),
         size: const Size(360, 800), args: _groups.first);
-    expect(find.text('تفاصيل المجموعة'), findsOneWidget);
+    expect(find.text('المجموعة'), findsOneWidget);
     expect(find.text('أولى ثانوي — علوم'), findsWidgets);
     expect(find.text('حصص مسجلة'), findsOneWidget);
     expect(find.text('إجمالي الرسوم'), findsOneWidget);

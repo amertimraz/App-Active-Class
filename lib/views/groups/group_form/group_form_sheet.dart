@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:active_class/tour/tour.dart';
 import 'package:active_class/utils/whatsapp_targets.dart';
 import 'package:active_class/config/theme.dart';
+import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
@@ -22,12 +23,16 @@ class GroupFormSheet extends StatefulWidget {
   final Future<bool> Function(Group) onSave;
   final void Function(String groupName, double newPrice)? onSaved;
 
+  /// سنتر مبدئي للمجموعة الجديدة (لما تتضاف من جوّه قسم سنتر).
+  final String? initialCenter;
+
   const GroupFormSheet({
     super.key,
     required this.group,
     required this.existingGroups,
     required this.onSave,
     this.onSaved,
+    this.initialCenter,
   });
 
   @override
@@ -40,6 +45,7 @@ class GroupFormSheetState extends State<GroupFormSheet> {
   late final TextEditingController _priceCtrl;
   late final TextEditingController _scheduleCtrl;
   late final TextEditingController _waLinkCtrl;
+  late final TextEditingController _centerCtrl;
 
   late String _selectedIcon;
   late int _selectedColor;
@@ -92,6 +98,8 @@ class GroupFormSheetState extends State<GroupFormSheet> {
     _priceCtrl = TextEditingController(text: g?.price?.toString() ?? '');
     _scheduleCtrl = TextEditingController(text: g?.schedule ?? '');
     _waLinkCtrl = TextEditingController(text: g?.whatsappLink ?? '');
+    _centerCtrl = TextEditingController(
+        text: g?.center ?? widget.initialCenter ?? '');
     _pricingType = g?.pricingType ?? GroupPricingType.monthly;
 
     // اختيار أيقونة ولون افتراضيين
@@ -124,6 +132,8 @@ class GroupFormSheetState extends State<GroupFormSheet> {
     _codeCtrl.dispose();
     _priceCtrl.dispose();
     _scheduleCtrl.dispose();
+    _waLinkCtrl.dispose();
+    _centerCtrl.dispose();
     super.dispose();
   }
 
@@ -207,6 +217,7 @@ class GroupFormSheetState extends State<GroupFormSheet> {
         createdAt: widget.group?.createdAt,
         pricingType: _pricingType,
         whatsappLink: waLink,
+        center: GroupController.normalizeCenter(_centerCtrl.text),
       ));
       if (!mounted) return;
       if (success) {
@@ -443,6 +454,32 @@ class GroupFormSheetState extends State<GroupFormSheet> {
                       ),
                     ),
                   ])),
+                  const SizedBox(height: 18),
+
+                  // السنتر (اختياري) — تنظيم وفلترة بس
+                  const FormSectionTitle('السنتر (اختياري)',
+                      icon: Icons.apartment_rounded),
+                  CustomTextField(
+                    dense: true,
+                    controller: _centerCtrl,
+                    label: 'اسم السنتر',
+                  ),
+                  Builder(builder: (_) {
+                    final existing =
+                        GroupController.centersOf(widget.existingGroups);
+                    if (existing.isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Wrap(spacing: 8, runSpacing: 6, children: [
+                        for (final c in existing)
+                          ActionChip(
+                            label: Text(c),
+                            onPressed: () =>
+                                setState(() => _centerCtrl.text = c),
+                          ),
+                      ]),
+                    );
+                  }),
                   const SizedBox(height: 18),
 
                   // رابط جروب واتساب (اختياري)

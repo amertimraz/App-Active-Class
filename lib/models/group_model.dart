@@ -19,6 +19,7 @@ class Group {
   final DateTime? createdAt;
   final String pricingType; // GroupPricingType.monthly / perSession
   final String? whatsappLink; // رابط جروب واتساب المجموعة (اختياري) — v40
+  final String? center; // اسم السنتر (اختياري) — v44، تنظيم وفلترة بس
 
   Group({
     this.id,
@@ -31,6 +32,7 @@ class Group {
     this.createdAt,
     this.pricingType = GroupPricingType.monthly,
     this.whatsappLink,
+    this.center,
   });
 
   bool get isPerSession => pricingType == GroupPricingType.perSession;
@@ -47,6 +49,7 @@ class Group {
       'created_at': createdAt?.toIso8601String(),
       'pricing_type': pricingType,
       'whatsapp_link': whatsappLink,
+      'center': center,
     };
   }
 
@@ -65,6 +68,7 @@ class Group {
       pricingType:
           map['pricing_type'] as String? ?? GroupPricingType.monthly,
       whatsappLink: map['whatsapp_link'] as String?,
+      center: map['center'] as String?,
     );
   }
 
@@ -80,6 +84,8 @@ class Group {
     String? pricingType,
     String? whatsappLink,
     bool clearWhatsappLink = false,
+    String? center,
+    bool clearCenter = false,
   }) {
     return Group(
       id: id ?? this.id,
@@ -93,6 +99,7 @@ class Group {
       pricingType: pricingType ?? this.pricingType,
       whatsappLink:
           clearWhatsappLink ? null : (whatsappLink ?? this.whatsappLink),
+      center: clearCenter ? null : (center ?? this.center),
     );
   }
 

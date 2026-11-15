@@ -41,6 +41,7 @@ class HeaderStat extends StatelessWidget {
               border: Border.all(color: t.boardLine),
             ),
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(icon, color: t.boardInkSoft, size: 16),
                 const SizedBox(height: 2),

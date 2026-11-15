@@ -207,6 +207,9 @@ class GroupCard extends StatelessWidget {
   final VoidCallback onDelete;
   final List<Map<String, String>> Function(String) parseSlots;
 
+  /// false لما الكارت جوّه قسم سنتر (اسم السنتر ظاهر في العنوان فوقه).
+  final bool showCenter;
+
   const GroupCard({
     super.key,
     required this.group,
@@ -216,6 +219,7 @@ class GroupCard extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.parseSlots,
+    this.showCenter = true,
   });
 
   IconData get _icon {
@@ -301,11 +305,21 @@ class GroupCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: AppType.title.copyWith(color: t.ink)),
                     if ((group.code != null && group.code!.isNotEmpty) ||
-                        hasPrice)
+                        hasPrice ||
+                        (showCenter && (group.center ?? '').trim().isNotEmpty))
                       Wrap(
                         spacing: AppSpace.sm,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
+                          if (showCenter && (group.center ?? '').trim().isNotEmpty)
+                            Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.apartment_rounded,
+                                  size: 14, color: t.inkSoft),
+                              const SizedBox(width: 3),
+                              Text(group.center!.trim(),
+                                  style: AppType.caption
+                                      .copyWith(color: t.inkSoft)),
+                            ]),
                           if (group.code != null && group.code!.isNotEmpty)
                             Text('الكود: ${group.code}',
                                 style:
@@ -325,24 +339,6 @@ class GroupCard extends StatelessWidget {
                         ],
                       ),
                   ],
-                ),
-              ),
-              const SizedBox(width: AppSpace.sm),
-              Semantics(
-                label: '$studentCount طالب',
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpace.sm, vertical: 4),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(AppRadius.chip),
-                    border: Border.all(color: t.line),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.person_rounded, size: 14, color: t.inkSoft),
-                    const SizedBox(width: 4),
-                    Text('$studentCount',
-                        style: AppType.label.copyWith(color: t.ink)),
-                  ]),
                 ),
               ),
               PopupMenuButton<String>(
@@ -418,9 +414,31 @@ class GroupCard extends StatelessWidget {
                           ),
                         ),
                 ),
+                const SizedBox(width: AppSpace.sm),
+                _studentCountBadge(t),
               ],
             ),
           ),
+        ]),
+      ),
+    );
+  }
+
+  /// شارة عدد الطلاب (في التذييل عشان اسم المجموعة ياخد عرض الرأس كله).
+  Widget _studentCountBadge(AppTokens t) {
+    return Semantics(
+      label: '$studentCount طالب',
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: AppSpace.sm, vertical: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadius.chip),
+          border: Border.all(color: t.line),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.person_rounded, size: 14, color: t.inkSoft),
+          const SizedBox(width: 4),
+          Text('$studentCount', style: AppType.label.copyWith(color: t.ink)),
         ]),
       ),
     );

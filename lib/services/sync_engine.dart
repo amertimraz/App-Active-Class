@@ -652,6 +652,7 @@ class SyncEngine with WidgetsBindingObserver {
           'schedule': payload[COL_GROUP_SCHEDULE],
           'pricing_type': payload[COL_GROUP_PRICING_TYPE],
           'whatsapp_link': payload[COL_GROUP_WHATSAPP_LINK],
+          'center': payload[COL_GROUP_CENTER],
         };
       case TABLE_STUDENTS:
         final groupLocalId = payload[COL_STUDENT_GROUP_ID] as int?;
@@ -1934,6 +1935,7 @@ class SyncEngine with WidgetsBindingObserver {
           COL_GROUP_SCHEDULE: remote['schedule'],
           COL_GROUP_PRICING_TYPE: remote['pricing_type'],
           COL_GROUP_WHATSAPP_LINK: remote['whatsapp_link'],
+          COL_GROUP_CENTER: remote['center'],
           COL_SYNC_UPDATED_AT: updatedAt,
           COL_SYNC_REMOTE_ID: remote['id'],
         };
