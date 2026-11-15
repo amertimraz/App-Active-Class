@@ -607,6 +607,10 @@
   };
 
   let ctx = { code:'', last4:'', name:'', groupName:'' };
+  // وضع «دخول بالكود فقط» في بوابة أولياء الأمور (loginMode='code_only'): المستند
+  // معرّفه الكود وحده بدون آخر 4 أرقام، ونتيجة اللعبة بنفس المعرّف.
+  let codeOnly = false;
+  const scoreId = () => (ctx.last4 ? `${ctx.code}_${ctx.last4}` : ctx.code);
   let game = null;
   let best = null;
 
@@ -619,25 +623,25 @@
         ${err ? `<div class="err">${esc(err)}</div>` : ''}
         <div class="field"><label>كود الطالب</label>
           <input id="codeInput" type="text" placeholder="مثال: A05" autocapitalize="characters" autocomplete="off"></div>
-        <div class="field"><label>آخر 4 أرقام من رقم تليفون ولي الأمر</label>
-          <input id="phoneInput" type="tel" placeholder="1234" maxlength="4" inputmode="numeric" autocomplete="off"></div>
-        <p class="hint">نفس الكود والرقم بتوع صفحة متابعة ولي الأمر.</p>
+        ${codeOnly ? '' : `<div class="field"><label>آخر 4 أرقام من رقم تليفون ولي الأمر</label>
+          <input id="phoneInput" type="tel" placeholder="1234" maxlength="4" inputmode="numeric" autocomplete="off"></div>`}
+        <p class="hint">${codeOnly ? 'نفس الكود بتاع صفحة متابعة ولي الأمر.' : 'نفس الكود والرقم بتوع صفحة متابعة ولي الأمر.'}</p>
         <button class="btn violet" id="go">ادخل اللعبة</button>
       </div>`);
     document.getElementById('go').onclick = handleIdentity;
-    document.getElementById('phoneInput').addEventListener('keydown', e => { if (e.key === 'Enter') handleIdentity(); });
+    document.getElementById(codeOnly ? 'codeInput' : 'phoneInput').addEventListener('keydown', e => { if (e.key === 'Enter') handleIdentity(); });
   }
 
   async function handleIdentity(){
     const code = document.getElementById('codeInput').value.trim().toUpperCase();
-    const phone = document.getElementById('phoneInput').value.trim();
+    const phone = codeOnly ? '' : document.getElementById('phoneInput').value.trim();
     if (!code) { renderForm('أدخل كود الطالب'); return; }
-    if (!/^\d{4}$/.test(phone)) { renderForm('أدخل آخر 4 أرقام صحيحة'); return; }
+    if (!codeOnly && !/^\d{4}$/.test(phone)) { renderForm('أدخل آخر 4 أرقام صحيحة'); return; }
     appEl.innerHTML = '<div class="spinner"></div>';
     try {
       if (!auth.currentUser) await signInAnonymously(auth);
-      const snap = await getDoc(doc(db, 'parent_portal', slug, 'students', `${code}_${phone}`));
-      if (!snap.exists()) { renderForm('الكود أو الأرقام غير صحيحة'); return; }
+      const snap = await getDoc(doc(db, 'parent_portal', slug, 'students', codeOnly ? code : `${code}_${phone}`));
+      if (!snap.exists()) { renderForm(codeOnly ? 'الكود غير صحيح' : 'الكود أو الأرقام غير صحيحة'); return; }
       ctx = { code, last4: phone, name: snap.data().name || '', groupName: snap.data().groupName || '' };
       await loadGame();
     } catch (e) { renderForm('حصل خطأ — حاول تاني'); }
@@ -660,7 +664,7 @@
       message('🔒','اللعبة مش لمجموعتك','المدرس فتحها لمجموعات تانية.'); return;
     }
     try {
-      const sc = await getDoc(doc(db, 'online_exams', slug, 'games', gameId, 'scores', `${ctx.code}_${ctx.last4}`));
+      const sc = await getDoc(doc(db, 'online_exams', slug, 'games', gameId, 'scores', scoreId()));
       best = sc.exists() ? sc.data() : null;
     } catch (e) { best = null; }
     showBriefing();
@@ -1007,7 +1011,7 @@
     let saved = true;
     if (isNewBest && !closed) {
       try {
-        await setDoc(doc(db, 'online_exams', slug, 'games', gameId, 'scores', `${ctx.code}_${ctx.last4}`), {
+        await setDoc(doc(db, 'online_exams', slug, 'games', gameId, 'scores', scoreId()), {
           code: ctx.code, name: ctx.name, score: run.score, correct: run.correct,
           total, timeMs: run.timeMs, updatedAt: serverTimestamp(),
         });
@@ -1037,7 +1041,13 @@
 
   if (DEMO) { ctx = { code:'DEMO', last4:'0000', name:'تجربة', groupName:'' }; loadGame(); }
   else if (!slug || !gameId) message('🔒','الرابط ناقص','اطلب من المدرس يبعتلك الرابط تاني.');
-  else renderForm();
+  else {
+    // نعرف طريقة دخول البوابة (كود فقط / كود + رقم) قبل ما نعرض الفورم.
+    getDoc(doc(db, 'parent_portal', slug))
+      .then((s) => { codeOnly = s.exists() && s.data().loginMode === 'code_only'; })
+      .catch(() => {})
+      .finally(() => renderForm());
+  }
 </script>
 </body>
 </html>
