@@ -166,3 +166,8 @@ test('groq/claude: شكل الطلب والمفتاح الناقص', async () =>
   const none = createGroq({ apiKey: async () => null, model: 'm', fetchFn: async () => { throw new Error('no'); } });
   assert.equal((await none.complete({ system: 's', user: 'u' })).kind, 'auth');
 });
+
+test('groq: الحد 3 صور في الطلب (الحد الحقيقي للنموذج)', () => {
+  const g = createGroq({ apiKey: async () => 'k', model: 'm' });
+  assert.equal(g.maxImages, 3);
+});

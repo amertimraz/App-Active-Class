@@ -1,4 +1,4 @@
-// مزوّد Groq (OpenAI-compatible). الصور كـ data URL. حد الصور في الطلب = 5.
+// مزوّد Groq (OpenAI-compatible). الصور كـ data URL. حد الصور في الطلب = 3 (Groq بيرفض أكتر: "This model supports up to 3 images").
 const URL_CHAT = 'https://api.groq.com/openai/v1/chat/completions';
 
 const val = async (v) => (typeof v === 'function' ? await v() : v);
@@ -12,7 +12,7 @@ export function classify(status) {
 export function createGroq({ apiKey, model, fetchFn = fetch }) {
   return {
     name: 'groq',
-    maxImages: 5,
+    maxImages: 3,
     // يرجّع { ok:true, text } أو { ok:false, kind, reason, detail }
     async complete({ system, user, images = [], extraUser }) {
       const key = await val(apiKey);

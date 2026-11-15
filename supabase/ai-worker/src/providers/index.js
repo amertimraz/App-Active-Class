@@ -65,7 +65,10 @@ export async function extract(providers, cfg, req) {
         : { ok: false, kind: 'temp', reason: 'bad_output', provider: name };
       continue;
     }
-    last = { ...r, provider: name };
+    // مزوّد احتياطي مش متضبوط (مفيش مفتاح) ما يغطّيش على سبب فشل الأساسي.
+    const notConfigured = r.reason === 'provider_auth' && r.detail === 'not configured';
+    console.error('[ai] مزوّد فشل:', name, r.reason, r.detail ?? '');
+    if (!(notConfigured && last.provider)) last = { ...r, provider: name };
     if (r.kind === 'permanent') break;
   }
   return last;
