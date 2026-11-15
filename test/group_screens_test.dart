@@ -281,7 +281,8 @@ void main() {
     expect(find.text('المجموعة'), findsOneWidget);
     expect(find.text('أولى ثانوي — علوم'), findsWidgets);
     expect(find.text('حصص مسجلة'), findsOneWidget);
-    expect(find.text('إجمالي الرسوم'), findsOneWidget);
+    // مربع الرسوم عنوانه بيذكر الشهر («رسوم أكتوبر»).
+    expect(find.textContaining('رسوم'), findsWidgets);
     expect(find.text('تصدير PDF'), findsOneWidget);
     expect(find.text('إضافة طالب'), findsOneWidget);
     expect(find.text('إسراء محمد إبراهيم سعد'), findsOneWidget);

@@ -45,7 +45,9 @@ class GroupFormSheetState extends State<GroupFormSheet> {
   late final TextEditingController _priceCtrl;
   late final TextEditingController _scheduleCtrl;
   late final TextEditingController _waLinkCtrl;
-  late final TextEditingController _centerCtrl;
+  // السنتر المختار (null = بدون سنتر) + سناتر اتضافت من الفورم ده لسه ما اتحفظتش.
+  String? _center;
+  final List<String> _newCenters = [];
 
   late String _selectedIcon;
   late int _selectedColor;
@@ -98,8 +100,7 @@ class GroupFormSheetState extends State<GroupFormSheet> {
     _priceCtrl = TextEditingController(text: g?.price?.toString() ?? '');
     _scheduleCtrl = TextEditingController(text: g?.schedule ?? '');
     _waLinkCtrl = TextEditingController(text: g?.whatsappLink ?? '');
-    _centerCtrl = TextEditingController(
-        text: g?.center ?? widget.initialCenter ?? '');
+    _center = GroupController.normalizeCenter(g?.center ?? widget.initialCenter);
     _pricingType = g?.pricingType ?? GroupPricingType.monthly;
 
     // اختيار أيقونة ولون افتراضيين
@@ -133,8 +134,90 @@ class GroupFormSheetState extends State<GroupFormSheet> {
     _priceCtrl.dispose();
     _scheduleCtrl.dispose();
     _waLinkCtrl.dispose();
-    _centerCtrl.dispose();
     super.dispose();
+  }
+
+  /// السناتر المتاحة للاختيار: الموجودة في المجموعات + اللي اتضافت هنا + المختار حاليًا.
+  List<String> get _centerOptions {
+    final set = <String>{
+      ...GroupController.centersOf(widget.existingGroups),
+      ..._newCenters,
+      if (_center != null) _center!,
+    };
+    return set.toList()..sort();
+  }
+
+  /// اختيار السنتر من القايمة (من غير كتابة حرة): «بدون سنتر» + كل سنتر
+  /// موجود + «سنتر جديد» لإضافة اسم جديد.
+  Widget _buildCenterPicker() {
+    final t = context.tokens;
+    Widget choice(String label, bool selected, VoidCallback onTap) => Semantics(
+          button: true,
+          selected: selected,
+          label: label,
+          child: Material(
+            color: selected ? t.board : t.surface,
+            shape: StadiumBorder(
+                side: BorderSide(color: selected ? t.board : t.line)),
+            child: InkWell(
+              customBorder: const StadiumBorder(),
+              onTap: onTap,
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Text(label,
+                    style: AppType.label.copyWith(
+                        color: selected ? t.boardInk : t.ink,
+                        fontWeight:
+                            selected ? FontWeight.w800 : FontWeight.w600)),
+              ),
+            ),
+          ),
+        );
+
+    return Wrap(spacing: 8, runSpacing: 8, children: [
+      choice('بدون سنتر', _center == null, () => setState(() => _center = null)),
+      for (final c in _centerOptions)
+        choice(c, _center == c, () => setState(() => _center = c)),
+      ActionChip(
+        avatar: const Icon(Icons.add_rounded, size: 18),
+        label: const Text('سنتر جديد'),
+        onPressed: _addNewCenter,
+      ),
+    ]);
+  }
+
+  Future<void> _addNewCenter() async {
+    final ctrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('سنتر جديد'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'اسم السنتر'),
+          onSubmitted: (v) => Navigator.of(ctx).pop(v),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('إلغاء')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(ctrl.text),
+              child: const Text('إضافة')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    final n = GroupController.normalizeCenter(name);
+    if (n == null || !mounted) return;
+    setState(() {
+      // لو الاسم موجود بنفس الشكل نختاره بدل ما نكرّره.
+      final existing = _centerOptions.firstWhere((c) => c == n, orElse: () => '');
+      if (existing.isEmpty) _newCenters.add(n);
+      _center = n;
+    });
   }
 
   Future<void> _submit() async {
@@ -217,7 +300,7 @@ class GroupFormSheetState extends State<GroupFormSheet> {
         createdAt: widget.group?.createdAt,
         pricingType: _pricingType,
         whatsappLink: waLink,
-        center: GroupController.normalizeCenter(_centerCtrl.text),
+        center: _center,
       ));
       if (!mounted) return;
       if (success) {
@@ -459,27 +542,7 @@ class GroupFormSheetState extends State<GroupFormSheet> {
                   // السنتر (اختياري) — تنظيم وفلترة بس
                   const FormSectionTitle('السنتر (اختياري)',
                       icon: Icons.apartment_rounded),
-                  CustomTextField(
-                    dense: true,
-                    controller: _centerCtrl,
-                    label: 'اسم السنتر',
-                  ),
-                  Builder(builder: (_) {
-                    final existing =
-                        GroupController.centersOf(widget.existingGroups);
-                    if (existing.isEmpty) return const SizedBox.shrink();
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Wrap(spacing: 8, runSpacing: 6, children: [
-                        for (final c in existing)
-                          ActionChip(
-                            label: Text(c),
-                            onPressed: () =>
-                                setState(() => _centerCtrl.text = c),
-                          ),
-                      ]),
-                    );
-                  }),
+                  _buildCenterPicker(),
                   const SizedBox(height: 18),
 
                   // رابط جروب واتساب (اختياري)

@@ -128,6 +128,11 @@ class FormatHelper {
         .format(DateTime(2000, 1, 1, t.hour, t.minute));
   }
 
+  /// نطاق وقت («2:00 م - 3:00 م») بترتيب صحيح جوّه جملة عربي. علامة الاتجاه
+  /// (LRM) بعد كل وقت بتمنع حرف «م/ص» العربي من قلب ترتيب الأرقام اللي بعده.
+  static String formatClockRange(TimeOfDay from, TimeOfDay to) =>
+      '${formatClock(from)}\u200E - ${formatClock(to)}\u200E';
+
   /// تنسيق التاريخ والوقت معًا
   static String formatDateTime(DateTime? dateTime) {
     if (dateTime == null) return 'لم يتم التحديد';

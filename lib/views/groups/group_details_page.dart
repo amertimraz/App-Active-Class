@@ -16,6 +16,7 @@ import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/controllers/attendance_controller.dart';
 import 'package:active_class/models/payment_model.dart';
+import 'package:active_class/utils/group_fees.dart';
 import 'package:active_class/utils/pricing_helper.dart';
 import 'package:active_class/utils/sibling_departure_check.dart';
 import 'package:active_class/utils/billing_period.dart';
@@ -252,8 +253,6 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   String _formatSchedule(String? raw) {
     final r = raw?.trim() ?? '';
     if (r.isEmpty) return '-';
-    String fmt(TimeOfDay t) => FormatHelper.formatClock(t);
-
     TimeOfDay? parse(String v) {
       final p = v.split(':');
       if (p.length != 2) return null;
@@ -273,7 +272,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
       final from = parse(times[0].trim()), to = parse(times[1].trim());
       if (from == null || to == null) return txt;
       // عزل اتجاه الأرقام (LTR) عشان نطاق الوقت ما ينعكسش جوه جملة عربي.
-      return '$day \u2066${fmt(from)}-${fmt(to)}\u2069';
+      return '$day \u2066${FormatHelper.formatClockRange(from, to)}\u2069';
     }).join('  •  ');
   }
 
@@ -421,16 +420,16 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         // ومجموعات "بالحصة" (بيتحسب فيها على عدد الحصص المحضورة الشهر
         // الحالي، مش سعر الحصة الواحدة كأنه القيمة الشهرية الكاملة).
         final now = DateTime.now();
-        final totalFees = allStudents.fold<double>(
-            0.0,
-            (sum, s) =>
-                sum +
-                PricingHelper.monthlyDue(
-                    student: s,
-                    group: g,
-                    month: DateTime(now.year, now.month),
-                    allAttendance: attendanceController.attendance,
-                    siblingGroupMembers: studentController.students));
+        // نفس شهر ونفس حساب موديل «رسوم الشهر» (شهر التحصيل الافتراضي)
+        // عشان الرقمين يتطابقوا.
+        final feesMonth = defaultCollectionMonth();
+        final totalFees = GroupFees.total(GroupFees.dueByStudent(
+          students: allStudents,
+          group: g,
+          month: feesMonth,
+          attendance: attendanceController.attendance,
+          siblingGroupMembers: studentController.students,
+        ));
 
         // الحصص المسجلة فعليًا للمجموعة دي — أي تاريخ (يوم كامل) فيه على
         // الأقل سجل حضور واحد لطالب من طلابها، بغض النظر هل اليوم ده
@@ -688,7 +687,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                 const SizedBox(width: 8),
                 HeaderStat(
                     // بدون اسم العملة — الأيقونة والتسمية بتوضّح إنه مبلغ.
-                    label: 'إجمالي الرسوم',
+                    label: _feesLabel(),
                     value: _canSeeFinancials
                         ? FormatHelper.formatCurrencyCompact(totalFees)
                         : '🔒',
@@ -723,6 +722,15 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
         ],
       ),
     );
+  }
+
+  /// عنوان مربع الرسوم: بيذكر الشهر (نفس شهر موديل «رسوم الشهر»).
+  String _feesLabel() {
+    try {
+      return 'رسوم ${DateFormat('MMMM', 'ar').format(defaultCollectionMonth())}';
+    } catch (_) {
+      return 'إجمالي الرسوم';
+    }
   }
 
   // ─── Action row ───────────────────────────────────────────────────────────
@@ -1626,45 +1634,33 @@ void _gdShowFeesBreakdownDialog(
           for (final s in students)
             if (s.id != null) s.id!: s
         };
-        final Set<int> allowed = {};
-        for (final s in students) {
-          if (s.id == null) continue;
-          final st = s.attendanceStart;
-          if (st != null && DateTime(st.year, st.month, 1).isAfter(monthStart))
-            continue;
-          allowed.add(s.id!);
-        }
-
-        // بيستخدم PricingHelper بدل s.price مباشرة عشان يراعي الإعفاء
-        // (جزئي أو كامل)، مجموعات "بالحصة" (بيتحسب فيها على عدد الحصص
-        // المحضورة الشهر ده، مش سعر الحصة الواحدة كأنه القيمة الكاملة)،
-        // وعرض الإخوة (2-3 — بيقسّم الإجمالي المشترك على عدد الأعضاء
-        // الفعلي تلقائيًا عبر siblingGroupMembers، راجع
-        // specs/007-three-sibling-support).
+        // نفس الحساب المستخدم في رأس الصفحة (GroupFees) — وكل طلاب التطبيق
+        // للإخوة (مش طلاب المجموعة دي بس).
+        final allStudentsList = Get.isRegistered<StudentController>()
+            ? Get.find<StudentController>().students.toList()
+            : byId.values.toList();
+        final dueById = GroupFees.dueByStudent(
+          students: students,
+          group: group,
+          month: monthStart,
+          attendance: attCtrl.attendance,
+          siblingGroupMembers: allStudentsList,
+        );
+        final Set<int> allowed = dueById.keys.toSet();
         final Map<double, int> solo = {};
-        final Map<int, double> dueById = {};
-        final allStudentsList = byId.values.toList();
-        for (final id in allowed) {
-          final s = byId[id]!;
-          final due = PricingHelper.monthlyDue(
-              student: s,
-              group: group,
-              month: monthStart,
-              allAttendance: attCtrl.attendance,
-              siblingGroupMembers: allStudentsList);
+        dueById.forEach((_, due) {
           if (due > 0) solo[due] = (solo[due] ?? 0) + 1;
-          dueById[id] = due;
-        }
-
-        double expected = 0;
-        solo.forEach((p, c) => expected += p * c);
+        });
+        final double expected = GroupFees.total(dueById);
 
         int paidCount = 0;
-        double paidAmount =
-            0; // كاش محصّل فعليًا مؤرَّخ في نطاق الشهر ده (تدفق نقدي)
+        // كاش محصّل فعليًا مؤرَّخ في نطاق الشهر ده (تدفق نقدي).
+        double paidAmount = 0;
         final List<Student> unpaidStudents = [];
-        // مفيش أي مستحق أصلاً (معفى بالكامل، أو بالحصة ولسه محضرش أي
-        // حصة الشهر ده) — مش هيتحسب لا مدفوع ولا غير مدفوع.
+        // المتبقي (المديونية المتراكمة) لكل غير مدفوع + إجماليها.
+        final Map<int, double> unpaidRemaining = {};
+        var unpaidTotal = 0.0;
+        // مفيش مستحق أصلاً (معفى بالكامل، أو بالحصة ولسه محضرش) — مش بيتحسب.
         var applicableCount = 0;
 
         for (final id in allowed) {
@@ -1674,8 +1670,7 @@ void _gdShowFeesBreakdownDialog(
           applicableCount++;
           final list = await db.getPaymentsByStudent(id);
 
-          // spec 038 — استبعاد صفوف إسقاط المديونية من الكاش المحصَّل
-          // فعليًا (مش فلوس حقيقية دخلت).
+          // spec 038 — استبعاد إسقاط المديونية من الكاش المحصَّل فعليًا.
           paidAmount += list
               .where((p) =>
                   !p.date.isBefore(monthStart) &&
@@ -1683,11 +1678,8 @@ void _gdShowFeesBreakdownDialog(
                   p.isCollection)
               .fold<double>(0, (sum, p) => sum + p.amount);
 
-          // "مين لسه عليه فلوس لحد الشهر ده" لازم يعتمد على المديونية
-          // المتراكمة (كل الشهور مطروح منها كل المدفوعات بغض النظر عن
-          // تاريخها)، نفس منطق PricingHelper المستخدم في باقي التطبيق —
-          // بدل مطابقة تاريخ/ملاحظة الدفعة يدويًا، اللي كانت ممكن تفوّت
-          // طالب دافع فعلاً (بس مش بالتاريخ/الوسم المتوقَّع) أو العكس.
+          // "مين لسه عليه فلوس" بيعتمد على المديونية المتراكمة (كل الشهور
+          // مطروح منها كل المدفوعات) — نفس منطق PricingHelper في التطبيق.
           final remaining = PricingHelper.accumulatedDebtThrough(
             student: s,
             group: group,
@@ -1700,17 +1692,13 @@ void _gdShowFeesBreakdownDialog(
             paidCount++;
           } else {
             unpaidStudents.add(s);
+            unpaidRemaining[id] = remaining;
+            unpaidTotal += remaining;
           }
         }
 
         return {
           'solo': solo,
-          // "pairs" (عروض إخوة ثنائية) اتشالت — كل طالب (شامل أعضاء
-          // مجموعات الإخوة) بقى بيظهر بنصيبه الفعلي تحت "أسعار فردية"
-          // مباشرة (PricingHelper.monthlyDue بيحسب النصيب صح لأي عدد
-          // أعضاء 2 أو 3، راجع specs/007-three-sibling-support)، فمفيش
-          // داعي لتصنيف منفصل ممكن يبوّظ مع مجموعات الـ3.
-          'pairs': const <double, int>{},
           'expected': expected,
           'paidCount': paidCount,
           'unpaidCount': applicableCount - paidCount,
@@ -1718,176 +1706,349 @@ void _gdShowFeesBreakdownDialog(
           'month': DateFormat('MMMM yyyy', 'ar').format(monthStart),
           'allowedTotal': applicableCount,
           'unpaidStudents': unpaidStudents,
+          'unpaidRemaining': unpaidRemaining,
+          'unpaidTotal': unpaidTotal,
         };
       }
+
+      String money(num v) => FormatHelper.formatCurrencyCompact(v.toDouble());
 
       return StatefulBuilder(builder: (ctx, setSt) {
         return FutureBuilder<Map<String, dynamic>>(
           future: load(selected),
           builder: (context, snap) {
+            final t = context.tokens;
             final data = snap.data;
-            final expected = (data?['expected'] as double?) ?? 0;
-            final paidAmount = (data?['paidAmount'] as double?) ?? 0;
-            final progress =
-                expected > 0 ? (paidAmount / expected).clamp(0.0, 1.0) : 0.0;
+            final loading =
+                snap.connectionState != ConnectionState.done || data == null;
+            final monthLabel = DateFormat('MMMM yyyy', 'ar').format(selected);
+            // شهر لسه ما بدأش: مفيش مديونية بتتراكم فيه، فـ«مدفوع/غير مدفوع» بتبقى
+            // مضلّلة (اللي سدّد اللي فات يتعدّ «مدفوع» وهو ما دفعش للشهر ده).
+            final currentMonth = defaultCollectionMonth();
+            final isFuture = DateTime(selected.year, selected.month, 1)
+                .isAfter(DateTime(currentMonth.year, currentMonth.month, 1));
+            // مستقبلي فعلًا = بعد الشهر الجاري. غير كده (isFuture بس) = الشهر
+            // الجاري اللي مديونيته لسه ما نزلت (يوم نزول المديونية / التحصيل المؤخّر).
+            final nowD = DateTime.now();
+            final trulyFuture = DateTime(selected.year, selected.month, 1)
+                .isAfter(DateTime(nowD.year, nowD.month, 1));
 
-            return AlertDialog(
-              title: Row(children: [
-                const Text('تفاصيل الرسوم'),
-                const Spacer(),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final p = await showDatePicker(
-                        context: ctx,
-                        firstDate: DateTime(2020, 1, 1),
-                        lastDate: DateTime(2100, 12, 31),
-                        initialDate: selected);
-                    if (p != null)
-                      setSt(() => selected = DateTime(p.year, p.month, 1));
-                  },
-                  icon: const Icon(Icons.date_range_rounded, size: 16),
-                  label: Text(data == null ? '...' : data['month']),
-                ),
-              ]),
-              content: SizedBox(
-                width: 480,
-                height: 520,
-                child: snap.connectionState != ConnectionState.done
-                    ? const Center(child: CircularProgressIndicator())
-                    : Column(children: [
-                        Row(children: [
-                          Expanded(
-                              child: Row(children: [
-                            const Text('تحصيل: '),
-                            CurrencyText(paidAmount),
-                            const Text(' / '),
-                            CurrencyText(expected),
-                          ])),
-                          const SizedBox(width: 8),
-                          Text('${(progress * 100).toStringAsFixed(0)}%'),
+            Future<void> pickMonth() async {
+              final p = await showDatePicker(
+                  context: ctx,
+                  firstDate: DateTime(2020, 1, 1),
+                  lastDate: DateTime(2100, 12, 31),
+                  initialDate: selected);
+              if (p != null) {
+                setSt(() => selected = DateTime(p.year, p.month, 1));
+              }
+            }
+
+            // ── تنقّل الشهر: ‹ شهر › ──
+            final monthNav = Row(children: [
+              IconButton(
+                tooltip: 'الشهر السابق',
+                icon: const Icon(Icons.chevron_left_rounded),
+                onPressed: () => setSt(() =>
+                    selected = DateTime(selected.year, selected.month - 1, 1)),
+              ),
+              Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(AppRadius.control),
+                  onTap: pickMonth,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.calendar_month_rounded,
+                              size: 18, color: t.brand),
+                          const SizedBox(width: 6),
+                          Text(monthLabel,
+                              style: AppType.title.copyWith(color: t.ink)),
                         ]),
-                        const SizedBox(height: 6),
-                        LinearProgressIndicator(
-                            value: expected > 0 ? progress : null,
-                            minHeight: 6),
-                        const SizedBox(height: 12),
-                        Expanded(
-                            child: SingleChildScrollView(
-                                child: Column(
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'الشهر التالي',
+                icon: const Icon(Icons.chevron_right_rounded),
+                onPressed: () => setSt(() =>
+                    selected = DateTime(selected.year, selected.month + 1, 1)),
+              ),
+            ]);
+
+            Widget stat(String label, double v, String hint, Color color) {
+              return Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: AppSpace.sm),
+                  decoration: BoxDecoration(
+                    color: t.page,
+                    borderRadius: BorderRadius.circular(AppRadius.control),
+                    border: Border.all(color: t.line),
+                  ),
+                  child: Column(children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(money(v),
+                          style: AppType.title.copyWith(color: color)),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(label,
+                        textAlign: TextAlign.center,
+                        style: AppType.label.copyWith(color: t.ink)),
+                    Text(hint,
+                        textAlign: TextAlign.center,
+                        style: AppType.caption
+                            .copyWith(color: t.inkSoft, fontSize: 11)),
+                  ]),
+                ),
+              );
+            }
+
+            Widget pill(IconData icon, String text, Color color) => Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpace.sm, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(icon, size: 16, color: color),
+                    const SizedBox(width: 4),
+                    Text(text,
+                        style: AppType.label.copyWith(
+                            color: color, fontWeight: FontWeight.w800)),
+                  ]),
+                );
+
+            Widget sectionTitle(String text, {String? hint}) => Padding(
+                  padding: const EdgeInsets.only(
+                      top: AppSpace.lg, bottom: AppSpace.xs),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(text,
+                            style: AppType.title.copyWith(color: t.ink)),
+                        if (hint != null)
+                          Text(hint,
+                              style: AppType.caption
+                                  .copyWith(color: t.inkSoft)),
+                      ]),
+                );
+
+            final List<Widget> body = [monthNav];
+            if (loading) {
+              body.add(const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(child: CircularProgressIndicator()),
+              ));
+            } else {
+              final expected = data['expected'] as double;
+              final paidAmount = data['paidAmount'] as double;
+              final unpaidTotal = data['unpaidTotal'] as double;
+              final paidCount = data['paidCount'] as int;
+              final unpaidCount = data['unpaidCount'] as int;
+              final solo = data['solo'] as Map<double, int>;
+              final unpaid = [...(data['unpaidStudents'] as List<Student>)];
+              final remainingById = data['unpaidRemaining'] as Map<int, double>;
+              unpaid.sort((a, b) => (remainingById[b.id] ?? 0)
+                  .compareTo(remainingById[a.id] ?? 0));
+              final progress =
+                  expected > 0 ? (paidAmount / expected).clamp(0.0, 1.0) : 0.0;
+
+              body.addAll([
+                const SizedBox(height: AppSpace.sm),
+                // IntrinsicHeight: الصف جوّه منطقة تمرير (ارتفاعها غير محدود)،
+                // و stretch من غيره بيطلّع المربعات بارتفاع لانهائي.
+                if (trulyFuture)
+                  Row(children: [
+                    stat('المستحق المتوقّع', expected,
+                        'تقدير حسب الاشتراكات الحالية', t.ink),
+                  ])
+                else if (isFuture)
+                  IntrinsicHeight(
+                      child: Row(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            if ((data?['solo'] as Map<double, int>?)
-                                    ?.isNotEmpty ??
-                                false) ...[
-                              Text('أسعار فردية',
-                                  style:
-                                      Theme.of(context).textTheme.titleMedium),
-                              const SizedBox(height: 8),
-                              ...((data!['solo'] as Map<double, int>)
-                                      .entries
-                                      .toList()
-                                    ..sort((a, b) => (b.key * b.value)
-                                        .compareTo(a.key * a.value)))
-                                  .map((e) => Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 2),
-                                        child: Row(children: [
-                                          Expanded(
-                                              child: Row(children: [
-                                            Text('${e.value} طالب × '),
-                                            CurrencyText(e.key)
-                                          ])),
-                                          CurrencyText(e.key * e.value),
-                                        ]),
-                                      )),
-                              const SizedBox(height: 12),
-                            ],
-                            if ((data?['pairs'] as Map<double, int>?)
-                                    ?.isNotEmpty ??
-                                false) ...[
-                              Text('عروض الإخوة',
-                                  style:
-                                      Theme.of(context).textTheme.titleMedium),
-                              const SizedBox(height: 8),
-                              ...((data!['pairs'] as Map<double, int>)
-                                      .entries
-                                      .toList()
-                                    ..sort((a, b) => (b.key * b.value)
-                                        .compareTo(a.key * a.value)))
-                                  .map((e) => Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 2),
-                                        child: Row(children: [
-                                          Expanded(
-                                              child: Row(children: [
-                                            Text('${e.value} زوج × '),
-                                            CurrencyText(e.key)
-                                          ])),
-                                          CurrencyText(e.key * e.value),
-                                        ]),
-                                      )),
-                              const SizedBox(height: 12),
-                            ],
-                            Divider(color: Colors.grey[300]),
-                            const SizedBox(height: 8),
-                            Row(children: [
+                        stat('المستحق', expected, 'عن الشهر ده', t.ink),
+                        const SizedBox(width: 8),
+                        stat('المحصّل', paidAmount, 'دخل في الشهر ده',
+                            t.positive),
+                      ]))
+                else
+                IntrinsicHeight(
+                    child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                  stat('المستحق', expected, 'عن الشهر ده', t.ink),
+                  const SizedBox(width: 8),
+                  stat('المحصّل', paidAmount, 'دخل في الشهر ده', t.positive),
+                  const SizedBox(width: 8),
+                  stat('المتبقي', unpaidTotal, 'على غير المدفوعين', t.danger),
+                ])),
+                if (isFuture) ...[
+                  const SizedBox(height: AppSpace.md),
+                  Container(
+                    padding: const EdgeInsets.all(AppSpace.md),
+                    decoration: BoxDecoration(
+                      color: t.cautionSoft,
+                      borderRadius: BorderRadius.circular(AppRadius.control),
+                    ),
+                    child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.info_outline_rounded,
+                              size: 20, color: t.caution),
+                          const SizedBox(width: AppSpace.sm),
+                          Expanded(
+                            child: Text(
+                              trulyFuture
+                                  ? 'الشهر ده لسه ما بدأش. الرقم تقديري، ومفيش '
+                                      '«مدفوع» أو «غير مدفوع» لحد ما الشهر يبدأ.'
+                                  : 'مديونية الشهر ده لسه ما نزلتش (حسب يوم نزول '
+                                      'المديونية في الإعدادات)، فمفيش «غير مدفوع» '
+                                      'لسه. المستحق والمحصّل بيتعرضوا عادي، ويتحسب '
+                                      'مدفوع/غير مدفوع أول ما المديونية تنزل.',
+                              style: AppType.caption
+                                  .copyWith(color: t.ink, height: 1.5),
+                            ),
+                          ),
+                        ]),
+                  ),
+                ],
+                if (!trulyFuture && expected > 0) ...[
+                  const SizedBox(height: AppSpace.md),
+                  Row(children: [
+                    Expanded(
+                        child: Text('نسبة التحصيل',
+                            style: AppType.caption.copyWith(color: t.inkSoft))),
+                    Text('${(progress * 100).round()}%',
+                        style: AppType.label.copyWith(color: t.ink)),
+                  ]),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
+                    child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 8,
+                        color: t.positive,
+                        backgroundColor: t.line),
+                  ),
+                ],
+                if (!isFuture) ...[
+                  const SizedBox(height: AppSpace.md),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    pill(Icons.check_circle_rounded, 'مدفوع $paidCount',
+                        t.positive),
+                    pill(Icons.error_outline_rounded, 'غير مدفوع $unpaidCount',
+                        t.danger),
+                  ]),
+                ],
+                if (solo.isNotEmpty) ...[
+                  sectionTitle('توزيع الاشتراكات',
+                      hint: 'الطلاب متجمّعين حسب اشتراكهم الفعلي بعد الإعفاء'),
+                  ...(solo.entries.toList()
+                        ..sort((a, b) => (b.key * b.value)
+                            .compareTo(a.key * a.value)))
+                      .map((e) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 3),
+                            child: Row(children: [
                               Expanded(
-                                  child: Text(
-                                      'مدفوع: ${data?['paidCount'] ?? 0}')),
-                              Expanded(
-                                  child: Text(
-                                      'غير مدفوع: ${data?['unpaidCount'] ?? 0}')),
+                                child: Text(
+                                    '${e.value} طالب × ${money(e.key)}',
+                                    style: AppType.body
+                                        .copyWith(color: t.ink)),
+                              ),
+                              Text(money(e.key * e.value),
+                                  style: AppType.label.copyWith(
+                                      color: t.ink,
+                                      fontWeight: FontWeight.w800)),
                             ]),
-                            const SizedBox(height: 12),
-                            if ((data?['unpaidStudents'] as List<Student>?)
-                                    ?.isNotEmpty ??
-                                false) ...[
-                              Text('غير المدفوعين',
-                                  style:
-                                      Theme.of(context).textTheme.titleMedium),
-                              const SizedBox(height: 8),
-                              ...((data!['unpaidStudents'] as List<Student>))
-                                  .map((s) => ListTile(
-                                        contentPadding: EdgeInsets.zero,
-                                        title: Text(s.name),
-                                        subtitle: Text('الكود: ${s.code}'),
-                                        trailing: IconButton(
-                                          icon: const Icon(
-                                              Icons.message_rounded,
-                                              color: Colors.green),
-                                          onPressed: () async {
-                                            await launchGuardianWhatsapp(
-                                              context: context,
-                                              phone: s.guardianPhone,
-                                              whatsapp: s.guardianWhatsapp,
-                                              message:
-                                                  buildPaymentReminderMessage(
-                                                studentName: s.name,
-                                                studentCode: s.code,
-                                                groupName: group.name,
-                                                monthLabel: '${data['month']}',
-                                                teacherName: settings
-                                                    .teacherFullName.value
-                                                    .trim(),
-                                                teacherSpecialization: settings
-                                                    .teacherSpecialization.value
-                                                    .trim(),
-                                              ),
-                                              dialCode:
-                                                  settings.countryDial.value,
-                                            );
-                                          },
-                                        ),
-                                      )),
-                            ],
-                          ],
-                        ))),
-                      ]),
-              ),
+                          )),
+                ],
+                if (!isFuture && unpaid.isNotEmpty) ...[
+                  sectionTitle('غير المدفوعين',
+                      hint: 'المبلغ = المتبقي عليه لحد نهاية الشهر'),
+                  ...unpaid.map((s) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(children: [
+                          Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(s.name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppType.body
+                                          .copyWith(color: t.ink)),
+                                  Text('الكود: ${s.code}',
+                                      style: AppType.caption
+                                          .copyWith(color: t.inkSoft)),
+                                ]),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(money(remainingById[s.id] ?? 0),
+                              style: AppType.label.copyWith(
+                                  color: t.danger,
+                                  fontWeight: FontWeight.w800)),
+                          IconButton(
+                            tooltip: 'ذكّره بالدفع على واتساب',
+                            icon: Icon(Icons.chat_rounded, color: t.positive),
+                            onPressed: () async {
+                              await launchGuardianWhatsapp(
+                                context: context,
+                                phone: s.guardianPhone,
+                                whatsapp: s.guardianWhatsapp,
+                                message: buildPaymentReminderMessage(
+                                  studentName: s.name,
+                                  studentCode: s.code,
+                                  groupName: group.name,
+                                  monthLabel: '${data['month']}',
+                                  teacherName:
+                                      settings.teacherFullName.value.trim(),
+                                  teacherSpecialization: settings
+                                      .teacherSpecialization.value
+                                      .trim(),
+                                ),
+                                dialCode: settings.countryDial.value,
+                              );
+                            },
+                          ),
+                        ]),
+                      )),
+                ] else if (!isFuture && (data['allowedTotal'] as int) > 0) ...[
+                  sectionTitle('غير المدفوعين'),
+                  Row(children: [
+                    Icon(Icons.celebration_rounded, color: t.positive),
+                    const SizedBox(width: 8),
+                    Text('كل الطلاب سدّدوا',
+                        style: AppType.body.copyWith(color: t.positive)),
+                  ]),
+                ],
+                if (!isFuture) ...[
+                  const SizedBox(height: AppSpace.md),
+                  Text(
+                    'المحصّل = اللي دخل فعليًا خلال الشهر (ممكن يشمل شهور فاتت). '
+                    'المتبقي = مديونية غير المدفوعين المتراكمة.',
+                    style: AppType.caption.copyWith(color: t.inkFaint),
+                  ),
+                ],
+              ]);
+            }
+
+            return ChalkDialog(
+              icon: Icons.payments_rounded,
+              title: 'رسوم الشهر',
+              subtitle: '${group.name} • الأرقام بـ${settings.symbol}',
+              body: body,
               actions: [
-                TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('إغلاق'))
+                ChalkAction(
+                  label: 'إغلاق',
+                  kind: ChalkActionKind.text,
+                  onPressed: () => Navigator.of(ctx).pop(),
+                ),
               ],
             );
           },

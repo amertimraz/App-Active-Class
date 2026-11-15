@@ -187,7 +187,7 @@ String _fmtScheduleRange(String rawRange) {
   if (parts.length == 2) {
     final a = p(parts[0]), b = p(parts[1]);
     if (a != null && b != null) {
-      return '${FormatHelper.formatClock(a)}-${FormatHelper.formatClock(b)}';
+      return FormatHelper.formatClockRange(a, b);
     }
   }
   return rawRange;
