@@ -8,6 +8,20 @@ function chunk(arr, n) {
   return out.length ? out : [[]];
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// طلب واحد للمزوّد مع إعادة محاولة بتأخير متزايد للأخطاء المؤقتة (زحمة 429/5xx، شبكة)
+// بدل ما دفعة واحدة تفشّل الطلب كله. delays قابلة للحقن عشان الاختبارات.
+export async function completeWithRetry(provider, args, { delays = [2000, 5000] } = {}) {
+  let r = await provider.complete(args);
+  for (const d of delays) {
+    if (r.ok || r.kind !== 'temp' || r.reason === 'bad_output') return r;
+    await sleep(d);
+    r = await provider.complete(args);
+  }
+  return r;
+}
+
 // بيشغّل مزوّد واحد على كل الدفعات. بيرجّع { ok, parsed } أو { ok:false, kind, reason }
 async function runProvider(provider, { mode, images, text, count, mcq, tf, difficulty, language }) {
   const batches = chunk(images, provider.maxImages);
@@ -21,11 +35,11 @@ async function runProvider(provider, { mode, images, text, count, mcq, tf, diffi
 
   for (let b = 0; b < batches.length; b++) {
     const user = userPrompt(mode, { text, pages: batches[b].length });
-    let r = await provider.complete({ system, user, images: batches[b] });
+    let r = await completeWithRetry(provider, { system, user, images: batches[b] });
     if (!r.ok) return r;
     let parsed = extractJson(r.text);
     if (!parsed) { // محاولة واحدة لإصلاح الشكل
-      r = await provider.complete({ system, user, images: batches[b], extraUser: RETRY_JSON_PROMPT });
+      r = await completeWithRetry(provider, { system, user, images: batches[b], extraUser: RETRY_JSON_PROMPT });
       if (!r.ok) return r;
       parsed = extractJson(r.text);
     }

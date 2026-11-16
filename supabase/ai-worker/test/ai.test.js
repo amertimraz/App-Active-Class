@@ -171,3 +171,19 @@ test('groq: الحد 3 صور في الطلب (الحد الحقيقي للنم�
   const g = createGroq({ apiKey: async () => 'k', model: 'm' });
   assert.equal(g.maxImages, 3);
 });
+
+import { completeWithRetry } from '../src/providers/index.js';
+test('completeWithRetry: يعيد المحاولة على الخطأ المؤقت وينجح', async () => {
+  let n = 0;
+  const p = { complete: async () => (++n < 3 ? { ok: false, kind: 'temp', reason: 'provider_error' } : { ok: true, text: '{}' }) };
+  const r = await completeWithRetry(p, {}, { delays: [1, 1] });
+  assert.equal(r.ok, true);
+  assert.equal(n, 3);
+});
+test('completeWithRetry: الخطأ الدائم لا يُعاد', async () => {
+  let n = 0;
+  const p = { complete: async () => { n++; return { ok: false, kind: 'auth', reason: 'provider_auth' }; } };
+  const r = await completeWithRetry(p, {}, { delays: [1, 1] });
+  assert.equal(r.ok, false);
+  assert.equal(n, 1);
+});

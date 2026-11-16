@@ -126,7 +126,8 @@ export async function runJob(db, { extract, providers, cfg, job, payload, log = 
   const id = job.id;
   await db.query(`update ai_jobs set status = 'running', started_at = now(), progress = $2 where id = $1`,
     [id, JSON.stringify({ done: 0, total: payload.images.length || 1 })]);
-  const timeoutMs = 120_000;
+  // مهلة تتناسب مع عدد الدفعات (3 صور لكل دفعة عند Groq) مع حد أدنى 120ث.
+  const timeoutMs = Math.max(120_000, Math.ceil((payload.images.length || 1) / 3) * 90_000);
   let r;
   let timer;
   try {
