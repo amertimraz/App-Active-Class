@@ -13,6 +13,7 @@ import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/views/auth/login_screen.dart';
 import 'package:active_class/views/team/join_team_screen.dart';
 import 'package:active_class/views/team/manage_members_screen.dart';
+import 'package:active_class/views/team/team_risk_dialogs.dart';
 import 'package:active_class/views/team/team_sync_widgets.dart';
 import 'package:active_class/widgets/team_disconnect_dialog.dart';
 
@@ -201,6 +202,7 @@ class _DisabledCard extends StatelessWidget {
           'تفعيل وضع الفريق كمدرس متاح في الباقة الاحترافية أو مدى الحياة فقط');
       return;
     }
+    if (!await confirmEnableTeam(context)) return;
     final err = await team.enableAsOwner();
     if (!context.mounted) return;
     if (err != null) {
@@ -369,6 +371,7 @@ class _EnabledCard extends StatelessWidget {
           child: OutlinedButton(
             onPressed: () async {
               if (team.isOwner.value) {
+                if (!await confirmDisableTeamAsOwner(context, team)) return;
                 final err = await team.disableAsOwner();
                 if (!context.mounted) return;
                 if (err != null) {
@@ -548,6 +551,7 @@ class _SyncDiagnosticsState extends State<_SyncDiagnostics> {
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
               onPressed: () async {
+                if (!await confirmResyncAll(context)) return;
                 final ok = await widget.team.resyncAll();
                 if (!mounted) return;
                 ToastHelper.info(ok

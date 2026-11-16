@@ -153,4 +153,32 @@ void main() {
       expect(m, isNot(contains('👨‍🏫')));
     });
   });
+
+  group('portalSafeId', () {
+    test('كود من غير / بيفضل زي ما هو', () {
+      expect(portalSafeId('G12-F01'), 'G12-F01');
+      expect(portalSafeId('G8- M01'), 'G8- M01');
+    });
+    test('«/» بتتحوّل %2F (معرّف مستند Firestore ما يقبلهاش)', () {
+      expect(portalSafeId('G9-F/MON01'), 'G9-F%2FMON01');
+      expect(portalSafeId('G9-F2/ MON02'), 'G9-F2%2F MON02');
+      expect(portalSafeId('A/B/C'), 'A%2FB%2FC');
+      expect(portalSafeId('G9-F/MON01').contains('/'), isFalse);
+    });
+  });
+
+  group('visitAgoLabel', () {
+    final now = DateTime(2026, 11, 16, 15);
+    test('النهارده / امبارح', () {
+      expect(visitAgoLabel(DateTime(2026, 11, 16, 8), now), 'النهارده');
+      expect(visitAgoLabel(DateTime(2026, 11, 15, 23), now), 'امبارح');
+    });
+    test('أيام / أسابيع / شهور', () {
+      expect(visitAgoLabel(DateTime(2026, 11, 13), now), 'من 3 أيام');
+      expect(visitAgoLabel(DateTime(2026, 11, 9), now), 'من أسبوع');
+      expect(visitAgoLabel(DateTime(2026, 11, 1), now), 'من 2 أسابيع');
+      expect(visitAgoLabel(DateTime(2026, 10, 1), now), 'من شهر');
+      expect(visitAgoLabel(DateTime(2026, 8, 1), now), 'من 3 شهور');
+    });
+  });
 }

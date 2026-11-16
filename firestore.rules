@@ -177,6 +177,27 @@ service cloud.firestore {
                     && get(/databases/$(database)/documents/parent_portal/$(slug)).data.ownerUid
                        == request.auth.uid;
       }
+
+      // زيارات ولي الأمر لصفحة المتابعة: عدّاد + أول/آخر وقت، من غير أي بيانات شخصية.
+      // المعرّف = نفس معرّف ملخص الطالب. ولي الأمر (زائر مجهول مسجّل دخول) يزوّد
+      // العدّاد بواحد بس ومسموح بس لطالب موجود فعلًا؛ والقراءة لصاحب الرابط وحده
+      // (التطبيق بيعرض «فتحوا X من Y» و«آخر زيارة»).
+      match /visits/{docId} {
+        allow read: if request.auth != null
+                    && get(/databases/$(database)/documents/parent_portal/$(slug)).data.ownerUid
+                       == request.auth.uid;
+        allow create: if request.auth != null
+                      && exists(/databases/$(database)/documents/parent_portal/$(slug)/students/$(docId))
+                      && request.resource.data.keys().hasOnly(['count', 'firstAt', 'lastAt'])
+                      && request.resource.data.count == 1
+                      && request.resource.data.firstAt == request.time
+                      && request.resource.data.lastAt == request.time;
+        allow update: if request.auth != null
+                      && request.resource.data.keys().hasOnly(['count', 'firstAt', 'lastAt'])
+                      && request.resource.data.count == resource.data.count + 1
+                      && request.resource.data.firstAt == resource.data.firstAt
+                      && request.resource.data.lastAt == request.time;
+      }
     }
 
     // ── الامتحانات الإلكترونية (spec 016) ────────────────────────────

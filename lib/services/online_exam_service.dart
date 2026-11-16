@@ -17,6 +17,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 
+import 'package:active_class/utils/parent_portal_helper.dart';
 import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
@@ -158,7 +159,7 @@ class OnlineExamService {
       final studentsCol =
           _db.collection('parent_portal').doc(slug).collection('students');
       for (final st in students) {
-        final docId = '${st.code}_${st.last4}';
+        final docId = '${portalSafeId(st.code)}_${st.last4}';
         final snap = await studentsCol.doc(docId).get();
         if (!snap.exists) {
           await ParentPortalService().pushStudentSummary(st.id);

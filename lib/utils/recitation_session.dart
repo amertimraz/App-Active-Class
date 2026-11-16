@@ -167,7 +167,7 @@ String buildRecitationReportText(
     for (final r in g.rows) {
       final lvl = recitationLevelOf(r.grade, g.max);
       if (lvl == RecitationLevel.none) {
-        b.writeln('• ${r.studentName}: ${r.attendanceLabel == 'غائب' ? 'غائب' : '—'}');
+        b.writeln('• ${r.studentName}: ${r.attendanceLabel == 'غائب' ? 'غائب' : r.attendanceLabel == kRecitationSkippedLabel ? 'ما سمّعش' : '—'}');
       } else {
         final mark = lvl == RecitationLevel.star
             ? ' ⭐'

@@ -394,7 +394,11 @@ class AttendanceController extends GetxController {
         : currentRecitationMax(Get.isRegistered<SettingsController>()
             ? Get.find<SettingsController>().recitationMax.value
             : null);
-    if (value != null && normalizeRecitation(value, max: max) == null) return;
+    if (value != null &&
+        value != kRecitationSkipped &&
+        normalizeRecitation(value, max: max) == null) {
+      return;
+    }
     final dayStart = DateTime(day.year, day.month, day.day);
     final dayEnd = DateTime(day.year, day.month, day.day, 23, 59, 59);
     final existing = attendance.firstWhereOrNull((a) =>

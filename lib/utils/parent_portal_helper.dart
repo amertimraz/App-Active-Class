@@ -17,6 +17,35 @@ String portalUrl(String slug) => '$kPortalBaseUrl/$slug';
 
 /// آخر 4 أرقام من رقم ولي الأمر — null لو الرقم فاضي أو أقل من 4 أرقام.
 /// (بتحوّل الأرقام العربية-الهندية لأن أرقام قديمة ممكن تكون مخزّنة بيها.)
+/// معرّف مستند Firestore آمن من كود طالب. «/» ممنوعة في معرّف المستند (بتتفهم
+/// كمسار فرعي وبتكسر النشر كله)، فبنرمّزها `%2F`. **نفس الدالة بالظبط** في صفحات
+/// الويب (track / game / exam)، وأي كود من غير «/» بيفضل زي ما هو.
+String portalSafeId(String code) => code.replaceAll('/', '%2F');
+
+/// زيارة ولي أمر لصفحة المتابعة (من parent_portal/{slug}/visits/{docId}).
+class PortalVisit {
+  final int count;
+  final DateTime? firstAt;
+  final DateTime? lastAt;
+  const PortalVisit({required this.count, this.firstAt, this.lastAt});
+}
+
+/// «آخر زيارة» بصياغة مصرية: النهارده / امبارح / من N يوم / من N أسبوع / من N شهر.
+String visitAgoLabel(DateTime lastAt, DateTime now) {
+  final a = DateTime(lastAt.year, lastAt.month, lastAt.day);
+  final b = DateTime(now.year, now.month, now.day);
+  final days = b.difference(a).inDays;
+  if (days <= 0) return 'النهارده';
+  if (days == 1) return 'امبارح';
+  if (days < 7) return 'من $days أيام';
+  if (days < 30) {
+    final w = days ~/ 7;
+    return w == 1 ? 'من أسبوع' : 'من $w أسابيع';
+  }
+  final m = days ~/ 30;
+  return m == 1 ? 'من شهر' : 'من $m شهور';
+}
+
 String? portalLast4(String? phone) {
   final digits = PhoneHelper.toLatinDigits(phone ?? '')
       .replaceAll(RegExp(r'[^0-9]'), '');

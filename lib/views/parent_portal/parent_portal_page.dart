@@ -4,6 +4,7 @@
 // المتابعة (نسخ/مشاركة/QR)، نشر البيانات، طلاب البوابة، وطريقة دخول ولي
 // الأمر. الصفحة العامة نفسها على active-class.online/track — هنا مركز التحكم.
 import 'package:flutter/material.dart';
+import 'package:active_class/services/parent_portal_service.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart' show DateFormat;
@@ -44,7 +45,13 @@ class _ParentPortalPageState extends State<ParentPortalPage> {
     try {
       final n = await _ctrl.publishAll();
       if (!mounted) return;
-      ToastHelper.success('اتنشرت بيانات $n طالب');
+      final failed = ParentPortalService.lastPublishFailed;
+      if (failed.isEmpty) {
+        ToastHelper.success('اتنشرت بيانات $n طالب');
+      } else {
+        ToastHelper.info('اتنشرت بيانات $n طالب، وتعذّر نشر ${failed.length}: '
+            '${failed.take(3).join('، ')}${failed.length > 3 ? '…' : ''}');
+      }
     } catch (e) {
       // لو النشر فشل (اتصال ضعيف، أو صف واحد بس رفضته قاعدة الأمان)
       // Firestore بترجع الـ batch كله بالفشل — لازم رسالة واضحة.
@@ -538,6 +545,36 @@ class _ActiveBody extends StatelessWidget {
                         ),
                     ],
                   ),
+                  // Obx خاص: الزيارات بتتحمّل بعد فتح الشاشة (الـbody ده StatelessWidget).
+                  Obx(() {
+                      if (!ctrl.visitsLoaded.value) {
+                        return const SizedBox.shrink();
+                      }
+                      final svc = ParentPortalService();
+                      var ready = 0, opened = 0;
+                      final students = Get.find<StudentController>().students;
+                      for (final st in students) {
+                        if (portalStudentState(st, codeOnly: codeOnly) !=
+                            PortalStudentState.ready) {
+                          continue;
+                        }
+                        ready++;
+                        final id = svc.portalDocIdFor(st);
+                        if (id != null && ctrl.visits.containsKey(id)) opened++;
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.visibility_rounded,
+                              size: 14, color: t.positive),
+                          const SizedBox(width: 4),
+                          Text('فتحوا الرابط: $opened من $ready',
+                              style: AppType.caption.copyWith(
+                                  color: t.inkSoft,
+                                  fontWeight: FontWeight.w700)),
+                        ]),
+                      );
+                    }),
                 ],
               ),
             ),

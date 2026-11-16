@@ -2806,6 +2806,58 @@ class DatabaseService {
     });
   }
 
+  /// كل جداول المزامنة اللي ليها عمود remote_id (نفس قايمة SyncEngine).
+  static const List<String> kSyncedTables = [
+    TABLE_GROUPS,
+    TABLE_STUDENTS,
+    TABLE_ATTENDANCE,
+    TABLE_PAYMENTS,
+    TABLE_HOMEWORK,
+    TABLE_SESSION_OVERRIDES,
+    TABLE_STUDENT_ARCHIVE_EVENTS,
+    TABLE_EXAMS,
+    TABLE_EXAM_QUESTIONS,
+    TABLE_BANK_QUESTIONS,
+    TABLE_EXAM_GROUPS,
+    TABLE_EXAM_GRADES,
+    TABLE_EXAM_SUBMISSIONS,
+    TABLE_BOOKLETS,
+    TABLE_BOOKLET_GROUPS,
+    TABLE_BOOKLET_RECORDS,
+    TABLE_BOOKLET_PAYMENTS,
+  ];
+
+  /// فريق جديد (أو السيرفر فاضي): نفضّي طابور المزامنة ونمسح remote_id المحلية
+  /// عشان كل الصفوف تتبعت من الأول. من غير كده: عمليات قديمة من الفريق المحذوف
+  /// (آلاف) فاضلة في الطابور، وصفوف محلية شايلة remote_id لصفوف اتمسحت — فالتحديثات
+  /// بترجع «نجاح» على صفوف مش موجودة، والإدخالات بترجع 409 (مرجع للأب الميت)،
+  /// والبيانات ما بتوصلش السيرفر أبدًا. **ما بتمسحش أي بيانات محلية.**
+  Future<void> resetSyncStateForNewTeam() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete(TABLE_SYNC_OUTBOX);
+      for (final table in kSyncedTables) {
+        try {
+          await txn.update(table, {COL_SYNC_REMOTE_ID: null});
+        } catch (_) {
+          // جدول من غير عمود المزامنة (نسخة قديمة) — مش من اللي بنصلّحه.
+        }
+      }
+    });
+  }
+
+  /// عدد صفوف [table] اللي محلها remote_id (يعني الجهاز فاكرها متزامنة).
+  Future<int> countRowsWithRemoteId(String table) async {
+    final db = await database;
+    try {
+      final r = await db.rawQuery(
+          'SELECT COUNT(*) c FROM $table WHERE $COL_SYNC_REMOTE_ID IS NOT NULL');
+      return (r.first['c'] as int?) ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   // ========== APP SETTINGS (key/value) ==========
   /// [on]: executor اختياري (txn) — لازم يتمرّر لو النداء جوّه
   /// `db.transaction` وإلا deadlock دائم (sqflite بيحجز الـdb الرئيسي لحد ما

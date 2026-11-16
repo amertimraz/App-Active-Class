@@ -463,7 +463,7 @@
     card.innerHTML = '<div class="spinner"></div>';
     try {
       if (!auth.currentUser) await signInAnonymously(auth);
-      const snap = await getDoc(doc(db, 'parent_portal', slug, 'students', `${code}_${phone}`));
+      const snap = await getDoc(doc(db, 'parent_portal', slug, 'students', `${safeId(code)}_${phone}`));
       if (!snap.exists()) { renderForm('الكود أو الأرقام غير صحيحة'); return; }
       ctx = { code, last4: phone, groupName: snap.data().groupName || '' };
       window.__studentName = snap.data().name || '';
@@ -520,7 +520,8 @@
     card.querySelectorAll('.exam-pick').forEach(b => b.onclick = () => openExam(openable[+b.dataset.i]));
   }
 
-  const attemptKey = () => `${ctx.code}_${ctx.last4}`;
+  const safeId = (c) => String(c).replace(/\//g, '%2F'); // «/» ممنوعة في معرّف مستند Firestore (نفس portalSafeId في التطبيق)
+  const attemptKey = () => `${safeId(ctx.code)}_${ctx.last4}`;
   const lsKey = (examId) => `exam_${slug}_${examId}_${ctx.code}`;
 
   function fmtGrade(n){ const v = Number(n); return Number.isInteger(v) ? String(v) : v.toFixed(1); }

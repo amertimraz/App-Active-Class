@@ -24,6 +24,8 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/export_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/utils/recitation.dart';
+import 'package:active_class/widgets/chalk_dialog.dart';
+import 'package:active_class/utils/session_guest.dart';
 import 'package:active_class/utils/recitation_session.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/views/exams/certificates_sheet.dart';
@@ -117,9 +119,27 @@ class _RecitationPageState extends State<RecitationPage> {
         a.studentId == studentId && !a.date.isBefore(s) && !a.date.isAfter(e));
   }
 
-  List<Student> _studentsOf(Group g) =>
-      _students.students.where((s) => s.groupId == g.id).toList()
-        ..sort((a, b) => a.name.compareTo(b.name));
+  /// طلاب المجموعة + «الضيوف» اللي حضروا معاها في اليوم ده (حصة تعويضية/بديلة)،
+  /// عشان يظهروا في القائمة من غير ما المدرس يدخل لهم من الحضور والواجب.
+  List<Student> _studentsOf(Group g) {
+    final base = _students.students.where((s) => s.groupId == g.id).toList();
+    final gid = g.id;
+    if (gid != null) {
+      final s0 = DateTime(_day.year, _day.month, _day.day);
+      final e0 = DateTime(_day.year, _day.month, _day.day, 23, 59, 59);
+      final guestIds = <int>{};
+      for (final a in _att.attendance) {
+        if (a.date.isBefore(s0) || a.date.isAfter(e0)) continue;
+        if (isGuestOfGroup(a, gid)) guestIds.add(a.studentId);
+      }
+      if (guestIds.isNotEmpty) {
+        final baseIds = {for (final s in base) s.id};
+        base.addAll(_students.students.where(
+            (s) => s.id != null && guestIds.contains(s.id) && !baseIds.contains(s.id)));
+      }
+    }
+    return base..sort((a, b) => a.name.compareTo(b.name));
+  }
 
   int _maxOf(Group g) {
     final id = g.id!;
@@ -139,10 +159,33 @@ class _RecitationPageState extends State<RecitationPage> {
         settingsMax: Get.find<SettingsController>().recitationMax.value);
   }
 
+  /// الطالب حضر وما سمّعش؟ (المسودة أولاً، وبعدها المحفوظ).
+  bool _skippedOf(Group g, Student s) {
+    final d = _draft[g.id!];
+    if (d != null && d.containsKey(s.id)) return d[s.id] == kRecitationSkipped;
+    final r = _recordOf(s.id!);
+    return r != null && isRecitationSkipped(r);
+  }
+
+  void _toggleSkipped(Group g, Student s) {
+    final m = _draft.putIfAbsent(g.id!, () => {});
+    if (_skippedOf(g, s)) {
+      m[s.id!] = null; // رجوع لـ«لسه ما اتسجّلتش» (بيمسح العلامة المحفوظة)
+    } else {
+      m[s.id!] = kRecitationSkipped;
+    }
+    _ctrls[s.id!]?.text = '';
+    _invalid.remove(s.id);
+    setState(() {});
+  }
+
   /// الدرجة المعروضة للطالب: المسودة أولاً ثم المحفوظة (لو بنفس المقياس).
   int? _gradeOf(Group g, Student s) {
     final d = _draft[g.id!];
-    if (d != null && d.containsKey(s.id)) return d[s.id];
+    if (d != null && d.containsKey(s.id)) {
+      final v = d[s.id];
+      return (v == null || v < kRecitationMin) ? null : v; // 0 = ما سمّعش
+    }
     final r = _recordOf(s.id!);
     if (r == null) return null;
     return recitationMaxOf(r) == _maxOf(g) ? recitationGradeOf(r) : null;
@@ -306,6 +349,36 @@ class _RecitationPageState extends State<RecitationPage> {
       ToastHelper.info('مفيش تعديلات للحفظ');
       return;
     }
+    // (spec) تنبيه: طلاب حضروا (حاضر/متأخر) ومتسجّلش لهم درجة ولا «ما سمّعش».
+    final missing = <String>[];
+    for (final g in _groups.groups) {
+      if (g.id == null) continue;
+      final d = _draft[g.id!];
+      if (d == null || d.isEmpty) continue; // بنفحص المجموعات اللي بنحفظ لها بس
+      for (final st in _studentsOf(g)) {
+        final r = _recordOf(st.id!);
+        if (r == null || !canRecordRecitation(r.status)) continue;
+        final hasAny = _gradeOf(g, st) != null ||
+            _skippedOf(g, st) ||
+            recitationGradeOf(r) != null;
+        if (!hasAny) missing.add(st.name);
+      }
+    }
+    if (missing.isNotEmpty) {
+      final shown = missing.take(8).map((n) => '• $n').join('\n');
+      final more = missing.length > 8 ? '\nو${missing.length - 8} كمان' : '';
+      final go = await showChalkConfirm(
+        context,
+        icon: Icons.mic_off_rounded,
+        tone: ChalkTone.caution,
+        title: 'فيه طلاب من غير درجة',
+        message: '${missing.length} طالب حضروا ومتسجّلش لهم درجة تسميع ولا '
+            '«ما سمّعش»:\n$shown$more\n\nتحفظ كده، ولا ترجع تكمّلهم؟',
+        confirmLabel: 'احفظ برضو',
+        cancelLabel: 'ارجع أكمّل',
+      );
+      if (!go || !mounted) return;
+    }
     setState(() => _saving = true);
     try {
       var saved = 0;
@@ -343,7 +416,8 @@ class _RecitationPageState extends State<RecitationPage> {
           for (final s in students)
             RecitationReportRow(
               studentName: s.name,
-              attendanceLabel: _attLabel(s),
+              attendanceLabel:
+                  _skippedOf(g, s) ? kRecitationSkippedLabel : _attLabel(s),
               grade: _gradeOf(g, s),
             ),
         ],
@@ -611,8 +685,9 @@ class _RecitationPageState extends State<RecitationPage> {
     final max = _maxOf(g);
     final students = _studentsOf(g);
     final open = !_collapsed.contains(g.id);
-    var graded = 0, low = 0, star = 0;
+    var graded = 0, low = 0, star = 0, skipped = 0;
     for (final s in students) {
+      if (_skippedOf(g, s)) skipped++;
       final lvl = recitationLevelOf(_gradeOf(g, s), max);
       if (lvl != RecitationLevel.none) graded++;
       if (lvl == RecitationLevel.low) low++;
@@ -641,6 +716,11 @@ class _RecitationPageState extends State<RecitationPage> {
                       Wrap(spacing: AppSpace.sm, children: [
                         Text('سمّع $graded من ${students.length}',
                             style: AppType.caption.copyWith(color: t.inkSoft)),
+                        if (skipped > 0)
+                          Text('$skipped ما سمّعش',
+                              style: AppType.caption.copyWith(
+                                  color: t.caution,
+                                  fontWeight: FontWeight.w700)),
                         if (low > 0)
                           Text('$low تراجع',
                               style: AppType.caption.copyWith(
@@ -693,6 +773,8 @@ class _RecitationPageState extends State<RecitationPage> {
     final grade = _gradeOf(g, s);
     final lvl = recitationLevelOf(grade, max);
     final invalid = _invalid.contains(s.id);
+    final skipped = canRecord && _skippedOf(g, s);
+    final isGuest = s.groupId != g.id; // ضيف على المجموعة دي النهارده
     final otherScale = r != null &&
         recitationGradeOf(r) != null &&
         recitationMaxOf(r) != max &&
@@ -721,9 +803,18 @@ class _RecitationPageState extends State<RecitationPage> {
                 overflow: TextOverflow.ellipsis,
                 style: AppType.label.copyWith(color: t.ink)),
             const SizedBox(height: 2),
+            if (isGuest)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: _chip(t, 'ضيف', Icons.person_add_alt_rounded, t.brand,
+                    t.rosterTint),
+              ),
             if (!canRecord)
               Text(_attLabel(s),
                   style: AppType.caption.copyWith(color: t.inkSoft))
+            else if (skipped)
+              _chip(t, kRecitationSkippedLabel, Icons.mic_off_rounded,
+                  t.caution, t.cautionSoft)
             else if (lvl == RecitationLevel.low)
               _chip(t, 'تراجع مستوى', Icons.trending_down_rounded, t.danger,
                   t.dangerSoft)
@@ -751,33 +842,64 @@ class _RecitationPageState extends State<RecitationPage> {
                 color: lvl == RecitationLevel.low ? t.danger : t.positive),
             style: IconButton.styleFrom(minimumSize: const Size(44, 44)),
           ),
-        SizedBox(
-          width: 84,
-          child: TextField(
-            enabled: canRecord,
-            controller: _ctrlFor(g, s),
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.center,
-            onChanged: (v) => _onGrade(g, s, v),
-            style: AppType.title.copyWith(color: t.ink),
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: canRecord ? '—' : '',
-              errorText: invalid ? 'أقصى $max' : null,
-              errorStyle: const TextStyle(fontSize: 10),
-              filled: true,
-              fillColor: canRecord ? t.page : t.page.withValues(alpha: 0.5),
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.chip),
-                  borderSide: BorderSide(color: t.line)),
-              enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.chip),
-                  borderSide: BorderSide(color: invalid ? t.danger : t.line)),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+        if (canRecord)
+          IconButton(
+            tooltip: skipped
+                ? 'إلغاء «ما سمّعش»'
+                : 'حضر وما سمّعش (من غير درجة)',
+            onPressed: () => _toggleSkipped(g, s),
+            icon: Icon(Icons.mic_off_rounded,
+                color: skipped ? t.caution : t.inkSoft),
+            style: IconButton.styleFrom(minimumSize: const Size(44, 44)),
+          ),
+        if (!canRecord)
+          // غايب أو لسه ما اتسجّلش حضوره: مفيش خانة درجة أصلًا.
+          SizedBox(
+            width: 84,
+            child: Center(
+              child: Icon(
+                  r != null ? Icons.close_rounded : Icons.remove_rounded,
+                  color: t.inkFaint),
+            ),
+          )
+        else if (skipped)
+          SizedBox(
+            width: 84,
+            child: Center(
+              child: Text('ما سمّعش',
+                  textAlign: TextAlign.center,
+                  style: AppType.caption.copyWith(
+                      color: t.caution, fontWeight: FontWeight.w800)),
+            ),
+          )
+        else
+          SizedBox(
+            width: 84,
+            child: TextField(
+              controller: _ctrlFor(g, s),
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              onChanged: (v) => _onGrade(g, s, v),
+              style: AppType.title.copyWith(color: t.ink),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: '—',
+                errorText: invalid ? 'أقصى $max' : null,
+                errorStyle: const TextStyle(fontSize: 10),
+                filled: true,
+                fillColor: t.page,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
+                    borderSide: BorderSide(color: t.line)),
+                enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
+                    borderSide:
+                        BorderSide(color: invalid ? t.danger : t.line)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+              ),
             ),
           ),
-        ),
       ]),
     );
   }

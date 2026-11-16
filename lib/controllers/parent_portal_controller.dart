@@ -18,6 +18,10 @@ class ParentPortalController extends GetxController {
   final Rxn<DateTime> lastPublishedAt = Rxn<DateTime>();
   final RxnInt lastPublishedCount = RxnInt();
 
+  /// زيارات أولياء الأمور (معرّف مستند الطالب → عدّاد وآخر زيارة).
+  final RxMap<String, PortalVisit> visits = <String, PortalVisit>{}.obs;
+  final RxBool visitsLoaded = false.obs;
+
   /// رابط المتابعة، أو فاضي لحد ما الـslug يتحمّل.
   String get url => slug.value == null ? '' : portalUrl(slug.value!);
 
@@ -34,11 +38,19 @@ class ParentPortalController extends GetxController {
       // ننشر بروفايل المدرس (اسمه) فورًا من غير ما ننتظر أول طالب — وإلا
       // صفحة المتابعة تفضل من غير اسم لحد ما تتنشر أول بيانات طالب.
       unawaited(ParentPortalService().publishProfile());
+      unawaited(loadVisits());
     } catch (e) {
       debugPrint('ParentPortalController.load failed — $e');
     } finally {
       loading.value = false;
     }
+  }
+
+  /// يحمّل زيارات أولياء الأمور من السيرفر.
+  Future<void> loadVisits() async {
+    final v = await ParentPortalService().loadVisits();
+    visits.assignAll(v);
+    visitsLoaded.value = true;
   }
 
   /// بينشر كل الطلاب ويرجّع عددهم. بيرمي الخطأ لصاحب الاستدعاء (الشاشة بتعرض

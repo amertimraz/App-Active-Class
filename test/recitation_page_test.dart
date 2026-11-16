@@ -180,7 +180,7 @@ void main() {
     expect(find.text('نجمة تميّز'), findsOneWidget);
   });
 
-  testWidgets('رقم أكبر من الدرجة العظمى بيظهر خطأ، والغائب خانته مقفولة',
+  testWidgets('رقم أكبر من الدرجة العظمى بيظهر خطأ، والغائب مفيش له خانة',
       (t) async {
     _seed();
     await _pump(t);
@@ -188,9 +188,10 @@ void main() {
     await t.enterText(fields.at(0), '11');
     await t.pump();
     expect(find.text('أقصى 10'), findsOneWidget);
-    // الترتيب أبجدي: آدم (متأخر)، أروى (غايبة)، رغد — فالغايبة هي الخانة الثانية.
-    final absent = t.widget<TextField>(fields.at(1));
-    expect(absent.enabled, isFalse);
+    // الغايبة (أروى) مفيش لها خانة درجة أصلًا (علامة × بدل المربع الفاضي):
+    // الخانات للحاضرين والمتأخرين بس (آدم ورغد وإياد) فبقوا تلاتة.
+    expect(find.byType(TextField), findsNWidgets(3));
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
     expect(find.text('غائب'), findsOneWidget);
   });
 

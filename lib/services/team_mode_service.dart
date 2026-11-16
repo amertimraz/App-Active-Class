@@ -177,8 +177,36 @@ class TeamModeService {
       return;
     }
     _startEngine(client, storedTeamId);
+    if (isOwner.value) {
+      unawaited(_healIfServerTeamEmpty(client, storedTeamId));
+    }
     LicenseController.to.teamModeBypassLimits = true;
     isEnabled.value = true;
+  }
+
+  /// علاج جهاز المالك العالق: فريقه على السيرفر **فاضي من المجموعات** والجهاز
+  /// فاكر إن مجموعاته متزامنة (عندها remote_id) — حالة «الفريق اتحذف واتعمل فريق
+  /// جديد» (مثلًا قفل وضع الفريق وفتحه). نفضّي الطابور القديم ونمسح الـremote_id
+  /// المحلية ونبعت كل الصفوف من الأول. آمن: الإرسال upsert بمفتاح
+  /// (team,device,local_id)، وما بيمسحش أي بيانات محلية.
+  Future<void> _healIfServerTeamEmpty(SupabaseClient client, String tId) async {
+    try {
+      final localSynced = await _db.countRowsWithRemoteId(TABLE_GROUPS);
+      if (localSynced == 0) return;
+      final rows = await client
+          .from(TABLE_GROUPS)
+          .select('id')
+          .eq('team_id', tId)
+          .limit(1)
+          .timeout(kTeamModeNetworkTimeout) as List;
+      if (rows.isNotEmpty) return; // السيرفر فيه مجموعات: مفيش مشكلة
+      debugPrint('TeamModeService: الفريق على السيرفر فاضي والجهاز فاكر إنه '
+          'متزامن ($localSynced مجموعة) — إعادة بناء المزامنة');
+      await _db.resetSyncStateForNewTeam();
+      await _engine?.enqueueAllExistingLocalRows();
+    } catch (e) {
+      debugPrint('TeamModeService: فحص الفريق الفاضي فشل — $e');
+    }
   }
 
   /// جهاز واحد بس مسموح لكل مساعد — أول مرة بيتربط تلقائيًا، وأي جهاز
@@ -236,6 +264,9 @@ class TeamModeService {
       await _db.setSetting(SETTING_TEAM_ID, newTeamId);
       await _db.setSetting(SETTING_TEAM_IS_OWNER, 'true');
 
+      // فريق جديد = السيرفر فاضي: أي remote_id أو عملية معلّقة قديمة بتشاور
+      // على الفريق المحذوف، فنصفّرهم قبل ما نبعت كل الصفوف من الأول.
+      await _db.resetSyncStateForNewTeam();
       _startEngine(client, newTeamId);
       await _engine!.enqueueAllExistingLocalRows();
       LicenseController.to.teamModeBypassLimits = true;

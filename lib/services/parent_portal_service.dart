@@ -255,6 +255,45 @@ class ParentPortalService {
     }
   }
 
+  /// معرّف مستند الطالب في parent_portal/{slug}/students (وفي visits كمان)، حسب
+  /// طريقة الدخول الحالية. null لو الطالب مش ظاهر (بلا كود، أو بلا رقم في وضع
+  /// كود + رقم).
+  String? portalDocIdFor(Student student) {
+    final code = student.code.trim().toUpperCase();
+    if (code.isEmpty) return null;
+    if (_codeOnly) return portalSafeId(code);
+    final last4 = _last4(student.guardianPhone);
+    return last4 == null ? null : '${portalSafeId(code)}_$last4';
+  }
+
+  /// زيارات أولياء الأمور لصفحة المتابعة: معرّف المستند → عدّاد وآخر وقت.
+  /// فاضية لو مفيش رابط/نت أو الزيارات لسه ما اتسجّلتش. القراءة مسموحة لصاحب
+  /// الرابط بس (قواعد Firestore).
+  Future<Map<String, PortalVisit>> loadVisits() async {
+    try {
+      final slug = await getSlugIfExists();
+      if (slug == null) return const {};
+      await _ensureAuth();
+      final snap = await _db
+          .collection('parent_portal')
+          .doc(slug)
+          .collection('visits')
+          .get();
+      DateTime? ts(Object? v) => v is Timestamp ? v.toDate() : null;
+      return {
+        for (final d in snap.docs)
+          d.id: PortalVisit(
+            count: (d.data()['count'] as num?)?.toInt() ?? 0,
+            firstAt: ts(d.data()['firstAt']),
+            lastAt: ts(d.data()['lastAt']),
+          ),
+      };
+    } catch (e) {
+      debugPrint('ParentPortalService: loadVisits failed — $e');
+      return const {};
+    }
+  }
+
   /// آخر 4 أرقام من رقم ولي الأمر — عمود الحماية الوحيد، فلو رقم
   /// التليفون فاضي أو أقل من 4 أرقام، الطالب ده مينفعش يتنشر خالص
   /// (بدل ما نضعّف الحماية).
@@ -268,7 +307,7 @@ class ParentPortalService {
     if (last4 == null) return null;
     final code = student.code.trim().toUpperCase();
     if (code.isEmpty) return null;
-    return '${code}_$last4';
+    return '${portalSafeId(code)}_$last4';
   }
 
   /// بتُنشر لوحدها (مش مربوطة بنجاح نشر طالب) — لو مفيش أي طالب عنده
@@ -541,7 +580,9 @@ class ParentPortalService {
       ..sort((a, b) => b.examDate.compareTo(a.examDate));
 
     return {
-      '_docId': _codeOnly ? code : '${code}_$last4',
+      '_docId': _codeOnly
+          ? portalSafeId(code)
+          : '${portalSafeId(code)}_$last4',
       'name': student.name,
       'groupName': groupName,
       'present': present,
@@ -683,8 +724,10 @@ class ParentPortalService {
           _db.collection('parent_portal').doc(slug).collection('students');
       // بنمسح الشكلين (بالكود فقط / كود_آخر4) عشان مفيش بيانات طالب
       // محذوف تفضل معروضة بأي طريقة دخول.
-      await col.doc(code).delete();
-      if (last4 != null) await col.doc('${code}_$last4').delete();
+      await col.doc(portalSafeId(code)).delete();
+      if (last4 != null) {
+        await col.doc('${portalSafeId(code)}_$last4').delete();
+      }
     } catch (_) {}
   }
 
@@ -724,6 +767,9 @@ class ParentPortalService {
   /// الحضور/المدفوعات/المجموعات مرة واحدة بس، ونبعت التحديثات كلها في
   /// دفعة Firestore واحدة (WriteBatch) — طلب شبكة واحد تقريبًا بدل
   /// مئات.
+  /// أسماء الطلاب اللي تعذّر نشرهم في آخر نشر شامل (فاضية لو كله نجح).
+  static List<String> lastPublishFailed = const [];
+
   Future<int> publishAllStudents() async {
     _watchLicenseChanges();
     if (!LicenseController.to.parentPortalActiveNow) return 0;
@@ -765,42 +811,74 @@ class ParentPortalService {
     final col =
         _db.collection('parent_portal').doc(slug).collection('students');
 
-    // Firestore بتحدّد أقصى 500 عملية لكل batch — بنقسّم كل 400 طالب
-    // لدفعة منفصلة عشان نفضل بعيد عن الحد الأقصى بهامش أمان.
-    var batch = _db.batch();
-    var opsInBatch = 0;
-    var count = 0;
+    // النشر مقاوم لطالب واحد بياناته بتكسر: بنبني ملخّص كل طالب في try/catch،
+    // وبنكتب على دفعات صغيرة (50)، ولو دفعة فشلت بنكتب مستنداتها واحد واحد عشان
+    // نعزل الطالب المشكل ونكمّل الباقي (قبل كده دفعة واحدة كبيرة: طالب واحد
+    // مشكل = ولا طالب بيتنشر، ومن غير ما نعرف مين).
+    final failed = <String>[];
+    final ids = <String>[];
+    final docs = <Map<String, dynamic>>[];
+    final labels = <String>[];
     for (final s in students) {
       if (s.id == null) continue;
-      final data = _buildSummaryData(
-        s,
-        attendance: attendanceByStudent[s.id] ?? const [],
-        payments: paymentsByStudent[s.id] ?? const [],
-        homework: homeworkByStudent[s.id] ?? const [],
-        groupName: groupNameById[s.groupId] ?? '',
-        exams: examsByStudent[s.id] ?? const [],
-        group: groupById[s.groupId],
-        allStudents: students,
-        bookletLines: studentBookletPortalLines(
-            student: s,
-            booklets: bk.booklets,
-            links: bk.links,
-            records: bk.records,
-            payments: bk.payments),
-      );
+      Map<String, dynamic>? data;
+      try {
+        data = _buildSummaryData(
+          s,
+          attendance: attendanceByStudent[s.id] ?? const [],
+          payments: paymentsByStudent[s.id] ?? const [],
+          homework: homeworkByStudent[s.id] ?? const [],
+          groupName: groupNameById[s.groupId] ?? '',
+          exams: examsByStudent[s.id] ?? const [],
+          group: groupById[s.groupId],
+          allStudents: students,
+          bookletLines: studentBookletPortalLines(
+              student: s,
+              booklets: bk.booklets,
+              links: bk.links,
+              records: bk.records,
+              payments: bk.payments),
+        );
+      } catch (e) {
+        debugPrint('ParentPortalService: build failed for student ${s.id} — $e');
+        failed.add(s.name);
+        continue;
+      }
       if (data == null) continue;
       final docId = data.remove('_docId') as String;
-      batch.set(col.doc(docId), data);
-      opsInBatch++;
-      count++;
-      if (opsInBatch >= 400) {
+      ids.add(docId);
+      docs.add(data);
+      labels.add(s.name);
+    }
+
+    const chunkSize = 50;
+    var count = 0;
+    for (var i = 0; i < ids.length; i += chunkSize) {
+      final end = i + chunkSize < ids.length ? i + chunkSize : ids.length;
+      try {
+        final batch = _db.batch();
+        for (var j = i; j < end; j++) {
+          batch.set(col.doc(ids[j]), docs[j]);
+        }
         await batch.commit();
-        batch = _db.batch();
-        opsInBatch = 0;
+        count += end - i;
+      } catch (e) {
+        debugPrint('ParentPortalService: batch failed ($i..$end) — $e');
+        for (var j = i; j < end; j++) {
+          try {
+            await col.doc(ids[j]).set(docs[j]);
+            count++;
+          } catch (e2) {
+            debugPrint('ParentPortalService: write failed ${ids[j]} — $e2');
+            failed.add(labels[j]);
+          }
+        }
       }
     }
-    if (opsInBatch > 0) {
-      await batch.commit();
+    lastPublishFailed = failed;
+    // مفيش طالب اتنشر أصلًا والسبب أخطاء: نرمي عشان الشاشة تعرض فشل واضح.
+    if (count == 0 && failed.isNotEmpty) {
+      throw StateError('تعذّر نشر أي طالب (${failed.length} فشلوا)');
     }
     return count;
   }

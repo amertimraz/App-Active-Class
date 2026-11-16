@@ -610,7 +610,8 @@
   // وضع «دخول بالكود فقط» في بوابة أولياء الأمور (loginMode='code_only'): المستند
   // معرّفه الكود وحده بدون آخر 4 أرقام، ونتيجة اللعبة بنفس المعرّف.
   let codeOnly = false;
-  const scoreId = () => (ctx.last4 ? `${ctx.code}_${ctx.last4}` : ctx.code);
+  const safeId = (c) => String(c).replace(/\//g, '%2F'); // «/» ممنوعة في معرّف مستند Firestore (نفس portalSafeId في التطبيق)
+  const scoreId = () => (ctx.last4 ? `${safeId(ctx.code)}_${ctx.last4}` : safeId(ctx.code));
   let game = null;
   let best = null;
 
@@ -640,7 +641,7 @@
     appEl.innerHTML = '<div class="spinner"></div>';
     try {
       if (!auth.currentUser) await signInAnonymously(auth);
-      const snap = await getDoc(doc(db, 'parent_portal', slug, 'students', codeOnly ? code : `${code}_${phone}`));
+      const snap = await getDoc(doc(db, 'parent_portal', slug, 'students', codeOnly ? safeId(code) : `${safeId(code)}_${phone}`));
       if (!snap.exists()) { renderForm(codeOnly ? 'الكود غير صحيح' : 'الكود أو الأرقام غير صحيحة'); return; }
       ctx = { code, last4: phone, name: snap.data().name || '', groupName: snap.data().groupName || '' };
       await loadGame();

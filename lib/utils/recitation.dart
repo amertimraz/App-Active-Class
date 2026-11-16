@@ -7,6 +7,12 @@ import 'package:active_class/models/attendance_model.dart';
 
 const int kRecitationMin = 1;
 
+/// «حضر وما سمّعش»: بتتخزّن 0 على attendance.recitation. recitationGradeOf
+/// بترجّع null لأي قيمة < 1، فالقيمة دي مش بتتحسب صفر في المتوسطات والتقارير
+/// والشهادات، والنسخ القديمة بتعتبرها «مفيش درجة» من نفسها.
+const int kRecitationSkipped = 0;
+const String kRecitationSkippedLabel = 'حضر وما سمّعش';
+
 /// الدرجة العظمى للسجلات القديمة (قبل ما تتحدد من الإعدادات) والافتراضي.
 const int kRecitationDefaultMax = 10;
 
@@ -19,6 +25,10 @@ int? normalizeRecitation(int? raw, {int max = kRecitationDefaultMax}) {
   if (raw < kRecitationMin || raw > max) return null;
   return raw;
 }
+
+/// القيمة المخزّنة بعد التحقق: 1..max، أو 0 (حضر وما سمّعش)، أو null.
+int? normalizeRecitationStored(int? raw, {int max = kRecitationDefaultMax}) =>
+    raw == kRecitationSkipped ? kRecitationSkipped : normalizeRecitation(raw, max: max);
 
 /// الدرجة العظمى المحفوظة مع السجل (القديم = 10).
 int recitationMaxOf(Attendance a) {
@@ -52,6 +62,10 @@ bool canRecordRecitation(String? attendanceStatus) {
   final s = normalizeAttendanceStatus(attendanceStatus);
   return s == ATTENDANCE_PRESENT || s == ATTENDANCE_LATE;
 }
+
+/// السجل ده «حضر وما سمّعش»؟ (حاضر/متأخر وقيمة التسميع 0).
+bool isRecitationSkipped(Attendance a) =>
+    a.recitation == kRecitationSkipped && canRecordRecitation(a.status);
 
 Iterable<double> _fractions(
     Iterable<Attendance> records, DateTime? month) sync* {

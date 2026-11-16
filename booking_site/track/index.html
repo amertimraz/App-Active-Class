@@ -196,7 +196,8 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyAqFLZ4kHEgPLVgLgDGbbIjxnZheBqMjMc",
@@ -206,9 +207,32 @@
     messagingSenderId: "822461821604",
     appId: "1:822461821604:web:3bd266a9833ce045916c31",
   };
-  const db = getFirestore(initializeApp(firebaseConfig));
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
   // نقطة القراءة الوحيدة من Firestore: ترجّع بيانات المستند أو null.
+  const safeId = (c) => String(c).replace(/\//g, '%2F'); // «/» ممنوعة في معرّف مستند Firestore (نفس portalSafeId في التطبيق)
   const fetchDoc = (...path) => getDoc(doc(db, ...path)).then(s => s.exists() ? s.data() : null);
+
+  // تسجيل زيارة ولي الأمر: عدّاد + أول/آخر وقت على parent_portal/{slug}/visits/{docId}
+  // (من غير أي بيانات شخصية). مرة واحدة لكل طالب في الجلسة، وأي فشل صامت: التسجيل
+  // ما يعطّلش عرض الصفحة أبدًا. القواعد بتسمح بزيادة العدّاد بواحد بس ولطالب موجود.
+  async function logVisit(docId) {
+    try {
+      const key = 'visit_' + slug + '_' + docId;
+      if (sessionStorage.getItem(key)) return;
+      if (!auth.currentUser) await signInAnonymously(auth);
+      const ref = doc(db, 'parent_portal', slug, 'visits', docId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const d = snap.data();
+        await updateDoc(ref, { count: (d.count || 0) + 1, firstAt: d.firstAt, lastAt: serverTimestamp() });
+      } else {
+        await setDoc(ref, { count: 1, firstAt: serverTimestamp(), lastAt: serverTimestamp() });
+      }
+      sessionStorage.setItem(key, '1');
+    } catch (e) { /* تجاهل */ }
+  }
 
   const boardInner = document.getElementById('boardInner');
   const main = document.getElementById('main');
@@ -368,13 +392,14 @@
 
     main.innerHTML = '<div class="panel"><div class="spinner" role="status" aria-label="جاري التحميل"></div></div>';
     try {
-      const docId = codeOnly ? code : `${code}_${phone}`;
+      const docId = codeOnly ? safeId(code) : `${safeId(code)}_${phone}`;
       const data = await fetchDoc('parent_portal', slug, 'students', docId);
       if (!data) {
         renderForm(codeOnly ? 'الكود غير صحيح — تأكد من كود الطالب' : 'البيانات غير صحيحة — تأكد من الكود ورقم التليفون');
         return;
       }
       renderStudent(data);
+      logVisit(docId); // بدون await: ما يأخّرش العرض
     } catch (e) {
       renderForm('حصل خطأ — حاول تاني');
     }

@@ -2,7 +2,10 @@
 //
 // طلاب بوابة أولياء الأمور: مين ظاهر لولي أمره ومين لأ (وليه)، وإرسال الرابط
 // والكود لولي الأمر بواتساب — لطالب واحد أو لمجموعة محدّدة.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:active_class/services/parent_portal_service.dart';
 import 'package:get/get.dart';
 
 import 'package:active_class/config/theme.dart';
@@ -19,7 +22,7 @@ import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
 
-enum _Filter { all, ready, hidden }
+enum _Filter { all, ready, hidden, notVisited }
 
 class ParentPortalStudentsPage extends StatefulWidget {
   const ParentPortalStudentsPage({super.key});
@@ -45,6 +48,12 @@ class _ParentPortalStudentsPageState extends State<ParentPortalStudentsPage> {
   _Filter _filter = _Filter.all;
   String _query = '';
   final Set<int> _selected = {};
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_portal.loadVisits()); // آخر زيارة لكل ولي أمر
+  }
 
   @override
   void dispose() {
@@ -138,6 +147,13 @@ class _ParentPortalStudentsPageState extends State<ParentPortalStudentsPage> {
       appBar: buildBoardAppBar(context, title: 'طلاب البوابة'),
       body: Obx(() {
         final codeOnly = settings.portalCodeOnly.value;
+        final visits = _portal.visits; // قراءة داخل Obx: الشاشة تتحدّث مع التحميل
+        final visitsLoaded = _portal.visitsLoaded.value;
+        final svc = ParentPortalService();
+        PortalVisit? visitOf(Student s) {
+          final id = svc.portalDocIdFor(s);
+          return id == null ? null : visits[id];
+        }
         final all = _students.students.toList()
           ..sort((a, b) => a.name.compareTo(b.name));
         final counts = portalCounts(all, codeOnly: codeOnly);
@@ -152,6 +168,10 @@ class _ParentPortalStudentsPageState extends State<ParentPortalStudentsPage> {
         final shown = all.where((s) {
           if (_filter == _Filter.ready && !isReady(s)) return false;
           if (_filter == _Filter.hidden && isReady(s)) return false;
+          if (_filter == _Filter.notVisited &&
+              (!isReady(s) || visitOf(s) != null)) {
+            return false;
+          }
           if (q.isNotEmpty &&
               !s.name.toLowerCase().contains(q) &&
               !s.code.toLowerCase().contains(q)) {
@@ -233,6 +253,16 @@ class _ParentPortalStudentsPageState extends State<ParentPortalStudentsPage> {
                           _filter = _Filter.ready;
                           _selected.clear();
                         })),
+                if (visitsLoaded)
+                  AppFilterChip(
+                      label:
+                          'ما فتحوش (${all.where((s) => isReady(s) && visitOf(s) == null).length})',
+                      selected: _filter == _Filter.notVisited,
+                      color: t.danger,
+                      onTap: () => setState(() {
+                            _filter = _Filter.notVisited;
+                            _selected.clear();
+                          })),
                 AppFilterChip(
                     label: 'مش ظاهر (${counts.hidden})',
                     selected: _filter == _Filter.hidden,
@@ -314,6 +344,8 @@ class _ParentPortalStudentsPageState extends State<ParentPortalStudentsPage> {
                     student: s,
                     groupName: groupById[s.groupId],
                     state: portalStudentState(s, codeOnly: codeOnly),
+                    visit: visitOf(s),
+                    visitsLoaded: visitsLoaded,
                     selectable: isReady(s) && portalHasContact(s),
                     selected: _selected.contains(s.id),
                     onSelect: (v) => setState(() {
@@ -339,6 +371,8 @@ class _StudentRow extends StatelessWidget {
   final Student student;
   final String? groupName;
   final PortalStudentState state;
+  final PortalVisit? visit;
+  final bool visitsLoaded;
   final bool selectable;
   final bool selected;
   final ValueChanged<bool?> onSelect;
@@ -349,6 +383,8 @@ class _StudentRow extends StatelessWidget {
     required this.student,
     required this.groupName,
     required this.state,
+    required this.visit,
+    required this.visitsLoaded,
     required this.selectable,
     required this.selected,
     required this.onSelect,
@@ -423,6 +459,26 @@ class _StudentRow extends StatelessWidget {
                   ),
                 ],
               ),
+              if (ready && visitsLoaded)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(
+                        visit == null
+                            ? Icons.visibility_off_rounded
+                            : Icons.visibility_rounded,
+                        size: 14,
+                        color: visit == null ? t.danger : t.positive),
+                    const SizedBox(width: 4),
+                    Text(
+                        visit == null || visit!.lastAt == null
+                            ? 'لسه ما فتحش الرابط'
+                            : 'آخر زيارة ${visitAgoLabel(visit!.lastAt!, DateTime.now())}'
+                                ' • ${visit!.count} مرة',
+                        style: AppType.caption.copyWith(
+                            color: visit == null ? t.danger : t.inkSoft)),
+                  ]),
+                ),
             ],
           ),
         ),

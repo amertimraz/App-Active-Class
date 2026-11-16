@@ -2016,7 +2016,7 @@ class SyncEngine with WidgetsBindingObserver {
           COL_ATTENDANCE_STATUS: remote['status'],
           COL_ATTENDANCE_NOTES: remote['notes'],
           COL_ATTENDANCE_INTERACTION: remote['interaction'],
-          COL_ATTENDANCE_RECITATION: normalizeRecitation(
+          COL_ATTENDANCE_RECITATION: normalizeRecitationStored(
               remote['recitation'] as int?,
               max: (remote['recitation_max'] as int?) ?? kRecitationDefaultMax),
           COL_ATTENDANCE_RECITATION_MAX: remote['recitation_max'],
