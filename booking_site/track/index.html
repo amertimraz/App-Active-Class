@@ -196,7 +196,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
   const firebaseConfig = {
@@ -223,11 +223,12 @@
       if (sessionStorage.getItem(key)) return;
       if (!auth.currentUser) await signInAnonymously(auth);
       const ref = doc(db, 'parent_portal', slug, 'visits', docId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const d = snap.data();
-        await updateDoc(ref, { count: (d.count || 0) + 1, firstAt: d.firstAt, lastAt: serverTimestamp() });
-      } else {
+      // ولي الأمر مالوش صلاحية قراءة visits (القراءة لصاحب الرابط بس)، فمنقدرش نعمل
+      // get قبل الكتابة. نزوّد العدّاد بـ increment (القاعدة بتتحقق إنه +1 بالظبط)،
+      // ولو المستند لسه مش موجود الـupdate بيترفض فنعمل create (count=1).
+      try {
+        await updateDoc(ref, { count: increment(1), lastAt: serverTimestamp() });
+      } catch (e) {
         await setDoc(ref, { count: 1, firstAt: serverTimestamp(), lastAt: serverTimestamp() });
       }
       sessionStorage.setItem(key, '1');
