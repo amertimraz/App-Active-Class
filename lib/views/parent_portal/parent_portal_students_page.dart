@@ -22,7 +22,7 @@ import 'package:active_class/widgets/app_panel.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/edit_student_sheet.dart';
 
-enum _Filter { all, ready, hidden, notVisited }
+enum _Filter { all, ready, hidden, notVisited, visited }
 
 class ParentPortalStudentsPage extends StatefulWidget {
   const ParentPortalStudentsPage({super.key});
@@ -172,6 +172,10 @@ class _ParentPortalStudentsPageState extends State<ParentPortalStudentsPage> {
               (!isReady(s) || visitOf(s) != null)) {
             return false;
           }
+          if (_filter == _Filter.visited &&
+              (!isReady(s) || visitOf(s) == null)) {
+            return false;
+          }
           if (q.isNotEmpty &&
               !s.name.toLowerCase().contains(q) &&
               !s.code.toLowerCase().contains(q)) {
@@ -253,6 +257,16 @@ class _ParentPortalStudentsPageState extends State<ParentPortalStudentsPage> {
                           _filter = _Filter.ready;
                           _selected.clear();
                         })),
+                if (visitsLoaded)
+                  AppFilterChip(
+                      label:
+                          'فتحوا (${all.where((s) => isReady(s) && visitOf(s) != null).length})',
+                      selected: _filter == _Filter.visited,
+                      color: t.positive,
+                      onTap: () => setState(() {
+                            _filter = _Filter.visited;
+                            _selected.clear();
+                          })),
                 if (visitsLoaded)
                   AppFilterChip(
                       label:
