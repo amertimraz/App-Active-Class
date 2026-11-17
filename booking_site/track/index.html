@@ -161,6 +161,12 @@
     border-top:1px solid var(--line);font-size:15px;
   }
   .row:first-child{border-top:none;}
+  /* قوائم طويلة: أول 7 صفوف + «عرض الكل» (الباقي مخفي لحد ما يتضغط) */
+  .list:not(.open) .row.extra{display:none;}
+  .more-btn{
+    margin-top:6px;padding:11px;border:1px dashed var(--line);border-radius:12px;background:transparent;
+    color:var(--info);font:inherit;font-weight:800;font-size:14px;cursor:pointer;min-height:44px;
+  }
   .row .d{font-weight:700;}
   .row .sub{font-size:13px;color:var(--muted);}
   .badge{
@@ -461,8 +467,12 @@
     const rate = total ? Math.round(present / total * 100) : 0;
 
     // الحضور
+    // أول 7 صفوف ظاهرة والباقي بعد زر «عرض الكل (N)».
+    const LIMIT = 7;
+    const capRows = (rows) => rows.map((r, i) => i < LIMIT ? r : r.replace('class="row"', 'class="row extra"')).join('')
+      + (rows.length > LIMIT ? `<button class="more-btn" type="button">عرض الكل (${rows.length})</button>` : '');
     const attRows = attendanceHistory.length
-      ? attendanceHistory.map(a => `<div class="row"><div><div class="d">${fmtDate(a.date)}</div>${a.guest ? '<div class="sub">حصة تعويضية</div>' : ''}</div>${attBadge(a)}</div>`).join('')
+      ? capRows(attendanceHistory.map(a => `<div class="row"><div><div class="d">${fmtDate(a.date)}</div>${a.guest ? '<div class="sub">حصة تعويضية</div>' : ''}</div>${attBadge(a)}</div>`))
       : `<div class="empty">لا توجد سجلات حضور بعد</div>`;
     const attendanceTab = `
       <div class="panel">
@@ -478,11 +488,11 @@
 
     // المدفوعات
     const payRows = paymentHistory.length
-      ? paymentHistory.map(p => `
+      ? capRows(paymentHistory.map(p => `
           <div class="row">
             <div><div class="d">${fmtDate(p.date)}</div>${payNoteLabel(p.note) ? `<div class="sub">${escapeHtml(payNoteLabel(p.note))}</div>` : ''}</div>
             <span class="amount">${fmtMoney(p.amount)} جنيه</span>
-          </div>`).join('')
+          </div>`))
       : `<div class="empty">لا توجد مدفوعات بعد</div>`;
     const showRemaining = effectivePrice > 0;
     // المذكرات: بطاقة جوّه تاب المدفوعات (مش تاب جديد — التابات الكتير بتتوّه
@@ -527,13 +537,13 @@
     // الواجب
     const hasHomework = (d.homeworkDone ?? 0) > 0 || (d.homeworkPartial ?? 0) > 0 || (d.homeworkNotDone ?? 0) > 0 || homeworkHistory.length > 0;
     const hwRows = homeworkHistory.length
-      ? homeworkHistory.map(h => `<div class="row"><span class="d">${fmtDate(h.date)}</span>${hwBadge(h)}</div>`).join('')
+      ? capRows(homeworkHistory.map(h => `<div class="row"><span class="d">${fmtDate(h.date)}</span>${hwBadge(h)}</div>`))
       : `<div class="empty">لا توجد سجلات واجب بعد</div>`;
     const hasRecitation = recitationHistory.length > 0;
     const hasRecAvg = typeof d.recitationAverage === 'number';
-    const recRows = recitationHistory.map(r => `
+    const recRows = capRows(recitationHistory.map(r => `
         <div class="row"><span class="d">${fmtDate(r.date)}</span>
-        ${r.skipped ? badge('warn','mic','حضر وما سمّعش') : `<span class="grade">${fmtNum(r.grade)}<small> / ${fmtNum(Number(r.max) || 10)}</small></span>`}</div>`).join('');
+        ${r.skipped ? badge('warn','mic','حضر وما سمّعش') : `<span class="grade">${fmtNum(r.grade)}<small> / ${fmtNum(Number(r.max) || 10)}</small></span>`}</div>`));
     const homeworkTab = `
       ${hasHomework ? `<div class="panel"><div class="trays">
         ${tray(fmtMoney(d.homeworkDone ?? 0), 'تم الحل', 'ok')}
@@ -549,11 +559,11 @@
 
     // الامتحانات
     const hasExams = examHistory.length > 0;
-    const examRows = examHistory.map(e => `
+    const examRows = capRows(examHistory.map(e => `
         <div class="row">
           <div><div class="d">${escapeHtml(e.name || 'امتحان')}</div><div class="sub">${fmtDate(e.date)}</div></div>
           ${e.absent ? badge('bad','x','غائب') : `<span class="grade">${fmtNum(e.grade)}<small> / ${fmtNum(e.maxGrade)}</small></span>`}
-        </div>`).join('');
+        </div>`));
     const examsTab = `
       ${hasExams ? `<div class="panel"><p class="h">${icon('file','s')}الامتحانات</p><div class="list">${examRows}</div></div>` : ''}`;
 
@@ -593,6 +603,10 @@
         ${tabs.map((t, i) => `<section class="tab-panel" role="tabpanel" id="pn-${t.id}" aria-labelledby="tab-${t.id}" ${i === 0 ? '' : 'hidden'}>${t.html}</section>`).join('')}
         <p class="foot">البيانات من آخر تحديث أرسله المدرّس.</p>
       </div>`;
+
+    main.querySelectorAll('.more-btn').forEach(m => {
+      m.onclick = () => { m.parentElement.classList.add('open'); m.remove(); };
+    });
 
     const btns = [...main.querySelectorAll('.tab')];
     const select = (btn, focus) => {
