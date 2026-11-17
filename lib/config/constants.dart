@@ -39,7 +39,7 @@ const double BORDER_RADIUS_LARGE = 16.0;
 
 // Database
 const String DATABASE_NAME = 'active_class.db';
-const int DATABASE_VERSION = 44;
+const int DATABASE_VERSION = 45;
 
 // Table Names
 const String TABLE_GROUPS = 'groups';
@@ -188,7 +188,7 @@ const String COL_ATTENDANCE_NOTES = 'notes';
 const String COL_ATTENDANCE_CREATED_AT = 'created_at';
 // spec 040 — تفاعل الطالب (إيموجي بسيط) على نفس سجل الحضور.
 const String COL_ATTENDANCE_INTERACTION = 'interaction';
-const String COL_ATTENDANCE_RECITATION   = 'recitation';   // spec 048 — 1..max أو NULL
+const String COL_ATTENDANCE_RECITATION   = 'recitation';   // spec 048 — 0..max أو NULL، و-1 = حضر وما سمّعش
 const String COL_ATTENDANCE_RECITATION_MAX = 'recitation_max'; // الدرجة العظمى وقت التسجيل (NULL = 10)
 const String STUDENT_INTERACTION_ACTIVE = 'نشيط';
 const String STUDENT_INTERACTION_NEUTRAL = 'عادي';

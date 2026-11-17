@@ -953,6 +953,15 @@ class DatabaseService {
       } catch (_) {}
     }
 
+    if (oldVersion < 45) {
+      // «حضر وما سمّعش» كان 0؛ بقى -1 عشان الصفر يبقى درجة حقيقية. أي 0 محلي
+      // قبل الإصدار ده كان ترميز «ما سمّعش» (الصفر الحقيقي ماكانش مسموح).
+      try {
+        await db.execute('UPDATE $TABLE_ATTENDANCE SET $COL_ATTENDANCE_RECITATION = -1 '
+            'WHERE $COL_ATTENDANCE_RECITATION = 0');
+      } catch (_) {}
+    }
+
     if (oldVersion < 44) {
       // السنتر: اسم نصّي اختياري على المجموعة (تنظيم وفلترة، من غير أي عزل).
       try {
@@ -1124,6 +1133,27 @@ class DatabaseService {
       COL_OUTBOX_CREATED_AT: DateTime.now().toIso8601String(),
       COL_OUTBOX_SYNCED: 0,
     });
+  }
+
+  /// تنضيف طابور الرفع: لكل صف (جدول + row_id) نسيب أحدث عملية غير حذف بس.
+  /// الـpayload لقطة كاملة للصف، فأحدث عملية بتغطي القديمة. حادثة فعلية: طابور
+  /// فيه 90,900 عملية لكن 11,807 صف مختلف بس (إعادة رفع متكررة)، والرفع كان
+  /// بينفّذ كل التكرار. عمليات الحذف وعمليات بلا payload ما بنلمسهاش.
+  /// بيرجّع عدد العمليات المحذوفة من الطابور.
+  Future<int> dedupeOutbox() async {
+    final db = await database;
+    return db.rawDelete('''
+      DELETE FROM $TABLE_SYNC_OUTBOX
+       WHERE $COL_OUTBOX_SYNCED = 0
+         AND $COL_OUTBOX_OP != 'delete'
+         AND $COL_OUTBOX_PAYLOAD IS NOT NULL
+         AND $COL_OUTBOX_ID NOT IN (
+           SELECT MAX($COL_OUTBOX_ID) FROM $TABLE_SYNC_OUTBOX
+            WHERE $COL_OUTBOX_SYNCED = 0
+              AND $COL_OUTBOX_OP != 'delete'
+              AND $COL_OUTBOX_PAYLOAD IS NOT NULL
+            GROUP BY $COL_OUTBOX_TABLE, $COL_OUTBOX_ROW_ID)
+    ''');
   }
 
   /// نفس _queueSync بس مخصّصة للحذف — بتحفظ remote_id (لو الصف كان

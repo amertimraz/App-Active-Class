@@ -25,6 +25,23 @@ class ReleaseNote {
 
 /// الأحدث أولًا.
 const List<ReleaseNote> kReleaseNotes = [
+  ReleaseNote('1.2.90', [
+    ReleaseItem(
+      'درجة صفر حقيقية',
+      'تقدر تسجّل صفر لطالب سمّع غلط، وبيتحسب في المتوسط والتقارير.',
+      icon: 'star',
+    ),
+    ReleaseItem(
+      'التسميع في بوابة الأهل',
+      'يوم «حضر وما سمّعش» أو الدرجة بيظهر لولي الأمر بتاريخه.',
+      icon: 'reports',
+    ),
+    ReleaseItem(
+      'إخفاء الأرقام بيفضل',
+      'لو قفلت أرقام الرئيسية، ترجع مقفولة بعد ما تخرج من التطبيق.',
+      icon: 'settings',
+    ),
+  ]),
   ReleaseNote('1.2.89', [
     ReleaseItem(
       'التسميع أدق',

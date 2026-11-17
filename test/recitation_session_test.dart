@@ -25,7 +25,7 @@ void main() {
     });
     test('بدون درجة أو خارج النطاق → none', () {
       expect(recitationLevelOf(null, 10), RecitationLevel.none);
-      expect(recitationLevelOf(0, 10), RecitationLevel.none);
+      expect(recitationLevelOf(-1, 10), RecitationLevel.none);
       expect(recitationLevelOf(11, 10), RecitationLevel.none);
     });
   });
@@ -50,7 +50,7 @@ void main() {
     });
     test('خارج النطاق → null', () {
       expect(parseRecitationInput('11', 10), isNull);
-      expect(parseRecitationInput('0', 10), isNull);
+      expect(parseRecitationInput('0', 10), 0);
     });
   });
 

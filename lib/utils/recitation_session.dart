@@ -17,7 +17,7 @@ enum RecitationLevel { none, low, ok, star }
 
 /// تصنيف [grade] من [max]. null أو خارج النطاق → none.
 RecitationLevel recitationLevelOf(int? grade, int max) {
-  if (grade == null || max < kRecitationMin) return RecitationLevel.none;
+  if (grade == null || max < kRecitationMaxFloor) return RecitationLevel.none;
   if (grade < kRecitationMin || grade > max) return RecitationLevel.none;
   final f = grade / max;
   if (f < kRecitationLowFraction) return RecitationLevel.low;
@@ -42,12 +42,12 @@ int resolveGroupRecitationMax(
 /// الدرجة العظمى بعد ضغط +/-: بين 1 و [kRecitationMaxCap].
 int stepRecitationMax(int current, int delta) {
   final v = current + delta;
-  if (v < kRecitationMin) return kRecitationMin;
+  if (v < kRecitationMaxFloor) return kRecitationMaxFloor;
   if (v > kRecitationMaxCap) return kRecitationMaxCap;
   return v;
 }
 
-/// نص خانة الدرجة → رقم صالح (1..max) أو null (فاضي/غير صالح).
+/// نص خانة الدرجة → رقم صالح (0..max) أو null (فاضي/غير صالح).
 int? parseRecitationInput(String raw, int max) {
   final digits = raw
       .replaceAllMapped(RegExp(r'[٠-٩]'),

@@ -14,6 +14,7 @@ Student _s({String code = 'A1', String? phone, String? wa}) => Student(
     guardianWhatsapp: wa);
 
 void main() {
+  portalHashTests();
   group('portalUrl', () {
     test('بيركّب الرابط من الـslug', () {
       expect(portalUrl('abc123'), 'https://active-class.online/track/abc123');
@@ -179,6 +180,20 @@ void main() {
       expect(visitAgoLabel(DateTime(2026, 11, 1), now), 'من 2 أسابيع');
       expect(visitAgoLabel(DateTime(2026, 10, 1), now), 'من شهر');
       expect(visitAgoLabel(DateTime(2026, 8, 1), now), 'من 3 شهور');
+    });
+  });
+}
+
+void portalHashTests() {
+  group('portalDocHash', () {
+    test('نفس المحتوى = نفس البصمة، ويتجاهل updatedAt و_docId', () {
+      final a = {'name': 'منى', 'present': 3, 'updatedAt': 'x', '_docId': '1'};
+      final b = {'present': 3, 'name': 'منى', 'updatedAt': 'y', '_docId': '2'};
+      // ترتيب المفاتيح بيفرق في jsonEncode — الكود الحقيقي بيبني بنفس الترتيب
+      final c = {'name': 'منى', 'present': 3, 'updatedAt': 'z'};
+      expect(portalDocHash(a), portalDocHash(c));
+      expect(portalDocHash(a), isNot(portalDocHash({...a, 'present': 4})));
+      expect(portalDocHash(b).isNotEmpty, isTrue);
     });
   });
 }

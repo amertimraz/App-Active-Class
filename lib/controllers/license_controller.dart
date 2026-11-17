@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:active_class/utils/firestore_usage.dart';
 import 'package:active_class/models/free_month_promo.dart';
 import 'package:active_class/services/notification_service.dart';
 import 'package:active_class/services/promo_background.dart';
@@ -771,6 +772,20 @@ class LicenseController extends GetxController {
       // ما المستخدم يمسح التطبيق ويعيد تثبيته، القيمة المحفوظة على
       // Firestore (اللي المفروض تحمي من تصفير التجربة) تبقى "دلوقتي"
       // مش تاريخ أول تشغيل الحقيقي، فالتجربة كانت بترجع تتجدد فعليًا.
+      // توفير حصة Firestore (مشتركة بين كل المدرسين): لو نفس الجهاز/الترخيص/الحالة
+      // اتسجّلوا من أقل من 6 ساعات منتخطّى القراءة والكتابة (قبل كده: قراءة +
+      // كتابة مع كل فتح للتطبيق). lastSeenAt بيتجدّد كل 6 ساعات على الأكثر.
+      final sig =
+          '${deviceId.value}|${licenseCode.value ?? ''}|${state.value.name}';
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final at = prefs.getInt('device_reg_at') ?? 0;
+        if (prefs.getString('device_reg_sig') == sig &&
+            DateTime.now().millisecondsSinceEpoch - at <
+                const Duration(hours: 6).inMilliseconds) {
+          return;
+        }
+      } catch (_) {}
       final docRef = _db.collection('devices').doc(deviceId.value);
       final existing = await docRef.get();
       final hasFirstLaunch =
@@ -795,6 +810,13 @@ class LicenseController extends GetxController {
       }
 
       await docRef.set(payload, SetOptions(merge: true));
+      FirestoreUsage.write('device');
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('device_reg_sig', sig);
+        await prefs.setInt(
+            'device_reg_at', DateTime.now().millisecondsSinceEpoch);
+      } catch (_) {}
     } catch (_) {}
   }
 

@@ -62,13 +62,32 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final AtRiskController _atRiskController = Get.put(AtRiskController());
   // تاب كارت الفلوس: الدفعات (مستحق) / الدخل (كاش فعلي)
   final Rx<MoneyTab> _moneyTab = MoneyTab.payments.obs;
-  bool _statsVisible = true;
+  // إخفاء الأرقام بيتحفظ محليًا: لو المدرس قفلها وخرج من التطبيق ترجع مقفولة.
+  // بنبدأ مخفية لحد ما نقرا الإعداد (أجزاء من الثانية) عشان الأرقام ماتلمعش لحظة.
+  static const _kStatsHiddenKey = 'home_stats_hidden';
+  bool _statsVisible = false;
+
+  Future<void> _loadStatsVisible() async {
+    var hidden = false;
+    try {
+      hidden = (await DatabaseService().getSetting(_kStatsHiddenKey)) == '1';
+    } catch (_) {}
+    if (mounted) setState(() => _statsVisible = !hidden);
+  }
+
+  void _toggleStatsVisible() {
+    setState(() => _statsVisible = !_statsVisible);
+    DatabaseService()
+        .setSetting(_kStatsHiddenKey, _statsVisible ? '0' : '1')
+        .catchError((_) {});
+  }
   Timer? _clockTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadStatsVisible();
     // كارت «الحصة الجاية» يتجدّد بالوقت كل نص دقيقة (من غير قراءة القاعدة).
     _clockTimer = Timer.periodic(const Duration(seconds: 30),
         (_) => _dashboardController.refreshNextSessionClock());
@@ -566,7 +585,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               )),
         IconButton(
           tooltip: _statsVisible ? 'إخفاء الأرقام' : 'إظهار الأرقام',
-          onPressed: () => setState(() => _statsVisible = !_statsVisible),
+          onPressed: _toggleStatsVisible,
           icon: AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
             child: Icon(

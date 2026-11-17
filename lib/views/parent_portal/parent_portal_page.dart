@@ -41,9 +41,21 @@ class _ParentPortalPageState extends State<ParentPortalPage> {
       ? Get.find<StudentController>()
       : Get.put(StudentController());
 
+  @override
+  void initState() {
+    super.initState();
+    _ctrl.screensOpen++;
+  }
+
+  @override
+  void dispose() {
+    _ctrl.screensOpen--;
+    super.dispose();
+  }
+
   Future<void> _publish() async {
     try {
-      final n = await _ctrl.publishAll();
+      final n = await _ctrl.publishAll(force: true);
       if (!mounted) return;
       final failed = ParentPortalService.lastPublishFailed;
       if (failed.isEmpty) {
@@ -589,6 +601,9 @@ class _ActiveBody extends StatelessWidget {
           child: Obx(() {
             final publishing = ctrl.publishing.value;
             final at = ctrl.lastPublishedAt.value;
+            final done = ctrl.justPublished.value && !publishing;
+            final total = ctrl.publishTotal.value;
+            final progress = total > 0 ? ' ${ctrl.publishDone.value}/$total' : '';
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -603,15 +618,23 @@ class _ActiveBody extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: publishing ? null : onPublish,
                   style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48)),
+                      minimumSize: const Size.fromHeight(48),
+                      backgroundColor: done ? t.positive : null),
                   icon: publishing
                       ? const SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.sync_rounded),
-                  label: Text(publishing ? 'جاري النشر...' : 'انشر الآن',
+                      : Icon(done
+                          ? Icons.check_circle_rounded
+                          : Icons.sync_rounded),
+                  label: Text(
+                      publishing
+                          ? 'جاري النشر$progress'
+                          : done
+                              ? 'تم النشر'
+                              : 'انشر الآن',
                       style: AppType.label.copyWith(color: Colors.white)),
                 ),
                 const SizedBox(height: AppSpace.sm),

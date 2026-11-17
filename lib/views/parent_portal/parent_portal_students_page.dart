@@ -52,11 +52,13 @@ class _ParentPortalStudentsPageState extends State<ParentPortalStudentsPage> {
   @override
   void initState() {
     super.initState();
+    _portal.screensOpen++;
     unawaited(_portal.loadVisits()); // آخر زيارة لكل ولي أمر
   }
 
   @override
   void dispose() {
+    _portal.screensOpen--;
     _search.dispose();
     super.dispose();
   }

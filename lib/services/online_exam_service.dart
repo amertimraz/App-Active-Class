@@ -23,6 +23,7 @@ import 'package:active_class/models/exam_model.dart';
 import 'package:active_class/models/exam_question_model.dart';
 import 'package:active_class/models/exam_submission_model.dart';
 import 'package:active_class/services/parent_portal_service.dart';
+import 'package:active_class/utils/firestore_usage.dart';
 import 'package:active_class/services/team_mode_service.dart';
 
 /// تسليم طالب كما يُقرأ من السحابة (قبل الربط بطالب محلي والتصحيح).
@@ -162,7 +163,7 @@ class OnlineExamService {
         final docId = '${portalSafeId(st.code)}_${st.last4}';
         final snap = await studentsCol.doc(docId).get();
         if (!snap.exists) {
-          await ParentPortalService().pushStudentSummary(st.id);
+          await ParentPortalService().pushStudentSummary(st.id, immediate: true);
         }
       }
     } on _SkipSummaries {
@@ -174,6 +175,7 @@ class OnlineExamService {
     final totalPoints = questions.fold<double>(0, (s, q) => s + q.points);
     final allowedCodes = {for (final st in students) st.code: true};
 
+    FirestoreUsage.write('exam');
     await _examDoc(slug, exam.id!).set({
       'title': exam.name,
       'questionCount': questions.length,

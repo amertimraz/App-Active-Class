@@ -271,6 +271,18 @@ class SyncEngine with WidgetsBindingObserver {
     _drainRound++;
     try {
       final db = await _dbService.database;
+      // أول جولة وكل 200 جولة: ننضّف تكرار الطابور (نفس الصف بعدة عمليات) —
+      // كان بيضاعف وقت الرفع أضعاف. جوه _draining فمفيش دفع متزامن.
+      if (_drainRound % 200 == 1) {
+        try {
+          final removed = await _dbService.dedupeOutbox();
+          if (removed > 0) {
+            debugPrint('SyncEngine: تنضيف الطابور — اتشال $removed عملية مكررة');
+          }
+        } catch (e) {
+          debugPrint('SyncEngine: تعذّر تنضيف الطابور — $e');
+        }
+      }
       // spec 030 — صفوف "مسمومة" (`_loggedPoison` = بلغت عتبة الفشل)
       // تُستبعَد من نافذة الـ50 عشان متحتكرهاش وتمنع الصفوف الأحدث توصل.
       // بنعيد المحاولة عليها كل kPoisonRetryEvery جولة بس.

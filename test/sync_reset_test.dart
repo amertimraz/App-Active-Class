@@ -63,4 +63,43 @@ void main() {
   test('جدول فاضي: countRowsWithRemoteId = 0', () async {
     expect(await db.countRowsWithRemoteId(TABLE_BOOKLETS), 0);
   });
+
+  test('dedupeOutbox: يسيب أحدث عملية لكل صف، ولا يلمس الحذف ولا بلا payload', () async {
+    final raw = await db.database;
+    await raw.delete(TABLE_SYNC_OUTBOX);
+    Future<void> add(String table, int row, String op, String? payload,
+            {int synced = 0}) =>
+        raw.insert(TABLE_SYNC_OUTBOX, {
+          COL_OUTBOX_TABLE: table,
+          COL_OUTBOX_ROW_ID: row,
+          COL_OUTBOX_OP: op,
+          COL_OUTBOX_PAYLOAD: payload,
+          COL_OUTBOX_CREATED_AT: DateTime.now().toIso8601String(),
+          COL_OUTBOX_SYNCED: synced,
+        });
+    // صف 1: ثلاث عمليات → تفضل الأخيرة بس.
+    await add(TABLE_ATTENDANCE, 1, 'insert', '{"v":1}');
+    await add(TABLE_ATTENDANCE, 1, 'update', '{"v":2}');
+    await add(TABLE_ATTENDANCE, 1, 'update', '{"v":3}');
+    // صف 2 في جدول تاني بنفس الرقم: مستقل.
+    await add(TABLE_PAYMENTS, 1, 'insert', '{"v":1}');
+    // حذف: ما بيتلمسش، وعملية بلا payload كمان.
+    await add(TABLE_ATTENDANCE, 2, 'update', '{"v":1}');
+    await add(TABLE_ATTENDANCE, 2, 'delete', null);
+    await add(TABLE_ATTENDANCE, 3, 'update', null);
+    await add(TABLE_ATTENDANCE, 3, 'update', null);
+    // متزامنة بالفعل: خارج النطاق.
+    await add(TABLE_ATTENDANCE, 4, 'update', '{"v":1}', synced: 1);
+
+    final removed = await db.dedupeOutbox();
+    expect(removed, 2);
+    final rows = await raw.query(TABLE_SYNC_OUTBOX,
+        where: '$COL_OUTBOX_TABLE = ? AND $COL_OUTBOX_ROW_ID = 1',
+        whereArgs: [TABLE_ATTENDANCE]);
+    expect(rows.length, 1);
+    expect(rows.first[COL_OUTBOX_PAYLOAD], '{"v":3}');
+    expect(
+        await count('SELECT COUNT(*) FROM $TABLE_SYNC_OUTBOX'), 7); // 9 - 2
+    expect(await db.dedupeOutbox(), 0); // مرة تانية: مفيش تكرار
+  });
 }

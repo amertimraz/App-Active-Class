@@ -2394,13 +2394,13 @@ Future<int?> _askGrade(BuildContext context, int max, int? current) {
           autofocus: true,
           keyboardType: TextInputType.number,
           decoration:
-              InputDecoration(hintText: 'من 1 إلى $max', errorText: err),
+              InputDecoration(hintText: 'من 0 إلى $max', errorText: err),
           onSubmitted: (_) {
             final v = int.tryParse(c.text.trim());
             if (v != null && v >= kRecitationMin && v <= max) {
               Navigator.pop(ctx, v);
             } else {
-              setSt(() => err = 'أدخل رقم من 1 إلى $max');
+              setSt(() => err = 'أدخل رقم من 0 إلى $max');
             }
           },
         ),
@@ -2417,7 +2417,7 @@ Future<int?> _askGrade(BuildContext context, int max, int? current) {
               if (v != null && v >= kRecitationMin && v <= max) {
                 Navigator.pop(ctx, v);
               } else {
-                setSt(() => err = 'أدخل رقم من 1 إلى $max');
+                setSt(() => err = 'أدخل رقم من 0 إلى $max');
               }
             },
             child: const Text('حفظ'),

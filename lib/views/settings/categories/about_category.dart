@@ -28,6 +28,45 @@ Future<void> _openPrivacyPolicy() async {
 
 Future<void> _openSupportWhatsApp() => openSupportWhatsApp();
 
+const _kUsageLabels = {
+  'portal.student': 'ملخصات طلاب البوابة',
+  'portal.profile': 'بروفايل البوابة',
+  'device': 'تسجيل الجهاز',
+  'exam': 'الامتحانات الإلكترونية',
+  'game': 'الألعاب',
+  'booking': 'الحجز',
+};
+
+Future<void> _showFirestoreUsage(BuildContext context) async {
+  final days = await FirestoreUsage.recent();
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('كتابات Firestore (على الجهاز ده)'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: days.isEmpty
+            ? const Text('لسه مفيش كتابات متسجّلة.')
+            : ListView(shrinkWrap: true, children: [
+                for (final d in days) ...[
+                  Text('${d.$1} — الإجمالي ${d.$2.values.fold<int>(0, (a, b) => a + b)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  for (final e in (d.$2.entries.toList()
+                    ..sort((a, b) => b.value.compareTo(a.value))))
+                    Text('  ${_kUsageLabels[e.key] ?? e.key}: ${e.value}'),
+                  const SizedBox(height: 8),
+                ],
+              ]),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx), child: const Text('تمام')),
+      ],
+    ),
+  );
+}
+
 class _AboutCategoryPage extends StatelessWidget {
   const _AboutCategoryPage({this.highlightId});
 
@@ -79,9 +118,13 @@ class _AboutCategoryPage extends StatelessWidget {
                             Text('Active Class',
                                 style:
                                     AppType.title.copyWith(color: t.boardInk)),
-                            Text('الإصدار $version',
-                                style: AppType.caption
-                                    .copyWith(color: t.boardInkSoft)),
+                            // ضغطة مطوّلة = عدّاد كتابات Firestore المحلي (تشخيص).
+                            GestureDetector(
+                              onLongPress: () => _showFirestoreUsage(context),
+                              child: Text('الإصدار $version',
+                                  style: AppType.caption
+                                      .copyWith(color: t.boardInkSoft)),
+                            ),
                           ],
                         );
                       },

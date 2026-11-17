@@ -5,6 +5,8 @@
 // والكود لولي الأمر. القواعد هنا نفس اللي في ParentPortalService بالظبط
 // (آخر 4 أرقام، والكود المطلوب) عشان اللي المدرس بيشوفه في القسم هو اللي
 // بيتنشر فعلًا.
+import 'dart:convert';
+
 import 'package:active_class/models/payment_model.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/utils/phone_helper.dart';
@@ -21,6 +23,21 @@ String portalUrl(String slug) => '$kPortalBaseUrl/$slug';
 /// كمسار فرعي وبتكسر النشر كله)، فبنرمّزها `%2F`. **نفس الدالة بالظبط** في صفحات
 /// الويب (track / game / exam)، وأي كود من غير «/» بيفضل زي ما هو.
 String portalSafeId(String code) => code.replaceAll('/', '%2F');
+
+/// بصمة محتوى مستند الطالب (من غير updatedAt و_docId) — لو متطابقة مع آخر نسخة
+/// اتنشرت بنجاح بنتخطّى الكتابة على Firestore (توفير حصة الكتابة اليومية).
+String portalDocHash(Map<String, dynamic> data) {
+  final m = Map<String, dynamic>.from(data)
+    ..remove('updatedAt')
+    ..remove('_docId');
+  final bytes = utf8.encode(jsonEncode(m, toEncodable: (o) => o.toString()));
+  var h = 0xcbf29ce484222325; // FNV-1a 64
+  for (final x in bytes) {
+    h ^= x;
+    h = (h * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF;
+  }
+  return '${bytes.length}:${h.toRadixString(16)}';
+}
 
 /// زيارة ولي أمر لصفحة المتابعة (من parent_portal/{slug}/visits/{docId}).
 class PortalVisit {

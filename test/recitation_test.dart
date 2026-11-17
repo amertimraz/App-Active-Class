@@ -11,7 +11,7 @@ void main() {
   test('normalizeRecitation', () {
     expect(normalizeRecitation(1), 1);
     expect(normalizeRecitation(10), 10);
-    expect(normalizeRecitation(0), isNull);
+    expect(normalizeRecitation(0), 0); // الصفر درجة حقيقية
     expect(normalizeRecitation(11), isNull);
     expect(normalizeRecitation(-3), isNull);
     expect(normalizeRecitation(null), isNull);
@@ -34,7 +34,7 @@ void main() {
       expect(recitationAverage(recs, month: DateTime(2026, 9, 1)), 10.0);
     });
     test('يتجاهل الفارغ والخارج النطاق', () {
-      final recs = [att(oct, null), att(oct, 0), att(oct, 11), att(oct, 9)];
+      final recs = [att(oct, null), att(oct, -1), att(oct, 11), att(oct, 9)];
       expect(recitationAverage(recs), 9.0);
       expect(recitationCount(recs), 1);
     });
@@ -131,7 +131,7 @@ void main() {
       expect(normalizeRecitation(17, max: 20), 17);
       expect(normalizeRecitation(21, max: 20), isNull);
       expect(normalizeRecitation(11), isNull); // الافتراضي 10
-      expect(normalizeRecitation(0, max: 20), isNull);
+      expect(normalizeRecitation(-1, max: 20), isNull);
     });
     test('سجل قديم بلا max يتعامل كـ/10، والجديد بدرجته العظمى', () {
       expect(recitationMaxOf(a(1, 8)), 10);

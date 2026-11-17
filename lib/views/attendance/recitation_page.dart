@@ -59,6 +59,8 @@ class _RecitationPageState extends State<RecitationPage> {
   bool _showAll = false; // كل المجموعات بدل مجموعات اليوم بس
   int? _focusGroup; // فتحناها من حضور اليوم لمجموعة معيّنة
   bool _saving = false;
+  // اتحفظ بنجاح ومفيش تعديلات جديدة بعده → الزر بيبقى «تم الحفظ» لحد أول تعديل.
+  bool _justSaved = false;
 
   /// الدرجة العظمى لكل مجموعة (اللي المدرّس ظبطها في الجلسة دي).
   final Map<int, int> _maxByGroup = {};
@@ -184,7 +186,7 @@ class _RecitationPageState extends State<RecitationPage> {
     final d = _draft[g.id!];
     if (d != null && d.containsKey(s.id)) {
       final v = d[s.id];
-      return (v == null || v < kRecitationMin) ? null : v; // 0 = ما سمّعش
+      return (v == null || v < kRecitationMin) ? null : v; // -1 = ما سمّعش
     }
     final r = _recordOf(s.id!);
     if (r == null) return null;
@@ -247,6 +249,7 @@ class _RecitationPageState extends State<RecitationPage> {
     final old = _maxOf(g);
     if (value == old) return;
     setState(() {
+      _justSaved = false; // تغيير المقياس = تعديل غير محفوظ
       _maxByGroup[g.id!] = value;
       // درجات المسودة اللي بقت أكبر من المقياس الجديد تتعلّم غلط بدل ما تتمسح بصمت.
       for (final s in _studentsOf(g)) {
@@ -314,6 +317,7 @@ class _RecitationPageState extends State<RecitationPage> {
       _day = d;
       _ctrls.clear();
       _draft.clear();
+      _justSaved = false;
       _invalid.clear();
       _maxByGroup.clear();
     });
@@ -392,7 +396,10 @@ class _RecitationPageState extends State<RecitationPage> {
         _savedMaxByGroup[g.id!] = max;
       }
       if (!mounted) return;
-      setState(_draft.clear);
+      setState(() {
+        _draft.clear();
+        _justSaved = true;
+      });
       ToastHelper.success(saved == 0
           ? 'اتحدّثت الدرجات (من غير تغيير)'
           : 'اتحفظت درجات $saved طالب وبتتزامن تلقائيًا');
@@ -640,7 +647,10 @@ class _RecitationPageState extends State<RecitationPage> {
         ),
       );
 
-  Widget _bottomBar(AppTokens t) => Material(
+  Widget _bottomBar(AppTokens t) {
+    // «تم الحفظ» بس لو اتحفظ ومفيش تعديل جديد؛ أول تعديل بيرجّع «حفظ درجات التسميع».
+    final saved = _justSaved && !_hasDraft && !_saving;
+    return Material(
         color: t.surface,
         elevation: 8,
         child: SafeArea(
@@ -667,12 +677,15 @@ class _RecitationPageState extends State<RecitationPage> {
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.check_rounded),
-                  label: Text('حفظ درجات التسميع',
-                      style: AppType.label.copyWith(color: t.onChalk)),
+                      : Icon(saved
+                          ? Icons.check_circle_rounded
+                          : Icons.check_rounded),
+                  label: Text(saved ? 'تم الحفظ' : 'حفظ درجات التسميع',
+                      style: AppType.label.copyWith(
+                          color: saved ? Colors.white : t.onChalk)),
                   style: FilledButton.styleFrom(
-                      backgroundColor: t.chalk,
-                      foregroundColor: t.onChalk,
+                      backgroundColor: saved ? t.positive : t.chalk,
+                      foregroundColor: saved ? Colors.white : t.onChalk,
                       minimumSize: const Size(44, 48)),
                 ),
               ),
@@ -680,6 +693,7 @@ class _RecitationPageState extends State<RecitationPage> {
           ),
         ),
       );
+  }
 
   Widget _groupCard(AppTokens t, Group g) {
     final max = _maxOf(g);

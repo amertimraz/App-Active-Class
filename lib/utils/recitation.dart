@@ -1,16 +1,21 @@
 // lib/utils/recitation.dart
 //
 // spec 048 — درجة التسميع (1..10) على سجل الحضور: تحقق، أهلية، ومتوسط.
-// الدرجة اختيارية؛ الفراغ = لم يُسمَّع (مش صفر).
+// الدرجة اختيارية؛ الفراغ = لم يُسمَّع. الصفر درجة حقيقية (0..max).
+// «حضر وما سمّعش» ترميز مستقل (-1) عشان ما يتلخبطش مع الصفر الحقيقي.
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/models/attendance_model.dart';
 
-const int kRecitationMin = 1;
+/// أقل درجة طالب ممكن تتسجّل (الصفر درجة حقيقية).
+const int kRecitationMin = 0;
 
-/// «حضر وما سمّعش»: بتتخزّن 0 على attendance.recitation. recitationGradeOf
-/// بترجّع null لأي قيمة < 1، فالقيمة دي مش بتتحسب صفر في المتوسطات والتقارير
-/// والشهادات، والنسخ القديمة بتعتبرها «مفيش درجة» من نفسها.
-const int kRecitationSkipped = 0;
+/// أقل «درجة عظمى» ممكنة للمجموعة/الإعداد.
+const int kRecitationMaxFloor = 1;
+
+/// «حضر وما سمّعش»: بتتخزّن -1 على attendance.recitation (مش 0، لأن الصفر درجة
+/// حقيقية). recitationGradeOf بترجّع null للقيمة دي، فمش بتتحسب في المتوسطات
+/// والتقارير والشهادات، والنسخ القديمة بتعتبرها «مفيش درجة» من نفسها.
+const int kRecitationSkipped = -1;
 const String kRecitationSkippedLabel = 'حضر وما سمّعش';
 
 /// الدرجة العظمى للسجلات القديمة (قبل ما تتحدد من الإعدادات) والافتراضي.
@@ -19,21 +24,21 @@ const int kRecitationDefaultMax = 10;
 /// أقصى درجة عظمى مسموحة في الإعدادات.
 const int kRecitationMaxCap = 100;
 
-/// 1..max → نفسها، غير كده/null → null.
+/// 0..max → نفسها، غير كده/null → null.
 int? normalizeRecitation(int? raw, {int max = kRecitationDefaultMax}) {
   if (raw == null) return null;
   if (raw < kRecitationMin || raw > max) return null;
   return raw;
 }
 
-/// القيمة المخزّنة بعد التحقق: 1..max، أو 0 (حضر وما سمّعش)، أو null.
+/// القيمة المخزّنة بعد التحقق: 0..max، أو -1 (حضر وما سمّعش)، أو null.
 int? normalizeRecitationStored(int? raw, {int max = kRecitationDefaultMax}) =>
     raw == kRecitationSkipped ? kRecitationSkipped : normalizeRecitation(raw, max: max);
 
 /// الدرجة العظمى المحفوظة مع السجل (القديم = 10).
 int recitationMaxOf(Attendance a) {
   final m = a.recitationMax;
-  if (m == null || m < kRecitationMin || m > kRecitationMaxCap) {
+  if (m == null || m < kRecitationMaxFloor || m > kRecitationMaxCap) {
     return kRecitationDefaultMax;
   }
   return m;
@@ -53,7 +58,7 @@ double? recitationFractionOf(Attendance a) {
 /// الدرجة العظمى الحالية من الإعدادات (10 لو الإعدادات مش جاهزة).
 int currentRecitationMax(int? configured) {
   final m = configured ?? kRecitationDefaultMax;
-  if (m < kRecitationMin) return kRecitationDefaultMax;
+  if (m < kRecitationMaxFloor) return kRecitationDefaultMax;
   return m > kRecitationMaxCap ? kRecitationMaxCap : m;
 }
 
@@ -63,7 +68,7 @@ bool canRecordRecitation(String? attendanceStatus) {
   return s == ATTENDANCE_PRESENT || s == ATTENDANCE_LATE;
 }
 
-/// السجل ده «حضر وما سمّعش»؟ (حاضر/متأخر وقيمة التسميع 0).
+/// السجل ده «حضر وما سمّعش»؟ (حاضر/متأخر وقيمة التسميع -1).
 bool isRecitationSkipped(Attendance a) =>
     a.recitation == kRecitationSkipped && canRecordRecitation(a.status);
 
@@ -138,20 +143,27 @@ Map<String, dynamic> recitationPortalFields(Iterable<Attendance> records,
     int historyLimit = 10,
     int scaleTo = kRecitationDefaultMax}) {
   if (!enabled) return const {};
-  final graded = records.where((a) => recitationGradeOf(a) != null).toList()
+  final graded = records.where((a) => recitationGradeOf(a) != null).toList();
+  // «حضر وما سمّعش» بيظهر في السجل بتاريخه (من غير درجة ولا تأثير على المتوسط).
+  final skipped = records.where(isRecitationSkipped).toList();
+  if (graded.isEmpty && skipped.isEmpty) return const {};
+  final shown = [...graded, ...skipped]
     ..sort((a, b) => b.date.compareTo(a.date));
-  if (graded.isEmpty) return const {};
   return {
-    'recitationAverage': recitationAverage(graded, scaleTo: scaleTo),
+    if (graded.isNotEmpty) ...{
+      'recitationAverage': recitationAverage(graded, scaleTo: scaleTo),
+      'recitationCount': graded.length,
+    },
     'recitationMax': scaleTo,
-    'recitationCount': graded.length,
-    'recitationHistory': graded
+    'recitationHistory': shown
         .take(historyLimit)
-        .map((a) => {
-              'date': a.date.toIso8601String(),
-              'grade': recitationGradeOf(a),
-              'max': recitationMaxOf(a),
-            })
+        .map((a) => isRecitationSkipped(a)
+            ? {'date': a.date.toIso8601String(), 'skipped': true}
+            : {
+                'date': a.date.toIso8601String(),
+                'grade': recitationGradeOf(a),
+                'max': recitationMaxOf(a),
+              })
         .toList(),
   };
 }

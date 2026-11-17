@@ -16,6 +16,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/widgets.dart' show WidgetsBinding, WidgetsBindingObserver, AppLifecycleState;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
@@ -24,6 +25,7 @@ import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/config/constants.dart';
 import 'package:active_class/utils/parent_portal_helper.dart';
+import 'package:active_class/utils/firestore_usage.dart';
 import 'package:active_class/models/student_model.dart';
 import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/models/exam_grade_model.dart';
@@ -414,7 +416,7 @@ class ParentPortalService {
     final expiresAt = LicenseController.to.parentPortalExpiresAt.value;
     final photoUrl =
         await _teacherPhotoUrl(slug, settings?.teacherAvatarPath.value ?? '');
-    await _db.collection('parent_portal').doc(slug).set({
+    final profile = <String, dynamic>{
       'teacherName': settings?.teacherFullName.value ?? '',
       'teacherGender': settings?.teacherGender.value ?? 'male',
       // التخصص بيظهر تحت اسم المعلم في أعلى صفحة المتابعة.
@@ -437,8 +439,23 @@ class ParentPortalService {
       // البوابة شغّالة — بيتقرا في صفحة /track عشان القفل اليدوي (شيل
       // العلامة من غير تاريخ) يوصل للأهالي كمان مش بس القفل بالتاريخ.
       'active': true,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    };
+    // بصمة البروفايل: لو ما اتغيّرش من آخر كتابة ناجحة (في الذاكرة أو المحفوظة)
+    // نتخطّى الكتابة — كانت بتتكتب مع كل فتح لشاشة البوابة ومع كل نشر.
+    final h = portalDocHash(profile);
+    if (_profileHashSlug != slug) {
+      _profileHashSlug = slug;
+      _profileHash = await _dbService.getSetting('portal_profile_hash_$slug');
+    }
+    if (_profileHash == h) return;
+    await _db.collection('parent_portal').doc(slug).set(
+        {...profile, 'updatedAt': FieldValue.serverTimestamp()},
+        SetOptions(merge: true));
+    _profileHash = h;
+    FirestoreUsage.write('portal.profile');
+    try {
+      await _dbService.setSetting('portal_profile_hash_$slug', h);
+    } catch (_) {}
   }
 
   /// بيبني بيانات ملخص طالب (من غير أي كتابة) — مستخدمة في النشر الفردي
@@ -654,9 +671,68 @@ class ParentPortalService {
   /// دفعة، بيانات طالب)، مش للنشر الجماعي (شوف publishAllStudents).
   /// بتتجاهل بصمت لو الميزة مش مفعّلة أو رقم ولي الأمر مش موجود/قصير —
   /// مفيش داعي نزعج المستخدم برسائل خطأ لعملية خلفية اختيارية.
-  Future<void> pushStudentSummary(int studentId) async {
+  // تأخير تجميعي: نداءات متلاحقة لنفس الطالب (حضور ثم تسميع ثم دفع…) خلال الفترة
+  // دي بتتحوّل لكتابة واحدة. الأقصى 2 دقيقة عشان ما نأجّلش للأبد. عند خروج
+  // التطبيق للخلفية بنكتب كل المعلّق فورًا (flushPending).
+  static const _debounce = Duration(seconds: 30);
+  static const _maxDelay = Duration(minutes: 2);
+  static final Map<int, Timer> _timers = {};
+  static final Map<int, DateTime> _firstAsk = {};
+  static bool _observerAdded = false;
+
+  /// يكتب فورًا كل الملخصات المؤجّلة (بيتنادى لما التطبيق يروح للخلفية).
+  static Future<void> flushPending() async {
+    final ids = _timers.keys.toList();
+    for (final id in ids) {
+      _timers.remove(id)?.cancel();
+      _firstAsk.remove(id);
+      await ParentPortalService()._pushNow(id);
+    }
+  }
+
+  Future<void> pushStudentSummary(int studentId, {bool immediate = false}) async {
     _watchLicenseChanges();
     if (!LicenseController.to.parentPortalActiveNow) return;
+    if (immediate) {
+      _timers.remove(studentId)?.cancel();
+      _firstAsk.remove(studentId);
+      return _pushNow(studentId);
+    }
+    if (!_observerAdded) {
+      _observerAdded = true;
+      WidgetsBinding.instance.addObserver(_PortalFlushObserver());
+    }
+    final first = _firstAsk.putIfAbsent(studentId, DateTime.now);
+    _timers.remove(studentId)?.cancel();
+    final waited = DateTime.now().difference(first);
+    final delay = waited >= _maxDelay ? Duration.zero : _debounce;
+    _timers[studentId] = Timer(delay, () {
+      _timers.remove(studentId);
+      _firstAsk.remove(studentId);
+      unawaited(_pushNow(studentId));
+    });
+  }
+
+  Future<void> _pushNow(int studentId) async {
+    if (!LicenseController.to.parentPortalActiveNow) return;
+    // نداءات متلاحقة لنفس الطالب (حضور ثم تسميع ثم دفع…) بتتجمّع: واحدة شغّالة
+    // + إعادة واحدة بعدها بدل كتابة لكل نداء.
+    if (_inflight.contains(studentId)) {
+      _dirty.add(studentId);
+      return;
+    }
+    _inflight.add(studentId);
+    try {
+      await _pushStudentSummaryNow(studentId);
+      while (_dirty.remove(studentId)) {
+        await _pushStudentSummaryNow(studentId);
+      }
+    } finally {
+      _inflight.remove(studentId);
+    }
+  }
+
+  Future<void> _pushStudentSummaryNow(int studentId) async {
     try {
       final student = await _dbService.getStudent(studentId);
       if (student == null) return;
@@ -690,10 +766,12 @@ class ParentPortalService {
 
       await _ensureAuth();
       final slug = await ensureSlug();
+      await _loadHashes(slug);
+      final h = _hashOf(data);
+      if (_pubHash[docId] == h) return; // نفس المنشور: مفيش كتابة
       // لازم مستند البروفايل يكون موجود الأول — قاعدة أمان الطلاب
-      // بتتحقق منه بـ get()، ولو مش موجود أصلاً الكتابة بترفض. الكتابة
-      // دي merge رخيصة لو كانت موجودة بالفعل، مش إعادة إنشاء.
-      await _publishProfile(slug);
+      // بتتحقق منه بـ get()، ولو مش موجود أصلاً الكتابة بترفض.
+      await _ensureProfileThrottled(slug);
 
       await _db
           .collection('parent_portal')
@@ -701,6 +779,9 @@ class ParentPortalService {
           .collection('students')
           .doc(docId)
           .set(data);
+      _pubHash[docId] = h;
+      FirestoreUsage.write('portal.student');
+      await _saveHashes(slug);
     } catch (e) {
       debugPrint(
           'ParentPortalService: pushStudentSummary($studentId) failed — $e');
@@ -725,8 +806,10 @@ class ParentPortalService {
       // بنمسح الشكلين (بالكود فقط / كود_آخر4) عشان مفيش بيانات طالب
       // محذوف تفضل معروضة بأي طريقة دخول.
       await col.doc(portalSafeId(code)).delete();
+      _pubHash.remove(portalSafeId(code));
       if (last4 != null) {
         await col.doc('${portalSafeId(code)}_$last4').delete();
+        _pubHash.remove('${portalSafeId(code)}_$last4');
       }
     } catch (_) {}
   }
@@ -754,6 +837,7 @@ class ParentPortalService {
       }
     }
     if (ops > 0) await batch.commit();
+    await _clearHashes(); // كل المستندات اتمسحت: لازم النشر يكتب الكل
     await publishAllStudents();
   }
 
@@ -770,7 +854,62 @@ class ParentPortalService {
   /// أسماء الطلاب اللي تعذّر نشرهم في آخر نشر شامل (فاضية لو كله نجح).
   static List<String> lastPublishFailed = const [];
 
-  Future<int> publishAllStudents() async {
+  // ── تقليل كتابات Firestore (خطة Spark: 20 ألف كتابة/يوم) ──────────────────
+  // بنفتكر «بصمة» آخر نسخة اتنشرت فعلًا لكل مستند طالب (بعد نجاح الكتابة بس)،
+  // وأي نشر بعد كده بيكتب المستندات اللي اتغيّرت بس. كمان بروفايل المدرس بيتنشر
+  // مرة كل فترة مش مع كل ملخص طالب (كان بيضاعف الكتابات).
+  static String? _hashSlug;
+  static final Map<String, String> _pubHash = {};
+  static DateTime? _profileAt;
+  static String? _profileSlug;
+  static const _profileEvery = Duration(minutes: 30);
+  static String? _profileHashSlug;
+  static String? _profileHash;
+  static final Set<int> _inflight = {};
+  static final Set<int> _dirty = {};
+
+  String _hashOf(Map<String, dynamic> data) => portalDocHash(data);
+
+  Future<void> _loadHashes(String slug) async {
+    if (_hashSlug == slug) return;
+    _pubHash.clear();
+    _hashSlug = slug;
+    try {
+      final raw = await _dbService.getSetting('portal_hashes_$slug');
+      if (raw != null && raw.isNotEmpty) {
+        (jsonDecode(raw) as Map).forEach((k, v) => _pubHash['$k'] = '$v');
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveHashes(String slug) async {
+    try {
+      await _dbService.setSetting('portal_hashes_$slug', jsonEncode(_pubHash));
+    } catch (_) {}
+  }
+
+  Future<void> _clearHashes() async {
+    _pubHash.clear();
+    final slug = _hashSlug ?? await getSlugIfExists();
+    if (slug != null) await _saveHashes(slug);
+  }
+
+  /// بروفايل المدرس مرة كل 30 دقيقة في النشر الفردي (القاعدة محتاجاه موجود بس).
+  Future<void> _ensureProfileThrottled(String slug) async {
+    final now = DateTime.now();
+    if (_profileSlug == slug &&
+        _profileAt != null &&
+        now.difference(_profileAt!) < _profileEvery) {
+      return;
+    }
+    await _publishProfile(slug);
+    _profileSlug = slug;
+    _profileAt = now;
+  }
+
+  Future<int> publishAllStudents(
+      {void Function(int done, int total)? onProgress,
+      bool force = false}) async {
     _watchLicenseChanges();
     if (!LicenseController.to.parentPortalActiveNow) return 0;
     // عمدًا مش بننادي publishProfile() هنا — بتبلع أي فشل بصمت (مصمّمة
@@ -819,6 +958,9 @@ class ParentPortalService {
     final ids = <String>[];
     final docs = <Map<String, dynamic>>[];
     final labels = <String>[];
+    final hashes = <String>[];
+    var unchanged = 0;
+    await _loadHashes(slug);
     for (final s in students) {
       if (s.id == null) continue;
       Map<String, dynamic>? data;
@@ -846,13 +988,24 @@ class ParentPortalService {
       }
       if (data == null) continue;
       final docId = data.remove('_docId') as String;
+      final h = _hashOf(data);
+      // force (زر «انشر الآن»): نتجاهل البصمة ونكتب الكل، لأن جهاز تاني (مساعد)
+      // ممكن يكون كتب نسخة أقدم على نفس المستند وبصمتنا هنا ما تعرفش.
+      if (!force && _pubHash[docId] == h) {
+        unchanged++; // نفس النسخة المنشورة: مفيش كتابة
+        continue;
+      }
       ids.add(docId);
       docs.add(data);
       labels.add(s.name);
+      hashes.add(h);
     }
 
-    const chunkSize = 50;
-    var count = 0;
+    // مهلة لكل طلب: Firestore لو مفيش اتصال بيفضّل يستنى للأبد (الكتابة بتتطابر
+    // محليًا) فالزر كان بيفضل «جاري النشر» من غير نهاية. بالمهلة نعتبرها فشل.
+    const chunkSize = 25;
+    var count = unchanged;
+    onProgress?.call(0, ids.length);
     for (var i = 0; i < ids.length; i += chunkSize) {
       final end = i + chunkSize < ids.length ? i + chunkSize : ids.length;
       try {
@@ -860,26 +1013,45 @@ class ParentPortalService {
         for (var j = i; j < end; j++) {
           batch.set(col.doc(ids[j]), docs[j]);
         }
-        await batch.commit();
+        await batch.commit().timeout(const Duration(seconds: 40));
         count += end - i;
+        FirestoreUsage.write('portal.student', end - i);
+        for (var j = i; j < end; j++) {
+          _pubHash[ids[j]] = hashes[j];
+        }
       } catch (e) {
         debugPrint('ParentPortalService: batch failed ($i..$end) — $e');
         for (var j = i; j < end; j++) {
           try {
-            await col.doc(ids[j]).set(docs[j]);
+            await col.doc(ids[j]).set(docs[j]).timeout(const Duration(seconds: 15));
             count++;
+            FirestoreUsage.write('portal.student');
+            _pubHash[ids[j]] = hashes[j];
           } catch (e2) {
             debugPrint('ParentPortalService: write failed ${ids[j]} — $e2');
             failed.add(labels[j]);
           }
         }
       }
+      onProgress?.call(end, ids.length);
     }
     lastPublishFailed = failed;
+    await _saveHashes(slug);
     // مفيش طالب اتنشر أصلًا والسبب أخطاء: نرمي عشان الشاشة تعرض فشل واضح.
     if (count == 0 && failed.isNotEmpty) {
       throw StateError('تعذّر نشر أي طالب (${failed.length} فشلوا)');
     }
     return count;
+  }
+}
+
+/// بيكتب الملخصات المؤجّلة لما التطبيق يروح للخلفية (عشان ما تضيعش لو اتقفل).
+class _PortalFlushObserver with WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(ParentPortalService.flushPending());
+    }
   }
 }
