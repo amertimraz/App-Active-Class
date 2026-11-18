@@ -188,5 +188,45 @@ begin
   reset role;
 end $$;
 
+-- ── ٦) set_member_visibility (RPC ذرّي للمالك) ──
+do $$
+declare t uuid; ga1 uuid; gb1 uuid; denied boolean;
+begin
+  select v into t from _ids where k='t'; select v into ga1 from _ids where k='ga1'; select v into gb1 from _ids where k='gb1';
+  -- مساعد (حتى لو عنده manage_members) ما يقدرش ينادي الدالة
+  perform pg_temp.as_user('mgr');
+  denied := false;
+  begin perform public.set_member_visibility(t, (select v from _ids where k='free'), true, array[ga1], array[]::text[]);
+  exception when others then denied := true; end;
+  assert denied, 'non-owner cannot call set_member_visibility';
+
+  perform pg_temp.as_user('owner');
+  -- free يتقيّد بمجموعة B1 + سنتر (بمسافات زيادة)
+  perform public.set_member_visibility(t, (select v from _ids where k='free'), true, array[gb1], array['  سنتر   أ ']);
+  reset role;
+  assert (select groups_restricted from public.team_members where user_id = (select v from _ids where k='free')), 'restricted set';
+  assert (select count(*) from public.team_member_groups where user_id = (select v from _ids where k='free')) = 1, 'one group grant';
+  assert (select center from public.team_member_centers where user_id = (select v from _ids where k='free')) = 'سنتر أ', 'center normalized';
+  perform pg_temp.as_user('free');
+  assert pg_temp.cnt('groups') = 2, 'free sees B1 (explicit) + A1 (center أ; A2 was moved to center ب earlier)';
+  reset role;
+
+  -- يتحوّل لغير مقيَّد: المنح تتمسح
+  perform pg_temp.as_user('owner');
+  perform public.set_member_visibility(t, (select v from _ids where k='free'), false);
+  reset role;
+  assert not (select groups_restricted from public.team_members where user_id = (select v from _ids where k='free')), 'unrestricted';
+  assert (select count(*) from public.team_member_groups where user_id = (select v from _ids where k='free')) = 0
+     and (select count(*) from public.team_member_centers where user_id = (select v from _ids where k='free')) = 0, 'grants cleared';
+
+  -- المالك نفسه مش هدف
+  perform pg_temp.as_user('owner');
+  denied := false;
+  begin perform public.set_member_visibility(t, (select v from _ids where k='owner'), true);
+  exception when others then denied := true; end;
+  assert denied, 'owner cannot be restricted';
+  reset role;
+end $$;
+
 rollback;
 select 'P2 tests passed' as result;

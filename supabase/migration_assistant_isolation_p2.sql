@@ -128,6 +128,44 @@ language sql stable security definer set search_path = public as $$
 $$;
 grant execute on function public.my_team_access(uuid) to authenticated;
 
+-- ── ٥ب) تحديد رؤية مساعد بشكل ذرّي (المالك بس): التطبيق بينادي ده بدل عدّة طلبات منفصلة ──
+-- _restricted=false → الغي القيد ومسّح المنح. _restricted=true → اتمنح المجموعات/السناتر المرسلة بس
+-- (لو الاتنين فاضيين يبقى مقيَّد بلا منح = ممنوع يدخل، والتطبيق بيوضّح ده للمالك قبل الحفظ).
+create or replace function public.set_member_visibility(
+  _team_id uuid, _user_id uuid, _restricted boolean,
+  _group_ids uuid[] default '{}', _centers text[] default '{}')
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_team_owner(_team_id) then
+    raise exception 'only the team owner can change member visibility';
+  end if;
+  if not exists (select 1 from public.team_members m
+                  where m.team_id = _team_id and m.user_id = _user_id and not m.is_owner) then
+    raise exception 'member not found (or is the owner)';
+  end if;
+
+  delete from public.team_member_groups  where team_id = _team_id and user_id = _user_id;
+  delete from public.team_member_centers where team_id = _team_id and user_id = _user_id;
+
+  if _restricted then
+    insert into public.team_member_groups (team_id, user_id, group_remote_id)
+      select _team_id, _user_id, g.id from public.groups g
+       where g.team_id = _team_id and g.id = any(coalesce(_group_ids, '{}'))
+    on conflict do nothing;
+    insert into public.team_member_centers (team_id, user_id, center)
+      select distinct _team_id, _user_id, public.normalize_center(c)
+        from unnest(coalesce(_centers, '{}')) c
+       where public.normalize_center(c) is not null
+    on conflict do nothing;
+  end if;
+
+  update public.team_members set groups_restricted = _restricted
+   where team_id = _team_id and user_id = _user_id;
+end;
+$$;
+grant execute on function public.set_member_visibility(uuid, uuid, boolean, uuid[], text[]) to authenticated;
+
 -- ── ٦) السياسات ─────────────────────────────────────────────────────────────
 
 -- ── groups: المساعد المقيَّد يشوف ويعدّل مجموعاته بس، ومينشئش مجموعة جديدة ──
