@@ -52,3 +52,36 @@ Iterable<List<T>> chunked<T>(List<T> items, int size) sync* {
     yield items.sublist(i, i + size > items.length ? items.length : i + size);
   }
 }
+
+/// رؤية مساعد معيّن كما يحدّدها المالك: كل المجموعات، أو مجموعات/سناتر معيّنة.
+class MemberVisibility {
+  final bool restricted;
+
+  /// معرّفات (remote_id) المجموعات الممنوحة صراحة.
+  final Set<String> groupRemoteIds;
+
+  /// أسماء السناتر الممنوحة (متطبّعة).
+  final Set<String> centers;
+
+  const MemberVisibility({
+    required this.restricted,
+    this.groupRemoteIds = const {},
+    this.centers = const {},
+  });
+
+  static const unrestricted = MemberVisibility(restricted: false);
+
+  /// مقيَّد وما اتمنحش أي حاجة → هيتمنع من الدخول.
+  bool get empty => restricted && groupRemoteIds.isEmpty && centers.isEmpty;
+
+  /// ملخّص قصير للعرض في كارت العضو.
+  String get summary {
+    if (!restricted) return 'كل المجموعات';
+    if (empty) return 'مفيش مجموعات (ممنوع من الدخول)';
+    final parts = <String>[
+      if (centers.isNotEmpty) '${centers.length} سنتر',
+      if (groupRemoteIds.isNotEmpty) '${groupRemoteIds.length} مجموعة',
+    ];
+    return parts.join(' + ');
+  }
+}

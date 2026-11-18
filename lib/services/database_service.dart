@@ -1135,6 +1135,18 @@ class DatabaseService {
     });
   }
 
+  /// معرّفات السيرفر (sync_remote_id) للمجموعات المتزامنة: مجموعة محلية → remote_id.
+  /// المجموعة اللي لسه ما اترفعتش مش بتظهر هنا (ما ينفعش تتمنح لمساعد).
+  Future<Map<int, String>> getGroupRemoteIds() async {
+    final db = await database;
+    final rows = await db.query(TABLE_GROUPS,
+        columns: [COL_GROUP_ID, COL_SYNC_REMOTE_ID],
+        where: '$COL_SYNC_REMOTE_ID IS NOT NULL');
+    return {
+      for (final r in rows) r[COL_GROUP_ID] as int: r[COL_SYNC_REMOTE_ID] as String
+    };
+  }
+
   /// spec 058 / P3 — مسح صفوف اتخفّت عن المساعد المقيَّد: بيمسح الصفوف **محليًا فقط**
   /// (من غير _queueDelete — وإلا السيرفر يمسح بيانات المدرس) + أي عمليات معلّقة ليها في
   /// الطابور. [remoteIds] = sync_remote_id. بيرجّع عدد الصفوف المحذوفة. الكل في transaction.

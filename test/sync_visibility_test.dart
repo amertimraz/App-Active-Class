@@ -49,6 +49,20 @@ void main() {
     });
   });
 
+  group('MemberVisibility', () {
+    test('ملخّص وحالة فاضي', () {
+      expect(MemberVisibility.unrestricted.summary, 'كل المجموعات');
+      expect(MemberVisibility.unrestricted.empty, isFalse);
+      const none = MemberVisibility(restricted: true);
+      expect(none.empty, isTrue);
+      expect(none.summary, contains('ممنوع'));
+      const some = MemberVisibility(
+          restricted: true, centers: {'سنتر أ'}, groupRemoteIds: {'g1', 'g2'});
+      expect(some.empty, isFalse);
+      expect(some.summary, '1 سنتر + 2 مجموعة');
+    });
+  });
+
   group('hiddenCandidates / chunked', () {
     test('محلي ناقص اللي رجع في السحب', () {
       expect(

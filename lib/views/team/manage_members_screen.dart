@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:active_class/widgets/chalk_dialog.dart';
+import 'package:active_class/views/team/member_visibility_sheet.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
@@ -274,6 +275,19 @@ class _ManageMembersScreenState extends State<ManageMembersScreen> {
               },
               onRemove: () => _removeMember(members[i]),
               onResetDevice: () => _resetDevice(members[i]),
+              onEditVisibility: () async {
+                final m = members[i];
+                final name = (m['display_name'] as String?)?.isNotEmpty == true
+                    ? m['display_name'] as String
+                    : (m['phone'] as String? ?? 'المساعد');
+                final saved = await showMemberVisibilityDialog(
+                  context,
+                  userId: m['user_id'] as String,
+                  memberName: name,
+                  restricted: m['groups_restricted'] as bool? ?? false,
+                );
+                if (saved && mounted) _load();
+              },
             ),
           );
         },
@@ -288,6 +302,7 @@ class _MemberCard extends StatelessWidget {
   final void Function(String field, bool value) onChangedPermission;
   final VoidCallback onRemove;
   final VoidCallback onResetDevice;
+  final VoidCallback onEditVisibility;
 
   const _MemberCard({
     required this.member,
@@ -295,6 +310,7 @@ class _MemberCard extends StatelessWidget {
     required this.onChangedPermission,
     required this.onRemove,
     required this.onResetDevice,
+    required this.onEditVisibility,
   });
 
   @override
@@ -407,6 +423,45 @@ class _MemberCard extends StatelessWidget {
                             fontSize: 12,
                             fontWeight: FontWeight.w700)),
                   ),
+              ],
+            ),
+            const Divider(height: 20),
+            // spec 058 — رؤية المجموعات: كل المجموعات / سناتر أو مجموعات معيّنة.
+            Row(
+              children: [
+                Icon(
+                  (member['groups_restricted'] as bool? ?? false)
+                      ? Icons.visibility_off_rounded
+                      : Icons.visibility_rounded,
+                  size: 15,
+                  color: isDark ? Colors.white54 : Colors.black45,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    (member['groups_restricted'] as bool? ?? false)
+                        ? 'يشوف سناتر أو مجموعات معيّنة بس'
+                        : 'يشوف كل المجموعات',
+                    style: TextStyle(
+                        fontFamily: 'Cairo',
+                        fontSize: 12,
+                        color: isDark ? Colors.white54 : Colors.black45),
+                  ),
+                ),
+                TextButton(
+                  onPressed: onEditVisibility,
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('المجموعات المسموحة',
+                      style: TextStyle(
+                          fontFamily: 'Cairo',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700)),
+                ),
               ],
             ),
             const Divider(height: 20),

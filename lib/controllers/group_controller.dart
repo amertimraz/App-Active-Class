@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:active_class/models/group_model.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
 
 /// قسم في قايمة المجموعات: مجموعات سنتر واحد ([center] = null يعني «بدون سنتر»).
@@ -127,6 +128,11 @@ class GroupController extends GetxController {
   /// هي المسؤولة عن إظهار رسالة النجاح، عشان ميحصلش "تم الحفظ" وهمي
   /// لو الحفظ فشل فعلياً (زي تكرار اسم/كود المجموعة).
   Future<bool> addGroup(Group group) async {
+    // spec 058 — المساعد المقيَّد بسناتر/مجموعات معيّنة مش بيضيف مجموعات (السيرفر هيرفضها).
+    if (TeamModeService().isRestrictedAssistant) {
+      ToastHelper.error('مش مسموح لك تضيف مجموعات — اطلب من المدرس');
+      return false;
+    }
     try {
       final id = await _dbService.insertGroup(group);
       final newGroup = group.copyWith(id: id);

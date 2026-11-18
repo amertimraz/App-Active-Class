@@ -74,6 +74,10 @@ class SyncEngine with WidgetsBindingObserver {
   /// وفتحه تاني (أول مرة بس بتتقرا الصلاحيات في _startEngine).
   final VoidCallback? onReconnected;
 
+  /// spec 058 — بتتنادى لما وصول المستخدم (مقيَّد؟ وكام مجموعة ظاهرة) يتغيّر: التطبيق
+  /// بيمنع المساعد المقيَّد بلا مجموعات من الدخول برسالة، ويفتحله لما المدرس يمنحه مجموعات.
+  final void Function(TeamAccess access)? onAccessChanged;
+
   SyncEngine({
     required this.client,
     required this.teamId,
@@ -82,6 +86,7 @@ class SyncEngine with WidgetsBindingObserver {
     this.onLicenseInactive,
     this.onDeviceUnbound,
     this.onReconnected,
+    this.onAccessChanged,
   });
 
   // الترتيب مهم للـpull/push: كل جدول لازم يتطبّق بعد آبائه (exam_questions
@@ -158,7 +163,14 @@ class SyncEngine with WidgetsBindingObserver {
           .rpc('my_team_access', params: {'_team_id': teamId})
           .timeout(_kNetworkTimeout);
       final a = TeamAccess.fromRpc(res);
-      if (a != null) access = a;
+      if (a != null) {
+        final changed = access == null ||
+            access!.restricted != a.restricted ||
+            access!.visibleGroups != a.visibleGroups ||
+            access!.isOwner != a.isOwner;
+        access = a;
+        if (changed) onAccessChanged?.call(a);
+      }
     } catch (e) {
       // السيرفر لسه من غير P2، أو شبكة: نسيب آخر قيمة معروفة (الافتراضي: غير مقيَّد).
       debugPrint('SyncEngine: تعذّر قراءة وصول الفريق — $e');

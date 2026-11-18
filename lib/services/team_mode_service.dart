@@ -17,6 +17,8 @@ import 'package:active_class/controllers/license_controller.dart';
 import 'package:active_class/controllers/settings_controller.dart';
 import 'package:active_class/services/auth_service.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/sync_visibility.dart';
+import 'package:active_class/widgets/team_access_blocked_dialog.dart';
 import 'package:active_class/services/online_exam_service.dart';
 import 'package:active_class/services/parent_portal_service.dart';
 import 'package:active_class/utils/online_exam_access.dart';
@@ -561,6 +563,17 @@ class TeamModeService {
         _refreshMyPermissions(client, tId);
         unawaited(TeamSettingsService().sync());
       },
+      // spec 058 — المساعد المقيَّد بلا مجموعات: رسالة بتمنعه، وبتتشال لما يتمنح مجموعات.
+      onAccessChanged: (a) {
+        access.value = a;
+        if (isOwner.value) return;
+        if (a.restrictedWithoutGroups) {
+          unawaited(TeamAccessBlockedDialog.show(
+              onRefresh: () async => _engine?.catchUpPull()));
+        } else {
+          TeamAccessBlockedDialog.dismiss();
+        }
+      },
     );
     _engine!.start();
     // الإعدادات المشتركة: المدرس يرفع، والمساعد يسحب ويتقفل عليه.
@@ -980,6 +993,14 @@ class TeamModeService {
     }
   }
 
+  /// spec 058 — وصول المستخدم الحالي في الفريق (مقيَّد؟ كام مجموعة ظاهرة). null لو لسه
+  /// ما اتحمّلش أو السيرفر من غير P2 (= غير مقيَّد).
+  final Rxn<TeamAccess> access = Rxn<TeamAccess>();
+
+  /// المساعد المقيَّد (مش المالك): ممنوع يضيف مجموعات، ولازم يشتغل على مجموعاته بس.
+  bool get isRestrictedAssistant =>
+      !isOwner.value && access.value?.restricted == true;
+
   Future<List<Map<String, dynamic>>> listMembers() async {
     final client = await _auth.ensureClient();
     if (client == null || teamId.value == null) return [];
@@ -1009,6 +1030,58 @@ class TeamModeService {
     } catch (e) {
       debugPrint('TeamModeService: فشل تحميل الأعضاء — $e');
       return [];
+    }
+  }
+
+  /// spec 058 — رؤية مساعد (المالك بس بيقدر يقراها): مقيَّد؟ وإيه المجموعات/السناتر الممنوحة.
+  Future<MemberVisibility?> memberVisibility(String userId,
+      {required bool restricted}) async {
+    final client = await _auth.ensureClient();
+    final tId = teamId.value;
+    if (client == null || tId == null) return null;
+    try {
+      final g = await client
+          .from('team_member_groups')
+          .select('group_remote_id')
+          .eq('team_id', tId)
+          .eq('user_id', userId) as List;
+      final c = await client
+          .from('team_member_centers')
+          .select('center')
+          .eq('team_id', tId)
+          .eq('user_id', userId) as List;
+      return MemberVisibility(
+        restricted: restricted,
+        groupRemoteIds: {for (final r in g) (r as Map)['group_remote_id'] as String},
+        centers: {for (final r in c) (r as Map)['center'] as String},
+      );
+    } catch (e) {
+      debugPrint('TeamModeService: فشل تحميل رؤية العضو — $e');
+      return null;
+    }
+  }
+
+  /// بيحفظ رؤية مساعد بشكل ذرّي (RPC set_member_visibility). بيرجّع رسالة خطأ أو null.
+  Future<String?> setMemberVisibility(String userId, MemberVisibility v) async {
+    final client = await _auth.ensureClient();
+    final tId = teamId.value;
+    if (client == null || tId == null) return 'مفيش فريق مفعّل على الجهاز ده';
+    try {
+      await client.rpc('set_member_visibility', params: {
+        '_team_id': tId,
+        '_user_id': userId,
+        '_restricted': v.restricted,
+        '_group_ids': v.groupRemoteIds.toList(),
+        '_centers': v.centers.toList(),
+      });
+      return null;
+    } catch (e) {
+      debugPrint('TeamModeService: فشل حفظ رؤية العضو — $e');
+      final msg = '$e';
+      if (msg.contains('set_member_visibility') && msg.contains('Could not find')) {
+        return 'السيرفر لسه ما اتحدّثش لميزة تقييد المساعدين';
+      }
+      return 'تعذّر الحفظ — تأكد من الإنترنت وحاول تاني';
     }
   }
 
