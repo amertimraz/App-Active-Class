@@ -63,6 +63,19 @@ void main() {
     });
   });
 
+  group('centerDiffers', () {
+    test('يتجاهل المسافات والفاضي', () {
+      expect(centerDiffers('سنتر أ', '  سنتر   أ '), isFalse);
+      expect(centerDiffers(null, ''), isFalse);
+      expect(centerDiffers('', null), isFalse);
+    });
+    test('بيكتشف الاختلاف (سنتر على السيرفر وفاضي محليًا)', () {
+      expect(centerDiffers('سنتر سملاي', null), isTrue);
+      expect(centerDiffers('سنتر أ', 'سنتر ب'), isTrue);
+      expect(centerDiffers(null, 'سنتر أ'), isTrue);
+    });
+  });
+
   group('hiddenCandidates / chunked', () {
     test('محلي ناقص اللي رجع في السحب', () {
       expect(

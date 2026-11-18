@@ -1678,8 +1678,16 @@ class SyncEngine with WidgetsBindingObserver {
         // جهازي كانت متقدّمة عن السيرفر وقت ما ختمت الصف، ونسخة السيرفر
         // (تعديل زميل) هي الأحدث — لازم تتطبّق وإلا الجهازين يختلفوا في
         // القيمة للأبد (بلاغ فرق المدفوعات بين المدرس والمساعد).
-        if (remoteUpdatedAt.isAtSameMomentAs(localUpdatedAt) ||
-            await _hasPendingLocalChange(db, table, localRow[pkCol] as int)) {
+        // مجموعة بنفس الطابع بس السنتر مختلف (المساعد سحب الصف قبل ما نسخته تعرف عمود
+        // السنتر، فالعمود اتضاف فاضي والطابع بقى متساوي) → نطبّق السيرفر، وإلا السنتر
+        // ما يوصلش للمساعد أبدًا. بس لو مفيش تعديل محلي معلّق.
+        final centerGap = table == TABLE_GROUPS &&
+            centerDiffers(remote['center'], localRow[COL_GROUP_CENTER]) &&
+            !await _hasPendingLocalChange(db, table, localRow[pkCol] as int);
+        if (!centerGap &&
+            (remoteUpdatedAt.isAtSameMomentAs(localUpdatedAt) ||
+                await _hasPendingLocalChange(
+                    db, table, localRow[pkCol] as int))) {
           return;
         }
       }

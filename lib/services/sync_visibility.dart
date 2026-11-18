@@ -85,3 +85,14 @@ class MemberVisibility {
     return parts.join(' + ');
   }
 }
+
+/// السنتر على السيرفر يختلف عن المحلي (بعد تطبيع: trim + دمج المسافات، وفاضي = null)؟
+bool centerDiffers(Object? remote, Object? local) {
+  String? norm(Object? v) {
+    final c = '${v ?? ''}'.trim().replaceAll(RegExp(r'\s+'), ' ');
+    return c.isEmpty ? null : c;
+  }
+
+  return norm(remote) != norm(local);
+}
+
