@@ -4,8 +4,6 @@
 // السنتر ديناميكي: أي مجموعة تتضاف لسنتر ممنوح بتظهر للمساعد تلقائيًا. التطبيق بيبعت
 // الاختيار للسيرفر بـRPC ذرّي (set_member_visibility)، والسيرفر هو اللي بيعزل فعليًا.
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/models/group_model.dart';
@@ -24,9 +22,9 @@ Future<bool> showMemberVisibilityDialog(
   required bool restricted,
 }) async {
   final team = TeamModeService();
-  final groups = Get.isRegistered<GroupController>()
-      ? Get.find<GroupController>().groups.toList()
-      : <Group>[];
+  // من قاعدة البيانات مباشرة: GroupController ممكن يكون لسه ما اتحمّلش (مش اتفتحت شاشة المجموعات
+  // في الجلسة دي) فالقايمة كانت بتطلع فاضية.
+  final groups = await DatabaseService().getAllGroups();
   final remoteIds = await DatabaseService().getGroupRemoteIds();
   final current = await team.memberVisibility(userId, restricted: restricted);
   if (!context.mounted) return false;
@@ -88,6 +86,22 @@ class _MemberVisibilityDialogState extends State<_MemberVisibilityDialog> {
       );
 
   Future<void> _save() async {
+    // مقيَّد بلا أي اختيار = المساعد هيتمنع من الدخول: لازم تأكيد صريح (وإلا حد ممكن يحفظ
+    // ده بالغلط ويقفل مساعده).
+    if (_value.empty) {
+      final ok = await showChalkConfirm(
+        context,
+        icon: Icons.block_rounded,
+        tone: ChalkTone.caution,
+        title: 'المساعد هيتمنع من الدخول',
+        subtitle: widget.memberName,
+        message: 'ما اخترتش أي سنتر ولا مجموعة، فالمساعد مش هيشوف أي بيانات '
+            'وهيظهرله إنه ممنوع لحد ما تحدد له مجموعات. تكمّل؟',
+        confirmLabel: 'احفظ كده',
+        cancelLabel: 'ارجع أختار',
+      );
+      if (ok != true || !mounted) return;
+    }
     setState(() => _saving = true);
     final err = await TeamModeService().setMemberVisibility(widget.userId, _value);
     if (!mounted) return;

@@ -25,6 +25,13 @@ class ReleaseNote {
 
 /// الأحدث أولًا.
 const List<ReleaseNote> kReleaseNotes = [
+  ReleaseNote('1.2.91', [
+    ReleaseItem(
+      'مساعد يشوف سنتر معيّن',
+      'حدّد لكل مساعد سناتر أو مجموعات يشوفها بس، وبياناتهم بس هي اللي بتنزل عليه.',
+      icon: 'settings',
+    ),
+  ]),
   ReleaseNote('1.2.90', [
     ReleaseItem(
       'درجة صفر حقيقية',
