@@ -99,7 +99,9 @@ begin
   assert (select visible_groups from public.my_team_access((select v from _ids where k='t'))) = 0, 'my_team_access visible=0';
   assert (select restricted from public.my_team_access((select v from _ids where k='t'))), 'my_team_access restricted';
   perform pg_temp.as_user('owner');
-  assert (select is_owner and not restricted from public.my_team_access((select v from _ids where k='t'))), 'owner access summary';
+  assert (select is_owner and not restricted and visible_groups = 3 from public.my_team_access((select v from _ids where k='t'))), 'owner access summary counts all groups';
+  perform pg_temp.as_user('free');
+  assert (select not restricted and visible_groups = 3 from public.my_team_access((select v from _ids where k='t'))), 'unrestricted assistant counts all groups';
   reset role;
 end $$;
 

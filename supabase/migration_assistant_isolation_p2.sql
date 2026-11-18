@@ -119,12 +119,16 @@ create trigger trg_guard_groups_restricted before update of groups_restricted
 create or replace function public.my_team_access(_team_id uuid)
 returns table (is_owner boolean, restricted boolean, visible_groups integer)
 language sql stable security definer set search_path = public as $$
-  select public.is_team_owner(_team_id),
-         coalesce((select m.groups_restricted from public.team_members m
-                    where m.team_id = _team_id and m.user_id = auth.uid()), false),
+  with me as (
+    select public.is_team_owner(_team_id) as owner,
+           coalesce((select m.groups_restricted from public.team_members m
+                      where m.team_id = _team_id and m.user_id = auth.uid()), false) as restr)
+  select me.owner, me.restr,
+         -- المالك والمساعد غير المقيَّد: كل المجموعات (مش رقم المنح). المقيَّد: اللي اتمنحه بس.
          (select count(*)::int from public.groups g
            where g.team_id = _team_id and g.deleted_at is null
-             and g.id in (select public.my_visible_groups()))
+             and (me.owner or not me.restr or g.id in (select public.my_visible_groups())))
+    from me
 $$;
 grant execute on function public.my_team_access(uuid) to authenticated;
 
