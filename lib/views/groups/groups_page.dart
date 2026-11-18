@@ -217,11 +217,13 @@ class _GroupsPageState extends State<GroupsPage> {
                     child: Text('السناتر',
                         style: AppType.label.copyWith(color: t.ink)),
                   ),
-                  TextButton.icon(
-                    onPressed: () => _showNewCenterDialog(context),
-                    icon: const Icon(Icons.add_rounded, size: 20),
-                    label: const Text('سنتر جديد'),
-                  ),
+                  // السناتر للمدرس بس (المساعد بيشوفها ويفلتر بيها من غير ما ينظّمها).
+                  if (!TeamModeService().isAssistant)
+                    TextButton.icon(
+                      onPressed: () => _showNewCenterDialog(context),
+                      icon: const Icon(Icons.add_rounded, size: 20),
+                      label: const Text('سنتر جديد'),
+                    ),
                 ]),
               ),
               if (centers.isNotEmpty)
@@ -252,7 +254,7 @@ class _GroupsPageState extends State<GroupsPage> {
                     ],
                   ),
                 )
-              else
+              else if (!TeamModeService().isAssistant)
                 Padding(
                   padding: const EdgeInsetsDirectional.fromSTEB(
                       AppSpace.lg, 0, AppSpace.lg, AppSpace.xs),
@@ -347,7 +349,7 @@ class _GroupsPageState extends State<GroupsPage> {
         ),
         Text('${sec.groups.length} مجموعة · $students طالب',
             style: AppType.caption.copyWith(color: t.inkSoft)),
-        if (name != null) ...[
+        if (name != null && !TeamModeService().isAssistant) ...[
           IconButton(
             tooltip: 'مجموعة جديدة في $name',
             visualDensity: VisualDensity.compact,

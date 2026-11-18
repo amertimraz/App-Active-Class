@@ -10,6 +10,7 @@ import 'package:active_class/utils/whatsapp_targets.dart';
 import 'package:active_class/config/theme.dart';
 import 'package:active_class/controllers/group_controller.dart';
 import 'package:active_class/models/group_model.dart';
+import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/views/groups/group_form/group_schedule_conflict.dart';
@@ -539,11 +540,13 @@ class GroupFormSheetState extends State<GroupFormSheet> {
                   ])),
                   const SizedBox(height: 18),
 
-                  // السنتر (اختياري) — تنظيم وفلترة بس
-                  const FormSectionTitle('السنتر (اختياري)',
-                      icon: Icons.apartment_rounded),
-                  _buildCenterPicker(),
-                  const SizedBox(height: 18),
+                  // السنتر (اختياري) — تنظيم وفلترة بس. للمدرس بس (المساعد ما بيغيّرهوش).
+                  if (!TeamModeService().isAssistant) ...[
+                    const FormSectionTitle('السنتر (اختياري)',
+                        icon: Icons.apartment_rounded),
+                    _buildCenterPicker(),
+                    const SizedBox(height: 18),
+                  ],
 
                   // رابط جروب واتساب (اختياري)
                   const FormSectionTitle('جروب الواتساب (اختياري)',

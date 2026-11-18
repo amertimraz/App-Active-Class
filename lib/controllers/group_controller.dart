@@ -66,6 +66,11 @@ class GroupController extends GetxController {
   /// يحط [center] (أو يشيله لو null) على كل المجموعات اللي أرقامها [ids].
   /// بيحدّث القايمة محليًا وبيسجّل التعديل للمزامنة. بيرجّع true لو كله نجح.
   Future<bool> setCenterForGroups(Iterable<int> ids, String? center) async {
+    // السناتر للمدرس بس: السنتر بيحدد المساعد يشوف إيه، فالمساعد مايغيّرهوش.
+    if (TeamModeService().isAssistant) {
+      ToastHelper.error('تنظيم السناتر للمدرس بس');
+      return false;
+    }
     final target = normalizeCenter(center);
     var ok = true;
     for (final id in ids.toSet()) {
@@ -128,6 +133,8 @@ class GroupController extends GetxController {
   /// هي المسؤولة عن إظهار رسالة النجاح، عشان ميحصلش "تم الحفظ" وهمي
   /// لو الحفظ فشل فعلياً (زي تكرار اسم/كود المجموعة).
   Future<bool> addGroup(Group group) async {
+    // المساعد ما بيحددش سنتر لمجموعة جديدة (السناتر للمدرس).
+    if (TeamModeService().isAssistant) group = group.copyWith(clearCenter: true);
     // spec 058 — المساعد المقيَّد بسناتر/مجموعات معيّنة مش بيضيف مجموعات (السيرفر هيرفضها).
     if (TeamModeService().isRestrictedAssistant) {
       ToastHelper.error('مش مسموح لك تضيف مجموعات — اطلب من المدرس');
@@ -145,6 +152,13 @@ class GroupController extends GetxController {
   }
 
   Future<bool> updateGroup(Group group) async {
+    // المساعد يعدّل أي حاجة في المجموعة ما عدا سنترها (بيفضل زي ما هو).
+    if (TeamModeService().isAssistant) {
+      final old = groups.firstWhereOrNull((g) => g.id == group.id);
+      group = old?.center == null
+          ? group.copyWith(clearCenter: true)
+          : group.copyWith(center: old!.center);
+    }
     try {
       await _dbService.updateGroup(group);
       final index = groups.indexWhere((g) => g.id == group.id);
