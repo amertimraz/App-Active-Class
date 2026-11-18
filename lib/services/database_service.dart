@@ -1135,6 +1135,36 @@ class DatabaseService {
     });
   }
 
+  /// spec 058 / P3 — مسح صفوف اتخفّت عن المساعد المقيَّد: بيمسح الصفوف **محليًا فقط**
+  /// (من غير _queueDelete — وإلا السيرفر يمسح بيانات المدرس) + أي عمليات معلّقة ليها في
+  /// الطابور. [remoteIds] = sync_remote_id. بيرجّع عدد الصفوف المحذوفة. الكل في transaction.
+  Future<int> purgeSyncedRowsByRemoteId(
+      String table, String pkCol, List<String> remoteIds) async {
+    if (remoteIds.isEmpty) return 0;
+    final db = await database;
+    var deleted = 0;
+    await db.transaction((txn) async {
+      for (var i = 0; i < remoteIds.length; i += 400) {
+        final chunk = remoteIds.sublist(
+            i, i + 400 > remoteIds.length ? remoteIds.length : i + 400);
+        final marks = List.filled(chunk.length, '?').join(',');
+        final rows = await txn.query(table,
+            columns: [pkCol],
+            where: '$COL_SYNC_REMOTE_ID IN ($marks)',
+            whereArgs: chunk);
+        final ids = [for (final r in rows) r[pkCol] as int];
+        if (ids.isEmpty) continue;
+        final idMarks = List.filled(ids.length, '?').join(',');
+        await txn.delete(TABLE_SYNC_OUTBOX,
+            where: '$COL_OUTBOX_TABLE = ? AND $COL_OUTBOX_ROW_ID IN ($idMarks)',
+            whereArgs: [table, ...ids]);
+        deleted += await txn.delete(table,
+            where: '$pkCol IN ($idMarks)', whereArgs: ids);
+      }
+    });
+    return deleted;
+  }
+
   /// تنضيف طابور الرفع: لكل صف (جدول + row_id) نسيب أحدث عملية غير حذف بس.
   /// الـpayload لقطة كاملة للصف، فأحدث عملية بتغطي القديمة. حادثة فعلية: طابور
   /// فيه 90,900 عملية لكن 11,807 صف مختلف بس (إعادة رفع متكررة)، والرفع كان

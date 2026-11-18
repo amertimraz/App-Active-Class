@@ -33,6 +33,7 @@ import 'package:active_class/controllers/session_override_controller.dart';
 import 'package:active_class/controllers/booklet_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
 import 'package:active_class/services/database_service.dart';
+import 'package:active_class/services/sync_visibility.dart';
 import 'package:active_class/utils/sync_retry_policy.dart';
 import 'package:active_class/utils/sync_conflict.dart';
 
@@ -138,6 +139,32 @@ class SyncEngine with WidgetsBindingObserver {
   ];
 
   final DatabaseService _dbService = DatabaseService();
+
+  // ── spec 058 / P3 — عزل المساعد المقيَّد ────────────────────────────────
+  /// وصول المستخدم الحالي (من RPC my_team_access). null = لسه ما اتحمّلش أو السيرفر لسه
+  /// من غير migration P2 → بنعامله كغير مقيَّد (صفر تغيير في السلوك).
+  TeamAccess? access;
+  bool get restricted => access?.restricted == true && access?.isOwner != true;
+
+  /// معرّفات الصفوف اللي السيرفر رجّعها في آخر سحب كامل (بتتجمّع للمقيَّد بس).
+  final Map<String, Set<String>> _visibleIds = {};
+  final Set<String> _visibleComplete = {}; // جداول اتسحبت كل صفحاتها بنجاح
+  bool _collectVisible = false;
+
+  Future<void> refreshAccess() async {
+    try {
+      if (!_sessionUsable()) return;
+      final res = await client
+          .rpc('my_team_access', params: {'_team_id': teamId})
+          .timeout(_kNetworkTimeout);
+      final a = TeamAccess.fromRpc(res);
+      if (a != null) access = a;
+    } catch (e) {
+      // السيرفر لسه من غير P2، أو شبكة: نسيب آخر قيمة معروفة (الافتراضي: غير مقيَّد).
+      debugPrint('SyncEngine: تعذّر قراءة وصول الفريق — $e');
+    }
+  }
+
   Timer? _pushTimer;
   Timer? _membershipTimer;
   Timer? _catchUpTimer; // spec 030 — سحب لحاق دوري (لو Realtime وقع)
@@ -224,6 +251,10 @@ class SyncEngine with WidgetsBindingObserver {
     _catchUpTimer?.cancel();
     _catchUpTimer = null;
     WidgetsBinding.instance.removeObserver(this);
+    access = null;
+    _visibleIds.clear();
+    _visibleComplete.clear();
+    _collectVisible = false;
     _outboxFails.clear();
     _lastOutboxErr.clear();
     _loggedPoison.clear();
@@ -354,6 +385,17 @@ class SyncEngine with WidgetsBindingObserver {
             debugPrint('SyncEngine: صف يتيم (مفتاح أجنبي مفقود) اتشال من '
                 'الطابور — $table/$rowId (${_describeRow(payloadStr)}) — '
                 '${e.message}');
+            continue;
+          }
+          // spec 058 — المساعد المقيَّد: رفض RLS (42501) على صف مجموعة اتسحبت منه (أو مش
+          // بتاعته) مش خطأ مؤقت: نشيله من الطابور بدل ما يتعاد للأبد. للمقيَّد بس — لغير
+          // المقيَّدين 42501 معناها غالبًا الترخيص موقوف، وساعتها لازم الصفوف تفضل في الطابور.
+          if (restricted && e is PostgrestException && e.code == '42501') {
+            await db.delete(TABLE_SYNC_OUTBOX,
+                where: '$COL_OUTBOX_ID = ?', whereArgs: [outboxId]);
+            _forgetOutbox(outboxId);
+            debugPrint('SyncEngine: صف مرفوض بالصلاحيات (مساعد مقيَّد) اتشال من '
+                'الطابور — $table/$rowId');
             continue;
           }
           // انقطاع نت/مهلة/جلسة: العيب مش في الصف. مانعدّهاش فشلة (وإلا بعد
@@ -1114,7 +1156,9 @@ class SyncEngine with WidgetsBindingObserver {
   }
 
   // ── Pull: أول تحميل كامل (وقت ما مساعد ينضم لفريق) ────────────────
-  Future<void> initialFullPull() => _fullPull(includeDeleted: false);
+  Future<void> initialFullPull() async {
+    await _fullPull(includeDeleted: false);
+  }
 
   /// Realtime بس بتبعت الأحداث اللي بتحصل وهي متصلة — أي تغيير حصل
   /// من زميل وأنا offline (التطبيق مقفول/في الخلفية/النت مقطوع، وده
@@ -1138,7 +1182,17 @@ class SyncEngine with WidgetsBindingObserver {
     if (await _wasLicenseDeactivated()) return;
     if (await _wasDeviceUnbound()) return;
     onReconnected?.call();
-    await _fullPull(includeDeleted: true);
+    // spec 058 — وصول المساعد (مقيَّد؟) بيتحمّل قبل السحب؛ لو مقيَّد بنجمّع IDs الصفوف
+    // الظاهرة، وبعد سحب كامل ناجح بنمسح محليًا اللي اتخفّى.
+    await refreshAccess();
+    _visibleIds.clear();
+    _visibleComplete.clear();
+    _collectVisible = restricted;
+    final ok = await _fullPull(includeDeleted: true);
+    _collectVisible = false;
+    if (ok && restricted) await _purgeHiddenRows();
+    _visibleIds.clear();
+    _visibleComplete.clear();
     _autoRepairUnsynced();
   }
 
@@ -1305,8 +1359,8 @@ class SyncEngine with WidgetsBindingObserver {
   /// بدل ما تفضل في الـconsole بس.
   static final List<String> lastPullErrors = [];
 
-  Future<void> _fullPull({required bool includeDeleted}) async {
-    if (_pulling) return;
+  Future<bool> _fullPull({required bool includeDeleted}) async {
+    if (_pulling) return false;
     _pulling = true;
     lastPullErrors.clear();
     var failed = false;
@@ -1326,6 +1380,7 @@ class SyncEngine with WidgetsBindingObserver {
         }
       }
       if (!failed) lastFullPullAt = DateTime.now();
+      return !failed;
     } finally {
       _pulling = false;
       unawaited(reportDeviceStatus());
@@ -1347,6 +1402,13 @@ class SyncEngine with WidgetsBindingObserver {
           .range(offset, offset + _pullPageSize - 1)
           .timeout(_kNetworkTimeout)) as List;
       if (page.isEmpty) break;
+      if (_collectVisible) {
+        final ids = _visibleIds.putIfAbsent(table, () => <String>{});
+        for (final r in page) {
+          final id = (r as Map)['id'];
+          if (id is String) ids.add(id);
+        }
+      }
       for (var i = 0; i < page.length; i += _applyBatchSize) {
         final end = (i + _applyBatchSize < page.length)
             ? i + _applyBatchSize
@@ -1368,7 +1430,63 @@ class SyncEngine with WidgetsBindingObserver {
       if (page.length < _pullPageSize) break;
       offset += _pullPageSize;
     }
+    if (_collectVisible) _visibleComplete.add(table); // كل الصفحات اتسحبت بنجاح
     if (appliedAny) _refreshUiForTable(table);
+  }
+
+  /// spec 058 / P3 — بيمسح محليًا صفوف المساعد المقيَّد اللي السيرفر بطّل يعرضها له
+  /// (مجموعة/سنتر اتسحب منه). أمان على 3 مستويات:
+  ///  1) بيشتغل بس لو وصوله «مقيَّد» اتأكد في نفس الدورة، والسحب كله نجح.
+  ///  2) المرشّحين (محلي − اللي رجع في السحب) بنتأكد منهم بطلب مباشر للسيرفر قبل المسح، لأن
+  ///     السحب بالـoffset ممكن يفوّت صف اتغيّر أثناءه.
+  ///  3) المسح محلي بس (من غير طابور حذف) فبيانات المدرس على السيرفر مش بتتأثر.
+  /// الجداول الأبناء الأول (عكس ترتيب _tables).
+  Future<void> _purgeHiddenRows() async {
+    if (!_sessionUsable() || !restricted) return;
+    final db = await _dbService.database;
+    for (final table in _tables.reversed) {
+      if (table == TABLE_BANK_QUESTIONS) continue; // مشترك لكل الفريق
+      if (!_visibleComplete.contains(table)) continue;
+      try {
+        final pkCol = _pkCol(table);
+        final rows = await db.query(table,
+            columns: [COL_SYNC_REMOTE_ID],
+            where: '$COL_SYNC_REMOTE_ID IS NOT NULL');
+        final candidates = hiddenCandidates(
+            localRemoteIds: [
+              for (final r in rows) r[COL_SYNC_REMOTE_ID] as String
+            ],
+            visibleRemoteIds: _visibleIds[table] ?? const <String>{});
+        if (candidates.isEmpty) continue;
+        final stillVisible = <String>{};
+        for (final batch in chunked(candidates, 100)) {
+          final res = await client
+              .from(table)
+              .select('id')
+              .eq('team_id', teamId)
+              .inFilter('id', batch)
+              .timeout(_kNetworkTimeout) as List;
+          for (final r in res) {
+            stillVisible.add((r as Map)['id'] as String);
+          }
+        }
+        final toPurge = [
+          for (final id in candidates)
+            if (!stillVisible.contains(id)) id
+        ];
+        if (toPurge.isEmpty) continue;
+        final n =
+            await _dbService.purgeSyncedRowsByRemoteId(table, pkCol, toPurge);
+        if (n > 0) {
+          debugPrint(
+              'SyncEngine: مسح محلي لصفوف اتخفّت عن المساعد — $table: $n');
+          _refreshUiForTable(table);
+        }
+      } catch (e) {
+        // أي خطأ (شبكة…): نسيب الجدول كما هو ونحاول في السحب الجاي. عمره ما بيمسح بالغلط.
+        debugPrint('SyncEngine: تعذّر مسح الصفوف المخفية من $table — $e');
+      }
+    }
   }
 
   /// بيانات الفريق الواردة (أول تحميل كامل أو Realtime) بتتكتب في
