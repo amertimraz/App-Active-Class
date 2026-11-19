@@ -44,6 +44,8 @@ Future<void> _startWhatsappBatchSend(
     final start = month;
     final monthEnd = DateTime(month.year, month.month + 1, 0, 23, 59, 59);
 
+    var opened = 0;
+    final failed = <String>[];
     for (final s in selected) {
       final group = await db.getGroup(s.groupId);
 
@@ -82,40 +84,33 @@ Future<void> _startWhatsappBatchSend(
       );
 
       if (!context.mounted) break;
-      await launchGuardianWhatsapp(
-        context: context,
-        phone: s.guardianPhone,
-        whatsapp: s.guardianWhatsapp,
-        message: message,
-        dialCode: settings.countryDial.value,
-      );
-      await _waitForResume();
+      // لو الفتح فشل (رقم غير صالح/واتساب ما فتحش) نعدّي للي بعده من غير انتظار —
+      // الانتظار الأعمى لرجوع التطبيق كان بيعلّق الإرسال بعد عدد معيّن.
+      final launched = await launchAndAwaitReturn(() => launchGuardianWhatsapp(
+            context: context,
+            phone: s.guardianPhone,
+            whatsapp: s.guardianWhatsapp,
+            message: message,
+            dialCode: settings.countryDial.value,
+          ));
+      if (launched) {
+        opened++;
+      } else {
+        failed.add(s.name);
+      }
+    }
+    if (context.mounted) {
+      if (failed.isEmpty) {
+        ToastHelper.success('خلص: اتفتح واتساب لـ$opened ولي أمر');
+      } else {
+        ToastHelper.info('اتفتح $opened، وتعذّر ${failed.length}: '
+            '${failed.take(3).join('، ')}${failed.length > 3 ? '…' : ''}');
+      }
     }
   } catch (e) {
     LoadingDialog.hide();
     ToastHelper.error('تعذر التحضير أو الإرسال');
   }
-}
-
-class _ResumeObserver extends WidgetsBindingObserver {
-  final void Function() onResume;
-  _ResumeObserver(this.onResume);
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) onResume();
-  }
-}
-
-Future<void> _waitForResume() {
-  final c = Completer<void>();
-  late _ResumeObserver obs;
-  obs = _ResumeObserver(() {
-    WidgetsBinding.instance.removeObserver(obs);
-    if (!c.isCompleted) c.complete();
-  });
-  WidgetsBinding.instance.addObserver(obs);
-  return c.future;
 }
 
 Future<void> sendMonthlyReportsViaWhatsAppAuto(BuildContext context) async {

@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:active_class/widgets/chalk_dialog.dart';
 import 'package:active_class/utils/whatsapp_launcher.dart';
 import 'package:active_class/utils/firestore_usage.dart';
+import 'package:active_class/utils/launch_and_await_return.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:active_class/config/constants.dart';
