@@ -27,6 +27,7 @@ import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/export_service.dart';
 import 'package:active_class/widgets/app_toast.dart';
 import 'package:active_class/services/team_mode_service.dart';
+import 'package:active_class/utils/live_clock_format.dart';
 import 'package:active_class/widgets/custom_widgets.dart';
 import 'package:active_class/widgets/locked_feature.dart';
 import 'package:active_class/widgets/add_student_sheet.dart';
@@ -1806,16 +1807,21 @@ class _LiveClockState extends State<_LiveClock> {
 
   @override
   Widget build(BuildContext context) {
-    final h = _now.hour.toString().padLeft(2, '0');
-    final m = _now.minute.toString().padLeft(2, '0');
-    final s = _now.second.toString().padLeft(2, '0');
-    return Text(
-      '$h:$m:$s',
-      style: AppType.caption.copyWith(
-        color: widget.color,
-        fontFeatures: const [FontFeature.tabularFigures()],
-      ),
-    );
+    // بيحترم إعداد «نظام الساعة 24» (كان ثابت 24 ساعة حتى لو المدرس اختار 12).
+    return Obx(() {
+      final use24 = Get.isRegistered<SettingsController>()
+          ? Get.find<SettingsController>().use24hFormat.value
+          : true;
+      return Text(
+        formatLiveClock(_now, use24h: use24),
+        // الساعة دايمًا شمال→يمين عشان ص/م ما تتلخبطش في سياق عربي.
+        textDirection: TextDirection.ltr,
+        style: AppType.caption.copyWith(
+          color: widget.color,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      );
+    });
   }
 }
 

@@ -31,9 +31,7 @@ class _AppearanceCategoryPage extends StatelessWidget {
                 ),
                 (
                   label: 'نظام الساعة',
-                  value: settings.use24hFormat.value
-                      ? '24 ساعة (14:30)'
-                      : '12 ساعة (2:30 م)'
+                  value: settings.use24hFormat.value ? '24 ساعة' : '12 ساعة'
                 ),
               ],
             )),
@@ -54,16 +52,18 @@ class _AppearanceCategoryPage extends StatelessWidget {
               offHint: 'تغيير مظهر التطبيق للداكن',
               set: (v) async => themeController.setTheme(v),
             ),
-            Obx(() => _toggleCard(
-                  t,
-                  rx: settings.use24hFormat,
-                  icon: Icons.access_time_rounded,
-                  color: const Color(0xFF06B6D4),
-                  title: 'نظام الساعة 24',
-                  onHint: 'يعرض 14:30',
-                  offHint: 'يعرض 2:30 م',
-                  set: (v) async => await settings.setUse24hFormat(v),
-                )),
+            // _toggleCard فيها Obx جوّاها: لفّها في Obx تاني بلا أي observable كان بيرمي
+            // ObxError فالكارت يظهر مربع رمادي طويل.
+            _toggleCard(
+              t,
+              rx: settings.use24hFormat,
+              icon: Icons.access_time_rounded,
+              color: const Color(0xFF06B6D4),
+              title: 'نظام الساعة 24',
+              onHint: 'يعرض 14:30',
+              offHint: 'يعرض 2:30 م',
+              set: (v) async => await settings.setUse24hFormat(v),
+            ),
           ]),
         ),
       ],
