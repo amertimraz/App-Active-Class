@@ -474,7 +474,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         final pay = LockBadge(
           locked: !team.canSeeFinancials,
           child: _BoardAction(
-            icon: Icons.payment_rounded,
+            icon: Icons.account_balance_wallet_rounded,
             label: 'تسجيل دفع',
             onTap: () => team.canSeeFinancials
                 ? Get.toNamed(ROUTE_QR_SCANNER_PAYMENT)
