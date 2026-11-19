@@ -15,6 +15,19 @@ String waAbsenceDedupeKey(String ownerId, int studentId, DateTime day) {
   return '$ownerId|$studentId|absence|$d';
 }
 
+/// مهلة قبل ما رسالة الغياب تتبعت فعلًا، عشان المدرس يصلّح غلطة تسجيل قبل ما ولي الأمر
+/// يستلم «ابنك غايب». حادثة 2026-11-19: الغياب التلقائي سجّل 14 طالب غايبين وبعت لهم رسايل
+/// في أقل من ثانيتين، والمدرس صلّحهم «حاضر» بعدها (الرسايل كانت اتبعتت بالفعل).
+/// تلقائي (الغياب التلقائي بعد نهاية الحصة): ساعة. يدوي (ضغطة غياب): 3 دقايق.
+const Duration kWaAbsenceDelayAuto = Duration(minutes: 60);
+const Duration kWaAbsenceDelayManual = Duration(minutes: 3);
+
+/// وقت أقرب إرسال لطلب غياب (wa_outbox.not_before) — بصيغة UTC ISO.
+String waAbsenceNotBefore(DateTime now, {required bool auto}) => now
+    .add(auto ? kWaAbsenceDelayAuto : kWaAbsenceDelayManual)
+    .toUtc()
+    .toIso8601String();
+
 /// رقم ولي الأمر بصيغة digits دولية بلا '+' (نفس صيغة wa_outbox.to_phone)،
 /// أو null لو فاضي/غير صالح (أقل من 8 أو أكتر من 15 خانة).
 String? waRecipientPhone(String? raw, String dialCode) {

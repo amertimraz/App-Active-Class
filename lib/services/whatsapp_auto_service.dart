@@ -184,7 +184,8 @@ class WhatsAppAutoService {
 
   /// يحط طلب تنبيه غياب. بيرجع true لو اتبعت الطلب للسيرفر.
   /// جهاز المالك بس (المساعد ما يبعتش — منع الازدواج في وضع الفريق).
-  Future<bool> enqueueAbsence(int studentId, DateTime day) async {
+  Future<bool> enqueueAbsence(int studentId, DateTime day,
+      {bool auto = false}) async {
     try {
       if (!_featureOn) return false;
       final s = Get.find<SettingsController>();
@@ -220,6 +221,8 @@ class WhatsAppAutoService {
               waTeacherPhoneText(s.teacherPhone.value, s.countryDial.value),
         ),
         'dedupe_key': waAbsenceDedupeKey(ownerId, studentId, day),
+        // مهلة قبل الإرسال (يدوي 3 دقايق، تلقائي ساعة) — لحد ما المدرس يصلّح أي غلطة.
+        'not_before': waAbsenceNotBefore(DateTime.now(), auto: auto),
       }, onConflict: 'dedupe_key', ignoreDuplicates: true);
       return true;
     } catch (e) {

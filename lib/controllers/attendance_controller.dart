@@ -542,6 +542,8 @@ class AttendanceController extends GetxController {
             clearInteraction: true,
           ));
           succeeded++;
+          // رسالة الغياب التلقائي لو لسه pending (في مهلتها) تتلغي — وإلا ولي الأمر يستلم «غايب».
+          unawaited(WhatsAppAutoService.instance.cancelAbsence(id, day));
         } catch (e) {
           failed++;
         }

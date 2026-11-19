@@ -86,4 +86,14 @@ void main() {
     expect(v['teacher'], 'Active Class');
     expect(v['teacher_phone'], 'غير متاح');
   });
+
+  group('waAbsenceNotBefore (مهلة قبل الإرسال)', () {
+    final now = DateTime.utc(2026, 11, 19, 12, 0);
+    test('تلقائي = ساعة', () {
+      expect(waAbsenceNotBefore(now, auto: true), '2026-11-19T13:00:00.000Z');
+    });
+    test('يدوي = 3 دقايق', () {
+      expect(waAbsenceNotBefore(now, auto: false), '2026-11-19T12:03:00.000Z');
+    });
+  });
 }

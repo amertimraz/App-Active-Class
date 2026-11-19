@@ -165,7 +165,8 @@ class AutoAbsentService {
               touched.add(s.id!);
               added++;
               // spec 056 — طلب واتساب تلقائي (لو مفعّل؛ best-effort).
-              unawaited(WhatsAppAutoService.instance.enqueueAbsence(s.id!, c.day));
+              unawaited(WhatsAppAutoService.instance
+                  .enqueueAbsence(s.id!, c.day, auto: true));
             } catch (e) {
               // UNIQUE (طالب+يوم): اتسجّل من جهاز/مسار تاني — عادي.
               debugPrint('auto-absent skip ${s.id}: $e');
