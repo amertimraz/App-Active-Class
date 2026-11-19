@@ -32,8 +32,11 @@ import 'package:active_class/controllers/question_bank_controller.dart';
 import 'package:active_class/controllers/session_override_controller.dart';
 import 'package:active_class/controllers/booklet_controller.dart';
 import 'package:active_class/controllers/student_controller.dart';
+import 'package:active_class/models/attendance_model.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/services/sync_visibility.dart';
+import 'package:active_class/services/team_mode_service.dart';
+import 'package:active_class/services/whatsapp_auto_service.dart';
 import 'package:active_class/utils/sync_retry_policy.dart';
 import 'package:active_class/utils/sync_conflict.dart';
 
@@ -1644,7 +1647,56 @@ class SyncEngine with WidgetsBindingObserver {
     return r.isNotEmpty;
   }
 
+  /// غلاف حول التطبيق الفعلي: على جهاز المدرس (اللي بيبعت واتساب الغياب)، لو حضور وارد من
+  /// زميل (مساعد) حوّل طالب من «غائب» لأي حالة تانية (أو اتمسح)، نلغي رسالة الغياب
+  /// المعلّقة (لو لسه في مهلتها). من غيره: الغياب التلقائي على جهاز المدرس ممكن يسبق وصول
+  /// تحضير المساعد، فتحضيره يحل محل الغياب بس الرسالة تتبعت برضه.
   Future<void> _applyRemoteRow(String table, Map<String, dynamic> remote,
+      {DatabaseExecutor? executor}) async {
+    if (table != TABLE_ATTENDANCE || TeamModeService().isAssistant) {
+      return _applyRemoteRowCore(table, remote, executor: executor);
+    }
+    final db = executor ?? await _dbService.database;
+    int? studentId;
+    String? day;
+    var wasAbsent = false;
+    try {
+      final sr = remote['student_remote_id'] as String?;
+      final date = remote['date'] as String?;
+      if (sr != null && date != null && date.length >= 10) {
+        studentId = await _localIdForRemote(TABLE_STUDENTS, COL_STUDENT_ID, sr,
+            executor: executor);
+        day = date.substring(0, 10);
+        if (studentId != null) {
+          wasAbsent = await _isAbsentLocally(db, studentId, day);
+        }
+      }
+    } catch (_) {}
+    await _applyRemoteRowCore(table, remote, executor: executor);
+    if (wasAbsent && studentId != null && day != null) {
+      try {
+        if (!await _isAbsentLocally(db, studentId, day)) {
+          unawaited(WhatsAppAutoService.instance
+              .cancelAbsence(studentId, DateTime.parse(day)));
+        }
+      } catch (_) {}
+    }
+  }
+
+  Future<bool> _isAbsentLocally(
+      DatabaseExecutor db, int studentId, String day) async {
+    final rows = await db.query(TABLE_ATTENDANCE,
+        columns: [COL_ATTENDANCE_STATUS],
+        where:
+            '$COL_ATTENDANCE_STUDENT_ID = ? AND substr($COL_ATTENDANCE_DATE, 1, 10) = ?',
+        whereArgs: [studentId, day],
+        limit: 1);
+    return rows.isNotEmpty &&
+        normalizeAttendanceStatus(rows.first[COL_ATTENDANCE_STATUS] as String?) ==
+            ATTENDANCE_ABSENT;
+  }
+
+  Future<void> _applyRemoteRowCore(String table, Map<String, dynamic> remote,
       {DatabaseExecutor? executor}) async {
     final db = executor ?? await _dbService.database;
     final pkCol = _pkCol(table);

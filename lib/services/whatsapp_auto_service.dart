@@ -234,6 +234,8 @@ class WhatsAppAutoService {
   /// يلغي طلب غياب لسه pending (لو الغياب اتحوّل لحضور/اتمسح قبل الإرسال).
   Future<void> cancelAbsence(int studentId, DateTime day) async {
     try {
+      // الميزة مقفولة = مفيش طلبات أصلًا، ومفيش داعي نفتح اتصال.
+      if (!_featureOn) return;
       final c = await _client();
       if (c == null) return;
       final ownerId = c.auth.currentUser!.id;
