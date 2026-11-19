@@ -2,7 +2,7 @@
 description: "ØªØ·Ø¨ÙŠÙ‚ Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„ÙØµÙˆÙ„ Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠØ© - Active Class Application"
 publish_to: 'none'
 
-version: 1.2.91+4114
+version: 1.2.92+4115
 
 environment:
   sdk: ^3.5.4
