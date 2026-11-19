@@ -53,6 +53,9 @@ AttendanceReport computeAttendanceReport({
   required Iterable<Attendance> monthAttendance,
   required Map<int, int> groupOfStudent,
   int? groupId,
+
+  /// نطاق متعدد (كل مجموعات سنتر). لو اتحدد بيتقدّم على [groupId].
+  Set<int>? groupIds,
   int top = 5,
 
   /// طلاب (مؤرشفين مثلًا) بيدخلوا في الإجماليات والمجموعات لكن مش في قوايم
@@ -68,7 +71,11 @@ AttendanceReport computeAttendanceReport({
 
   for (final a in monthAttendance) {
     final g = groupOfStudent[a.studentId];
-    if (groupId != null && g != groupId) continue;
+    if (groupIds != null) {
+      if (g == null || !groupIds.contains(g)) continue;
+    } else if (groupId != null && g != groupId) {
+      continue;
+    }
     final s = normalizeAttendanceStatus(a.status);
     if (s == null) continue;
     if (s == ATTENDANCE_ABSENT) {

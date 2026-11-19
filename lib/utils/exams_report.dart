@@ -79,11 +79,19 @@ ExamsReport computeExamsReport({
   required Map<int, int> groupOfStudent,
   required Map<int, int> studentsPerGroup,
   int? groupId,
+
+  /// نطاق متعدد (كل مجموعات سنتر). لو اتحدد بيتقدّم على [groupId].
+  Set<int>? groupIds,
   int top = 5,
 }) {
   final byExam = <int, List<ExamGrade>>{};
   for (final g in grades) {
-    if (groupId != null && groupOfStudent[g.studentId] != groupId) continue;
+    final sg = groupOfStudent[g.studentId];
+    if (groupIds != null) {
+      if (sg == null || !groupIds.contains(sg)) continue;
+    } else if (groupId != null && sg != groupId) {
+      continue;
+    }
     byExam.putIfAbsent(g.examId, () => []).add(g);
   }
 
@@ -91,7 +99,13 @@ ExamsReport computeExamsReport({
     if (e.id == null) return false;
     final m = e.effectiveReportMonth;
     if (m.year != month.year || m.month != month.month) return false;
-    if (groupId != null && e.groupIds.isNotEmpty && !e.groupIds.contains(groupId)) {
+    if (groupIds != null) {
+      if (e.groupIds.isNotEmpty && !e.groupIds.any(groupIds.contains)) {
+        return false;
+      }
+    } else if (groupId != null &&
+        e.groupIds.isNotEmpty &&
+        !e.groupIds.contains(groupId)) {
       return false;
     }
     return true;
@@ -127,7 +141,9 @@ ExamsReport computeExamsReport({
       dist.update(c, (v) => v + 1, ifAbsent: () => 1);
     }
     final expected = e.groupIds
-        .where((id) => groupId == null || id == groupId)
+        .where((id) => groupIds != null
+            ? groupIds.contains(id)
+            : (groupId == null || id == groupId))
         .fold<int>(0, (s, id) => s + (studentsPerGroup[id] ?? 0));
     results.add(ExamResult(
       exam: e,

@@ -23,6 +23,8 @@ import 'package:active_class/services/team_mode_service.dart';
 import 'package:active_class/utils/report_trend.dart';
 import 'package:active_class/widgets/report_trend_card.dart';
 import 'package:active_class/models/exam_grade_model.dart';
+import 'package:active_class/controllers/group_controller.dart';
+import 'package:active_class/utils/report_scope.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -38,6 +40,14 @@ class _ReportsPageState extends State<ReportsPage>
 
   /// فلتر المجموعة المشترك بين كل التبويبات (null = كل المجموعات).
   final Rxn<int> _groupId = Rxn<int>();
+
+  /// فلتر السنتر (null = كل السناتر، أو اسم سنتر، أو kNoCenterFilter لـ«بدون سنتر»). لو اتحدد
+  /// بتتحسب كل التقارير على مجموعات السنتر ده (أو مجموعة منه لو اخترت واحدة).
+  final Rxn<String> _center = Rxn<String>();
+
+  /// نطاق التقرير: null = كل المجموعات.
+  Set<int>? get _scope => reportScope(
+      groupId: _groupId.value, center: _center.value, groups: ctrl.allGroups);
 
   static const _kTabOverview = 0;
   static const _kTabAttendance = 1;
@@ -70,34 +80,36 @@ class _ReportsPageState extends State<ReportsPage>
       };
 
   Iterable<GroupMonthSummary> get _summaries {
-    final gid = _groupId.value;
-    return gid == null
+    final scope = _scope;
+    return scope == null
         ? ctrl.groupSummaries
-        : ctrl.groupSummaries.where((g) => g.group.id == gid);
+        : ctrl.groupSummaries.where((g) => inReportScope(g.group.id, scope));
   }
 
   List<AtRiskStudent> get _unpaid {
-    final gid = _groupId.value;
+    final scope = _scope;
     final all = ctrl.unpaidStudents;
-    return gid == null ? all : all.where((u) => u.group?.id == gid).toList();
+    return scope == null
+        ? all
+        : all.where((u) => inReportScope(u.group?.id, scope)).toList();
   }
 
-  double get _expected => _groupId.value == null
+  double get _expected => _scope == null
       ? ctrl.monthExpected
       : _summaries.fold<double>(0, (a, g) => a + g.expectedIncome);
 
-  double get _collected => _groupId.value == null
+  double get _collected => _scope == null
       ? ctrl.monthTotalCollected
       : _summaries.fold<double>(0, (a, g) => a + g.collectedIncome);
 
-  double get _overdue => _groupId.value == null
+  double get _overdue => _scope == null
       ? ctrl.totalOverdue
       : _unpaid.fold<double>(0, (a, u) => a + u.remaining);
 
   AttendanceReport get _attendance => computeAttendanceReport(
         monthAttendance: ctrl.monthAttendance,
         groupOfStudent: _groupOfStudent,
-        groupId: _groupId.value,
+        groupIds: _scope,
         // المؤرشفين في الإجماليات بس، مش في قوايم «أكتر غياب/تأخير».
         rankExclude: {
           for (final s in ctrl.archivedStudents)
@@ -124,15 +136,15 @@ class _ReportsPageState extends State<ReportsPage>
             if (g.id != null)
               g.id!: ctrl.allStudents.where((s) => s.groupId == g.id).length
         },
-        groupId: _groupId.value,
+        groupIds: _scope,
       );
 
   // ─── اتجاه آخر ٦ شهور (نفس فلتر المجموعة) ──────────────────────────────────
   TrendPoint _pointFor(DateTime m) {
-    final gid = _groupId.value;
+    final scope = _scope;
     final sums = ctrl
         .groupSummariesFor(m)
-        .where((g) => gid == null || g.group.id == gid)
+        .where((g) => inReportScope(g.group.id, scope))
         .toList();
     final exp = sums.fold<double>(0, (a, g) => a + g.expectedIncome);
     final col = sums.fold<double>(0, (a, g) => a + g.collectedIncome);
@@ -141,7 +153,7 @@ class _ReportsPageState extends State<ReportsPage>
     final att = computeAttendanceReport(
       monthAttendance: ctrl.attendanceIn(m),
       groupOfStudent: _groupOfStudent,
-      groupId: gid,
+      groupIds: scope,
     ).rate;
     final ex = computeExamsReport(
       month: m,
@@ -149,7 +161,7 @@ class _ReportsPageState extends State<ReportsPage>
       grades: ctrl.allExamGrades,
       groupOfStudent: _groupOfStudent,
       studentsPerGroup: const {},
-      groupId: gid,
+      groupIds: scope,
     ).avgPct;
     return TrendPoint(
       month: m,
@@ -300,7 +312,60 @@ class _ReportsPageState extends State<ReportsPage>
               ),
             ],
           ),
-          // فلتر المجموعة
+          // فلتر السنتر (بيظهر بس لو فيه سناتر)
+          if (GroupController.centersOf(ctrl.allGroups).isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+                decoration: BoxDecoration(
+                  color: t.boardLine,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
+                ),
+                child: Row(children: [
+                  Icon(Icons.apartment_rounded, size: 18, color: t.boardInkSoft),
+                  const SizedBox(width: AppSpace.sm),
+                  Expanded(
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String?>(
+                        value: _center.value,
+                        isExpanded: true,
+                        dropdownColor: t.board,
+                        iconEnabledColor: t.boardInk,
+                        style: AppType.label.copyWith(color: t.boardInk),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                              value: null, child: Text('كل السناتر')),
+                          for (final c in GroupController.centersOf(ctrl.allGroups))
+                            DropdownMenuItem<String?>(value: c, child: Text(c)),
+                          if (ctrl.allGroups.any((g) =>
+                              GroupController.normalizeCenter(g.center) == null))
+                            const DropdownMenuItem<String?>(
+                                value: GroupController.kNoCenterFilter,
+                                child: Text('بدون سنتر')),
+                        ],
+                        onChanged: (v) {
+                          _center.value = v;
+                          // المجموعة المختارة لازم تفضل جوّه السنتر الجديد.
+                          final gid = _groupId.value;
+                          if (gid != null) {
+                            final g = ctrl.allGroups
+                                .firstWhereOrNull((x) => x.id == gid);
+                            if (g == null ||
+                                !GroupController.matchesCenter(g, v)) {
+                              _groupId.value = null;
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+            const SizedBox(height: AppSpace.xs),
+          ],
+          // فلتر المجموعة (جوّه السنتر المختار لو فيه)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpace.sm),
             child: Container(
@@ -323,7 +388,8 @@ class _ReportsPageState extends State<ReportsPage>
                       items: [
                         const DropdownMenuItem<int?>(
                             value: null, child: Text('كل المجموعات')),
-                        for (final g in ctrl.allGroups)
+                        for (final g in ctrl.allGroups.where(
+                            (x) => GroupController.matchesCenter(x, _center.value)))
                           DropdownMenuItem<int?>(
                               value: g.id, child: Text(g.name)),
                       ],
@@ -376,16 +442,16 @@ class _ReportsPageState extends State<ReportsPage>
     final prev = trend[trend.length - 2];
     final summaries = _summaries.toList();
     final unpaid = _unpaid;
-    final gid = _groupId.value;
+    final scope = _scope;
 
     final hwDone = summaries.fold<int>(0, (a, g) => a + g.totalHomeworkDone);
     final hwNot = summaries.fold<int>(0, (a, g) => a + g.totalHomeworkNotDone);
     final hwRate = ratio(hwDone, hwDone + hwNot);
     final collectRate = ratio(_collected, _expected);
 
-    final studentsCount = gid == null
+    final studentsCount = scope == null
         ? ctrl.allStudents.length
-        : ctrl.allStudents.where((s) => s.groupId == gid).length;
+        : ctrl.allStudents.where((s) => scope.contains(s.groupId)).length;
     final nameById = _studentNames;
 
     return ListView(
@@ -409,7 +475,7 @@ class _ReportsPageState extends State<ReportsPage>
               color: t.brand,
               label: 'المتوقع',
               value: _money(_expected),
-              sub: gid == null && ctrl.archivedPaidIncluded > 0.5
+              sub: scope == null && ctrl.archivedPaidIncluded > 0.5
                   ? 'مستحق ${DateFormat('MMMM', 'ar').format(month)} + ${_money(ctrl.archivedPaidIncluded)} مؤرشفين'
                   : 'مستحق ${DateFormat('MMMM', 'ar').format(month)}',
               onTap: () => _tabs.animateTo(_kTabPayments),
@@ -459,7 +525,9 @@ class _ReportsPageState extends State<ReportsPage>
               color: t.inkSoft,
               label: 'الطلاب',
               value: '$studentsCount',
-              sub: gid == null ? '${ctrl.allGroups.length} مجموعة' : 'في المجموعة دي',
+              sub: scope == null
+                  ? '${ctrl.allGroups.length} مجموعة'
+                  : 'في ${scope.length == 1 ? 'المجموعة دي' : 'النطاق ده'}',
               onTap: () => _tabs.animateTo(_kTabGroups),
             )),
           ]);
@@ -840,7 +908,7 @@ class _ReportsPageState extends State<ReportsPage>
                       ),
                     ),
 
-        if (_groupId.value == null && ctrl.archivedPaidIncluded > 0.5)
+        if (_scope == null && ctrl.archivedPaidIncluded > 0.5)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
