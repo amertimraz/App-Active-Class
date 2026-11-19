@@ -1656,7 +1656,24 @@ class SyncEngine with WidgetsBindingObserver {
     if (table != TABLE_ATTENDANCE || TeamModeService().isAssistant) {
       return _applyRemoteRowCore(table, remote, executor: executor);
     }
+    // الحالة الشائعة (السحب الكامل كل ~50ث بيعيد كل الحضور): الوارد «غائب»، أو الصف المحلي
+    // المعروف بالـremote_id مش غائب → مفيش حاجة نلغيها، فنتخطى الفحص التقيل.
+    if (normalizeAttendanceStatus(remote['status'] as String?) ==
+        ATTENDANCE_ABSENT) {
+      return _applyRemoteRowCore(table, remote, executor: executor);
+    }
     final db = executor ?? await _dbService.database;
+    final known = await db.query(TABLE_ATTENDANCE,
+        columns: [COL_ATTENDANCE_STATUS],
+        where: '$COL_SYNC_REMOTE_ID = ?',
+        whereArgs: [remote['id']],
+        limit: 1);
+    if (known.isNotEmpty &&
+        normalizeAttendanceStatus(
+                known.first[COL_ATTENDANCE_STATUS] as String?) !=
+            ATTENDANCE_ABSENT) {
+      return _applyRemoteRowCore(table, remote, executor: executor);
+    }
     int? studentId;
     String? day;
     var wasAbsent = false;

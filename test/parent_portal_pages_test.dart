@@ -42,7 +42,7 @@ class _Portal extends ParentPortalController {
   }
 
   @override
-  Future<int> publishAll() async {
+  Future<int> publishAll({bool force = false}) async {
     publishCalls++;
     lastPublishedAt.value = DateTime(2026, 11, 1, 14, 30);
     lastPublishedCount.value = 3;
