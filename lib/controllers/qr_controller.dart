@@ -474,9 +474,14 @@ class QRController extends GetxController {
         final members = [student, ...others];
         final memberCount = members.length;
         if (memberCount >= 2) {
-          final total =
-              custom ?? ((student.siblingsTotal!) * selectedMonths.length);
-          final each = total / memberCount;
+          // بدون مبلغ يدوي: كل أخ بنصيبه حسب كل شهر (سعر الإخوة من تاريخ
+          // سريانه، والشهور قبله بالسعر الفردي).
+          double shareOf(Student m) => custom != null
+              ? custom / memberCount
+              : PricingHelper.siblingPaymentShare(
+                  member: m,
+                  months: selectedMonths.toList(),
+                  memberCount: memberCount);
           final extra = [
             if (custom != null) 'custom=1',
             if (customNote.isNotEmpty) 'note=$customNote',
@@ -484,6 +489,7 @@ class QRController extends GetxController {
           ].join(';');
           final note = 'months=${keys.join(',')};$extra';
           for (final m in members) {
+            final each = shareOf(m);
             final insertedId = await _dbService.insertPayment(Payment(
                 studentId: m.id!,
                 date: now,
@@ -579,7 +585,23 @@ class QRController extends GetxController {
         s.siblingsTotal != null &&
         !isPerSessionGroup &&
         !s.isFullyExempt) {
-      totalAmount.value = (s.siblingsTotal!) * selectedMonths.length;
+      final all = _allStudents;
+      final members = all == null
+          ? <Student>[s]
+          : all.where((x) => x.siblingGroupId == s.siblingGroupId).toList();
+      final list = members.isEmpty ? <Student>[s] : members;
+      final count = list.length < 2 ? 2 : list.length;
+      final months = selectedMonths.toList();
+      totalAmount.value = list.length < 2
+          ? PricingHelper.siblingPaymentShare(
+                  member: s, months: months, memberCount: count) *
+              count
+          : list.fold<double>(
+              0,
+              (sum, m) =>
+                  sum +
+                  PricingHelper.siblingPaymentShare(
+                      member: m, months: months, memberCount: count));
       return;
     }
     // بالحصة: بنعرض قيمة عدد الحصص المختار دفعها دلوقتي بس (sessionsToPay)،

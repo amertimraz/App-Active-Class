@@ -124,6 +124,27 @@ class PricingHelper {
         .isBefore(DateTime(from.year, from.month, 1));
   }
 
+  /// نصيب [member] في دفعة إخوة عن [months]: الشهور من «سعر الإخوة يسري من»
+  /// وبعدين بنصيبه من المشترك (siblingsTotal ÷ [memberCount])، والشهور
+  /// قبلها بسعره الفردي — نفس قاعدة [monthlyDue]، عشان الدفعة تطابق المستحق
+  /// وما تتولّدش مديونية وهمية (مثلًا 80 مستحق ومدفوع 70).
+  static double siblingPaymentShare({
+    required Student member,
+    required List<DateTime> months,
+    required int memberCount,
+  }) {
+    final total = member.siblingsTotal;
+    double sum = 0;
+    for (final m in months) {
+      if (total != null && memberCount >= 2 && _siblingPriceApplies(member, m)) {
+        sum += total / memberCount;
+      } else {
+        sum += member.effectivePrice;
+      }
+    }
+    return sum;
+  }
+
   static double monthlyDue({
     required Student student,
     required Group? group,
