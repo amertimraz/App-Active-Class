@@ -1,12 +1,16 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, ValueListenable;
 import 'package:get/get.dart';
 import 'package:active_class/utils/responsive.dart';
-import 'package:active_class/config/constants.dart';
+import 'package:active_class/config/theme.dart';
+import 'package:active_class/controllers/group_controller.dart';
+import 'package:active_class/widgets/app_panel.dart';
+import 'package:active_class/views/help/help_widgets.dart';
 import 'package:active_class/utils/helpers.dart';
 import 'package:active_class/services/database_service.dart';
 import 'package:active_class/models/student_model.dart';
@@ -30,27 +34,52 @@ class QrGalleryPage extends StatefulWidget {
   State<QrGalleryPage> createState() => _QrGalleryPageState();
 }
 
+enum _QrSort { name, code, newest }
+
 class _QrGalleryPageState extends State<QrGalleryPage> {
   final DatabaseService _db = DatabaseService();
   final TextEditingController _searchCtrl = TextEditingController();
+  Timer? _debounce;
 
+  bool _loading = true;
   List<Group> _groups = [];
+  Map<int?, Group> _groupById = {};
+  Map<int?, int> _groupCounts = {};
+  List<String> _centers = [];
   List<Student> _all = [];
   List<Student> _filtered = [];
   Group? _selectedGroup;
+  String? _selectedCenter;
   // فلتر فترة الانضمام: null = كل الطلاب
   DateTime? _dateFrom;
   DateTime? _dateTo;
+  _QrSort _sort = _QrSort.name;
+
+  // التحديد: لو فيه طلاب محددين، التصدير بيشمل المحددين بس (حتى لو من
+  // مجموعات مختلفة)، وإلا بيشمل كل المعروض.
+  final Set<int> _selected = {};
+
+  // محتوى البطاقة المطبوعة
+  bool _showGroupOnCard = true;
+  bool _showCodeOnCard = true;
+
+  // كاش صور البطاقات: التصدير المتكرر (PDF ثم ZIP) ميرسمش من الأول.
+  final Map<String, Uint8List> _pngCache = {};
+  static const int _pngCacheMax = 300;
 
   @override
   void initState() {
     super.initState();
-    _searchCtrl.addListener(() => _applyFilters());
+    _searchCtrl.addListener(() {
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 180), _applyFilters);
+    });
     _load();
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -61,17 +90,94 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
     // مستبعدين.
     final students =
         (await _db.getAllStudents()).where((s) => !s.isArchived).toList();
+    if (!mounted) return;
+    final counts = <int?, int>{};
+    for (final s in students) {
+      counts[s.groupId] = (counts[s.groupId] ?? 0) + 1;
+    }
+    final centers = {
+      for (final g in groups)
+        if (GroupController.normalizeCenter(g.center) != null)
+          GroupController.normalizeCenter(g.center)!
+    }.toList()
+      ..sort();
     setState(() {
       _groups = groups;
-      _all = students..sort((a, b) => a.name.compareTo(b.name));
+      _groupById = {for (final g in groups) g.id: g};
+      _groupCounts = counts;
+      _centers = centers;
+      if (_selectedCenter != null && !centers.contains(_selectedCenter)) {
+        _selectedCenter = null;
+      }
+      _all = students;
+      _loading = false;
+      // نشيل من التحديد أي طالب اتحذف/اتأرشف من ساعة آخر تحميل.
+      final live = {for (final s in students) s.id};
+      _selected.removeWhere((id) => !live.contains(id));
     });
     _applyFilters();
   }
 
+  /// المجموعات المعروضة كشرائح: كلها، أو اللي تحت السنتر المختار.
+  List<Group> get _groupsInCenter => _selectedCenter == null
+      ? _groups
+      : _groups
+          .where((g) =>
+              GroupController.normalizeCenter(g.center) == _selectedCenter)
+          .toList();
+
+  void _setCenter(String? center) {
+    _selectedCenter = center;
+    // لو المجموعة المختارة مش تحت السنتر الجديد نرجع لـ«كل المجموعات».
+    if (_selectedGroup != null &&
+        center != null &&
+        GroupController.normalizeCenter(_selectedGroup!.center) != center) {
+      _selectedGroup = null;
+    }
+    _applyFilters();
+  }
+
+  void _setGroup(Group? g) {
+    _selectedGroup = g;
+    _applyFilters();
+  }
+
+  int _compareCodes(String a, String b) {
+    final na = int.tryParse(a);
+    final nb = int.tryParse(b);
+    if (na != null && nb != null) return na.compareTo(nb);
+    return a.compareTo(b);
+  }
+
+  List<Student> _sorted(List<Student> list) {
+    switch (_sort) {
+      case _QrSort.name:
+        list.sort((a, b) => a.name.compareTo(b.name));
+      case _QrSort.code:
+        list.sort((a, b) => _compareCodes(a.code, b.code));
+      case _QrSort.newest:
+        DateTime key(Student s) =>
+            s.attendanceStart ??
+            s.createdAt ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+        list.sort((a, b) => key(b).compareTo(key(a)));
+    }
+    return list;
+  }
+
+  /// اللي هيتصدّر: المحددين لو فيه تحديد، وإلا كل المعروض.
+  List<Student> get _exportList => _selected.isEmpty
+      ? _filtered
+      : _sorted(_all.where((s) => _selected.contains(s.id)).toList());
+
   void _applyFilters() {
+    if (!mounted) return;
     List<Student> list = List.of(_all);
     if (_selectedGroup != null) {
       list = list.where((s) => s.groupId == _selectedGroup!.id).toList();
+    } else if (_selectedCenter != null) {
+      final ids = {for (final g in _groupsInCenter) g.id};
+      list = list.where((s) => ids.contains(s.groupId)).toList();
     }
     if (_dateFrom != null || _dateTo != null) {
       list = list.where((s) {
@@ -91,7 +197,7 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
           .where((s) => s.name.contains(q) || s.code.contains(q))
           .toList();
     }
-    setState(() => _filtered = list);
+    setState(() => _filtered = _sorted(list));
   }
 
   void _showDateRangeSheet() {
@@ -104,73 +210,12 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
         initialFrom: _dateFrom,
         initialTo: _dateTo,
         onApply: (from, to) {
-          setState(() {
-            _dateFrom = from;
-            _dateTo = to != null
-                ? DateTime(to.year, to.month, to.day, 23, 59, 59)
-                : null;
-          });
+          _dateFrom = from;
+          _dateTo = to != null
+              ? DateTime(to.year, to.month, to.day, 23, 59, 59)
+              : null;
           _applyFilters();
         },
-      ),
-    );
-  }
-
-  void _showGroupSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.55,
-        maxChildSize: 0.9,
-        builder: (_, scrollCtrl) => SafeArea(
-          child: ListView(
-            controller: scrollCtrl,
-            children: [
-              const SizedBox(height: 8),
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: Colors.grey.shade400,
-                      borderRadius: BorderRadius.circular(2)),
-                ),
-              ),
-              const SizedBox(height: 8),
-              ListTile(
-                leading: Icon(
-                  _selectedGroup == null
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                ),
-                title: const Text('كل المجموعات'),
-                onTap: () {
-                  setState(() => _selectedGroup = null);
-                  _applyFilters();
-                  Get.back();
-                },
-              ),
-              ..._groups.map((g) => ListTile(
-                    leading: Icon(
-                      _selectedGroup?.id == g.id
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_off,
-                    ),
-                    title: Text(g.name),
-                    onTap: () {
-                      setState(() => _selectedGroup = g);
-                      _applyFilters();
-                      Get.back();
-                    },
-                  )),
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -224,12 +269,27 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
 
   /// ينشئ PNG للطالب بدون toImage() وسطية — يرسم QR مباشرة على Canvas
   Future<Uint8List?> _composeCardPng(Student s) async {
+    final key =
+        '${s.code}|${s.name}|${_groupById[s.groupId]?.name}|$_showGroupOnCard|$_showCodeOnCard';
+    final hit = _pngCache[key];
+    if (hit != null) return hit;
+    final bytes = await _composeCardPngRaw(s);
+    if (bytes != null) {
+      if (_pngCache.length >= _pngCacheMax) {
+        _pngCache.remove(_pngCache.keys.first);
+      }
+      _pngCache[key] = bytes;
+    }
+    return bytes;
+  }
+
+  Future<Uint8List?> _composeCardPngRaw(Student s) async {
     try {
       // yield للـ event loop حتى لا يتعطل الـ UI
       await Future.delayed(Duration.zero);
 
       final groupName =
-          _groups.firstWhereOrNull((g) => g.id == s.groupId)?.name;
+          _showGroupOnCard ? _groupById[s.groupId]?.name : null;
       const int qrSize = 700;
       const double padding = 40;
       const double spacing = 24;
@@ -257,15 +317,17 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
               textDirection: ui.TextDirection.rtl,
             )..layout(maxWidth: qrSize.toDouble()));
 
-      final tpCode = TextPainter(
-        text: TextSpan(text: 'الكود: ${s.code}', style: textStyleSub),
-        textAlign: TextAlign.center,
-        textDirection: ui.TextDirection.ltr,
-      )..layout(maxWidth: qrSize.toDouble());
+      final tpCode = !_showCodeOnCard
+          ? null
+          : (TextPainter(
+              text: TextSpan(text: 'الكود: ${s.code}', style: textStyleSub),
+              textAlign: TextAlign.center,
+              textDirection: ui.TextDirection.ltr,
+            )..layout(maxWidth: qrSize.toDouble()));
 
       final double textHeight = tpName.height +
           (tpGroup?.height ?? 0) +
-          tpCode.height +
+          (tpCode?.height ?? 0) +
           spacing * 2;
       final int widthPx = (qrSize + padding * 2).round();
       final int heightPx =
@@ -304,7 +366,7 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
             canvas, Offset((widthPx - tpGroup.width) / 2, cursorY));
         cursorY += tpGroup.height + 8;
       }
-      tpCode.paint(
+      tpCode?.paint(
           canvas, Offset((widthPx - tpCode.width) / 2, cursorY));
 
       // toImageSync: لا ينتظر الـ raster thread — يعمل على الـ UI thread مباشرة
@@ -322,7 +384,8 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
   // ─── Export flow ─────────────────────────────────────────────────────────
 
   void _showExportDialog() {
-    if (_filtered.isEmpty) {
+    final list = _exportList;
+    if (list.isEmpty) {
       ToastHelper.error('لا يوجد طلاب لتصديرهم');
       return;
     }
@@ -332,9 +395,9 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => _ExportOptionsSheet(
-        studentCount: _filtered.length,
-        groupName: _selectedGroup?.name,
-        students: _filtered,
+        studentCount: list.length,
+        groupName: _selected.isNotEmpty ? 'المحددين' : _selectedGroup?.name,
+        students: list,
         groups: _groups,
         onExport: (cols, rows, margin) {
           Get.back();
@@ -345,21 +408,26 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
   }
 
   Future<void> _exportPdf({int perRow = 3, int perCol = 4, double pageMargin = 14.0}) async {
+    final list = _exportList;
+    final progress = ValueNotifier<int>(0);
     // Progress dialog
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => _ProgressDialog(
-          total: _filtered.length, label: 'جاري إنشاء الـ PDF...'),
+          total: list.length,
+          label: 'جاري إنشاء الـ PDF...',
+          progress: progress),
     );
 
     try {
       // المرحلة الأولى: نرسم صور الـ QR على الـ UI isolate (لازم dart:ui)
       // مع yield بين كل طالب حتى تبقى الواجهة مستجيبة.
       final images = <String, Uint8List>{};
-      for (final s in _filtered) {
+      for (final s in list) {
         final bytes = await _composeCardPng(s);
         if (bytes != null) images[s.code] = bytes;
+        progress.value++;
       }
 
       // المرحلة الثانية: بناء وتجميع الـ PDF عملية Dart خالصة (بدون dart:ui)
@@ -367,7 +435,7 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
       final bytes = await compute(
         _buildQrPdfBytes,
         _QrPdfBuildArgs(
-          codes: _filtered.map((s) => s.code).toList(),
+          codes: list.map((s) => s.code).toList(),
           images: images,
           perRow: perRow,
           perCol: perCol,
@@ -383,12 +451,16 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
       if (!mounted) return;
       Get.back();
       ToastHelper.error('تعذر إنشاء ملف PDF: $e');
+    } finally {
+      progress.dispose();
     }
   }
 
   Future<void> _savePdfBytes(Uint8List bytes) async {
     final dateStr   = DateFormat('yyyyMMdd').format(DateTime.now());
-    final groupPart = _selectedGroup == null
+    final groupPart = _selected.isNotEmpty
+        ? '_selection'
+        : _selectedGroup == null
         ? ''
         : '_${_selectedGroup!.name.replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_')}';
     final fileName = 'students_qr${groupPart}_$dateStr.pdf';
@@ -445,24 +517,29 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
   // ─── ZIP export ──────────────────────────────────────────────────────────
 
   Future<void> _exportZip() async {
-    if (_filtered.isEmpty) {
+    final list = _exportList;
+    if (list.isEmpty) {
       ToastHelper.error('لا يوجد طلاب لتصديرهم');
       return;
     }
 
+    final progress = ValueNotifier<int>(0);
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => _ProgressDialog(
-          total: _filtered.length, label: 'جاري إنشاء ملف ZIP...'),
+          total: list.length,
+          label: 'جاري إنشاء ملف ZIP...',
+          progress: progress),
     );
 
     try {
       final archive = Archive();
 
-      for (int i = 0; i < _filtered.length; i++) {
-        final s     = _filtered[i];
+      for (int i = 0; i < list.length; i++) {
+        final s     = list[i];
         final bytes = await _composeCardPng(s);
+        progress.value++;
         if (bytes == null) continue;
         archive.addFile(ArchiveFile('${s.code}.png', bytes.length, bytes));
       }
@@ -473,7 +550,9 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
       Get.back(); // close progress
 
       final dateStr   = DateFormat('yyyyMMdd').format(DateTime.now());
-      final groupPart = _selectedGroup == null
+      final groupPart = _selected.isNotEmpty
+          ? '_selection'
+          : _selectedGroup == null
           ? ''
           : '_${_selectedGroup!.name.replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_')}';
       final fileName = 'qr_codes${groupPart}_$dateStr.zip';
@@ -518,12 +597,14 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
         icon: Icons.folder_zip_rounded,
         color: const Color(0xFF059669),
         savedToDownloads: savedToDownloads,
-        subtitle: '${_filtered.length} بطاقة QR',
+        subtitle: '${list.length} بطاقة QR',
       );
     } catch (e) {
       if (!mounted) return;
       Get.back();
       ToastHelper.error('تعذر إنشاء ZIP: $e');
+    } finally {
+      progress.dispose();
     }
   }
 
@@ -555,6 +636,19 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
   }
 
   // ─── Full-screen QR preview ───────────────────────────────────────────────
+
+  /// بيشارك بطاقة طالب واحد كصورة (واتساب ولي الأمر مثلًا).
+  Future<void> _shareQr(Student s) async {
+    final bytes = await _composeCardPng(s);
+    if (bytes == null) {
+      ToastHelper.error('تعذر تجهيز البطاقة');
+      return;
+    }
+    final tmp = await getTemporaryDirectory();
+    final file = File('${tmp.path}/QR_${s.code}.png');
+    await file.writeAsBytes(bytes, flush: true);
+    await Share.shareXFiles([XFile(file.path)], text: s.name);
+  }
 
   void _showQrFullscreen(Student s, String? groupName) {
     showDialog(
@@ -614,6 +708,14 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _shareQr(s),
+                      icon: const Icon(Icons.share_rounded),
+                      label: const Text('مشاركة'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
                     child: FilledButton.icon(
                       onPressed: () {
                         Get.back();
@@ -634,51 +736,166 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
     );
   }
 
+  // ─── Selection helpers ────────────────────────────────────────────────────
+
+  void _toggleSelect(Student s) {
+    final id = s.id;
+    if (id == null) return;
+    setState(() {
+      if (!_selected.remove(id)) _selected.add(id);
+    });
+  }
+
+  void _selectAllFiltered() {
+    setState(() {
+      for (final s in _filtered) {
+        if (s.id != null) _selected.add(s.id!);
+      }
+    });
+  }
+
+  void _clearSelection() => setState(_selected.clear);
+
+  String get _sortLabel => switch (_sort) {
+        _QrSort.name => 'الاسم',
+        _QrSort.code => 'الكود',
+        _QrSort.newest => 'الأحدث انضمامًا',
+      };
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
+    final selecting = _selected.isNotEmpty;
+    final exportCount = _exportList.length;
+    final centerGroups = _groupsInCenter;
 
-    return Scaffold(
-      appBar: buildGradientAppBar(
-        title: 'مكتبة QR',
-        actions: [
-          IconButton(
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
-            tooltip: 'تحديث',
-          ),
-        ],
-      ),
-      floatingActionButton: _filtered.isEmpty
-          ? null
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                FloatingActionButton.extended(
-                  heroTag: 'zip_fab',
-                  onPressed: _exportZip,
-                  icon: const Icon(Icons.folder_zip_rounded),
-                  label: Text('ZIP (${_filtered.length})'),
-                  backgroundColor: const Color(0xFF059669),
+    return PopScope(
+      canPop: !selecting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _clearSelection();
+      },
+      child: Scaffold(
+        backgroundColor: t.page,
+        appBar: buildBoardAppBar(
+          context,
+          title: selecting ? 'محدد ${_selected.length}' : 'مكتبة QR',
+          leading: selecting
+              ? IconButton(
+                  onPressed: _clearSelection,
+                  tooltip: 'إلغاء التحديد',
+                  icon: const Icon(Icons.close_rounded),
+                )
+              : null,
+          actions: [
+            IconButton(
+              onPressed: _selectAllFiltered,
+              icon: const Icon(Icons.select_all_rounded),
+              tooltip: 'تحديد الكل',
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'خيارات البطاقة',
+              icon: const Icon(Icons.tune_rounded),
+              onSelected: (v) {
+                setState(() {
+                  if (v == 'group') _showGroupOnCard = !_showGroupOnCard;
+                  if (v == 'code') _showCodeOnCard = !_showCodeOnCard;
+                });
+              },
+              itemBuilder: (_) => [
+                CheckedPopupMenuItem(
+                  value: 'group',
+                  checked: _showGroupOnCard,
+                  child: const Text('اسم المجموعة على البطاقة'),
                 ),
-                const SizedBox(height: 10),
-                FloatingActionButton.extended(
-                  heroTag: 'pdf_fab',
-                  onPressed: _showExportDialog,
-                  icon: const Icon(Icons.picture_as_pdf),
-                  label: Text('PDF (${_filtered.length})'),
+                CheckedPopupMenuItem(
+                  value: 'code',
+                  checked: _showCodeOnCard,
+                  child: const Text('الكود على البطاقة'),
                 ),
               ],
             ),
-      body: buildSoftBackground(
-        context: context,
-        child: Column(
+            IconButton(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'تحديث',
+            ),
+            const HelpButton(topicId: 'qr'),
+          ],
+        ),
+        bottomNavigationBar: exportCount == 0
+            ? null
+            : DecoratedBox(
+                decoration: BoxDecoration(
+                  color: t.surface,
+                  border: Border(top: BorderSide(color: t.line)),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSpace.lg, AppSpace.sm, AppSpace.lg, AppSpace.sm),
+                    child: Row(
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _exportZip,
+                          icon: const Icon(Icons.folder_zip_rounded),
+                          label: Text('ZIP ($exportCount)'),
+                          style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(0, 48)),
+                        ),
+                        const SizedBox(width: AppSpace.sm),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _showExportDialog,
+                            icon: const Icon(Icons.picture_as_pdf_rounded),
+                            label: Text('PDF للطباعة ($exportCount)'),
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(48),
+                              backgroundColor: t.chalk,
+                              foregroundColor: t.onChalk,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+        body: Column(
           children: [
-            // ─── Filters ───────────────────────────────────────────
+            // ─── السبورة: أرقام سريعة ───────────────────────────────
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpace.lg, AppSpace.xs, AppSpace.lg, AppSpace.lg),
+              decoration: BoxDecoration(
+                color: t.board,
+                borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(AppRadius.board)),
+              ),
+              child: Row(children: [
+                Expanded(
+                    child: BoardStat(
+                        label: 'بطاقة',
+                        value: '${_filtered.length}',
+                        color: t.boardInk)),
+                Expanded(
+                    child: BoardStat(
+                        label: 'محدد',
+                        value: '${_selected.length}',
+                        color: selecting ? t.chalk : t.boardInkSoft)),
+                Expanded(
+                    child: BoardStat(
+                        label: 'مجموعة',
+                        value: '${_groups.length}',
+                        color: t.boardInk)),
+              ]),
+            ),
+
+            // ─── البحث والترتيب ────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                  PADDING_NORMAL, PADDING_NORMAL, PADDING_NORMAL, 0),
+                  AppSpace.lg, AppSpace.md, AppSpace.lg, AppSpace.xs),
               child: Row(
                 children: [
                   Expanded(
@@ -692,136 +909,164 @@ class _QrGalleryPageState extends State<QrGalleryPage> {
                       },
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: _showGroupSheet,
+                  const SizedBox(width: AppSpace.sm),
+                  PopupMenuButton<_QrSort>(
+                    tooltip: 'ترتيب: $_sortLabel',
+                    initialValue: _sort,
+                    onSelected: (v) {
+                      _sort = v;
+                      _applyFilters();
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                          value: _QrSort.name, child: Text('ترتيب بالاسم')),
+                      PopupMenuItem(
+                          value: _QrSort.code, child: Text('ترتيب بالكود')),
+                      PopupMenuItem(
+                          value: _QrSort.newest,
+                          child: Text('الأحدث انضمامًا')),
+                    ],
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? const Color(0xFF1E1E2E)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: Colors.grey.withValues(alpha: 0.3)),
+                        color: t.surface,
+                        borderRadius: BorderRadius.circular(AppRadius.control),
+                        border: Border.all(color: t.line),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.group_outlined,
-                              size: 16,
-                              color: Colors.grey.shade600),
-                          const SizedBox(width: 6),
-                          Text(
-                            _selectedGroup?.name ?? 'المجموعة',
-                            style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey.shade700),
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(Icons.arrow_drop_down,
-                              size: 16,
-                              color: Colors.grey.shade500),
-                        ],
-                      ),
+                      child: Icon(Icons.sort_rounded, color: t.inkSoft),
                     ),
                   ),
                 ],
               ),
             ),
 
-            // ─── Active filters + join-month chip ──────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  PADDING_NORMAL, 8, PADDING_NORMAL, 4),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
+            // ─── السناتر (لو فيه) ───────────────────────────────────
+            if (_centers.isNotEmpty)
+              SizedBox(
+                height: 48,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: AppSpace.lg),
                   children: [
-                    Text('${_filtered.length} طالب',
-                        style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade500)),
-                    const SizedBox(width: 10),
-                    // فلتر فترة الانضمام
-                    _FilterChip(
-                      label: _dateFrom == null && _dateTo == null
-                          ? 'فترة الانضمام'
-                          : _dateFrom != null && _dateTo != null
-                              ? '${DateFormat('d/M', 'ar').format(_dateFrom!)} — ${DateFormat('d/M', 'ar').format(_dateTo!)}'
-                              : _dateFrom != null
-                                  ? 'من ${DateFormat('d/M/yy', 'ar').format(_dateFrom!)}'
-                                  : 'حتى ${DateFormat('d/M/yy', 'ar').format(_dateTo!)}',
-                      icon: Icons.date_range_rounded,
-                      active: _dateFrom != null || _dateTo != null,
-                      onTap: _showDateRangeSheet,
-                      onClear: (_dateFrom == null && _dateTo == null)
-                          ? null
-                          : () {
-                              setState(() {
-                                _dateFrom = null;
-                                _dateTo = null;
-                              });
-                              _applyFilters();
-                            },
-                    ),
-                    if (_selectedGroup != null) ...[
-                      const SizedBox(width: 6),
-                      _FilterChip(
-                        label: _selectedGroup!.name,
-                        icon: Icons.groups_outlined,
-                        active: true,
-                        onTap: _showGroupSheet,
-                        onClear: () {
-                          setState(() => _selectedGroup = null);
-                          _applyFilters();
-                        },
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 8),
+                      child: _FilterChip(
+                        label: 'كل السناتر',
+                        icon: Icons.apartment_rounded,
+                        active: _selectedCenter == null,
+                        onTap: () => _setCenter(null),
                       ),
-                    ],
+                    ),
+                    for (final c in _centers)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 8),
+                        child: _FilterChip(
+                          label: c,
+                          icon: Icons.apartment_rounded,
+                          active: _selectedCenter == c,
+                          onTap: () => _setCenter(c),
+                        ),
+                      ),
                   ],
                 ),
               ),
+
+            // ─── المجموعات + فترة الانضمام ──────────────────────────
+            SizedBox(
+              height: 48,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg),
+                children: [
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 8),
+                    child: _FilterChip(
+                      label: 'كل المجموعات',
+                      icon: Icons.groups_outlined,
+                      active: _selectedGroup == null,
+                      onTap: () => _setGroup(null),
+                    ),
+                  ),
+                  for (final g in centerGroups)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 8),
+                      child: _FilterChip(
+                        label: '${g.name} (${_groupCounts[g.id] ?? 0})',
+                        icon: Icons.group_outlined,
+                        active: _selectedGroup?.id == g.id,
+                        onTap: () => _setGroup(g),
+                      ),
+                    ),
+                  _FilterChip(
+                    label: _dateFrom == null && _dateTo == null
+                        ? 'فترة الانضمام'
+                        : _dateFrom != null && _dateTo != null
+                            ? '${DateFormat('d/M', 'ar').format(_dateFrom!)} — ${DateFormat('d/M', 'ar').format(_dateTo!)}'
+                            : _dateFrom != null
+                                ? 'من ${DateFormat('d/M/yy', 'ar').format(_dateFrom!)}'
+                                : 'حتى ${DateFormat('d/M/yy', 'ar').format(_dateTo!)}',
+                    icon: Icons.date_range_rounded,
+                    active: _dateFrom != null || _dateTo != null,
+                    onTap: _showDateRangeSheet,
+                    onClear: (_dateFrom == null && _dateTo == null)
+                        ? null
+                        : () {
+                            _dateFrom = null;
+                            _dateTo = null;
+                            _applyFilters();
+                          },
+                  ),
+                ],
+              ),
             ),
 
-            // ─── Grid ──────────────────────────────────────────────
+            // ─── الشبكة ─────────────────────────────────────────────
             Expanded(
-              child: _filtered.isEmpty
-                  ? const EmptyState(
-                      icon: Icons.qr_code_2,
-                      title: 'لا توجد نتائج',
-                      subtitle: 'جرّب تعديل البحث أو المجموعة',
-                    )
-                  : GridView.builder(
-                      padding: const EdgeInsets.fromLTRB(
-                          PADDING_NORMAL, 0, PADDING_NORMAL, 80),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: adaptiveColumns(
-                            MediaQuery.sizeOf(context).width,
-                            phone: 2,
-                            minTileWidth: 230,
-                            max: 5),
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
-                        childAspectRatio: 0.75,
-                      ),
-                      itemCount: _filtered.length,
-                      itemBuilder: (ctx, i) {
-                        final s = _filtered[i];
-                        final group = _groups.firstWhereOrNull(
-                            (g) => g.id == s.groupId);
-                        return _QrStudentCard(
-                          student: s,
-                          groupName: group?.name,
-                          isDark: isDark,
-                          onTap: () =>
-                              _showQrFullscreen(s, group?.name),
-                          onSave: () => _saveQrPng(s).then((ok) => ok
-                              ? ToastHelper.success('تم حفظ الصورة')
-                              : ToastHelper.error('تعذر الحفظ')),
-                        );
-                      },
-                    ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filtered.isEmpty
+                      ? const EmptyState(
+                          icon: Icons.qr_code_2,
+                          title: 'لا توجد نتائج',
+                          subtitle: 'جرّب تعديل البحث أو المجموعة',
+                        )
+                      : GridView.builder(
+                          padding: const EdgeInsets.fromLTRB(
+                              AppSpace.lg, AppSpace.xs, AppSpace.lg, AppSpace.lg),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: adaptiveColumns(
+                                MediaQuery.sizeOf(context).width,
+                                phone: 2,
+                                minTileWidth: 230,
+                                max: 5),
+                            crossAxisSpacing: AppSpace.md,
+                            mainAxisSpacing: AppSpace.md,
+                            childAspectRatio: 0.82,
+                          ),
+                          cacheExtent: 600,
+                          itemCount: _filtered.length,
+                          itemBuilder: (ctx, i) {
+                            final s = _filtered[i];
+                            final groupName = _groupById[s.groupId]?.name;
+                            return _QrStudentCard(
+                              key: ValueKey('qr-${s.id}'),
+                              student: s,
+                              groupName: groupName,
+                              selecting: selecting,
+                              selected: s.id != null && _selected.contains(s.id),
+                              onTap: () => selecting
+                                  ? _toggleSelect(s)
+                                  : _showQrFullscreen(s, groupName),
+                              onLongPress: () => _toggleSelect(s),
+                              onSave: () => _saveQrPng(s).then((ok) => ok
+                                  ? ToastHelper.success('تم حفظ الصورة')
+                                  : ToastHelper.error('تعذر الحفظ')),
+                            );
+                          },
+                        ),
             ),
           ],
         ),
@@ -1116,48 +1361,40 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: active
-              ? primary.withValues(alpha: 0.12)
-              : Colors.grey.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: active
-                ? primary.withValues(alpha: 0.4)
-                : Colors.grey.withValues(alpha: 0.2),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14,
-                color: active ? primary : Colors.grey.shade500),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight:
-                    active ? FontWeight.w700 : FontWeight.w500,
-                color: active ? primary : Colors.grey.shade600,
-              ),
+    final t = context.tokens;
+    return Semantics(
+      button: true,
+      selected: active,
+      label: label,
+      child: Material(
+        color: active ? t.board : t.surface,
+        shape:
+            StadiumBorder(side: BorderSide(color: active ? t.board : t.line)),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.md, vertical: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: active ? t.boardInk : t.inkSoft),
+                const SizedBox(width: AppSpace.xs),
+                Text(label,
+                    style: AppType.label.copyWith(
+                        fontSize: 13, color: active ? t.boardInk : t.ink)),
+                if (onClear != null) ...[
+                  const SizedBox(width: AppSpace.xs),
+                  GestureDetector(
+                    onTap: onClear,
+                    child: Icon(Icons.close_rounded,
+                        size: 16, color: active ? t.boardInk : t.inkSoft),
+                  ),
+                ],
+              ],
             ),
-            if (onClear != null) ...[
-              const SizedBox(width: 4),
-              GestureDetector(
-                onTap: onClear,
-                child: Icon(Icons.close_rounded,
-                    size: 14,
-                    color: active ? primary : Colors.grey.shade500),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -1689,29 +1926,41 @@ class _StatPill extends StatelessWidget {
 class _ProgressDialog extends StatelessWidget {
   final int total;
   final String label;
-  const _ProgressDialog({required this.total, required this.label});
+  final ValueListenable<int> progress;
+  const _ProgressDialog(
+      {required this.total, required this.label, required this.progress});
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Dialog(
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: t.surface,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.panel),
+          side: BorderSide(color: t.line)),
       child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(label,
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Text(
-              'جاري معالجة $total بطاقة...',
-              style: TextStyle(
-                  fontSize: 13, color: Colors.grey.shade500),
-            ),
-          ],
+        padding: const EdgeInsets.all(AppSpace.xl),
+        child: ValueListenableBuilder<int>(
+          valueListenable: progress,
+          builder: (_, done, __) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: AppType.title.copyWith(color: t.ink)),
+              const SizedBox(height: AppSpace.lg),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.chip),
+                child: LinearProgressIndicator(
+                  value: total == 0 ? null : (done / total).clamp(0.0, 1.0),
+                  minHeight: 8,
+                  color: t.brand,
+                  backgroundColor: t.line,
+                ),
+              ),
+              const SizedBox(height: AppSpace.sm),
+              Text('$done من $total بطاقة',
+                  style: AppType.caption.copyWith(color: t.inkSoft)),
+            ],
+          ),
         ),
       ),
     );
@@ -1725,130 +1974,135 @@ class _ProgressDialog extends StatelessWidget {
 class _QrStudentCard extends StatelessWidget {
   final Student student;
   final String? groupName;
-  final bool isDark;
+  final bool selected;
+  final bool selecting;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
   final VoidCallback onSave;
 
   const _QrStudentCard({
+    super.key,
     required this.student,
     required this.groupName,
-    required this.isDark,
+    required this.selected,
+    required this.selecting,
     required this.onTap,
+    required this.onLongPress,
     required this.onSave,
   });
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final t = context.tokens;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-              color: accent.withValues(alpha: 0.15)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black
-                  .withValues(alpha: isDark ? 0.2 : 0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${student.name}، كود ${student.code}',
+      child: Material(
+        color: selected ? t.rosterTint : t.surface,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.panel),
+          side: BorderSide(
+              color: selected ? t.brand : t.line, width: selected ? 2 : 1),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // QR area
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: Colors.grey.withValues(alpha: 0.15)),
-                ),
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: QrImageView(
-                      data: student.code,
-                      version: QrVersions.auto,
-                      backgroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // Info + actions
-            Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(12, 0, 12, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    student.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13),
-                  ),
-                  if (groupName != null)
-                    Text(
-                      groupName!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade500),
-                    ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: onTap,
-                          icon: const Icon(Icons.zoom_in_rounded,
-                              size: 15),
-                          label: const Text('عرض',
-                              style: TextStyle(fontSize: 12)),
-                          style: OutlinedButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 4),
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // الـQR دايمًا أسود على أبيض (حتى في الوضع الداكن) عشان يتقري.
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Container(
+                        margin: const EdgeInsets.fromLTRB(
+                            AppSpace.md, AppSpace.md, AppSpace.md, AppSpace.xs),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius:
+                              BorderRadius.circular(AppRadius.control),
+                          border: Border.all(color: t.line),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(AppSpace.sm),
+                          child: RepaintBoundary(
+                            child: QrImageView(
+                              data: student.code,
+                              version: QrVersions.auto,
+                              backgroundColor: Colors.white,
+                              gapless: true,
+                            ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: onSave,
-                          icon: const Icon(
-                              Icons.download_rounded,
-                              size: 15),
-                          label: const Text('حفظ',
-                              style: TextStyle(fontSize: 12)),
-                          style: FilledButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 4),
+                    ),
+                    if (selecting)
+                      PositionedDirectional(
+                        top: AppSpace.sm,
+                        start: AppSpace.sm,
+                        child: Container(
+                          width: 26,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            color: selected ? t.brand : t.surface,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: selected ? t.brand : t.inkFaint,
+                                width: 1.5),
                           ),
+                          child: selected
+                              ? const Icon(Icons.check_rounded,
+                                  size: 18, color: Colors.white)
+                              : null,
                         ),
                       ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpace.md, 0, AppSpace.md, AppSpace.sm),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            student.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppType.label
+                                .copyWith(color: t.ink, fontSize: 13),
+                          ),
+                          Text(
+                            groupName == null
+                                ? student.code
+                                : '$groupName • ${student.code}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppType.caption.copyWith(color: t.inkSoft),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!selecting)
+                      IconButton(
+                        onPressed: onSave,
+                        tooltip: 'حفظ الصورة',
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(Icons.download_rounded,
+                            size: 20, color: t.brand),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
